@@ -1,0 +1,173 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Account {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  type        String    @default("INDIVIDUAL") // ENTERPRISE or INDIVIDUAL
+  status      String    @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  ownerUserId String?
+  ownerUser   User?     @relation("AccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  memberships AccountMembership[]
+  roles       Role[]
+  invitations Invitation[]
+  auditLogs   AuditLog[]
+
+  @@index([type])
+  @@index([slug])
+  @@index([ownerUserId])
+  @@index([deletedAt])
+}
+
+model User {
+  id          String    @id @default(cuid())
+  clerkUserId String    @unique
+  email       String    @unique
+  firstName   String?
+  lastName    String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  ownedAccounts      Account[]           @relation("AccountOwner")
+  createdInvitations Invitation[]        @relation("InvitationCreator")
+  platformRoles      PlatformUserRole[]
+  memberships        AccountMembership[]
+  auditLogs          AuditLog[]
+
+  @@index([clerkUserId])
+  @@index([email])
+  @@index([deletedAt])
+}
+
+model PlatformRole {
+  id          String   @id @default(cuid())
+  name        String   @unique // PLATFORM_ADMIN, CUSTOMER_SUPPORT, BILLING_ADMIN, SECURITY_ADMIN
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles PlatformUserRole[]
+}
+
+model PlatformUserRole {
+  userId         String
+  platformRoleId String
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformRole PlatformRole @relation(fields: [platformRoleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, platformRoleId])
+}
+
+model AccountMembership {
+  id        String    @id @default(cuid())
+  accountId String
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String
+  role      Role      @relation(fields: [roleId], references: [id])
+  status    String    @default("ACTIVE") // ACTIVE, INACTIVE, DISABLED
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([accountId, userId])
+  @@index([userId])
+  @@index([accountId])
+  @@index([deletedAt])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  accountId   String?  // NULL for system default roles (OWNER, ADMIN, MEMBER, VIEWER), or specific account ID for custom roles
+  account     Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name        String   // OWNER, ADMIN, MEMBER, VIEWER, or Custom Role Name
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships     AccountMembership[]
+  rolePermissions RolePermission[]
+  invitations     Invitation[]
+
+  @@unique([accountId, name])
+  @@index([accountId])
+  @@index([isSystem])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique // account.manage, users.manage, documents.create, documents.read, etc.
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Invitation {
+  id              String   @id @default(cuid())
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  email           String
+  token           String   @unique @default(cuid())
+  roleId          String
+  role            Role     @relation(fields: [roleId], references: [id])
+  status          String   @default("PENDING") // PENDING, ACCEPTED, EXPIRED, REVOKED
+  expiresAt       DateTime
+  createdByUserId String?
+  createdByUser   User?    @relation("InvitationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([email])
+  @@index([token])
+  @@index([createdByUserId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  requestId String?
+  success   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([userId])
+  @@index([success])
+}
