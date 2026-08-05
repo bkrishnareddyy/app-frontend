@@ -38,6 +38,8 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
 
   if (!shipment) notFound();
 
+  const totalInvoiceAmount = shipment.lineItems.reduce((acc, item) => acc + item.quantity * item.unitPrice, 0);
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
       {/* Top Banner Header */}
@@ -133,15 +135,15 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
         </div>
 
         {/* Center Column: Embedded Commercial Invoice Viewer (5 Cols) */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4 flex flex-col justify-between">
+        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4 flex flex-col justify-between overflow-hidden">
           <div>
             {/* Viewer Controls */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E5EA] text-xs">
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-[#1D1D1F]">Commercial Invoice</span>
-                <span className="text-[#86868B]">(INV-45678.pdf)</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E5E5EA] text-xs">
+              <div className="flex items-center space-x-1.5 min-w-0">
+                <span className="font-bold text-[#1D1D1F] shrink-0">Commercial Invoice</span>
+                <span className="text-[#86868B] truncate text-[11px]">(INV-45678.pdf)</span>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1.5 shrink-0">
                 <button className="p-1 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA] text-[#1D1D1F]"><ChevronLeft className="w-3.5 h-3.5" /></button>
                 <span className="text-[11px] text-[#86868B]">1 / 2</span>
                 <button className="p-1 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA] text-[#1D1D1F]"><ChevronRight className="w-3.5 h-3.5" /></button>
@@ -154,58 +156,54 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
             </div>
 
             {/* Embedded Invoice Document Canvas Mockup */}
-            <div className="mt-4 p-6 rounded-xl bg-[#F9F9FB] border border-[#E5E5EA] space-y-4 text-xs font-mono">
-              <div className="flex justify-between border-b border-[#E5E5EA] pb-3">
+            <div className="mt-4 p-5 rounded-xl bg-[#F9F9FB] border border-[#E5E5EA] space-y-4 text-xs font-mono overflow-x-auto">
+              <div className="flex justify-between border-b border-[#E5E5EA] pb-3 min-w-[380px]">
                 <div>
                   <p className="font-bold text-sm text-[#1D1D1F]">ABC Exports GmbH</p>
-                  <p className="text-[10px] text-[#86868B]">Buyer / Importer: ABC Manufacturing India Pvt Ltd</p>
+                  <p className="text-[10px] text-[#86868B]">Buyer / Importer: {shipment.importerName}</p>
                   <p className="text-[10px] text-[#86868B]">123 Industrial Area, Mumbai 400001</p>
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-xs text-[#1D1D1F]">COMMERCIAL INVOICE</p>
                   <p className="text-[10px] text-[#0071E3]">INV-45678</p>
                   <p className="text-[10px] text-[#86868B]">Date: 15 May 2026</p>
-                  <p className="text-[10px] text-[#86868B]">Incoterm: CIF Los Angeles</p>
+                  <p className="text-[10px] text-[#86868B]">Incoterm: {shipment.incoterm}</p>
                 </div>
               </div>
 
-              {/* Invoice Line Items Table */}
-              <table className="w-full text-left text-[11px]">
-                <thead>
-                  <tr className="border-b border-[#E5E5EA] text-[#86868B]">
-                    <th className="pb-2">Description</th>
-                    <th className="pb-2">HS Code</th>
-                    <th className="pb-2">Origin</th>
-                    <th className="pb-2">Qty</th>
-                    <th className="pb-2">Unit Price</th>
-                    <th className="pb-2">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E5EA]">
-                  <tr>
-                    <td className="py-2 text-[#1D1D1F] font-bold">Stainless Steel Valve</td>
-                    <td className="py-2 text-[#0071E3]">8481.80.5090</td>
-                    <td className="py-2 text-[#86868B]">Germany</td>
-                    <td className="py-2 text-[#1D1D1F]">100 PCS</td>
-                    <td className="py-2 text-[#1D1D1F]">$50.00</td>
-                    <td className="py-2 font-bold text-[#1D1D1F]">$5,000.00</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 text-[#1D1D1F] font-bold">Electronic Controller</td>
-                    <td className="py-2 text-amber-600">8537.10.2030</td>
-                    <td className="py-2 text-[#86868B]">China</td>
-                    <td className="py-2 text-[#1D1D1F]">20 PCS</td>
-                    <td className="py-2 text-[#1D1D1F]">$420.00</td>
-                    <td className="py-2 font-bold text-[#1D1D1F]">$8,400.00</td>
-                  </tr>
-                </tbody>
-              </table>
+              {/* Invoice Line Items Table (Fixed Grid Spacing & Explicit Padding) */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px] border-collapse min-w-[420px]">
+                  <thead>
+                    <tr className="border-b border-[#E5E5EA] text-[#86868B]">
+                      <th className="pb-2 font-semibold pr-3">Description</th>
+                      <th className="pb-2 font-semibold px-2">HS Code</th>
+                      <th className="pb-2 font-semibold px-2">Origin</th>
+                      <th className="pb-2 font-semibold px-2 text-center">Qty</th>
+                      <th className="pb-2 font-semibold px-2 text-right">Unit Price</th>
+                      <th className="pb-2 font-semibold pl-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5E5EA]">
+                    {shipment.lineItems.map((item) => (
+                      <tr key={item.id}>
+                        <td className="py-2.5 pr-3 text-[#1D1D1F] font-bold max-w-[140px] truncate">{item.description}</td>
+                        <td className="py-2.5 px-2 text-[#0071E3] font-medium whitespace-nowrap">{item.htsCode}</td>
+                        <td className="py-2.5 px-2 text-[#86868B] whitespace-nowrap">{item.countryOfOrigin}</td>
+                        <td className="py-2.5 px-2 text-[#1D1D1F] text-center whitespace-nowrap">{item.quantity} PCS</td>
+                        <td className="py-2.5 px-2 text-[#1D1D1F] text-right whitespace-nowrap">${item.unitPrice.toFixed(2)}</td>
+                        <td className="py-2.5 pl-2 text-right font-bold text-[#1D1D1F] whitespace-nowrap">${(item.quantity * item.unitPrice).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               <div className="flex justify-end pt-3 border-t border-[#E5E5EA]">
                 <div className="text-right space-y-1 text-xs">
-                  <p className="text-[#86868B]">Subtotal: <span className="font-bold text-[#1D1D1F]">$13,400.00</span></p>
+                  <p className="text-[#86868B]">Subtotal: <span className="font-bold text-[#1D1D1F]">${totalInvoiceAmount.toLocaleString()}</span></p>
                   <p className="text-[#86868B]">Freight & Insurance: <span className="font-bold text-[#1D1D1F]">$2,850.00</span></p>
-                  <p className="font-bold text-[#1D1D1F] text-sm">Invoice Total (CIF): $16,250.00</p>
+                  <p className="font-bold text-[#1D1D1F] text-sm">Invoice Total (CIF): ${(totalInvoiceAmount + 2850).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -227,10 +225,10 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
             </div>
 
             <div className="space-y-2 text-xs">
-              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between"><span className="text-[#86868B]">Header Information</span><span className="font-bold text-emerald-600">95% ✓</span></div>
-              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between"><span className="text-[#86868B]">Parties & Importer</span><span className="font-bold text-emerald-600">98% ✓</span></div>
-              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between"><span className="text-[#86868B]">Transport & Port</span><span className="font-bold text-emerald-600">93% ✓</span></div>
-              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between"><span className="text-[#86868B]">Commercial Terms</span><span className="font-bold text-emerald-600">96% ✓</span></div>
+              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between items-center"><span className="text-[#86868B]">Header Information</span><span className="font-bold text-emerald-600">95% ✓</span></div>
+              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between items-center"><span className="text-[#86868B]">Parties & Importer</span><span className="font-bold text-emerald-600">98% ✓</span></div>
+              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between items-center"><span className="text-[#86868B]">Transport & Port</span><span className="font-bold text-emerald-600">93% ✓</span></div>
+              <div className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex justify-between items-center"><span className="text-[#86868B]">Commercial Terms</span><span className="font-bold text-emerald-600">96% ✓</span></div>
             </div>
 
             {/* Line Items Extracted Summary */}
@@ -243,8 +241,8 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
               {shipment.lineItems.map((item) => (
                 <div key={item.id} className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-1 text-xs">
                   <div className="flex justify-between font-bold text-[#1D1D1F]">
-                    <span>Line {item.lineNumber}: {item.description}</span>
-                    <span className={item.htsConfidence < 80 ? "text-amber-600" : "text-emerald-600"}>{item.htsConfidence}%</span>
+                    <span className="truncate pr-2">Line {item.lineNumber}: {item.description}</span>
+                    <span className={item.htsConfidence < 80 ? "text-amber-600 shrink-0" : "text-emerald-600 shrink-0"}>{item.htsConfidence}%</span>
                   </div>
                   <div className="flex justify-between text-[11px] text-[#86868B]">
                     <span>HTS: <strong className="text-[#0071E3]">{item.htsCode}</strong> ({item.countryOfOrigin})</span>
