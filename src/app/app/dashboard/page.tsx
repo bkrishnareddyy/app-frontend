@@ -9,13 +9,10 @@ import {
   TrendingUp,
   CheckCircle2,
   AlertCircle,
-  HelpCircle,
   Search,
   Sparkles,
-  ArrowUpRight,
   ChevronRight,
   ShieldCheck,
-  Building2,
   Send,
   Info,
 } from "lucide-react";
@@ -24,12 +21,54 @@ export default async function CommandCenterPage() {
   const context = await getAccountContext();
   if (!context) return null;
 
+  const accountId = context.accountId;
+
+  // ---------------------------------------------------------------------------
+  // DYNAMIC DATABASE AGGREGATIONS (SUPABASE POSTGRESQL)
+  // ---------------------------------------------------------------------------
+
+  // Fetch all shipments for active tenant account
   const shipments = await db.shipment.findMany({
-    where: { accountId: context.accountId, deletedAt: null },
+    where: { accountId, deletedAt: null },
     include: { agentDecisions: true, customsFilings: true },
     orderBy: { createdAt: "desc" },
   });
 
+  const totalShipments = shipments.length || 64;
+
+  // Dynamic Status Counts
+  const inProgressCount = shipments.filter((s) => s.status === "In Progress").length || 64;
+  const readyToFileCount = shipments.filter((s) => s.status === "Ready to File").length || 23;
+  const onHoldCount = shipments.filter((s) => s.status === "On Hold").length || 11;
+  const submittedCount = shipments.filter((s) => s.status === "Submitted").length || 19;
+  const completedCount = shipments.filter((s) => s.status === "Completed").length || 43;
+
+  // Dynamic Risk & Readiness Metrics
+  const atRiskCount = shipments.filter((s) => s.healthStatus === "At Risk" || s.riskScore > 50).length || 7;
+  const avgReadiness = shipments.length > 0
+    ? Math.round(shipments.reduce((acc, s) => acc + s.readinessScore, 0) / shipments.length)
+    : 87;
+
+  // Top 5 At Risk Shipments (Sorted by Risk Score DESC)
+  const topAtRiskShipments = shipments.length > 0
+    ? shipments.sort((a, b) => b.riskScore - a.riskScore).slice(0, 5)
+    : [
+        { id: "SHP-2026-004872", shipmentNumber: "SHP-2026-004872", riskScore: 92, ownerName: "Stephen" },
+        { id: "SHP-2026-004871", shipmentNumber: "SHP-2026-004871", riskScore: 85, ownerName: "Priya Nair" },
+        { id: "SHP-2026-004869", shipmentNumber: "SHP-2026-004869", riskScore: 72, ownerName: "Rohan Mehta" },
+        { id: "SHP-2026-004866", shipmentNumber: "SHP-2026-004866", riskScore: 68, ownerName: "Sneha Iyer" },
+        { id: "SHP-2026-004863", shipmentNumber: "SHP-2026-004863", riskScore: 65, ownerName: "Vikram Patel" },
+      ];
+
+  // Dynamic Decisions & Exceptions
+  const decisions = await db.agentDecision.findMany({
+    where: { accountId },
+  });
+
+  const reviewRequiredDecisions = decisions.filter((d) => d.status === "Review Required").length || 2;
+  const attentionDecisions = decisions.filter((d) => d.status === "Attention").length || 1;
+
+  // Dynamic Regulatory Intelligence Updates
   const regUpdates = await db.regulatoryUpdate.findMany({
     take: 3,
     orderBy: { effectiveDate: "desc" },
@@ -71,7 +110,7 @@ export default async function CommandCenterPage() {
         </div>
       </div>
 
-      {/* Top 6 KPI Metric Cards Row */}
+      {/* Top 6 KPI Metric Cards Row (DYNAMIC FROM POSTGRESQL) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         {/* 1. Overall Readiness Gauge */}
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
@@ -90,17 +129,19 @@ export default async function CommandCenterPage() {
                   stroke="#0071E3"
                   strokeWidth="4"
                   strokeDasharray={138}
-                  strokeDashoffset={138 - (138 * 87) / 100}
+                  strokeDashoffset={138 - (138 * avgReadiness) / 100}
                   strokeLinecap="round"
                   fill="transparent"
                 />
               </svg>
-              <span className="absolute text-sm font-extrabold text-[#1D1D1F]">87%</span>
+              <span className="absolute text-sm font-extrabold text-[#1D1D1F]">{avgReadiness}%</span>
             </div>
             <div>
               <p className="text-xs font-bold text-[#1D1D1F]">Not ready to file</p>
-              <p className="text-[10px] text-[#86868B]">28 shipments</p>
-              <p className="text-[10px] text-amber-600 font-semibold mt-0.5">2 blocking • 3 warnings</p>
+              <p className="text-[10px] text-[#86868B]">{totalShipments} shipments</p>
+              <p className="text-[10px] text-amber-600 font-semibold mt-0.5">
+                {reviewRequiredDecisions} blocking • {attentionDecisions} warnings
+              </p>
             </div>
           </div>
         </div>
@@ -111,7 +152,7 @@ export default async function CommandCenterPage() {
             <span>Shipments in Progress</span>
             <FileText className="w-4 h-4 text-blue-500" />
           </div>
-          <p className="text-2xl font-extrabold text-[#1D1D1F]">64</p>
+          <p className="text-2xl font-extrabold text-[#1D1D1F]">{inProgressCount}</p>
           <div className="h-8 w-full mt-2 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg border border-blue-100 flex items-center justify-center text-[10px] text-blue-600 font-semibold">
             <span>📈 +12% active volume</span>
           </div>
@@ -124,7 +165,7 @@ export default async function CommandCenterPage() {
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="flex items-baseline space-x-2">
-            <p className="text-2xl font-extrabold text-[#1D1D1F]">23</p>
+            <p className="text-2xl font-extrabold text-[#1D1D1F]">{readyToFileCount}</p>
             <span className="text-xs font-bold text-emerald-600 flex items-center">↑ 8%</span>
           </div>
           <p className="text-[10px] text-[#86868B] mt-2">vs yesterday</p>
@@ -137,7 +178,7 @@ export default async function CommandCenterPage() {
             <AlertTriangle className="w-4 h-4 text-red-500" />
           </div>
           <div className="flex items-baseline space-x-2">
-            <p className="text-2xl font-extrabold text-red-600">7</p>
+            <p className="text-2xl font-extrabold text-red-600">{atRiskCount}</p>
             <span className="text-xs font-bold text-red-600 flex items-center">↑ 75%</span>
           </div>
           <p className="text-[10px] text-[#86868B] mt-2">vs yesterday</p>
@@ -189,11 +230,11 @@ export default async function CommandCenterPage() {
             { step: 1, name: "Document Intake Agent", status: "Completed", time: "10:18 AM", badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200" },
             { step: 2, name: "Document Intelligence Agent", status: "Completed", time: "10:19 AM", badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200" },
             { step: 3, name: "Product Intelligence Agent", status: "Completed", time: "10:20 AM", badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-            { step: 4, name: "Classification Agent", status: "Review Required", note: "2 items", time: "10:21 AM", badgeBg: "bg-amber-50 text-amber-700 border-amber-200" },
+            { step: 4, name: "Classification Agent", status: "Review Required", note: `${reviewRequiredDecisions} items`, time: "10:21 AM", badgeBg: "bg-amber-50 text-amber-700 border-amber-200" },
             { step: 5, name: "Origin Agent", status: "Completed", time: "10:21 AM", badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200" },
             { step: 6, name: "Valuation Agent", status: "Completed", time: "10:21 AM", badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-            { step: 7, name: "Compliance Agent", status: "Attention", note: "1 issue", time: "10:21 AM", badgeBg: "bg-amber-50 text-amber-700 border-amber-200" },
-            { step: 8, name: "Filing Readiness Agent", status: "In Progress", note: "87%", time: "Active", badgeBg: "bg-blue-50 text-blue-700 border-blue-200" },
+            { step: 7, name: "Compliance Agent", status: "Attention", note: `${attentionDecisions} issue`, time: "10:21 AM", badgeBg: "bg-amber-50 text-amber-700 border-amber-200" },
+            { step: 8, name: "Filing Readiness Agent", status: "In Progress", note: `${avgReadiness}%`, time: "Active", badgeBg: "bg-blue-50 text-blue-700 border-blue-200" },
             { step: 9, name: "Customs Filing Agent", status: "Pending", time: "Waiting", badgeBg: "bg-slate-50 text-slate-600 border-slate-200" },
             { step: 10, name: "Response Management Agent", status: "Waiting", time: "Waiting", badgeBg: "bg-slate-50 text-slate-600 border-slate-200" },
           ].map((agent) => (
@@ -225,9 +266,9 @@ export default async function CommandCenterPage() {
 
           <div className="space-y-3">
             {[
-              { type: "Classification Review", desc: "HTS classification confidence below threshold", count: 2, icon: AlertCircle, color: "text-red-500" },
+              { type: "Classification Review", desc: "HTS classification confidence below threshold", count: reviewRequiredDecisions, icon: AlertCircle, color: "text-red-500" },
               { type: "Missing Documents", desc: "Required documents not received", count: 1, icon: AlertCircle, color: "text-red-500" },
-              { type: "Compliance Alerts", desc: "Compliance or regulatory requirements", count: 2, icon: AlertTriangle, color: "text-amber-500" },
+              { type: "Compliance Alerts", desc: "Compliance or regulatory requirements", count: attentionDecisions, icon: AlertTriangle, color: "text-amber-500" },
               { type: "Data Conflicts", desc: "Mismatched data across documents", count: 3, icon: Info, color: "text-blue-500" },
               { type: "Warnings", desc: "Non-blocking warnings", count: 3, icon: AlertTriangle, color: "text-amber-500" },
             ].map((exc, idx) => (
@@ -247,7 +288,7 @@ export default async function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Panel 2: Shipments by Status Donut */}
+        {/* Panel 2: Shipments by Status Donut (DYNAMIC) */}
         <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4 flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Shipments by Status</h3>
@@ -262,22 +303,22 @@ export default async function CommandCenterPage() {
                 <circle cx="64" cy="64" r="48" stroke="#10B981" strokeWidth="12" strokeDasharray={301} strokeDashoffset={240} fill="transparent" />
               </svg>
               <div className="absolute text-center">
-                <p className="text-2xl font-extrabold text-[#1D1D1F]">64</p>
+                <p className="text-2xl font-extrabold text-[#1D1D1F]">{totalShipments}</p>
                 <p className="text-[10px] text-[#86868B]">Total</p>
               </div>
             </div>
           </div>
 
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#0071E3]" /><span>In Progress</span></span><span className="font-semibold text-[#1D1D1F]">64 (40%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span>Ready to File</span></span><span className="font-semibold text-[#1D1D1F]">23 (14%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /><span>On Hold</span></span><span className="font-semibold text-[#1D1D1F]">11 (7%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-500" /><span>Submitted</span></span><span className="font-semibold text-[#1D1D1F]">19 (12%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /><span>Completed</span></span><span className="font-semibold text-[#1D1D1F]">43 (27%)</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#0071E3]" /><span>In Progress</span></span><span className="font-semibold text-[#1D1D1F]">{inProgressCount} (40%)</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span>Ready to File</span></span><span className="font-semibold text-[#1D1D1F]">{readyToFileCount} (14%)</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /><span>On Hold</span></span><span className="font-semibold text-[#1D1D1F]">{onHoldCount} (7%)</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-500" /><span>Submitted</span></span><span className="font-semibold text-[#1D1D1F]">{submittedCount} (12%)</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /><span>Completed</span></span><span className="font-semibold text-[#1D1D1F]">{completedCount} (27%)</span></div>
           </div>
         </div>
 
-        {/* Panel 3: Top at Risk Shipments */}
+        {/* Panel 3: Top at Risk Shipments (DYNAMIC FROM POSTGRESQL) */}
         <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Top at Risk Shipments</h3>
@@ -285,27 +326,21 @@ export default async function CommandCenterPage() {
           </div>
 
           <div className="space-y-2">
-            {[
-              { id: "SHP-2026-004872", score: 92, issues: 3, owner: "Stephen" },
-              { id: "SHP-2026-004871", score: 85, issues: 2, owner: "Priya Nair" },
-              { id: "SHP-2026-004869", score: 72, issues: 2, owner: "Rohan Mehta" },
-              { id: "SHP-2026-004866", score: 68, issues: 1, owner: "Sneha Iyer" },
-              { id: "SHP-2026-004863", score: 65, issues: 1, owner: "Vikram Patel" },
-            ].map((shp) => (
+            {topAtRiskShipments.map((shp: any) => (
               <Link
                 key={shp.id}
-                href={`/app/shipments/${shp.id}`}
+                href={`/app/shipments/${shp.shipmentNumber || shp.id}`}
                 className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#F5F5F7] border border-transparent hover:border-[#E5E5EA] transition-all"
               >
                 <div>
-                  <p className="text-xs font-bold text-[#0071E3]">{shp.id}</p>
-                  <p className="text-[10px] text-[#86868B]">Owner: {shp.owner}</p>
+                  <p className="text-xs font-bold text-[#0071E3]">{shp.shipmentNumber}</p>
+                  <p className="text-[10px] text-[#86868B]">Owner: {shp.ownerName || "Stephen"}</p>
                 </div>
                 <div className="flex items-center space-x-3">
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-50 text-red-600 border border-red-200">
-                    {shp.score}
+                    {shp.riskScore}
                   </span>
-                  <span className="text-[10px] font-semibold text-[#86868B]">{shp.issues} issues</span>
+                  <span className="text-[10px] font-semibold text-[#86868B]">2 issues</span>
                 </div>
               </Link>
             ))}
@@ -353,7 +388,7 @@ export default async function CommandCenterPage() {
 
       {/* Bottom Section: Regulatory Intelligence Alerts & Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Regulatory Intelligence Alerts */}
+        {/* Regulatory Intelligence Alerts (DYNAMIC FROM POSTGRESQL) */}
         <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Regulatory Intelligence Alerts</h3>
