@@ -2,30 +2,49 @@ import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import {
+  Scale,
   Sparkles,
   CheckCircle2,
   AlertCircle,
-  AlertTriangle,
+  Clock,
   ChevronRight,
-  Filter,
-  FileText,
-  ExternalLink,
-  ShieldCheck,
-  Scale,
-  RefreshCw,
-  XCircle,
+  Search,
   Check,
+  RotateCcw,
+  BookOpen,
+  FileText,
+  Building2,
+  HelpCircle,
+  Send,
+  X,
+  Info,
 } from "lucide-react";
 
-export default async function DecisionReviewCenterPage() {
+export default async function DecisionReviewCenterPage(props: {
+  searchParams: Promise<{ shipmentId?: string; decisionId?: string }>;
+}) {
+  const searchParams = await props.searchParams;
   const context = await getAccountContext();
   if (!context) return null;
 
   const decisions = await db.agentDecision.findMany({
     where: { accountId: context.accountId },
-    include: { shipment: true },
+    include: {
+      shipment: true,
+    },
     orderBy: { createdAt: "desc" },
   });
+
+  const selectedDecision =
+    decisions.find((d) => d.id === searchParams.decisionId) ||
+    decisions.find((d) => searchParams.shipmentId ? d.shipmentId === searchParams.shipmentId : true) ||
+    decisions[0];
+
+  const evidenceList = (selectedDecision?.evidenceItems as any[]) || [
+    { title: "Invoice Description", detail: "Electronic Controller Unit - INV-45678.pdf Page 1 Line 2", source: "Invoice Document" },
+    { title: "Historical Match", detail: "8537.10.2030 used in 14 previous shipments with 99% acceptance", source: "Customs Entry Database" },
+    { title: "Tariff Ruling NY N302145", detail: "CBP ruled similar programmable controllers under 8537.10.2030", source: "CBP CROSS Rulings" },
+  ];
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -37,214 +56,185 @@ export default async function DecisionReviewCenterPage() {
             <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight">Decision Review Center</h1>
           </div>
           <p className="text-xs text-[#86868B] mt-1">
-            Review and approve AI agent recommendations for shipment SHP-2026-004872
+            Human-in-the-loop review interface for AI agent trade decisions and HTS classifications
           </p>
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-900 flex items-center space-x-2">
-            <ShieldCheck className="w-4 h-4 text-[#0071E3]" />
-            <span>Filing Readiness: <strong>87% (2 blocking issues)</strong></span>
+          <div className="relative">
+            <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search decisions, agents, rules... (⌘K)"
+              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] w-72 focus:outline-hidden focus:border-[#0071E3]"
+            />
           </div>
-
-          <Link
-            href="/app/shipments/SHP-2026-004872"
-            className="px-4 py-2 bg-white border border-[#E5E5EA] hover:border-[#0071E3] text-[#1D1D1F] text-xs font-semibold rounded-xl shadow-2xs transition-all"
-          >
-            View Readiness
-          </Link>
         </div>
       </div>
 
       {/* Main 3-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Decision Selection List (4 Cols) */}
-        <div className="lg:col-span-4 space-y-4">
-          {/* Decision Category Tabs */}
-          <div className="flex items-center justify-between bg-white p-2 rounded-2xl border border-[#E5E5EA] text-xs font-semibold">
-            <button className="px-3 py-1.5 rounded-xl bg-[#0071E3] text-white">All Decisions (7)</button>
-            <button className="px-3 py-1.5 rounded-xl text-amber-700 bg-amber-50">Needs Review (2)</button>
-            <button className="px-3 py-1.5 rounded-xl text-[#86868B] hover:text-[#1D1D1F]">Warnings (5)</button>
-            <button className="px-3 py-1.5 rounded-xl text-emerald-700 bg-emerald-50">Approved (18)</button>
-          </div>
+        {/* Left Column: Decision Selection List (3 Cols) */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-white p-4 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">
+                Agent Decisions ({decisions.length})
+              </h3>
+            </div>
 
-          {/* Decision Cards List */}
-          <div className="space-y-3">
-            {decisions.map((dec) => (
-              <div
-                key={dec.id}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-                  dec.agentName === "Classification Agent"
-                    ? "bg-white border-[#0071E3] shadow-md ring-2 ring-[#0071E3]/10"
-                    : "bg-white border-[#E5E5EA] hover:border-[#0071E3] shadow-2xs"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center font-bold text-xs">
-                      ⚖️
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1D1D1F]">{dec.agentName}</h4>
-                      <p className="text-[10px] text-[#86868B]">Confidence: {dec.confidence}%</p>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                      dec.status === "Review Required"
-                        ? "bg-amber-50 text-amber-700 border-amber-200"
-                        : dec.status === "Approved"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : "bg-blue-50 text-blue-700 border-blue-200"
+            <div className="space-y-2">
+              {decisions.map((dec) => {
+                const isSelected = selectedDecision?.id === dec.id;
+                return (
+                  <Link
+                    key={dec.id}
+                    href={`/app/decisions?decisionId=${dec.id}`}
+                    className={`block p-3 rounded-xl border transition-all text-xs ${
+                      isSelected
+                        ? "bg-blue-50/60 border-[#0071E3] shadow-xs"
+                        : "bg-[#F5F5F7] border-[#E5E5EA] hover:border-[#0071E3]"
                     }`}
                   >
-                    {dec.status}
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[#1D1D1F]">{dec.agentName}</span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          dec.status === "Review Required"
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : dec.status === "Approved"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-red-50 text-red-700 border-red-200"
+                        }`}
+                      >
+                        {dec.status}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-[#86868B] mt-1 line-clamp-1">{dec.decisionSummary}</p>
+
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#E5E5EA]/60 text-[10px]">
+                      <span className="text-[#0071E3] font-semibold">{dec.shipment?.shipmentNumber}</span>
+                      <span className="font-bold text-emerald-600">{dec.confidence}% Confidence</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Center Column: Decision Details & AI Reasoning (6 Cols) */}
+        <div className="lg:col-span-6 space-y-6">
+          {selectedDecision ? (
+            <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-6">
+              {/* Decision Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E5E5EA] pb-4">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="w-5 h-5 text-[#0071E3]" />
+                    <h2 className="text-lg font-extrabold text-[#1D1D1F]">{selectedDecision.agentName}</h2>
+                  </div>
+                  <p className="text-xs text-[#86868B] mt-1">{selectedDecision.decisionSummary}</p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    {selectedDecision.confidence}% AI Confidence
                   </span>
                 </div>
-                <p className="text-xs text-[#86868B]">{dec.decisionSummary}</p>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Center Column: Decision Details & AI Reasoning (5 Cols) */}
-        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-6 flex flex-col justify-between">
-          <div className="space-y-6">
-            {/* Header & Tabs */}
-            <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Classification Agent Decision</h3>
-                <p className="text-xs text-[#86868B]">AI Agent Recommendation for 2 line items</p>
-              </div>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                Review Required
-              </span>
-            </div>
+              {/* Proposed Classification Comparison Table */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">
+                  HTS Classification Comparison
+                </h3>
 
-            {/* AI Recommendation Summary */}
-            <div className="p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-[#1D1D1F]">AI Recommendation</p>
-                <p className="text-[11px] text-[#86868B]">The agent recommends the following classification for 2 line items</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] text-[#86868B]">Average Confidence</p>
-                <p className="text-xl font-extrabold text-amber-600">76%</p>
-              </div>
-            </div>
+                <div className="p-4 rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 rounded-xl bg-white border border-[#E5E5EA] space-y-1">
+                      <p className="text-[10px] text-[#86868B] uppercase font-bold">Extracted Description</p>
+                      <p className="font-bold text-[#1D1D1F]">Electronic Controller Unit</p>
+                      <p className="text-[11px] text-[#0071E3]">Current HTS: {selectedDecision.currentHtsCode || "8481.80.5090"}</p>
+                    </div>
 
-            {/* Proposed HTS Codes Table */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold text-[#1D1D1F]">Proposed HTS Classifications</h4>
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#E5E5EA] text-[#86868B]">
-                    <th className="pb-2">Line</th>
-                    <th className="pb-2">Product Description</th>
-                    <th className="pb-2">Proposed HTS</th>
-                    <th className="pb-2">Confidence</th>
-                    <th className="pb-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E5EA]">
-                  <tr>
-                    <td className="py-2.5 font-bold text-[#1D1D1F]">3</td>
-                    <td className="py-2.5 text-[#1D1D1F]">Electronic Controller Model EC-2000</td>
-                    <td className="py-2.5 font-bold text-[#0071E3]">8537.10.2030</td>
-                    <td className="py-2.5 text-amber-600 font-bold">76%</td>
-                    <td className="py-2.5"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Review</span></td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 font-bold text-[#1D1D1F]">7</td>
-                    <td className="py-2.5 text-[#1D1D1F]">Stainless Steel Valve 1/2" NPT, 316 Grade</td>
-                    <td className="py-2.5 font-bold text-[#0071E3]">8481.80.5090</td>
-                    <td className="py-2.5 text-amber-600 font-bold">74%</td>
-                    <td className="py-2.5"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Review</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Summary Metadata */}
-            <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] text-xs">
-              <div><p className="text-[#86868B]">Purpose</p><p className="font-semibold text-[#1D1D1F]">Determine correct HS/HTS classification for all line items</p></div>
-              <div><p className="text-[#86868B]">Data Sources</p><p className="font-semibold text-[#1D1D1F]">Documents, Product Master, Historical Shipments, Tariff Rulings</p></div>
-              <div><p className="text-[#86868B]">Regulations</p><p className="font-semibold text-[#1D1D1F]">US HTS 2025, General Rules of Interpretation (GRI 1 & 6)</p></div>
-              <div><p className="text-[#86868B]">Executed At</p><p className="font-semibold text-[#1D1D1F]">10:21 AM • 12 May 2026</p></div>
-            </div>
-          </div>
-
-          {/* Action Buttons Footer */}
-          <div className="flex items-center justify-between pt-4 border-t border-[#E5E5EA] gap-3">
-            <button className="px-4 py-2.5 bg-white border border-[#E5E5EA] hover:border-[#0071E3] text-[#1D1D1F] text-xs font-semibold rounded-xl shadow-2xs flex items-center space-x-1.5">
-              <RefreshCw className="w-3.5 h-3.5 text-[#0071E3]" />
-              <span>Request Re-evaluation</span>
-            </button>
-
-            <div className="flex items-center space-x-2">
-              <button className="px-4 py-2.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-xs font-semibold rounded-xl flex items-center space-x-1">
-                <XCircle className="w-3.5 h-3.5" />
-                <span>Reject Decision</span>
-              </button>
-
-              <button className="px-5 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5">
-                <Check className="w-4 h-4" />
-                <span>Approve All Items</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Supporting Evidence & Human Audit Notes (3 Cols) */}
-        <div className="lg:col-span-3 space-y-6">
-          {/* Supporting Evidence Card */}
-          <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Supporting Evidence</h3>
-              <span className="text-xs font-semibold text-[#0071E3]">6 Sources</span>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              {[
-                { type: "PDF", title: "Commercial Invoice", subtitle: "INV-45678.pdf", badge: "Primary Source" },
-                { type: "PDF", title: "Product Specification", subtitle: "SPEC-EC-2000.pdf" },
-                { type: "XLS", title: "Historical Shipment", subtitle: "HS-2026-001234.xlsx" },
-                { type: "LINK", title: "US HTS 8537.10.2030", subtitle: "Official Tariff Database" },
-                { type: "LINK", title: "US HTS 8481.80.5090", subtitle: "Official Tariff Database" },
-                { type: "LINK", title: "WCO Explanatory Notes", subtitle: "Chapter 85" },
-              ].map((ev, idx) => (
-                <div key={idx} className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between hover:border-[#0071E3] transition-colors">
-                  <div className="flex items-center space-x-2.5">
-                    <FileText className="w-4 h-4 text-red-500 shrink-0" />
-                    <div>
-                      <p className="font-bold text-[#1D1D1F]">{ev.title}</p>
-                      <p className="text-[10px] text-[#86868B]">{ev.subtitle}</p>
+                    <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-1">
+                      <p className="text-[10px] text-[#0071E3] uppercase font-bold">Proposed HTS Classification</p>
+                      <p className="font-bold text-[#1D1D1F]">
+                        {selectedDecision.proposedHtsCode || "8537.10.2030"}
+                      </p>
+                      <p className="text-[11px] text-emerald-700 font-semibold">
+                        {selectedDecision.proposedDescription || "Boards & Consoles for electric control"}
+                      </p>
                     </div>
                   </div>
-                  {ev.badge ? (
-                    <span className="text-[9px] font-bold text-[#0071E3] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                      {ev.badge}
-                    </span>
-                  ) : (
-                    <ExternalLink className="w-3.5 h-3.5 text-[#86868B]" />
-                  )}
+                </div>
+              </div>
+
+              {/* General Rules of Interpretation (GRI) Applied */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Rules Applied</h3>
+                <div className="space-y-1.5 text-xs">
+                  {(selectedDecision.rulesApplied || ["GRI 1: Terms of headings & Section/Chapter Notes", "GRI 6: Subheading classification principles"]).map((rule: string, idx: number) => (
+                    <div key={idx} className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center space-x-2 text-[#1D1D1F]">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span className="font-medium">{rule}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Human Audit & Notes Form */}
+              <div className="space-y-2 pt-2 border-t border-[#E5E5EA]">
+                <label className="text-xs font-bold text-[#1D1D1F]">Human Review Audit Log & Notes</label>
+                <textarea
+                  rows={3}
+                  defaultValue={selectedDecision.humanNotes || "Reviewing voltage specs with engineering before final approval."}
+                  placeholder="Enter audit rationale, verification notes, or custom instructions..."
+                  className="w-full p-3 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end space-x-3 pt-2 border-t border-[#E5E5EA]">
+                <button className="px-4 py-2 bg-white border border-[#E5E5EA] hover:border-amber-500 text-amber-700 text-xs font-semibold rounded-xl transition-all flex items-center space-x-1.5">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Request Re-evaluation</span>
+                </button>
+                <button className="px-4 py-2 bg-white border border-[#E5E5EA] hover:border-red-500 text-red-600 text-xs font-semibold rounded-xl transition-all flex items-center space-x-1.5">
+                  <X className="w-3.5 h-3.5" />
+                  <span>Reject Decision</span>
+                </button>
+                <button className="px-5 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Approve Decision</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E5EA] text-xs text-[#86868B]">
+              Select a decision from the list to view detailed reasoning.
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Supporting Evidence (3 Cols) */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Supporting Evidence</h3>
+
+            <div className="space-y-3">
+              {evidenceList.map((ev: any, idx: number) => (
+                <div key={idx} className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-1 text-xs">
+                  <p className="font-bold text-[#1D1D1F]">{ev.title}</p>
+                  <p className="text-[11px] text-[#86868B]">{ev.detail}</p>
+                  <span className="inline-block text-[9px] font-bold text-[#0071E3] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 mt-1">
+                    {ev.source}
+                  </span>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Human Audit Notes Card */}
-          <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Human Notes & Audit</h3>
-            <textarea
-              rows={4}
-              placeholder="Add your notes for this decision..."
-              className="w-full p-3 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-            />
-            <button className="w-full py-2 bg-white border border-[#E5E5EA] hover:border-[#0071E3] text-[#1D1D1F] text-xs font-semibold rounded-xl shadow-2xs transition-all">
-              Save Audit Note
-            </button>
           </div>
         </div>
       </div>

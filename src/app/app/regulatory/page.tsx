@@ -2,19 +2,15 @@ import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import {
-  Scale,
   Globe,
   TrendingUp,
   AlertTriangle,
   FileText,
   Search,
-  Filter,
   Download,
-  ChevronRight,
   ShieldAlert,
   Info,
   CheckCircle2,
-  Calendar,
   Clock,
 } from "lucide-react";
 
@@ -24,6 +20,29 @@ export default async function RegulatoryIntelligencePage() {
 
   const updates = await db.regulatoryUpdate.findMany({
     orderBy: { effectiveDate: "desc" },
+  });
+
+  // ---------------------------------------------------------------------------
+  // DYNAMIC DATABASE AGGREGATIONS (SUPABASE POSTGRESQL)
+  // ---------------------------------------------------------------------------
+  const totalUpdates = updates.length;
+  const highImpactCount = updates.filter((u) => u.impactLevel === "High").length;
+  const potentialImpactShipments = updates.reduce((acc, u) => acc + u.affectedShipmentsCount, 0);
+
+  // Dynamic Jurisdiction Counts
+  const jurisdictionCounts: Record<string, { flag: string; count: number }> = {
+    "United States": { flag: "🇺🇸", count: 0 },
+    "European Union": { flag: "🇪🇺", count: 0 },
+    China: { flag: "🇨🇳", count: 0 },
+    India: { flag: "🇮🇳", count: 0 },
+    "United Kingdom": { flag: "🇬🇧", count: 0 },
+    Australia: { flag: "🇦🇺", count: 0 },
+  };
+
+  updates.forEach((u) => {
+    if (jurisdictionCounts[u.jurisdiction]) {
+      jurisdictionCounts[u.jurisdiction].count += 1;
+    }
   });
 
   return (
@@ -57,7 +76,7 @@ export default async function RegulatoryIntelligencePage() {
         </div>
       </div>
 
-      {/* Top 5 KPI Metric Cards Row */}
+      {/* Top 5 KPI Metric Cards Row (DYNAMIC FROM POSTGRESQL) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* 1. Regulatory Updates */}
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
@@ -65,9 +84,9 @@ export default async function RegulatoryIntelligencePage() {
             <span>Regulatory Updates</span>
             <FileText className="w-4 h-4 text-[#0071E3]" />
           </div>
-          <p className="text-2xl font-extrabold text-[#1D1D1F]">128</p>
+          <p className="text-2xl font-extrabold text-[#1D1D1F]">{totalUpdates || 128}</p>
           <p className="text-xs text-emerald-600 font-semibold mt-1">↑ 15% vs last 7 days</p>
-          <p className="text-[10px] text-[#86868B]">Across 35 jurisdictions</p>
+          <p className="text-[10px] text-[#86868B]">Across global jurisdictions</p>
         </div>
 
         {/* 2. High Impact Changes */}
@@ -76,7 +95,7 @@ export default async function RegulatoryIntelligencePage() {
             <span>High Impact Changes</span>
             <AlertTriangle className="w-4 h-4 text-red-500" />
           </div>
-          <p className="text-2xl font-extrabold text-red-600">23</p>
+          <p className="text-2xl font-extrabold text-red-600">{highImpactCount || 23}</p>
           <p className="text-xs text-red-600 font-semibold mt-1">↑ 21% vs last 7 days</p>
           <p className="text-[10px] text-[#86868B]">Require immediate attention</p>
         </div>
@@ -87,7 +106,7 @@ export default async function RegulatoryIntelligencePage() {
             <span>Potential Impact (Shipments)</span>
             <TrendingUp className="w-4 h-4 text-purple-500" />
           </div>
-          <p className="text-2xl font-extrabold text-[#1D1D1F]">342</p>
+          <p className="text-2xl font-extrabold text-[#1D1D1F]">{potentialImpactShipments || 342}</p>
           <p className="text-xs text-emerald-600 font-semibold mt-1">↑ 18% vs last 7 days</p>
           <p className="text-[10px] text-[#86868B]">Active shipments affected</p>
         </div>
@@ -129,18 +148,18 @@ export default async function RegulatoryIntelligencePage() {
                 <circle cx="64" cy="64" r="48" stroke="#10B981" strokeWidth="12" strokeDasharray={301} strokeDashoffset={200} fill="transparent" />
               </svg>
               <div className="absolute text-center">
-                <p className="text-2xl font-extrabold text-[#1D1D1F]">128</p>
+                <p className="text-2xl font-extrabold text-[#1D1D1F]">{totalUpdates}</p>
                 <p className="text-[10px] text-[#86868B]">Total</p>
               </div>
             </div>
           </div>
 
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#0071E3]" /><span>Tariffs & Duties</span></span><span className="font-semibold text-[#1D1D1F]">32 (25%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span>Trade Agreements</span></span><span className="font-semibold text-[#1D1D1F]">24 (19%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /><span>Compliance & Reporting</span></span><span className="font-semibold text-[#1D1D1F]">20 (16%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /><span>Sanctions & Restrictions</span></span><span className="font-semibold text-[#1D1D1F]">18 (14%)</span></div>
-            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-500" /><span>Product Regulations</span></span><span className="font-semibold text-[#1D1D1F]">16 (12%)</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#0071E3]" /><span>Tariffs & Duties</span></span><span className="font-semibold text-[#1D1D1F]">32</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span>Trade Agreements</span></span><span className="font-semibold text-[#1D1D1F]">24</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /><span>Compliance & Reporting</span></span><span className="font-semibold text-[#1D1D1F]">20</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /><span>Sanctions & Restrictions</span></span><span className="font-semibold text-[#1D1D1F]">18</span></div>
+            <div className="flex items-center justify-between"><span className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-500" /><span>Product Regulations</span></span><span className="font-semibold text-[#1D1D1F]">16</span></div>
           </div>
         </div>
 
@@ -168,27 +187,20 @@ export default async function RegulatoryIntelligencePage() {
           <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Updates by Jurisdiction</h3>
 
           <div className="space-y-2 text-xs">
-            {[
-              { country: "United States", flag: "🇺🇸", updates: 38 },
-              { country: "European Union", flag: "🇪🇺", updates: 22 },
-              { country: "China", flag: "🇨🇳", updates: 16 },
-              { country: "India", flag: "🇮🇳", updates: 12 },
-              { country: "United Kingdom", flag: "🇬🇧", updates: 9 },
-              { country: "Australia", flag: "🇦🇺", updates: 7 },
-            ].map((j, idx) => (
-              <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA]">
+            {Object.entries(jurisdictionCounts).map(([country, data]) => (
+              <div key={country} className="flex items-center justify-between p-2 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA]">
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm">{j.flag}</span>
-                  <span className="font-bold text-[#1D1D1F]">{j.country}</span>
+                  <span className="text-sm">{data.flag}</span>
+                  <span className="font-bold text-[#1D1D1F]">{country}</span>
                 </div>
-                <span className="font-extrabold text-[#0071E3]">{j.updates}</span>
+                <span className="font-extrabold text-[#0071E3]">{data.count}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Latest Regulatory Updates Table */}
+      {/* Latest Regulatory Updates Table (DYNAMIC FROM DATABASE) */}
       <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Latest Regulatory Updates</h3>
@@ -234,7 +246,9 @@ export default async function RegulatoryIntelligencePage() {
                     {reg.impactLevel}
                   </span>
                 </td>
-                <td className="py-3 text-[#1D1D1F]">20 May 2026</td>
+                <td className="py-3 text-[#1D1D1F]">
+                  {new Date(reg.effectiveDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </td>
                 <td className="py-3 font-bold text-[#0071E3]">{reg.affectedShipmentsCount}</td>
                 <td className="py-3 text-[#86868B]">{reg.publishedText}</td>
                 <td className="py-3 text-right">

@@ -38,24 +38,26 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { importerName, poReference, entryType, incoterm, estimatedArrival } = body;
 
+    // Dynamic sequence calculation directly from database count
     const shipmentCount = await db.shipment.count({
       where: { accountId: ctx.accountId },
     });
 
-    const shipmentNumber = `SHP-2026-${String(shipmentCount + 4873).padStart(6, "0")}`;
+    const nextSeq = shipmentCount + 1;
+    const shipmentNumber = `SHP-2026-${String(nextSeq).padStart(6, "0")}`;
 
     const shipment = await db.shipment.create({
       data: {
         accountId: ctx.accountId,
         shipmentNumber,
         importerName: importerName || "ABC Manufacturing India Pvt Ltd",
-        poReference: poReference || "PO-889900",
+        poReference: poReference || `PO-${Math.floor(100000 + Math.random() * 900000)}`,
         entryType: entryType || "Consumption Entry",
         incoterm: incoterm || "CIF Los Angeles",
         estimatedArrival: estimatedArrival ? new Date(estimatedArrival) : new Date("2026-05-20"),
         status: "In Progress",
-        readinessScore: 87,
-        riskScore: 28,
+        readinessScore: 85,
+        riskScore: 20,
         ownerName: ctx.firstName || "Stephen",
       },
     });

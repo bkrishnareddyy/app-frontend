@@ -192,6 +192,9 @@ model Shipment {
   poReference      String?   // e.g. PO-778899
   entryType        String    @default("Consumption Entry")
   incoterm         String    @default("CIF Los Angeles")
+  portOfEntry      String?   @default("Port of Los Angeles (2704)")
+  carrierName      String?   @default("Maersk Line")
+  countryOfExport  String?   @default("Germany")
   estimatedArrival DateTime?
   status           String    @default("In Progress") // In Progress, Ready to File, On Hold, Submitted, Completed
   healthStatus     String    @default("Healthy") // Healthy, At Risk, Critical
@@ -272,6 +275,11 @@ model AgentDecision {
   dataSources        String[]  // e.g. Documents, Product Master, Historical Shipments, Tariff Rulings
   regulations        String[]  // e.g. US HTS 2025, General Rules of Interpretation (GRI 1 & 6)
   modelVersion       String?   @default("Qubere-Taxo-v2.3")
+  currentHtsCode     String?   // e.g. 8481.80.5090
+  proposedHtsCode    String?   // e.g. 8537.10.2030
+  proposedDescription String?  // e.g. Electronic Boards & Controllers
+  rulesApplied       String[]  // e.g. GRI 1, GRI 6
+  evidenceItems      Json?     // Array of supporting evidence objects
   humanNotes         String?
   reviewedByUserId   String?
   reviewedByUser     User?     @relation("DecisionReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
@@ -299,6 +307,7 @@ model CustomsFiling {
   totalDuties   Float     @default(2850.00)
   totalTaxes    Float     @default(13100.00)
   totalAmount   Float     @default(16250.00)
+  dutyBreakdown Json?     // Array of itemized duty fee objects
   submittedAt   DateTime  @default(now())
   releasedAt    DateTime?
   createdAt     DateTime  @default(now())
