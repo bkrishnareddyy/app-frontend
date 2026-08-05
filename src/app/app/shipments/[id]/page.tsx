@@ -7,19 +7,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   AlertCircle,
-  HelpCircle,
   Sparkles,
   ChevronRight,
-  Send,
-  Plus,
-  Eye,
   Download,
   ZoomIn,
   ZoomOut,
   ChevronLeft,
   Info,
-  ShieldCheck,
 } from "lucide-react";
+import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 
 export default async function ShipmentWorkspacePage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -87,7 +83,7 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
           <div><p className="text-[#86868B]">Incoterm</p><p className="font-bold text-[#1D1D1F]">{shipment.incoterm}</p></div>
           <div><p className="text-[#86868B]">Est. Arrival</p><p className="font-bold text-[#1D1D1F]">15 May 2026</p></div>
           <div><p className="text-[#86868B]">Shipment Health</p><p className="font-bold text-emerald-600 flex items-center space-x-1"><CheckCircle2 className="w-3.5 h-3.5" /><span>Healthy</span></p></div>
-          <div><p className="text-[#86868B]">Documents</p><p className="font-bold text-[#1D1D1F]">5 / 6 Received <span className="text-red-500 text-[10px] font-normal">(1 Missing)</span></p></div>
+          <div><p className="text-[#86868B]">Documents</p><p className="font-bold text-[#1D1D1F]">{shipment.documents.filter(d => d.status === "Received").length} / {shipment.documents.length} Received</p></div>
           <div><p className="text-[#86868B]">Risk Score</p><p className="font-bold text-amber-600 flex items-center space-x-1"><span className="w-5 h-5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] flex items-center justify-center font-extrabold">{shipment.riskScore}</span><span>Medium</span></p></div>
         </div>
       </div>
@@ -131,50 +127,9 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
 
       {/* Main Workspace 3-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Documents Set Summary (3 Cols) */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Documents (5/6)</h3>
-              <button className="text-xs text-[#0071E3] font-semibold hover:underline flex items-center space-x-1">
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Document</span>
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {shipment.documents.map((doc) => (
-                <div key={doc.id} className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-2.5">
-                    {doc.status === "Received" ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                    )}
-                    <div>
-                      <p className="font-bold text-[#1D1D1F]">{doc.docType}</p>
-                      <p className="text-[10px] text-[#86868B]">{doc.fileName} ({doc.pageCount} pages)</p>
-                    </div>
-                  </div>
-                  {doc.status === "Received" ? (
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      {doc.confidence}%
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                      Missing
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-800 space-y-1">
-              <p className="font-bold">Document Set Summary</p>
-              <p className="text-[11px] text-blue-600">All documents classified: 5/6</p>
-              <p className="text-[11px] text-red-600 font-semibold">Missing documents: 1 (Certificate of Origin)</p>
-            </div>
-          </div>
+        {/* Left Column: Interactive Documents Set Summary (3 Cols) */}
+        <div className="lg:col-span-3">
+          <ShipmentDocumentsSection shipmentId={shipment.id} documents={shipment.documents} />
         </div>
 
         {/* Center Column: Embedded Commercial Invoice Viewer (5 Cols) */}
@@ -281,7 +236,7 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
             {/* Line Items Extracted Summary */}
             <div className="space-y-2 pt-2 border-t border-[#E5E5EA]">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#1D1D1F]">Line Items (2)</span>
+                <span className="text-xs font-bold text-[#1D1D1F]">Line Items ({shipment.lineItems.length})</span>
                 <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">2 Issues</span>
               </div>
 
