@@ -19,10 +19,16 @@ model Account {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  memberships AccountMembership[]
-  roles       Role[]
-  invitations Invitation[]
-  auditLogs   AuditLog[]
+  memberships       AccountMembership[]
+  roles             Role[]
+  invitations       Invitation[]
+  auditLogs         AuditLog[]
+  shipments         Shipment[]
+  shipmentDocuments ShipmentDocument[]
+  shipmentLineItems ShipmentLineItem[]
+  agentDecisions    AgentDecision[]
+  customsFilings    CustomsFiling[]
+  customsResponses  CustomsResponse[]
 
   @@index([type])
   @@index([slug])
@@ -45,6 +51,7 @@ model User {
   platformRoles      PlatformUserRole[]
   memberships        AccountMembership[]
   auditLogs          AuditLog[]
+  reviewedDecisions  AgentDecision[]     @relation("DecisionReviewer")
 
   @@index([clerkUserId])
   @@index([email])
@@ -170,4 +177,173 @@ model AuditLog {
   @@index([accountId])
   @@index([userId])
   @@index([success])
+}
+
+// -----------------------------------------------------------------------------
+// CORE ENTERPRISE TRADE COMPLIANCE DOMAIN MODELS
+// -----------------------------------------------------------------------------
+
+model Shipment {
+  id               String    @id @default(cuid())
+  accountId        String
+  account          Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentNumber   String    // e.g. SHP-2026-004872
+  importerName     String    // e.g. ABC Manufacturing India Pvt Ltd
+  poReference      String?   // e.g. PO-778899
+  entryType        String    @default("Consumption Entry")
+  incoterm         String    @default("CIF Los Angeles")
+  estimatedArrival DateTime?
+  status           String    @default("In Progress") // In Progress, Ready to File, On Hold, Submitted, Completed
+  healthStatus     String    @default("Healthy") // Healthy, At Risk, Critical
+  readinessScore   Int       @default(87) // 0 - 100 percentage
+  riskScore        Int       @default(28) // 0 - 100 risk score
+  ownerName        String    @default("Stephen")
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  documents      ShipmentDocument[]
+  lineItems      ShipmentLineItem[]
+  agentDecisions AgentDecision[]
+  customsFilings CustomsFiling[]
+
+  @@unique([accountId, shipmentNumber])
+  @@index([accountId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model ShipmentDocument {
+  id         String   @id @default(cuid())
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  docType    String   // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin
+  fileName   String   // e.g. INV-45678.pdf
+  pageCount  Int      @default(2)
+  fileUrl    String?
+  confidence Int      @default(95)
+  status     String   @default("Received") // Received, Missing, Review Required
+  required   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([shipmentId])
+  @@index([accountId])
+}
+
+model ShipmentLineItem {
+  id              String   @id @default(cuid())
+  shipmentId      String
+  shipment        Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  lineNumber      Int
+  partNumber      String?
+  description     String   // e.g. Stainless Steel Valve 1/2" NPT, 316 Grade
+  quantity        Int
+  unitPrice       Float
+  totalValue      Float
+  countryOfOrigin String   // e.g. Germany, China
+  htsCode         String   // e.g. 8481.80.5090
+  htsConfidence   Int      @default(97)
+  eccnCode        String?  @default("EAR99")
+  status          String   @default("Valid") // Valid, Review Required, Issue
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([shipmentId])
+  @@index([accountId])
+}
+
+model AgentDecision {
+  id                 String    @id @default(cuid())
+  shipmentId         String
+  shipment           Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  accountId          String
+  account            Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  agentName          String    // Document Intake Agent, Document Intelligence Agent, Product Intelligence Agent, Classification Agent, Origin Agent, Valuation Agent, Compliance Agent, Filing Readiness Agent, Customs Filing Agent, Response Management Agent
+  agentIcon          String?
+  status             String    @default("Review Required") // Completed, Review Required, Attention, In Progress, Pending, Approved
+  confidence         Int       @default(76)
+  decisionSummary    String    // e.g. 2 line items need review
+  purpose            String?   // e.g. Determine correct HS/HTS classification for all line items
+  dataSources        String[]  // e.g. Documents, Product Master, Historical Shipments, Tariff Rulings
+  regulations        String[]  // e.g. US HTS 2025, General Rules of Interpretation (GRI 1 & 6)
+  modelVersion       String?   @default("Qubere-Taxo-v2.3")
+  humanNotes         String?
+  reviewedByUserId   String?
+  reviewedByUser     User?     @relation("DecisionReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([shipmentId])
+  @@index([accountId])
+  @@index([status])
+}
+
+model CustomsFiling {
+  id            String    @id @default(cuid())
+  shipmentId    String
+  shipment      Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  entryNumber   String    // e.g. 5901-26-004872
+  authority     String    @default("US Customs (CBP)")
+  entryType     String    @default("Consumption Entry")
+  filingType    String    @default("ABI - Automated")
+  filingStatus  String    @default("Filed") // Draft, Filed, Accepted, Released, Closed
+  paymentStatus String    @default("Paid") // Pending, Paid, Deferred
+  totalValue    Float     @default(17750.00)
+  totalDuties   Float     @default(2850.00)
+  totalTaxes    Float     @default(13100.00)
+  totalAmount   Float     @default(16250.00)
+  submittedAt   DateTime  @default(now())
+  releasedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  responses CustomsResponse[]
+
+  @@index([shipmentId])
+  @@index([accountId])
+  @@index([filingStatus])
+}
+
+model CustomsResponse {
+  id          String        @id @default(cuid())
+  filingId    String
+  filing      CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  code        String        // ACK, RFRA, AOC, RELE
+  title       String        // e.g. ACK - Acceptance, RFRA - Additional Info Request
+  description String        // e.g. Customs has accepted your entry
+  status      String        @default("Accepted") // Accepted, Responded, In Process, Released
+  receivedAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([filingId])
+  @@index([accountId])
+}
+
+model RegulatoryUpdate {
+  id                      String   @id @default(cuid())
+  title                   String   // e.g. U.S. CBP Updates Section 301 Tariff Exclusions
+  description             String   // e.g. Extension of exclusions for certain products from China.
+  jurisdiction            String   // e.g. United States, European Union, India, Australia
+  category                String   // Tariffs & Duties, Product Regulations, Trade Policy, Compliance & Reporting, Sanctions & Restrictions
+  impactLevel             String   @default("High") // High, Medium, Low
+  effectiveDate           DateTime
+  affectedShipmentsCount  Int      @default(27)
+  publishedText           String   @default("2h ago")
+  status                  String   @default("Immediate Action Required")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([jurisdiction])
+  @@index([category])
+  @@index([impactLevel])
 }

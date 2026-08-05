@@ -5,12 +5,15 @@ import { usePathname } from "next/navigation";
 import {
   ShieldCheck,
   LayoutDashboard,
-  FileText,
+  Package as ShipmentIcon,
   Scale,
+  FileCheck2,
+  Globe,
   Building2,
   Users,
   Settings,
   Shield,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -39,10 +42,12 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
 
-  const navigation = [
-    { name: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
-    { name: "Documents", href: "/app/documents", icon: FileText, placeholder: true },
-    { name: "Compliance", href: "/app/compliance", icon: Scale, placeholder: true },
+  const mainNavigation = [
+    { name: "Command Center", href: "/app/dashboard", icon: LayoutDashboard },
+    { name: "Shipments", href: "/app/shipments/SHP-2026-004872", icon: FileText },
+    { name: "Decisions", href: "/app/decisions", icon: Scale },
+    { name: "Customs Filing", href: "/app/filing", icon: FileCheck2 },
+    { name: "Regulatory Intel", href: "/app/regulatory", icon: Globe },
   ];
 
   const adminNavigation = [
@@ -89,11 +94,11 @@ export function Sidebar({
       <div className="flex-1 px-3 space-y-6 overflow-y-auto py-2">
         <div>
           <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#86868B] mb-2">
-            Main Console
+            Main Operations
           </p>
           <nav className="space-y-1">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href;
+            {mainNavigation.map((item) => {
+              const isActive = pathname === item.href || (item.href !== "/app/dashboard" && pathname.startsWith(item.href));
               const Icon = item.icon;
               return (
                 <Link
@@ -110,11 +115,6 @@ export function Sidebar({
                     <Icon className={cn("w-4 h-4", isActive ? "text-[#0071E3]" : "text-[#86868B]")} />
                     <span>{item.name}</span>
                   </div>
-                  {item.placeholder && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200/60 text-[#86868B] font-mono">
-                      Phase 2
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -179,8 +179,8 @@ export function Sidebar({
 
       {/* Footer Info */}
       <div className="p-4 border-t border-[#E5E5EA] bg-white/40 text-xs text-[#86868B]">
-        <p className="font-semibold text-[#1D1D1F]">Qubere SaaS Platform</p>
-        <p className="text-[11px] text-[#86868B]">Enterprise Multi-Account Core</p>
+        <p className="font-semibold text-[#1D1D1F]">Qubere AI Trade Platform</p>
+        <p className="text-[11px] text-[#86868B]">Production Enterprise Core</p>
       </div>
     </aside>
   );
