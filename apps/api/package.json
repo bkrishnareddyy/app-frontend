@@ -1,0 +1,14 @@
+{
+  "name": "@qubere/api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@qubere/ai": "workspace:*",
+    "@qubere/types": "workspace:*"
+  }
+}

@@ -1,0 +1,6 @@
+FROM node:20-alpine AS base
+WORKDIR /app
+COPY . .
+RUN npm install
+RUN npm run build --filter=@qubere/api
+CMD ["node", "apps/api/dist/index.js"]
