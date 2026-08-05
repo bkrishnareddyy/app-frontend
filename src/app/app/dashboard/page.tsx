@@ -23,10 +23,6 @@ export default async function CommandCenterPage() {
 
   const accountId = context.accountId;
 
-  // ---------------------------------------------------------------------------
-  // DYNAMIC DATABASE AGGREGATIONS (SUPABASE POSTGRESQL)
-  // ---------------------------------------------------------------------------
-
   // Fetch all shipments for active tenant account
   const shipments = await db.shipment.findMany({
     where: { accountId, deletedAt: null },
@@ -49,16 +45,10 @@ export default async function CommandCenterPage() {
     ? Math.round(shipments.reduce((acc, s) => acc + s.readinessScore, 0) / shipments.length)
     : 87;
 
-  // Top 5 At Risk Shipments (Sorted by Risk Score DESC)
+  // Top 5 At Risk Shipments
   const topAtRiskShipments = shipments.length > 0
     ? shipments.sort((a, b) => b.riskScore - a.riskScore).slice(0, 5)
-    : [
-        { id: "SHP-2026-004872", shipmentNumber: "SHP-2026-004872", riskScore: 92, ownerName: "Stephen" },
-        { id: "SHP-2026-004871", shipmentNumber: "SHP-2026-004871", riskScore: 85, ownerName: "Priya Nair" },
-        { id: "SHP-2026-004869", shipmentNumber: "SHP-2026-004869", riskScore: 72, ownerName: "Rohan Mehta" },
-        { id: "SHP-2026-004866", shipmentNumber: "SHP-2026-004866", riskScore: 68, ownerName: "Sneha Iyer" },
-        { id: "SHP-2026-004863", shipmentNumber: "SHP-2026-004863", riskScore: 65, ownerName: "Vikram Patel" },
-      ];
+    : [];
 
   // Dynamic Decisions & Exceptions
   const decisions = await db.agentDecision.findMany({
@@ -110,7 +100,7 @@ export default async function CommandCenterPage() {
         </div>
       </div>
 
-      {/* Top 6 KPI Metric Cards Row (DYNAMIC FROM POSTGRESQL) */}
+      {/* Top 6 KPI Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         {/* 1. Overall Readiness Gauge */}
         <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
@@ -211,7 +201,7 @@ export default async function CommandCenterPage() {
         </div>
       </div>
 
-      {/* AI Agent Orchestration Pipeline Stepper (Steps 1–10) */}
+      {/* AI Agent Orchestration Pipeline Stepper */}
       <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -224,7 +214,6 @@ export default async function CommandCenterPage() {
           </Link>
         </div>
 
-        {/* 10-Step Pipeline Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-3">
           {[
             { step: 1, name: "Document Intake Agent", status: "Completed", time: "10:18 AM", badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -288,7 +277,7 @@ export default async function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Panel 2: Shipments by Status Donut (DYNAMIC) */}
+        {/* Panel 2: Shipments by Status Donut */}
         <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4 flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Shipments by Status</h3>
@@ -318,7 +307,7 @@ export default async function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Panel 3: Top at Risk Shipments (DYNAMIC FROM POSTGRESQL) */}
+        {/* Panel 3: Top at Risk Shipments */}
         <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Top at Risk Shipments</h3>
@@ -347,7 +336,7 @@ export default async function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Panel 4: Qubere AI Copilot */}
+        {/* Panel 4: Qubere AI Copilot (FIXED TEXT WRAPPING & PADDING) */}
         <div className="bg-gradient-to-br from-[#0071E3]/5 to-purple-50 p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center space-x-2 mb-3">
@@ -365,7 +354,7 @@ export default async function CommandCenterPage() {
               ].map((q, idx) => (
                 <button
                   key={idx}
-                  className="w-full text-left text-xs p-2 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#0071E3] hover:text-[#0071E3] text-[#1D1D1F] transition-all line-clamp-1"
+                  className="w-full text-left text-xs px-3 py-2.5 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#0071E3] hover:text-[#0071E3] text-[#1D1D1F] transition-all leading-snug break-words font-medium"
                 >
                   {q}
                 </button>
@@ -388,7 +377,7 @@ export default async function CommandCenterPage() {
 
       {/* Bottom Section: Regulatory Intelligence Alerts & Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Regulatory Intelligence Alerts (DYNAMIC FROM POSTGRESQL) */}
+        {/* Regulatory Intelligence Alerts */}
         <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Regulatory Intelligence Alerts</h3>

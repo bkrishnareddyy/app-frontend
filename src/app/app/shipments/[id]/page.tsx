@@ -90,7 +90,7 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
         </div>
       </div>
 
-      {/* AI Agent Orchestration Pipeline Stepper (Detailed with Confidence) */}
+      {/* AI Agent Orchestration Pipeline Stepper */}
       <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -171,7 +171,7 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
                 </div>
               </div>
 
-              {/* Invoice Line Items Table (Fixed Grid Spacing & Explicit Padding) */}
+              {/* Invoice Line Items Table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-[11px] border-collapse min-w-[420px]">
                   <thead>
@@ -253,7 +253,7 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
             </div>
           </div>
 
-          {/* AI Copilot & Regulatory Alerts Panel */}
+          {/* AI Copilot & Regulatory Alerts Panel (FIXED PROMPT BUTTONS) */}
           <div className="bg-gradient-to-br from-[#0071E3]/5 to-purple-50 p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-3">
             <div className="flex items-center space-x-2">
               <Sparkles className="w-4 h-4 text-[#0071E3]" />
@@ -261,15 +261,20 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
             </div>
 
             <div className="space-y-1.5 text-xs">
-              <button className="w-full text-left p-2 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#0071E3] text-[#1D1D1F] transition-all">
-                Why is HTS review required?
-              </button>
-              <button className="w-full text-left p-2 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#0071E3] text-[#1D1D1F] transition-all">
-                Explain valuation calculation
-              </button>
-              <button className="w-full text-left p-2 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#0071E3] text-[#1D1D1F] transition-all">
-                Show compliance requirements
-              </button>
+              {[
+                "Why is HTS review required?",
+                "Explain valuation calculation",
+                "What are the compliance risks?",
+                "Summarize this shipment",
+                "Any regulatory changes?",
+              ].map((q, idx) => (
+                <button
+                  key={idx}
+                  className="w-full text-left text-xs px-3 py-2.5 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#0071E3] hover:text-[#0071E3] text-[#1D1D1F] transition-all leading-snug break-words font-medium"
+                >
+                  {q}
+                </button>
+              ))}
             </div>
           </div>
         </div>
