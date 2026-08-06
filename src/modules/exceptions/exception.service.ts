@@ -28,7 +28,7 @@ export const VALID_EXCEPTION_STATES = [
 
 export class ExceptionService {
   static async listExceptions(accountId: string, userId: string, query: ExceptionListQuery) {
-    const where: any = { accountId };
+    const where: import("@prisma/client").Prisma.ExceptionItemWhereInput = { accountId };
 
     if (query.status && query.status !== "all") {
       where.status = { equals: query.status, mode: "insensitive" };

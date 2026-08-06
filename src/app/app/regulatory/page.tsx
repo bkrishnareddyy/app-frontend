@@ -64,12 +64,18 @@ export default async function RegulatoryIntelligencePage() {
             <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search regulations, agencies, topics... (⌘K)"
-              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] w-72 focus:outline-hidden focus:border-[#0071E3]"
+              placeholder="Search coming soon…"
+              disabled
+              title="Regulatory intelligence search coming in Gate 2."
+              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#86868B] w-72 opacity-50 cursor-not-allowed"
             />
           </div>
 
-          <button className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5">
+          <button
+            disabled
+            title="Exporting regulatory intelligence reports coming in Gate 2."
+            className="px-4 py-2 bg-[#0071E3] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 opacity-40 cursor-not-allowed"
+          >
             <Download className="w-3.5 h-3.5" />
             <span>Export Report</span>
           </button>

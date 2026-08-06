@@ -2,7 +2,6 @@ import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import {
-  Package,
   FileText,
   AlertTriangle,
   Clock,
@@ -11,11 +10,11 @@ import {
   AlertCircle,
   Search,
   Sparkles,
-  ChevronRight,
   ShieldCheck,
   Send,
   Info,
 } from "lucide-react";
+
 
 export default async function CommandCenterPage() {
   const context = await getAccountContext();
@@ -71,8 +70,8 @@ export default async function CommandCenterPage() {
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight">Command Center</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Live Operations
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+              Demo Mode
             </span>
           </div>
           <p className="text-xs text-[#86868B] mt-1">
@@ -82,12 +81,15 @@ export default async function CommandCenterPage() {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Search — not yet wired to a handler */}
           <div className="relative">
             <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search shipments, agents, documents... (⌘K)"
-              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] w-72 focus:outline-hidden focus:border-[#0071E3]"
+              placeholder="Search coming soon…"
+              disabled
+              title="Global search is not yet available. Use shipment list filters."
+              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#86868B] w-72 opacity-50 cursor-not-allowed"
             />
           </div>
 
@@ -174,30 +176,30 @@ export default async function CommandCenterPage() {
           <p className="text-[10px] text-[#86868B] mt-2">vs yesterday</p>
         </div>
 
-        {/* 5. Avg. Cycle Time */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
+        {/* 5. Avg. Cycle Time — DEMO DATA */}
+        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] border-dashed shadow-2xs relative">
+          <span className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">DEMO DATA</span>
           <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
             <span>Avg. Cycle Time</span>
             <Clock className="w-4 h-4 text-purple-500" />
           </div>
           <div className="flex items-baseline space-x-2">
             <p className="text-2xl font-extrabold text-[#1D1D1F]">18.6 <span className="text-xs font-normal">hrs</span></p>
-            <span className="text-xs font-bold text-emerald-600 flex items-center">↓ 5%</span>
           </div>
-          <p className="text-[10px] text-[#86868B] mt-2">vs yesterday</p>
+          <p className="text-[10px] text-amber-600 mt-2 font-semibold">Not calculated from real events</p>
         </div>
 
-        {/* 6. Straight Through Rate */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
+        {/* 6. Straight Through Rate — DEMO DATA */}
+        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] border-dashed shadow-2xs relative">
+          <span className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">DEMO DATA</span>
           <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
             <span>Straight Through Rate</span>
             <TrendingUp className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="flex items-baseline space-x-2">
             <p className="text-2xl font-extrabold text-[#1D1D1F]">72%</p>
-            <span className="text-xs font-bold text-emerald-600 flex items-center">↑ 6%</span>
           </div>
-          <p className="text-[10px] text-[#86868B] mt-2">vs last 7 days</p>
+          <p className="text-[10px] text-amber-600 mt-2 font-semibold">Not calculated from real events</p>
         </div>
       </div>
 
@@ -208,10 +210,10 @@ export default async function CommandCenterPage() {
             <Sparkles className="w-4 h-4 text-[#0071E3]" />
             <h2 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">AI Agent Orchestration</h2>
           </div>
-          <Link href="/app/ai-agents" className="text-xs text-[#0071E3] font-semibold hover:underline flex items-center space-x-1">
-            <span>View All Agents</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </Link>
+          {/* /app/ai-agents page does not exist yet — link removed until page is built */}
+          <span className="text-xs text-[#86868B] font-semibold opacity-50 cursor-not-allowed" title="Coming in Gate 2">
+            View All Agents
+          </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-3">
@@ -250,7 +252,8 @@ export default async function CommandCenterPage() {
         <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Exceptions Requiring Attention</h3>
-            <Link href="/app/exceptions" className="text-xs text-[#0071E3] font-semibold hover:underline">View All</Link>
+            {/* /app/exceptions page does not exist yet — link removed until page is built */}
+            <span className="text-xs text-[#86868B] font-semibold opacity-50 cursor-not-allowed" title="Coming in Gate 2">View All</span>
           </div>
 
           <div className="space-y-3">
@@ -315,7 +318,7 @@ export default async function CommandCenterPage() {
           </div>
 
           <div className="space-y-2">
-            {topAtRiskShipments.map((shp: any) => (
+            {topAtRiskShipments.map((shp: { id: string; shipmentNumber: string; ownerName?: string; riskScore: number }) => (
               <Link
                 key={shp.id}
                 href={`/app/shipments/${shp.shipmentNumber || shp.id}`}
@@ -401,8 +404,9 @@ export default async function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Recent Activity Log */}
-        <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
+        {/* Recent Activity Log — DEMO DATA (hard-coded events, not from real audit log) */}
+        <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] border-dashed shadow-2xs space-y-4 relative">
+          <span className="absolute top-4 right-6 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">DEMO DATA</span>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Recent Activity</h3>
             <Link href="/app/admin/settings" className="text-xs text-[#0071E3] font-semibold hover:underline">View Audit Log</Link>

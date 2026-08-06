@@ -40,7 +40,7 @@ export default async function DecisionReviewCenterPage(props: {
     decisions.find((d) => searchParams.shipmentId ? d.shipmentId === searchParams.shipmentId : true) ||
     decisions[0];
 
-  const evidenceList = (selectedDecision?.evidenceItems as any[]) || [
+  const evidenceList = (selectedDecision?.evidenceItems as { title: string; detail: string; source: string }[]) || [
     { title: "Invoice Description", detail: "Electronic Controller Unit - INV-45678.pdf Page 1 Line 2", source: "Invoice Document" },
     { title: "Historical Match", detail: "8537.10.2030 used in 14 previous shipments with 99% acceptance", source: "Customs Entry Database" },
     { title: "Tariff Ruling NY N302145", detail: "CBP ruled similar programmable controllers under 8537.10.2030", source: "CBP CROSS Rulings" },
@@ -61,12 +61,15 @@ export default async function DecisionReviewCenterPage(props: {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Search — not yet wired to a handler */}
           <div className="relative">
             <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search decisions, agents, rules... (⌘K)"
-              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] w-72 focus:outline-hidden focus:border-[#0071E3]"
+              placeholder="Search coming soon…"
+              disabled
+              title="Decision search is not yet available."
+              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#86868B] w-72 opacity-50 cursor-not-allowed"
             />
           </div>
         </div>
@@ -185,28 +188,42 @@ export default async function DecisionReviewCenterPage(props: {
                 </div>
               </div>
 
-              {/* Human Audit & Notes Form */}
+              {/* Human Audit & Notes Form — textarea is read-only until form submission is wired */}
               <div className="space-y-2 pt-2 border-t border-[#E5E5EA]">
-                <label className="text-xs font-bold text-[#1D1D1F]">Human Review Audit Log & Notes</label>
+                <label className="text-xs font-bold text-[#1D1D1F]">Human Review Audit Log &amp; Notes</label>
                 <textarea
                   rows={3}
-                  defaultValue={selectedDecision.humanNotes || "Reviewing voltage specs with engineering before final approval."}
-                  placeholder="Enter audit rationale, verification notes, or custom instructions..."
-                  className="w-full p-3 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
+                  readOnly
+                  defaultValue={selectedDecision.humanNotes || ""}
+                  placeholder="Note submission not yet wired — coming in Gate 2."
+                  title="Note saving requires a form submission endpoint. Coming in Gate 2."
+                  className="w-full p-3 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] opacity-60 cursor-not-allowed"
                 />
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Buttons — disabled until Gate 2 form submission endpoint is wired */}
               <div className="flex items-center justify-end space-x-3 pt-2 border-t border-[#E5E5EA]">
-                <button className="px-4 py-2 bg-white border border-[#E5E5EA] hover:border-amber-500 text-amber-700 text-xs font-semibold rounded-xl transition-all flex items-center space-x-1.5">
+                <button
+                  disabled
+                  title="Re-evaluation requires a wired API endpoint. Coming in Gate 2."
+                  className="px-4 py-2 bg-white border border-[#E5E5EA] text-amber-700 text-xs font-semibold rounded-xl flex items-center space-x-1.5 opacity-40 cursor-not-allowed"
+                >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Request Re-evaluation</span>
                 </button>
-                <button className="px-4 py-2 bg-white border border-[#E5E5EA] hover:border-red-500 text-red-600 text-xs font-semibold rounded-xl transition-all flex items-center space-x-1.5">
+                <button
+                  disabled
+                  title="Reject requires a wired API endpoint with version precondition. Coming in Gate 2."
+                  className="px-4 py-2 bg-white border border-[#E5E5EA] text-red-600 text-xs font-semibold rounded-xl flex items-center space-x-1.5 opacity-40 cursor-not-allowed"
+                >
                   <X className="w-3.5 h-3.5" />
                   <span>Reject Decision</span>
                 </button>
-                <button className="px-5 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5">
+                <button
+                  disabled
+                  title="Approve requires a wired API endpoint with version precondition. Coming in Gate 2."
+                  className="px-5 py-2 bg-[#0071E3] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 opacity-40 cursor-not-allowed"
+                >
                   <Check className="w-3.5 h-3.5" />
                   <span>Approve Decision</span>
                 </button>
@@ -225,7 +242,7 @@ export default async function DecisionReviewCenterPage(props: {
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Supporting Evidence</h3>
 
             <div className="space-y-3">
-              {evidenceList.map((ev: any, idx: number) => (
+              {evidenceList.map((ev: { title: string; detail: string; source: string }, idx: number) => (
                 <div key={idx} className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-1 text-xs">
                   <p className="font-bold text-[#1D1D1F]">{ev.title}</p>
                   <p className="text-[11px] text-[#86868B]">{ev.detail}</p>

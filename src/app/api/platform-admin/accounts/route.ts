@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Valid owner email is required" }, { status: 400 });
     }
 
-    let baseSlug = generateSlug(companyName);
+    const baseSlug = generateSlug(companyName);
     let slug = baseSlug;
     let counter = 1;
     while (await db.account.findUnique({ where: { slug } })) {

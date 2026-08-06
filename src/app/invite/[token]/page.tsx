@@ -41,33 +41,81 @@ export default async function InvitationPage({
   const context = await getAccountContext();
 
   if (context) {
-    const existingMembership = await db.accountMembership.findUnique({
-      where: {
-        accountId_userId: {
-          accountId: invitation.accountId,
-          userId: context.userId,
-        },
-      },
-    });
+    // QPR-002: Verify the signed-in user's email matches the invited email.
+    // A leaked token must not grant access to a different identity.
+    const signedInEmail = context.email.toLowerCase().trim();
+    const invitedEmail = invitation.email.toLowerCase().trim();
 
-    if (!existingMembership) {
-      await db.accountMembership.create({
-        data: {
-          accountId: invitation.accountId,
-          userId: context.userId,
-          roleId: invitation.roleId,
-          status: "ACTIVE",
-        },
-      });
+    if (signedInEmail !== invitedEmail) {
+      return (
+        <div className="min-h-screen bg-[#F5F5F7] flex flex-col justify-center items-center px-6">
+          <div className="apple-card p-8 rounded-3xl border border-red-200 bg-white max-w-md text-center space-y-4 shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h1 className="text-xl font-extrabold text-[#1D1D1F]">Email Mismatch</h1>
+            <p className="text-sm text-[#86868B]">
+              This invitation was sent to{" "}
+              <strong className="text-[#1D1D1F]">{invitation.email}</strong>, but you are signed in as{" "}
+              <strong className="text-[#1D1D1F]">{context.email}</strong>. Please sign in with the
+              correct account or contact your workspace administrator.
+            </p>
+            <Link
+              href="/sign-in"
+              className="inline-block px-6 py-3 bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-full text-xs font-semibold shadow-md shadow-[#0071E3]/20"
+            >
+              Sign In with Different Account
+            </Link>
+          </div>
+        </div>
+      );
     }
 
-    await db.invitation.update({
-      where: { id: invitation.id },
-      data: { status: "ACCEPTED" },
+    // Accept within a single transaction to prevent TOCTOU: re-check expiry and
+    // status inside the transaction before creating the membership.
+    await db.$transaction(async (tx) => {
+      const freshInvitation = await tx.invitation.findUnique({
+        where: { id: invitation.id },
+      });
+
+      if (
+        !freshInvitation ||
+        freshInvitation.status !== "PENDING" ||
+        freshInvitation.expiresAt < new Date()
+      ) {
+        // Invitation was concurrently accepted or expired — nothing to do.
+        return;
+      }
+
+      const existingMembership = await tx.accountMembership.findUnique({
+        where: {
+          accountId_userId: {
+            accountId: invitation.accountId,
+            userId: context.userId,
+          },
+        },
+      });
+
+      if (!existingMembership) {
+        await tx.accountMembership.create({
+          data: {
+            accountId: invitation.accountId,
+            userId: context.userId,
+            roleId: invitation.roleId,
+            status: "ACTIVE",
+          },
+        });
+      }
+
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: { status: "ACCEPTED" },
+      });
     });
 
     redirect("/app/dashboard");
   }
+
 
   return (
     <div className="min-h-screen bg-[#F5F5F7] flex flex-col justify-center items-center px-6 py-12">

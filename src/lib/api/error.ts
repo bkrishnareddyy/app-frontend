@@ -58,3 +58,13 @@ export function handleApiError(error: unknown, requestId: string = generateReque
   console.error(`[API Error] [${requestId}]`, error);
   return buildErrorResponse(500, "INTERNAL_ERROR", "Internal server error", undefined, requestId);
 }
+
+/**
+ * Extracts a string message from an unknown caught value.
+ * Use in catch blocks typed as `unknown` to avoid `no-explicit-any`.
+ */
+export function errorMessage(error: unknown, fallback = "An unexpected error occurred"): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return fallback;
+}

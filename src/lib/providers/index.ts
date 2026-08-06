@@ -50,8 +50,27 @@ export interface CustomsTransmissionResult {
 }
 
 export interface CustomsTransmissionProvider {
-  submitEntry(entryData: any): Promise<CustomsTransmissionResult>;
+  /** Returns true if this provider is a mock/sandbox — never suitable for production. */
+  isMockProvider(): boolean;
+  submitEntry(entryData: Record<string, unknown>): Promise<CustomsTransmissionResult>;
   getStatus(submissionId: string): Promise<CustomsTransmissionResult>;
+}
+
+// -----------------------------------------------------------------------------
+// PRODUCTION SAFETY GUARD (QPR-001 req 3)
+// -----------------------------------------------------------------------------
+
+/**
+ * Throws a 503 error if the provider is a mock and the runtime is production.
+ * Call this before any real transmission attempt.
+ */
+export function assertProductionProvider(provider: CustomsTransmissionProvider): void {
+  if (provider.isMockProvider() && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "PROVIDER_UNAVAILABLE: Production environment requires a real customs transmission provider. " +
+        "Configure ACE_PROVIDER_CLASS in your environment and restart."
+    );
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -59,10 +78,14 @@ export interface CustomsTransmissionProvider {
 // -----------------------------------------------------------------------------
 
 export class MockCustomsTransmissionProvider implements CustomsTransmissionProvider {
-  async submitEntry(entryData: any): Promise<CustomsTransmissionResult> {
+  isMockProvider(): boolean {
+    return true;
+  }
+
+  async submitEntry(entryData: Record<string, unknown>): Promise<CustomsTransmissionResult> {
     return {
       submissionId: `MOCK_SUB_${Date.now()}`,
-      entryNumber: entryData.entryNumber || "5901-26-000000",
+      entryNumber: (entryData.entryNumber as string) || "5901-26-000000",
       status: "ACCEPTED",
       responseCode: "ACK_SANDBOX",
       message: "[MOCK PROVIDER] Entry transmission simulated successfully. Not connected to real CBP ACE API.",

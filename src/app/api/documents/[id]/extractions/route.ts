@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
 import { db } from "@/lib/db";
 
 export async function GET(
@@ -32,7 +32,7 @@ export async function GET(
       extractionFields: doc.extractionFields,
       requestId,
     });
-  } catch (error: any) {
-    return buildErrorResponse(500, "INTERNAL_ERROR", error?.message || "Failed to fetch document extractions", undefined, requestId);
+  } catch (error: unknown) {
+    return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to fetch document extractions", undefined, requestId);
   }
 }

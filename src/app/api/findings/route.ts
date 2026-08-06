@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     const status = searchParams.get("status");
     const severity = searchParams.get("severity");
 
-    const where: any = { accountId: ctx.accountId };
+    const where: import("@prisma/client").Prisma.ComplianceFindingWhereInput = { accountId: ctx.accountId };
 
     if (status && status !== "all") {
       where.status = { equals: status, mode: "insensitive" };

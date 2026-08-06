@@ -71,8 +71,8 @@ export function DocumentUploadModal({
         onClose();
         window.location.reload();
       }, 1200);
-    } catch (err: any) {
-      setError(err.message || "Failed to upload document");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to upload document");
       setIsUploading(false);
     }
   };

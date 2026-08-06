@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { createAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       },
       requestId,
     });
-  } catch (error: any) {
-    return buildErrorResponse(500, "INTERNAL_ERROR", error?.message || "Failed to invite user", undefined, requestId);
+  } catch (error: unknown) {
+    return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to invite user", undefined, requestId);
   }
 }

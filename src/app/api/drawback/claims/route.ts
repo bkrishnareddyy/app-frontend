@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
@@ -40,8 +40,8 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json({ drawbackClaims: claims, requestId });
-  } catch (error: any) {
-    return buildErrorResponse(500, "INTERNAL_ERROR", error?.message || "Failed to list drawback claims", undefined, requestId);
+  } catch (error: unknown) {
+    return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to list drawback claims", undefined, requestId);
   }
 }
 
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(responsePayload, { status: 201 });
-  } catch (error: any) {
-    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", error?.message || "Failed to create drawback claim", undefined, requestId);
+  } catch (error: unknown) {
+    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to create drawback claim", undefined, requestId);
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
 import { validateQueryParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { z } from "zod";
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     const searchTerm = (search || q || "").trim();
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: import("@prisma/client").Prisma.HTSCodeWhereInput = {};
 
     if (chapter) {
       where.chapterNumber = chapter;
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
       },
       requestId,
     });
-  } catch (error: any) {
-    return buildErrorResponse(500, "INTERNAL_ERROR", error?.message || "Failed to search HTS codes", undefined, requestId);
+  } catch (error: unknown) {
+    return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to search HTS codes", undefined, requestId);
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
 import { FilingService } from "@/modules/filings/filing.service";
@@ -47,10 +47,10 @@ export async function POST(
     }
 
     return NextResponse.json(responsePayload);
-  } catch (error: any) {
-    if (error?.message === "NOT_FOUND") {
+  } catch (error: unknown) {
+    if (errorMessage(error) === "NOT_FOUND") {
       return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
     }
-    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", error?.message || "Failed to transmit filing", undefined, requestId);
+    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to transmit filing", undefined, requestId);
   }
 }

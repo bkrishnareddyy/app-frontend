@@ -58,7 +58,7 @@ export async function PATCH(
       return NextResponse.json({ error: "PSC not found" }, { status: 404 });
     }
 
-    const updateData: any = {};
+    const updateData: import("@prisma/client").Prisma.PostSummaryCorrectionUpdateInput = {};
     if (status) {
       updateData.status = status;
       if (status === "Filed" && !existingPsc.filedAt) {

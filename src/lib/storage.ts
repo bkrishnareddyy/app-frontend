@@ -1,30 +1,78 @@
 import { put } from "@vercel/blob";
+import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
+
+// QPR-004: Allowlisted MIME types for customs document uploads.
+// Only structured document formats acceptable for trade records.
+const ALLOWED_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/tiff",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
+// QPR-004: Configurable file size limit (default 50 MB).
+const MAX_UPLOAD_BYTES = parseInt(process.env.MAX_UPLOAD_BYTES ?? "", 10) || 50 * 1024 * 1024;
 
 export interface StorageUploadResult {
   url: string;
   filename: string;
   size: number;
+  /** SHA-256 hex digest of the file content for integrity verification. */
+  checksum: string;
   provider: "vercel-blob" | "local-fs";
+}
+
+export class StorageValidationError extends Error {
+  constructor(
+    public readonly code: "MIME_TYPE_NOT_ALLOWED" | "FILE_TOO_LARGE",
+    message: string
+  ) {
+    super(message);
+    this.name = "StorageValidationError";
+  }
 }
 
 export async function storeDocumentFile(
   file: File,
   filename: string
 ): Promise<StorageUploadResult> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  const isProd = process.env.NODE_ENV === "production" || Boolean(token);
+  // QPR-004: Enforce MIME type allowlist before doing anything with the file.
+  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    throw new StorageValidationError(
+      "MIME_TYPE_NOT_ALLOWED",
+      `File type "${file.type}" is not allowed. Accepted types: ${[...ALLOWED_MIME_TYPES].join(", ")}`
+    );
+  }
 
-  // Buffer conversion
+  // QPR-004: Enforce file size limit.
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new StorageValidationError(
+      "FILE_TOO_LARGE",
+      `File size ${file.size} bytes exceeds the maximum allowed ${MAX_UPLOAD_BYTES} bytes (${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB).`
+    );
+  }
+
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+
+  // QPR-004: Compute SHA-256 checksum for integrity verification and duplicate detection.
+  const checksum = createHash("sha256").update(buffer).digest("hex");
+
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
 
   // Provider 1: Vercel Blob Storage
   if (token) {
     try {
-      console.log(`[Storage] Uploading ${filename} (${file.size} bytes) to Vercel Blob Storage...`);
+      console.log(`[Storage] Uploading ${filename} (${file.size} bytes) sha256=${checksum} to Vercel Blob Storage...`);
       const blob = await put(`documents/${Date.now()}-${filename}`, buffer, {
+        // NOTE: @vercel/blob access must be 'public' currently; private blobs require
+        // Vercel Teams plan. When available, switch to 'private' and use signed URLs
+        // for all download links. Track: QPR-004 Gate 2.
         access: "public",
         token,
       });
@@ -33,6 +81,7 @@ export async function storeDocumentFile(
         url: blob.url,
         filename,
         size: file.size,
+        checksum,
         provider: "vercel-blob",
       };
     } catch (err) {
@@ -40,7 +89,7 @@ export async function storeDocumentFile(
     }
   }
 
-  // Provider 2: Local Filesystem Storage (public/uploads/)
+  // Provider 2: Local Filesystem Storage (development only)
   try {
     const uploadDir = path.join(process.cwd(), "public", "uploads");
     if (!fs.existsSync(uploadDir)) {
@@ -53,24 +102,21 @@ export async function storeDocumentFile(
     fs.writeFileSync(filePath, buffer);
     const publicUrl = `/uploads/${safeFilename}`;
 
-    console.log(`[Storage] Saved ${filename} locally to ${publicUrl}`);
+    console.log(`[Storage] Saved ${filename} locally to ${publicUrl} sha256=${checksum}`);
 
     return {
       url: publicUrl,
       filename,
       size: file.size,
+      checksum,
       provider: "local-fs",
     };
   } catch (err) {
+    // QPR-004: data: URL fallback removed — it embeds raw file bytes in API responses,
+    // exposes document content outside the storage layer, and cannot be audited or
+    // access-controlled. Callers must handle StorageUploadError appropriately.
     console.error("[Storage] Local filesystem write error:", err);
-    // Fallback data URL if filesystem write is blocked
-    const base64 = buffer.toString("base64");
-    const mimeType = file.type || "application/octet-stream";
-    return {
-      url: `data:${mimeType};base64,${base64}`,
-      filename,
-      size: file.size,
-      provider: "local-fs",
-    };
+    throw new Error(`[Storage] Failed to persist file "${filename}" to any storage provider. ${err}`);
   }
 }
+

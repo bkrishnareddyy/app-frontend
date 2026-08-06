@@ -60,7 +60,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Drawback claim not found" }, { status: 404 });
     }
 
-    const updateData: any = {};
+    const updateData: import("@prisma/client").Prisma.DrawbackClaimUpdateInput = {};
     if (status) {
       updateData.status = status;
       if (status === "Filed" && !existingClaim.filedAt) updateData.filedAt = new Date();

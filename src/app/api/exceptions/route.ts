@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
 import { validateQueryParams } from "@/lib/api/validation";
 import { ExceptionService } from "@/modules/exceptions/exception.service";
 import { z } from "zod";
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   try {
     const result = await ExceptionService.listExceptions(ctx!.accountId, ctx!.userId, queryVal.data);
     return NextResponse.json({ exceptions: result.exceptions, metadata: result.metadata, requestId });
-  } catch (error: any) {
-    return buildErrorResponse(500, "INTERNAL_ERROR", error?.message || "Failed to fetch exceptions", undefined, requestId);
+  } catch (error: unknown) {
+    return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to fetch exceptions", undefined, requestId);
   }
 }

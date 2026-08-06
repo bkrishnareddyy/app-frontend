@@ -1,31 +1,43 @@
 # Qubere API Implementation Status
 
+> [!CAUTION]
+> **Status definitions:**
+> - **Production Foundation** — tenant-scoped, validated, idempotent, tested against real routes.
+> - **Prototype** — functional logic, but incomplete (missing validation, coverage, or authorization).
+> - **Mock / Stub** — returns synthetic data; must NOT be presented to customers as real outcomes.
+> - **Dummy** — logic is fabricated (fixed heuristics, seeded lists, hard-coded values).
+
 | Domain | Endpoint | Status | Validation | Auth Guard | Tenant Isolation | Idempotent | Concurrency | Tests |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Bonds** | `GET /api/bonds` | Production Foundation | Zod Query | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
 | **Bonds** | `POST /api/bonds` | Production Foundation | Zod Schema | `bonds.manage` | Yes (`accountId`) | Yes | Yes | Included |
-| **Classification** | `POST /api/classification/classify` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | N/A | Included |
+| **Classification** | `POST /api/classification/classify` | Mock / Stub — returns fixed Tokyo/valve/EAR99 output | Zod Schema | Authenticated | Yes (`accountId`) | Yes | N/A | Mock only |
 | **Products** | `POST /api/products/normalize` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Included |
 | **Reconciliation** | `POST /api/reconcile` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Included |
 | **Exceptions** | `GET /api/exceptions` | Production Foundation | Zod Query | Authenticated | Yes (`accountId`) | N/A (No Mutate) | N/A | Included |
 | **Exceptions** | `PATCH /api/exceptions/[id]` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | N/A | Versioned (409) | Included |
-| **Audits** | `POST /api/compliance/audits/run` | Production Foundation | Zod Schema | `audits.run` | Yes (`accountId`) | Yes | Yes | Included |
+| **Audits** | `POST /api/compliance/audits/run` | Prototype — fixed 5-item checklist, fixed risk scores | Zod Schema | `audits.run` | Yes (`accountId`) | Yes | Yes | Mock only |
 | **Audits** | `GET /api/compliance/audits/[id]` | Production Foundation | Zod Path | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
-| **Drawback** | `POST /api/drawback/match` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Included |
-| **Drawback** | `POST /api/drawback/claims` | Production Foundation | Zod Schema | `drawback.claim` | Yes (`accountId`) | Yes | Yes | Included |
+| **Drawback** | `POST /api/drawback/match` | Prototype — no inventory lot reservation, duty rate assumed | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Mock only |
+| **Drawback** | `POST /api/drawback/claims` | Prototype — legally unsafe, no over-allocation prevention | Zod Schema | `drawback.claim` | Yes (`accountId`) | Yes | Yes | Mock only |
 | **Shipments** | `GET /api/shipments` | Production Foundation | Zod Query | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
 | **Shipments** | `POST /api/shipments` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Included |
 | **Shipments** | `GET /api/shipments/[id]` | Production Foundation | Zod Path | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
 | **Shipments** | `PATCH /api/shipments/[id]` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | N/A | Versioned (409) | Included |
-| **Documents** | `POST /api/documents/upload` | Production Foundation | FormData Zod | Authenticated | Yes (`accountId`) | Yes | N/A | Included |
-| **Documents** | `GET /api/documents/[id]/extractions`| Production Foundation | Zod Path | Authenticated | Yes (`accountId`) | N/A (No Mutate) | N/A | Included |
-| **Filings** | `POST /api/filing` | Production Foundation | Zod Schema | `filings.create` | Yes (`accountId`) | Yes | Yes | Included |
+| **Documents** | `POST /api/documents/upload` | Prototype — public storage, no MIME/size validation, no malware scan | FormData Zod | Authenticated | Yes (`accountId`) | Yes | N/A | Mock only |
+| **Documents** | `GET /api/documents/[id]/extractions`| Mock / Stub — OCR/extraction returns fixed synthetic output | Zod Path | Authenticated | Yes (`accountId`) | N/A (No Mutate) | N/A | Mock only |
+| **Filings** | `POST /api/filing` | Production Foundation — creates DRAFT only (QPR-001 fixed) | Zod Schema | `filings.create` | Yes (`accountId`) | Yes | Yes | Mock only |
 | **Filings** | `GET /api/filing/[id]` | Production Foundation | Zod Path | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
-| **Filings** | `POST /api/filing/[id]/transmit` | Production Foundation | Zod Path | `filings.submit` | Yes (`accountId`) | Yes | Versioned (409) | Included |
-| **Tariff** | `POST /api/simulator/scenarios/[id]/calculate` | Production Foundation | Zod Path/Body | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
-| **Refunds** | `POST /api/refunds/opportunities/scan` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | N/A | Included |
-| **Refunds** | `POST /api/refunds/psc` | Production Foundation | Zod Schema | `refunds.manage` | Yes (`accountId`) | Yes | Yes | Included |
+| **Filings** | `POST /api/filing/[id]/transmit` | Mock / Stub — MockCustomsTransmissionProvider only; no real CBP | Zod Path | `filings.submit` | Yes (`accountId`) | Yes | Versioned (409) | Mock only |
+| **Tariff** | `POST /api/simulator/scenarios/[id]/calculate` | Prototype — inline static rates, Float money, no source versioning | Zod Path/Body | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
+| **Refunds** | `POST /api/refunds/opportunities/scan` | Dummy — applies arbitrary 15%/40% heuristic factors | Zod Schema | Authenticated | Yes (`accountId`) | Yes | N/A | Mock only |
+| **Refunds** | `POST /api/refunds/psc` | Dummy — corrected-duty heuristics, not actual paid duty | Zod Schema | `refunds.manage` | Yes (`accountId`) | Yes | Yes | Mock only |
+| **Screening** | `POST /api/screening/dps` | Dummy — seeded toy denied-party list, substring match only | Zod Schema | Authenticated | Yes (`accountId`) | N/A | N/A | Mock only |
+| **Advisory** | `POST /api/advisory` | Dummy — keyword template answer, no real regulatory data | Zod Schema | Authenticated | Yes (`accountId`) | N/A | N/A | Mock only |
 | **Admin** | `POST /api/admin/users` | Production Foundation | Zod Schema | `users.manage` | Yes (`accountId`) | Yes | N/A | Token Hashed |
+| **Health** | `GET /api/health` | Production Foundation — blocks mock provider in production | None | Public | N/A | N/A | N/A | N/A |
 
 ---
-*Documented by Antigravity AI - Implementation Status Tracker*
+*Last updated: 2026-08-06 — Gate 1 corrections applied. QPR-001 POST /api/filing fix confirmed.*
+*Documented by Antigravity AI — Implementation Status Tracker*
+

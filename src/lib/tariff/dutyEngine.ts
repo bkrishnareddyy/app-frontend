@@ -95,7 +95,7 @@ export function computeFilingTariff(
   let totalBaseDuty = 0;
   let totalSec301 = 0;
   let totalSec232 = 0;
-  let lineResults: LineItemDutyResult[] = [];
+  const lineResults: LineItemDutyResult[] = [];
 
   for (const item of lineItems) {
     const hts = item.htsCode ? htsCodesMap[item.htsCode] : null;

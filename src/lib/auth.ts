@@ -109,16 +109,14 @@ export async function getAccountContext(): Promise<AccountContext | null> {
       });
     }
 
-    // Self-Service Onboarding & Invitation Processing for brand new users
+    // Self-Service Onboarding for brand new users.
+    // SECURITY NOTE: Invitation acceptance is NOT handled here (QPR-002).
+    // Invitations are accepted explicitly via /invite/[token] page only.
+    // This keeps getAccountContext() side-effect-free.
     if (!dbUser && clerkUser) {
       const email = userEmail ?? `${clerkUserId}@example.com`;
       const firstName = clerkUser.firstName ?? "User";
       const lastName = clerkUser.lastName ?? "";
-
-      const pendingInvitations = await db.invitation.findMany({
-        where: { email: email.toLowerCase(), status: "PENDING" },
-        include: { account: true, role: true },
-      });
 
       let ownerRole = await db.role.findFirst({
         where: { name: "OWNER", accountId: null },
@@ -129,114 +127,61 @@ export async function getAccountContext(): Promise<AccountContext | null> {
         });
       }
 
-      const totalUsers = await db.user.count({ where: { deletedAt: null } });
-      const isFirstUser = totalUsers === 0;
+      const accountName = firstName ? `${firstName}'s Workspace` : "Personal Workspace";
+      const baseSlug = generateSlug(accountName);
+      let slug = baseSlug;
+      let counter = 1;
+      while (await db.account.findUnique({ where: { slug } })) {
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      }
 
-      if (pendingInvitations.length > 0) {
-        dbUser = await db.user.create({
-          data: {
-            clerkUserId,
-            email: email.toLowerCase(),
-            firstName,
-            lastName,
-          },
-          include: {
-            platformRoles: { include: { platformRole: true } },
-            memberships: {
-              include: {
-                account: true,
-                role: {
-                  include: {
-                    rolePermissions: { include: { permission: true } },
-                  },
-                },
-              },
-            },
-          },
-        });
+      const individualAccount = await db.account.create({
+        data: {
+          name: accountName,
+          slug,
+          type: "INDIVIDUAL",
+          status: "ACTIVE",
+        },
+      });
 
-        for (const inv of pendingInvitations) {
-          await db.accountMembership.create({
-            data: {
-              accountId: inv.accountId,
-              userId: dbUser.id,
-              roleId: inv.roleId,
+      dbUser = await db.user.create({
+        data: {
+          clerkUserId,
+          email: email.toLowerCase(),
+          firstName,
+          lastName,
+          memberships: {
+            create: {
+              accountId: individualAccount.id,
+              roleId: ownerRole.id,
               status: "ACTIVE",
             },
-          });
-          await db.invitation.update({
-            where: { id: inv.id },
-            data: { status: "ACCEPTED" },
-          });
-        }
-      } else {
-        const accountName = firstName ? `${firstName}'s Workspace` : "Personal Workspace";
-        let baseSlug = generateSlug(accountName);
-        let slug = baseSlug;
-        let counter = 1;
-        while (await db.account.findUnique({ where: { slug } })) {
-          slug = `${baseSlug}-${counter}`;
-          counter++;
-        }
-
-        const individualAccount = await db.account.create({
-          data: {
-            name: accountName,
-            slug,
-            type: "INDIVIDUAL",
-            status: "ACTIVE",
           },
-        });
-
-        dbUser = await db.user.create({
-          data: {
-            clerkUserId,
-            email: email.toLowerCase(),
-            firstName,
-            lastName,
-            memberships: {
-              create: {
-                accountId: individualAccount.id,
-                roleId: ownerRole.id,
-                status: "ACTIVE",
-              },
-            },
-          },
-          include: {
-            platformRoles: { include: { platformRole: true } },
-            memberships: {
-              include: {
-                account: true,
-                role: {
-                  include: {
-                    rolePermissions: { include: { permission: true } },
-                  },
+        },
+        include: {
+          platformRoles: { include: { platformRole: true } },
+          memberships: {
+            include: {
+              account: true,
+              role: {
+                include: {
+                  rolePermissions: { include: { permission: true } },
                 },
               },
             },
           },
-        });
+        },
+      });
 
-        await db.account.update({
-          where: { id: individualAccount.id },
-          data: { ownerUserId: dbUser.id },
-        });
-      }
+      await db.account.update({
+        where: { id: individualAccount.id },
+        data: { ownerUserId: dbUser.id },
+      });
 
-      if (isFirstUser && dbUser) {
-        let platformAdminRole = await db.platformRole.findUnique({ where: { name: "PLATFORM_ADMIN" } });
-        if (!platformAdminRole) {
-          platformAdminRole = await db.platformRole.create({
-            data: { name: "PLATFORM_ADMIN", description: "Full Qubere platform admin" },
-          });
-        }
-        await db.platformUserRole.create({
-          data: {
-            userId: dbUser.id,
-            platformRoleId: platformAdminRole.id,
-          },
-        });
-      }
+      // SECURITY: Platform admin is bootstrapped only via PLATFORM_ADMIN_EMAIL env var
+      // (scripts/bootstrap-admin.ts), not by being the first database user.
+      // The old "first user = platform admin" pattern is intentionally removed (QPR-002).
 
       dbUser = await db.user.findFirst({
         where: { id: dbUser.id },
@@ -313,8 +258,11 @@ export async function getAccountContext(): Promise<AccountContext | null> {
       memberships: allMemberships,
       account: activeMembership.account,
     };
-  } catch (error: any) {
-    if (error?.digest === "DYNAMIC_SERVER_USAGE" || error?.message?.includes("DYNAMIC_SERVER_USAGE")) {
+  } catch (error: unknown) {
+    if (
+      (error instanceof Error && error.message.includes("DYNAMIC_SERVER_USAGE")) ||
+      (typeof error === "object" && error !== null && "digest" in error && (error as Record<string, unknown>).digest === "DYNAMIC_SERVER_USAGE")
+    ) {
       throw error;
     }
     console.error("Error retrieving account context:", error);

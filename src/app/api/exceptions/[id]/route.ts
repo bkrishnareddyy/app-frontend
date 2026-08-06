@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { createAuditLog } from "@/lib/audit";
 import { ExceptionService } from "@/modules/exceptions/exception.service";
@@ -39,13 +39,13 @@ export async function PATCH(
     });
 
     return NextResponse.json({ exception: updated, requestId });
-  } catch (error: any) {
-    if (error?.message === "NOT_FOUND") {
+  } catch (error: unknown) {
+    if (errorMessage(error) === "NOT_FOUND") {
       return buildErrorResponse(404, "NOT_FOUND", "Exception item not found", undefined, requestId);
     }
-    if (error?.message === "STALE_VERSION") {
+    if (errorMessage(error) === "STALE_VERSION") {
       return buildErrorResponse(409, "CONFLICT", "Stale update detected. Exception item has been modified by another user.", undefined, requestId);
     }
-    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", error?.message || "Failed to update exception item", undefined, requestId);
+    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to update exception item", undefined, requestId);
   }
 }

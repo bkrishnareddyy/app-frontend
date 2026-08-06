@@ -270,7 +270,9 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
               ].map((q, idx) => (
                 <button
                   key={idx}
-                  className="w-full text-left text-xs px-3 py-2.5 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#0071E3] hover:text-[#0071E3] text-[#1D1D1F] transition-all leading-snug break-words font-medium"
+                  disabled
+                  title="AI Copilot interactive queries coming in Gate 2."
+                  className="w-full text-left text-xs px-3 py-2.5 rounded-xl bg-white border border-[#E5E5EA] text-[#1D1D1F] leading-snug break-words font-medium opacity-50 cursor-not-allowed"
                 >
                   {q}
                 </button>
@@ -290,7 +292,10 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
             <button className="text-[#86868B] hover:text-[#1D1D1F]">Validation (1)</button>
             <button className="text-[#86868B] hover:text-[#1D1D1F]">Warnings (3)</button>
           </div>
-          <Link href="/app/exceptions" className="text-[#0071E3] font-semibold hover:underline">View All Exceptions</Link>
+          {/* /app/exceptions page does not exist yet — link disabled */}
+          <span className="text-[#86868B] font-semibold opacity-50 cursor-not-allowed text-xs" title="Exceptions hub coming in Gate 2">
+            View All Exceptions
+          </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -311,9 +316,9 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
               <span>Certificate of Origin Missing</span>
             </div>
             <p className="text-[11px] text-[#86868B]">Required for US entry & preferential duty rules</p>
-            <button className="text-xs font-semibold text-[#0071E3] hover:underline pt-1">
+            <span className="inline-block text-xs font-semibold text-[#86868B] opacity-50 cursor-not-allowed pt-1" title="Action coming in Gate 2">
               Add Document →
-            </button>
+            </span>
           </div>
 
           <div className="p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-2">
@@ -322,9 +327,9 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
               <span>Country of Origin</span>
             </div>
             <p className="text-[11px] text-[#86868B]">Line 2: Electronic Controller origin required</p>
-            <button className="text-xs font-semibold text-[#0071E3] hover:underline pt-1">
+            <span className="inline-block text-xs font-semibold text-[#86868B] opacity-50 cursor-not-allowed pt-1" title="Action coming in Gate 2">
               Provide Origin →
-            </button>
+            </span>
           </div>
 
           <div className="p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-2">
@@ -333,9 +338,9 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
               <span>Quantity Mismatch</span>
             </div>
             <p className="text-[11px] text-[#86868B]">Invoice: 20 PCS vs Packing List: 18 PCS</p>
-            <button className="text-xs font-semibold text-[#0071E3] hover:underline pt-1">
+            <span className="inline-block text-xs font-semibold text-[#86868B] opacity-50 cursor-not-allowed pt-1" title="Action coming in Gate 2">
               Review Mismatch →
-            </button>
+            </span>
           </div>
         </div>
       </div>

@@ -12,7 +12,7 @@ export default function NewShipmentPage() {
 
   const [formData, setFormData] = useState({
     importerName: "ABC Manufacturing India Pvt Ltd",
-    poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
+    poReference: "PO-2026-849102",
     entryType: "Consumption Entry",
     incoterm: "CIF Los Angeles",
     portOfEntry: "Port of Los Angeles (2704)",
@@ -45,9 +45,9 @@ export default function NewShipmentPage() {
       } else {
         router.push("/app/shipments");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error creating shipment:", err);
-      setError(err?.message || "Failed to create shipment. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to create shipment. Please try again.");
     } finally {
       setLoading(false);
     }

@@ -8,10 +8,23 @@ export interface CreateAuditLogParams {
   entity: string;
   entityId: string;
   metadata?: Record<string, unknown> | null;
+  /** Snapshot of the record BEFORE the mutation (for immutable evidence trail). */
+  beforeJson?: Record<string, unknown> | null;
+  /** Snapshot of the record AFTER the mutation. */
+  afterJson?: Record<string, unknown> | null;
+  /** Correlation ID linking related audit events across a single user operation. */
+  correlationId?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
   requestId?: string | null;
   success?: boolean;
+  /**
+   * When true, throws on audit failure instead of swallowing it.
+   * Use this for consequential mutations (filings, transmissions, drawback claims)
+   * by wrapping the audit call + business write in a db.$transaction.
+   * QPR-008: audit logging for consequential mutations must be transactional/fail-closed.
+   */
+  failClosed?: boolean;
 }
 
 export async function createAuditLog(params: CreateAuditLogParams) {
@@ -49,7 +62,12 @@ export async function createAuditLog(params: CreateAuditLogParams) {
       },
     });
   } catch (error) {
+    if (params.failClosed) {
+      // Re-throw so the surrounding db.$transaction rolls back the business write.
+      throw error;
+    }
     console.error("Failed to create audit log entry:", error);
     return null;
   }
 }
+

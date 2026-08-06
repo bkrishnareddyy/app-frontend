@@ -27,7 +27,7 @@ export default async function CustomsFilingPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  const dutyBreakdown = (filing?.dutyBreakdown as any[]) || [
+  const dutyBreakdown = (filing?.dutyBreakdown as { feeName: string; amount: number; rate: string }[]) || [
     { feeName: "Basic Customs Duty (2.5%)", amount: 335.0, rate: "2.5%" },
     { feeName: "Section 301 China Duty (7.5%)", amount: 630.0, rate: "7.5%" },
     { feeName: "Merchandise Processing Fee (MPF)", amount: 46.42, rate: "0.3464%" },
@@ -50,11 +50,21 @@ export default async function CustomsFilingPage() {
         </div>
 
         <div className="flex items-center space-x-3">
-          <button className="px-4 py-2 bg-white border border-[#E5E5EA] hover:border-[#0071E3] text-[#1D1D1F] text-xs font-semibold rounded-xl shadow-2xs transition-all flex items-center space-x-1.5">
+          {/* Export 7501 Package — disabled until QPR-001 Gate 2: requires real provider + broker approval */}
+          <button
+            disabled
+            title="Export 7501 Package requires a validated filing with real CBP data. Coming in Gate 2."
+            className="px-4 py-2 bg-white border border-[#E5E5EA] text-[#86868B] text-xs font-semibold rounded-xl shadow-2xs flex items-center space-x-1.5 opacity-50 cursor-not-allowed"
+          >
             <Download className="w-3.5 h-3.5" />
             <span>Export 7501 Package</span>
           </button>
-          <button className="px-5 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5">
+          {/* Transmit to CBP — disabled until QPR-001 Gate 2: requires real ABI/ACE provider */}
+          <button
+            disabled
+            title="CBP transmission requires a real ABI/ACE provider configured in production. Coming in Gate 2."
+            className="px-5 py-2 bg-[#0071E3] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 opacity-40 cursor-not-allowed"
+          >
             <Send className="w-3.5 h-3.5" />
             <span>Transmit to CBP (ABI)</span>
           </button>
@@ -121,7 +131,7 @@ export default async function CustomsFilingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5E5EA]">
-                  {dutyBreakdown.map((duty: any, idx: number) => (
+                  {dutyBreakdown.map((duty: { feeName: string; amount: number; rate: string }, idx: number) => (
                     <tr key={idx} className="hover:bg-[#F5F5F7]">
                       <td className="py-2.5 font-semibold text-[#1D1D1F]">{duty.feeName}</td>
                       <td className="py-2.5 text-[#86868B]">{duty.rate}</td>

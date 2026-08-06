@@ -208,7 +208,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Filing not found" }, { status: 404 });
     }
 
-    const updateData: any = {};
+    const updateData: import("@prisma/client").Prisma.CustomsFilingUpdateInput = {};
 
     if (filingStatus) {
       updateData.filingStatus = filingStatus;

@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const result = searchParams.get("result");
 
-    const where: any = { accountId: ctx.accountId };
+    const where: import("@prisma/client").Prisma.ComplianceAuditRecordWhereInput = { accountId: ctx.accountId };
     if (result) {
       where.overallResult = { equals: result, mode: "insensitive" };
     }

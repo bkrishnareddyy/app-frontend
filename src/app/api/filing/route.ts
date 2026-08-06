@@ -44,7 +44,7 @@ export async function GET(req: Request) {
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
     // Build Prisma query condition
-    const where: any = {
+    const where: import("@prisma/client").Prisma.CustomsFilingWhereInput = {
       accountId: ctx.accountId,
     };
 
@@ -84,7 +84,7 @@ export async function GET(req: Request) {
     }
 
     // Related Shipment filters
-    const shipmentWhere: any = {};
+    const shipmentWhere: import("@prisma/client").Prisma.ShipmentWhereInput = {};
     if (portOfEntry) {
       shipmentWhere.portOfEntry = { contains: portOfEntry, mode: "insensitive" };
     }
@@ -148,7 +148,7 @@ export async function GET(req: Request) {
     }
 
     // Order By fields mapping
-    let orderBy: any = {};
+    let orderBy: import("@prisma/client").Prisma.CustomsFilingOrderByWithRelationInput | import("@prisma/client").Prisma.CustomsFilingOrderByWithRelationInput[] = {};
     if (sortBy === "totalValue" || sortBy === "totalDuties" || sortBy === "totalTaxes" || sortBy === "entryNumber") {
       orderBy[sortBy] = sortOrder;
     } else if (sortBy === "importerName") {
@@ -318,6 +318,10 @@ export async function POST(req: Request) {
 
     const dutyBreakdown = tariffResult.dutyBreakdown;
 
+    // QPR-001: POST /api/filing creates DRAFT only.
+    // - paymentStatus and submittedAt are NOT set here.
+    // - Customs responses (ACK/REJECT) are created only from real provider callbacks.
+    // - Transmission happens via POST /api/filing/[id]/transmit after broker approval.
     const filing = await db.customsFiling.create({
       data: {
         shipmentId,
@@ -326,25 +330,12 @@ export async function POST(req: Request) {
         authority: "US Customs (CBP)",
         entryType: entryType || shipment.entryType || "Consumption Entry",
         filingType: filingType || "ABI - Automated",
-        filingStatus: "Submitted",
-        paymentStatus: "Paid",
+        filingStatus: "Draft",
         totalValue: calculatedValue,
         totalDuties: calculatedDuty,
         totalTaxes: calculatedTaxes,
         totalAmount: calculatedTotal,
         dutyBreakdown,
-        submittedAt: new Date(),
-        responses: {
-          create: [
-            {
-              accountId: ctx.accountId,
-              code: "ACK",
-              title: "ACK - Acceptance",
-              description: "Customs authority has acknowledged receipt of entry summary.",
-              status: "Accepted",
-            },
-          ],
-        },
       },
       include: {
         shipment: true,
@@ -354,16 +345,16 @@ export async function POST(req: Request) {
 
     await db.shipment.update({
       where: { id: shipmentId },
-      data: { status: "Submitted" },
+      data: { status: "Draft" },
     });
 
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
-      action: "customs_filing.submit",
+      action: "customs_filing.create_draft",
       entity: "CustomsFiling",
       entityId: filing.id,
-      metadata: { entryNumber, shipmentId },
+      metadata: { entryNumber, shipmentId, filingStatus: "Draft" },
     });
 
     return NextResponse.json({ filing }, { status: 201 });

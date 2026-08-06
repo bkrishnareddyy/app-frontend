@@ -90,7 +90,7 @@ export class ClassificationService {
           proposedHtsCode: primaryMatch.htsCode10,
           proposedDescription: primaryMatch.description,
           rulesApplied: ["GRI 1", "GRI 6"],
-          evidenceItems: citedSources as any,
+          evidenceItems: citedSources as unknown as import("@prisma/client").Prisma.InputJsonValue,
         },
       });
       agentDecisionId = agentDecision.id;
