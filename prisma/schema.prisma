@@ -48,6 +48,7 @@ model Account {
   brokerMetrics          BrokerMetrics[]
   valuationAssistsRecords ValuationAssistsRecord[]
   auditTimelines         AuditTimeline[]
+  screeningLogs          ScreeningLog[]
 
   @@index([type])
   @@index([slug])
@@ -927,4 +928,57 @@ model AuditTimeline {
 
   @@index([accountId])
   @@index([filingId])
+}
+
+model DeniedPartyWatchlist {
+  id            String   @id @default(cuid())
+  listSource    String   // OFAC_SDN | BIS_ENTITY_LIST | UN_SANCTIONS | EU_SANCTIONS | UK_HMT
+  entityName    String
+  entityType    String   // Individual | Organization | Vessel
+  country       String
+  program       String?  // SDNTK | RUSSIA-EO14024 | COUNTER-NARCOTICS
+  addresses     Json?
+  effectiveDate DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([entityName])
+  @@index([listSource])
+}
+
+model ScreeningLog {
+  id           String   @id @default(cuid())
+  accountId    String
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  targetName   String
+  targetType   String   // Shipper | Consignee | Broker | Carrier | Manufacturer
+  matchStatus  String   // PASSED | FLAGGED | BLOCKED
+  matchScore   Int      @default(0) // 0-100 fuzzy match score
+  matchedParty String?
+  listSource   String?
+  screenedAt   DateTime @default(now())
+
+  @@index([accountId])
+  @@index([matchStatus])
+}
+
+model EmbargoRule {
+  id          String   @id @default(cuid())
+  countryCode String   @unique // CU, IR, KP, SY, UFLPA_XINJIANG
+  countryName String
+  regime      String   // Comprehensive Sanctions | UFLPA Forced Labor | Selective Controls
+  restriction String
+  authority   String   @default("US OFAC / CBP UFLPA")
+  createdAt   DateTime @default(now())
+}
+
+model TradeBenchmark {
+  id              String   @id @default(cuid())
+  htsCode10       String   @unique
+  industryAvgDuty Float    @default(3.5)
+  avgDeclaredPrice Float
+  topOriginCountry String  @default("China")
+  totalUSVolumeVal Float
+  lastUpdated     DateTime @default(now())
+
+  @@index([htsCode10])
 }

@@ -261,6 +261,32 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     tag: "Duty Drawback",
   },
 
+  // 🟢 READY TO GO - DENIED PARTY SCREENING & EMBARGOES
+  {
+    method: "POST",
+    path: "/api/screening/dps",
+    name: "Denied Party & Sanctions Screening",
+    description: "Performs real-time fuzzy screening against OFAC SDN, BIS Entity List, UN, and EU sanctions watchlists.",
+    status: "READY",
+    tag: "Sanctions & Screening",
+  },
+  {
+    method: "POST",
+    path: "/api/screening/embargo",
+    name: "Embargo & UFLPA Region Screening",
+    description: "Screens country of origin, transshipment ports, and manufacturers against OFAC embargoes and UFLPA Xinjiang forced labor controls.",
+    status: "READY",
+    tag: "Sanctions & Screening",
+  },
+  {
+    method: "GET",
+    path: "/api/trade-intel/benchmarks",
+    name: "Global Trade Intelligence Benchmarks",
+    description: "Retrieves nationwide duty, valuation, and trade volume benchmarks by HTS code for strategic sourcing comparisons.",
+    status: "READY",
+    tag: "Trade Intelligence",
+  },
+
   // 🟢 READY TO GO - SHIPMENTS & DOCUMENTS
   {
     method: "GET",
