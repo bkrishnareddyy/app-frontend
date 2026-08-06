@@ -44,7 +44,7 @@ export function Sidebar({
 
   const mainNavigation = [
     { name: "Command Center", href: "/app/dashboard", icon: LayoutDashboard },
-    { name: "Shipments", href: "/app/shipments/SHP-2026-004872", icon: FileText },
+    { name: "Shipments", href: "/app/shipments", icon: FileText },
     { name: "Decisions", href: "/app/decisions", icon: Scale },
     { name: "Customs Filing", href: "/app/filing", icon: FileCheck2 },
     { name: "Regulatory Intel", href: "/app/regulatory", icon: Globe },
