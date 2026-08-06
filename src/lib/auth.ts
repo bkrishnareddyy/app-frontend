@@ -325,6 +325,8 @@ export async function getAccountContext(): Promise<AccountContext | null> {
 export async function hasPermission(requiredPermission: string): Promise<boolean> {
   const context = await getAccountContext();
   if (!context) return false;
-  if (context.isPlatformAdmin || context.roleName === "OWNER" || context.roleName === "ADMIN") return true;
+  if (context.isPlatformAdmin) return true;
+  // Account OWNER has wildcard management access
+  if (context.roleName === "OWNER") return true;
   return context.permissions.includes(requiredPermission);
 }

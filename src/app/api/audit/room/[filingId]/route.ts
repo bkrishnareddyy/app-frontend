@@ -36,15 +36,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No customs filing found for audit room" }, { status: 404 });
     }
 
-    // Digital evidence manifest with SHA-256 hashes
+    // Digital evidence manifest with real SHA-256 hashes
     const evidenceSet = filing.shipment.documents.map((doc) => ({
       documentId: doc.id,
       docType: doc.docType,
       fileName: doc.fileName,
-      sha256Hash: doc.checksum || `sha256-${doc.id.slice(0, 24)}`,
+      sha256Hash: doc.checksum || null,
       uploadedAt: doc.createdAt,
-      status: "Verified Read-Only Evidence",
+      status: doc.checksum ? "Verified Evidence" : "Unverified Evidence (No Checksum)",
     }));
+
+    const validChecksums = evidenceSet.map((e) => e.sha256Hash).filter(Boolean);
+    const evidenceHashManifest = validChecksums.length > 0
+      ? validChecksums.join(":")
+      : null;
 
     // Retrieve decision timeline
     const timelines = await db.auditTimeline.findMany({
@@ -92,8 +97,8 @@ export async function POST(req: Request) {
         filingId: filing.id,
         entryNumber: filing.entryNumber,
         importerOfRecord: filing.shipment.importerName,
-        status: "Read-Only Immutable Evidence Room",
-        evidenceHashManifest: `sha256-manifest-${filing.id.slice(0, 16)}`,
+        status: "Read-Only Evidence Room",
+        evidenceHashManifest,
         evidenceSet,
         timelines: updatedTimelines,
       },

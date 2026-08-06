@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { computeFilingTariff } from "@/lib/tariff/dutyEngine";
 
 export async function GET(
   req: Request,
@@ -80,13 +81,9 @@ export async function GET(
     const primaryCOO = lineItems[0]?.countryOfOrigin || filing.shipment.countryOfExport || "USA";
     const primaryHTS = lineItems[0]?.htsCode || "8481.80.5090";
 
-    // Standardized Duty Breakdown
-    const dutyBreakdown = filing.dutyBreakdown || [
-      { feeName: "Base Customs Duty", amount: Math.round((filing.totalDuties * 0.7) * 100) / 100, rate: "3.5%" },
-      { feeName: "Section 301 Tariff", amount: Math.round((filing.totalDuties * 0.15) * 100) / 100, rate: "7.5%" },
-      { feeName: "Merchandise Processing Fee (MPF)", amount: 31.67, rate: "0.3464%" },
-      { feeName: "Harbor Maintenance Fee (HMF)", amount: 22.18, rate: "0.125%" },
-    ];
+    // Standardized Duty Breakdown computed via Tariff Engine
+    const tariffResult = computeFilingTariff(lineItems);
+    const dutyBreakdown = filing.dutyBreakdown || tariffResult.dutyBreakdown;
 
     // Documents with enriched OCR & AI extraction metadata
     const documents = filing.shipment.documents.map((doc) => ({
@@ -99,16 +96,14 @@ export async function GET(
       status: doc.status,
       uploadedAt: doc.createdAt,
       version: "v1.0",
-      sha256: `sha256-${doc.id.slice(0, 16)}`,
+      sha256: doc.checksum || null,
       ocrStatus: "Completed",
       aiExtractionStatus: doc.confidence > 90 ? "Verified (100%)" : "Needs Review",
     }));
 
     // Generate AI Insights & Explainability evidence
     const aiInsights = [
-      `Similar filing submitted 42 times previously for importer ${filing.shipment.importerName}.`,
-      `HTS code ${primaryHTS} accepted in 98.7% of prior filings.`,
-      `Supplier has zero compliance violations on record.`,
+      `HTS code ${primaryHTS} evaluated for entry line items.`,
       `Product classification confidence calculated at ${lineItems[0]?.htsConfidence || 96}%.`,
       `Duty assessed at $${filing.totalDuties.toFixed(2)} matching predicted tariff calculations.`,
     ];
@@ -117,8 +112,6 @@ export async function GET(
       htsCode: primaryHTS,
       confidence: `${lineItems[0]?.htsConfidence || 96}%`,
       evidence: [
-        "CBP Ruling HQ123456 verified for description match",
-        "187 accepted filings in same product category",
         "Product technical specifications align with GRI 1 & GRI 6",
         "Previous importer classification consistency verified",
       ],

@@ -43,21 +43,29 @@ export async function POST(req: Request) {
     const lineItems = shipment.lineItems || [];
     const totalLineQuantity = lineItems.reduce((sum, item) => sum + item.quantity, 0);
 
-    // Rule 1: Quantity mismatch check (Invoice vs Packing List)
-    if (totalLineQuantity > 0 && totalLineQuantity % 100 !== 0) {
-      const issue = await db.reconciliationIssue.create({
-        data: {
-          shipmentId: targetShipmentId,
-          accountId: ctx.accountId,
-          severity: "Warning",
-          field: "quantity",
-          expectedValue: `${totalLineQuantity} PCS (Commercial Invoice)`,
-          actualValue: `${totalLineQuantity - 10} PCS (Packing List)`,
-          sourceDocuments: ["Commercial Invoice", "Packing List"],
-          status: "Open",
-        },
-      });
-      issuesCreated.push(issue);
+    // Rule 1: Quantity reconciliation across commercial documents
+    const invoiceDoc = shipment.documents.find((d) => d.docType.includes("Invoice"));
+    const packingDoc = shipment.documents.find((d) => d.docType.includes("Packing"));
+
+    if (invoiceDoc && packingDoc) {
+      const invExt = await db.extractionField.findFirst({ where: { documentId: invoiceDoc.id, fieldName: "totalQuantity" } });
+      const packExt = await db.extractionField.findFirst({ where: { documentId: packingDoc.id, fieldName: "totalQuantity" } });
+
+      if (invExt && packExt && invExt.value !== packExt.value) {
+        const issue = await db.reconciliationIssue.create({
+          data: {
+            shipmentId: targetShipmentId,
+            accountId: ctx.accountId,
+            severity: "Warning",
+            field: "quantity",
+            expectedValue: `${invExt.value} PCS (${invoiceDoc.docType})`,
+            actualValue: `${packExt.value} PCS (${packingDoc.docType})`,
+            sourceDocuments: [invoiceDoc.docType, packingDoc.docType],
+            status: "Open",
+          },
+        });
+        issuesCreated.push(issue);
+      }
     }
 
     // Rule 2: Country of Origin reconciliation check

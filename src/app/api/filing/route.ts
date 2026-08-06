@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { computeFilingTariff } from "@/lib/tariff/dutyEngine";
 
 export async function GET(req: Request) {
   try {
@@ -305,22 +306,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
     }
 
-    // Calculate total values from line items if present
-    const calculatedValue = shipment.lineItems.length > 0
-      ? shipment.lineItems.reduce((acc, item) => acc + item.totalValue, 0)
-      : 17750.0;
-    const calculatedDuty = Math.round((calculatedValue * 0.12) * 100) / 100;
-    const calculatedTaxes = Math.round((calculatedValue * 0.05) * 100) / 100;
-    const calculatedTotal = calculatedDuty + calculatedTaxes;
+    // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine
+    const tariffResult = computeFilingTariff(shipment.lineItems);
+    const calculatedValue = tariffResult.totalCustomsValue > 0 ? tariffResult.totalCustomsValue : 17750.0;
+    const calculatedDuty = tariffResult.totalDuty;
+    const calculatedTaxes = 0;
+    const calculatedTotal = tariffResult.totalAmount;
 
     const entrySuffix = shipment.shipmentNumber.split("-")[2] || Math.floor(100000 + Math.random() * 900000).toString();
     const entryNumber = customEntryNumber || `5901-26-${entrySuffix}`;
 
-    const dutyBreakdown = [
-      { feeName: "Base Customs Duty (12%)", amount: calculatedDuty, rate: "12.0%" },
-      { feeName: "Merchandise Processing Fee (MPF)", amount: 31.67, rate: "0.3464%" },
-      { feeName: "Harbor Maintenance Fee (HMF)", amount: 22.18, rate: "0.125%" },
-    ];
+    const dutyBreakdown = tariffResult.dutyBreakdown;
 
     const filing = await db.customsFiling.create({
       data: {

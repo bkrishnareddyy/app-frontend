@@ -59,8 +59,8 @@ export async function POST(req: Request) {
       },
       {
         item: "Required PGA Documentation (FDA, EPA, TSCA)",
-        result: documents.some((d) => d.status === "Received") ? "Pass" : "Pass",
-        evidence: `Document intake count: ${documents.length} files attached.`,
+        result: documents.some((d) => d.status === "Received") ? "Pass" : "NeedsReview",
+        evidence: documents.length > 0 ? `Document intake count: ${documents.length} files attached.` : "No supporting PGA documents attached.",
       },
       {
         item: "Reasonable Care Recordkeeping (19 U.S.C. 1508)",
