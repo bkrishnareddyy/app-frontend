@@ -1,17 +1,34 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authorizeRequest } from "@/lib/api/auth-guards";
+import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { parseAndValidateBody } from "@/lib/api/validation";
+import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
+import { DrawbackService } from "@/modules/drawback/drawback.service";
+import { db } from "@/lib/db";
+import { z } from "zod";
+
+const createClaimSchema = z.object({
+  claimType: z.enum(["manufacturing", "unused_merchandise", "rejected_merchandise"]).default("unused_merchandise"),
+  matches: z.array(
+    z.object({
+      shipmentLineItemId: z.string(),
+      exportLineItemId: z.string(),
+      matchedQuantity: z.number().positive(),
+      matchMethod: z.string().optional(),
+      dutyAttributed: z.number().nonnegative(),
+    })
+  ).min(1, "Claim requires at least one accepted inventory match allocation"),
+});
 
 export async function GET(req: Request) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const requestId = generateRequestId();
+  const { ctx, errorResponse } = await authorizeRequest();
+  if (errorResponse) return errorResponse;
 
+  try {
     const claims = await db.drawbackClaim.findMany({
-      where: { accountId: ctx.accountId },
+      where: { accountId: ctx!.accountId },
       include: {
         matches: {
           include: {
@@ -22,60 +39,44 @@ export async function GET(req: Request) {
       },
       orderBy: { createdAt: "desc" },
     });
-
-    return NextResponse.json({ drawbackClaims: claims });
-  } catch (error) {
-    console.error("GET /api/drawback/claims error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ drawbackClaims: claims, requestId });
+  } catch (error: any) {
+    return buildErrorResponse(500, "INTERNAL_ERROR", error?.message || "Failed to list drawback claims", undefined, requestId);
   }
 }
 
 export async function POST(req: Request) {
+  const requestId = generateRequestId();
+  const { ctx, errorResponse } = await authorizeRequest("drawback.claim");
+  if (errorResponse) return errorResponse;
+
+  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx!.accountId, requestId);
+  if (cachedResponse) return cachedResponse;
+  if (idempError) return idempError;
+
+  const bodyVal = await parseAndValidateBody(req, createClaimSchema, requestId);
+  if ("response" in bodyVal) return bodyVal.response;
+
   try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { claimType, matches } = body;
-
-    const matchedList = Array.isArray(matches) ? matches : [];
-    const totalRefundClaimed = matchedList.reduce((acc: number, m: any) => acc + (m.dutyAttributed || 0), 0) || 4500.0;
-    const cbpClaimNum = `DBK-2026-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    const claim = await db.drawbackClaim.create({
-      data: {
-        accountId: ctx.accountId,
-        claimType: claimType || "unused_merchandise",
-        status: "Draft",
-        totalRefundClaimed,
-        cbpClaimNumber: cbpClaimNum,
-        matches: {
-          create: matchedList.map((m: any) => ({
-            shipmentLineItemId: m.shipmentLineItemId,
-            exportLineItemId: m.exportLineItemId,
-            matchedQuantity: m.matchedQuantity || 100,
-            matchMethod: m.matchMethod || "FIFO",
-            dutyAttributed: m.dutyAttributed || 1000.0,
-          })),
-        },
-      },
-      include: { matches: true },
-    });
+    const result = await DrawbackService.createClaim(ctx!.accountId, ctx!.userId, bodyVal.data);
 
     await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
+      accountId: ctx!.accountId,
+      userId: ctx!.userId,
       action: "drawback.claim_create",
       entity: "DrawbackClaim",
-      entityId: claim.id,
-      metadata: { cbpClaimNumber: cbpClaimNum, totalRefundClaimed },
+      entityId: result.claim.id,
+      metadata: { claimType: result.claim.claimType, totalRefund: result.claim.totalRefundClaimed },
     });
 
-    return NextResponse.json({ drawbackClaim: claim }, { status: 201 });
-  } catch (error) {
-    console.error("POST /api/drawback/claims error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    const responsePayload = { drawbackClaim: result.claim, internalRef: result.internalClaimRef, requestId };
+
+    if (idempotencyKey) {
+      await persistIdempotency(ctx!.accountId, idempotencyKey, "", 201, responsePayload);
+    }
+
+    return NextResponse.json(responsePayload, { status: 201 });
+  } catch (error: any) {
+    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", error?.message || "Failed to create drawback claim", undefined, requestId);
   }
 }

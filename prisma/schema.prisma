@@ -23,6 +23,7 @@ model Account {
   roles                 Role[]
   invitations           Invitation[]
   auditLogs             AuditLog[]
+  idempotencyRecords    IdempotencyRecord[]
   shipments             Shipment[]
   shipmentDocuments     ShipmentDocument[]
   shipmentLineItems     ShipmentLineItem[]
@@ -205,6 +206,22 @@ model AuditLog {
   @@index([success])
 }
 
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  idempotencyKey String
+  requestHash    String
+  statusCode     Int
+  responseBody   Json
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@unique([accountId, idempotencyKey])
+  @@index([accountId])
+  @@index([expiresAt])
+}
+
 // -----------------------------------------------------------------------------
 // CORE ENTERPRISE TRADE COMPLIANCE DOMAIN MODELS
 // -----------------------------------------------------------------------------
@@ -231,6 +248,7 @@ model Shipment {
   readinessScore     Int               @default(87) // 0 - 100 percentage
   riskScore          Int               @default(28) // 0 - 100 risk score
   ownerName          String            @default("Stephen")
+  version            Int               @default(1)
   deletedAt          DateTime?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
@@ -355,6 +373,7 @@ model CustomsFiling {
   totalTaxes         Float             @default(13100.00)
   totalAmount        Float             @default(16250.00)
   dutyBreakdown      Json?             // Array of itemized duty fee objects
+  version            Int               @default(1)
   submittedAt        DateTime          @default(now())
   releasedAt         DateTime?
   createdAt          DateTime          @default(now())
@@ -623,6 +642,7 @@ model DrawbackClaim {
   status             String   @default("Draft") // Draft | Filed | Accepted | Paid
   totalRefundClaimed Float
   cbpClaimNumber     String?  @default("DBK-2026-9901")
+  version            Int      @default(1)
   filedAt            DateTime?
   paidAt             DateTime?
   createdAt          DateTime @default(now())
@@ -738,6 +758,7 @@ model ExceptionItem {
   severity         String         @default("Medium") // High | Medium | Low | Critical
   description      String
   status           String         @default("Open") // Open | InProgress | Resolved
+  version          Int            @default(1)
   assignedToUserId String?
   assignedToUser   User?          @relation("ExceptionAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   createdAt        DateTime       @default(now())

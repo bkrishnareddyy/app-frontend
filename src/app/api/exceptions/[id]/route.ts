@@ -1,59 +1,51 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authorizeRequest } from "@/lib/api/auth-guards";
+import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { parseAndValidateBody } from "@/lib/api/validation";
 import { createAuditLog } from "@/lib/audit";
+import { ExceptionService } from "@/modules/exceptions/exception.service";
+import { z } from "zod";
+
+const updateSchema = z.object({
+  status: z.string().optional(),
+  assignedToUserId: z.string().optional(),
+  resolutionReason: z.string().optional(),
+  resolutionEvidence: z.string().optional(),
+  expectedVersion: z.number().int({ message: "expectedVersion integer is required for concurrency control" }),
+});
 
 export async function PATCH(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const requestId = generateRequestId();
+  const { ctx, errorResponse } = await authorizeRequest();
+  if (errorResponse) return errorResponse;
+
+  const { id } = await context.params;
+  const bodyVal = await parseAndValidateBody(req, updateSchema, requestId);
+  if ("response" in bodyVal) return bodyVal.response;
+
   try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { id } = await context.params;
-    const body = await req.json();
-    const { status, assignedToUserId, description, severity } = body;
-
-    const exceptionItem = await db.exceptionItem.findFirst({
-      where: { id, accountId: ctx.accountId },
-    });
-
-    if (!exceptionItem) {
-      return NextResponse.json({ error: "Exception item not found" }, { status: 404 });
-    }
-
-    const updateData: any = {};
-    if (status) {
-      updateData.status = status;
-      if (status === "Resolved" && !exceptionItem.resolvedAt) {
-        updateData.resolvedAt = new Date();
-      }
-    }
-    if (assignedToUserId !== undefined) updateData.assignedToUserId = assignedToUserId;
-    if (description) updateData.description = description;
-    if (severity) updateData.severity = severity;
-
-    const updatedException = await db.exceptionItem.update({
-      where: { id },
-      data: updateData,
-      include: { assignedToUser: true, shipment: true },
-    });
+    const updated = await ExceptionService.updateException(ctx!.accountId, id, bodyVal.data);
 
     await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
+      accountId: ctx!.accountId,
+      userId: ctx!.userId,
       action: "exception.update",
       entity: "ExceptionItem",
       entityId: id,
-      metadata: { newStatus: status || exceptionItem.status, assignedToUserId },
+      metadata: { newStatus: updated.status, version: updated.version },
     });
 
-    return NextResponse.json({ exception: updatedException });
-  } catch (error) {
-    console.error("PATCH /api/exceptions/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ exception: updated, requestId });
+  } catch (error: any) {
+    if (error?.message === "NOT_FOUND") {
+      return buildErrorResponse(404, "NOT_FOUND", "Exception item not found", undefined, requestId);
+    }
+    if (error?.message === "STALE_VERSION") {
+      return buildErrorResponse(409, "CONFLICT", "Stale update detected. Exception item has been modified by another user.", undefined, requestId);
+    }
+    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", error?.message || "Failed to update exception item", undefined, requestId);
   }
 }

@@ -1,68 +1,56 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authorizeRequest } from "@/lib/api/auth-guards";
+import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
+import { FilingService } from "@/modules/filings/filing.service";
 
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const requestId = generateRequestId();
+  const { ctx, errorResponse } = await authorizeRequest("filings.submit");
+  if (errorResponse) return errorResponse;
+
+  const { id } = await context.params;
+
+  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx!.accountId, requestId);
+  if (cachedResponse) return cachedResponse;
+  if (idempError) return idempError;
+
   try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { id } = await context.params;
-
-    const filing = await db.customsFiling.findFirst({
-      where: { id, accountId: ctx.accountId },
-    });
-
-    if (!filing) {
-      return NextResponse.json({ error: "Filing not found" }, { status: 404 });
-    }
-
-    // Update filing state
-    const updatedFiling = await db.customsFiling.update({
-      where: { id },
-      data: {
-        filingStatus: "Submitted",
-        submittedAt: new Date(),
-      },
-    });
-
-    // Write simulated ABI Customs Response
-    const response = await db.customsResponse.create({
-      data: {
-        accountId: ctx.accountId,
-        filingId: id,
-        code: "ACK",
-        title: "ACK - ABI Entry Transmission Received",
-        description: `CBP ACE System acknowledged ABI transmission for entry ${filing.entryNumber}.`,
-        status: "Accepted",
-      },
-    });
+    const result = await FilingService.transmitFiling(ctx!.accountId, ctx!.userId, id);
 
     await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
+      accountId: ctx!.accountId,
+      userId: ctx!.userId,
       action: "filing.transmit",
       entity: "CustomsFiling",
       entityId: id,
-      metadata: { entryNumber: filing.entryNumber, responseId: response.id },
+      metadata: { entryNumber: result.filing.entryNumber, responseId: result.response.id },
     });
 
-    return NextResponse.json({
+    const responsePayload = {
       transmission: {
-        status: "SUCCESS",
-        entryNumber: filing.entryNumber,
-        transmittedAt: updatedFiling.submittedAt,
-        response,
+        status: result.transmissionResult.status,
+        entryNumber: result.filing.entryNumber,
+        transmittedAt: result.filing.submittedAt,
+        providerMetadata: result.transmissionResult.metadata,
+        response: result.response,
       },
-    });
-  } catch (error) {
-    console.error("POST /api/filing/[id]/transmit error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+      requestId,
+    };
+
+    if (idempotencyKey) {
+      await persistIdempotency(ctx!.accountId, idempotencyKey, "", 200, responsePayload);
+    }
+
+    return NextResponse.json(responsePayload);
+  } catch (error: any) {
+    if (error?.message === "NOT_FOUND") {
+      return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
+    }
+    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", error?.message || "Failed to transmit filing", undefined, requestId);
   }
 }

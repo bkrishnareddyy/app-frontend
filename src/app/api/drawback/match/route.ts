@@ -1,55 +1,48 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authorizeRequest } from "@/lib/api/auth-guards";
+import { buildErrorResponse, generateRequestId } from "@/lib/api/error";
+import { parseAndValidateBody } from "@/lib/api/validation";
+import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
+import { createAuditLog } from "@/lib/audit";
+import { DrawbackService } from "@/modules/drawback/drawback.service";
+import { z } from "zod";
+
+const matchSchema = z.object({
+  matchMethod: z.enum(["FIFO", "LIFO", "DIRECT_IDENTIFICATION"]).default("FIFO"),
+});
 
 export async function POST(req: Request) {
+  const requestId = generateRequestId();
+  const { ctx, errorResponse } = await authorizeRequest();
+  if (errorResponse) return errorResponse;
+
+  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx!.accountId, requestId);
+  if (cachedResponse) return cachedResponse;
+  if (idempError) return idempError;
+
+  const bodyVal = await parseAndValidateBody(req, matchSchema, requestId);
+  if ("response" in bodyVal) return bodyVal.response;
+
   try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const result = await DrawbackService.matchInventory(ctx!.accountId, { matchStrategy: bodyVal.data.matchMethod });
+
+    await createAuditLog({
+      accountId: ctx!.accountId,
+      userId: ctx!.userId,
+      action: "drawback.match_run",
+      entity: "DrawbackMatchingRun",
+      entityId: ctx!.accountId,
+      metadata: { proposedMatchesCount: result.proposedMatchesCount, strategy: bodyVal.data.matchMethod },
+    });
+
+    const responsePayload = { ...result, requestId };
+
+    if (idempotencyKey) {
+      await persistIdempotency(ctx!.accountId, idempotencyKey, "", 200, responsePayload);
     }
 
-    const body = await req.json();
-    const { matchMethod } = body; // FIFO | LIFO | specific_identification
-
-    const importLineItems = await db.shipmentLineItem.findMany({
-      where: { accountId: ctx.accountId },
-      include: { shipment: true },
-    });
-
-    const exportLineItems = await db.exportLineItem.findMany({
-      where: { accountId: ctx.accountId },
-      include: { exportShipment: true },
-    });
-
-    const proposedMatches = [];
-
-    for (const expItem of exportLineItems) {
-      const matchingImport = importLineItems.find((imp) => imp.htsCode === expItem.htsCode || imp.partNumber === expItem.partNumber);
-      if (matchingImport) {
-        const matchedQuantity = Math.min(matchingImport.quantity, expItem.quantity);
-        const estimatedDutyAttributed = Math.round((matchedQuantity * matchingImport.unitPrice * 0.035 * 0.99) * 100) / 100; // 99% duty drawback refund rate
-
-        proposedMatches.push({
-          shipmentLineItemId: matchingImport.id,
-          exportLineItemId: expItem.id,
-          htsCode: expItem.htsCode,
-          partNumber: expItem.partNumber,
-          matchedQuantity,
-          matchMethod: matchMethod || "FIFO",
-          dutyAttributed: estimatedDutyAttributed,
-          importShipmentNumber: matchingImport.shipment.shipmentNumber,
-          exportShipmentNumber: expItem.exportShipment.exportShipmentNumber,
-        });
-      }
-    }
-
-    return NextResponse.json({
-      proposedMatchesCount: proposedMatches.length,
-      proposedMatches,
-    });
-  } catch (error) {
-    console.error("POST /api/drawback/match error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(responsePayload);
+  } catch (error: any) {
+    return buildErrorResponse(500, "INTERNAL_ERROR", error?.message || "Failed to run drawback matching", undefined, requestId);
   }
 }
