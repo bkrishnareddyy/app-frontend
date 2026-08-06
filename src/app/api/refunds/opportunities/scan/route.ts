@@ -1,0 +1,75 @@
+import { NextResponse } from "next/server";
+import { getAccountContext } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { createAuditLog } from "@/lib/audit";
+
+export async function POST(req: Request) {
+  try {
+    const ctx = await getAccountContext();
+    if (!ctx) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const filings = await db.customsFiling.findMany({
+      where: { accountId: ctx.accountId },
+      include: {
+        shipment: {
+          include: { lineItems: true },
+        },
+      },
+    });
+
+    const opportunitiesCreated = [];
+
+    for (const filing of filings) {
+      const existing = await db.refundOpportunity.findFirst({
+        where: { filingId: filing.id, accountId: ctx.accountId },
+      });
+
+      if (!existing) {
+        const lineItems = filing.shipment.lineItems || [];
+        const hasChinaOrigin = lineItems.some((l) => l.countryOfOrigin?.toLowerCase() === "china");
+        const estimatedRefundAmount = hasChinaOrigin
+          ? Math.round((filing.totalDuties * 0.4) * 100) / 100
+          : Math.round((filing.totalDuties * 0.15) * 100) / 100;
+
+        if (estimatedRefundAmount > 0) {
+          const opp = await db.refundOpportunity.create({
+            data: {
+              accountId: ctx.accountId,
+              filingId: filing.id,
+              opportunityType: hasChinaOrigin ? "retroactive_exclusion" : "overpayment",
+              estimatedRefundAmount,
+              confidence: hasChinaOrigin ? 95 : 88,
+              basis: {
+                rule: hasChinaOrigin ? "Section 301 Annex A Exclusion Expiration Refund" : "Valuation Adjustment Rule 44",
+                previousDutyPaid: filing.totalDuties,
+                predictedDuty: filing.totalDuties - estimatedRefundAmount,
+              },
+              status: "Identified",
+            },
+          });
+          opportunitiesCreated.push(opp);
+        }
+      }
+    }
+
+    await createAuditLog({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      action: "refunds.scan",
+      entity: "RefundOpportunity",
+      entityId: ctx.accountId,
+      metadata: { opportunitiesCreatedCount: opportunitiesCreated.length },
+    });
+
+    return NextResponse.json({
+      message: "Refund opportunity scan completed",
+      opportunitiesCreatedCount: opportunitiesCreated.length,
+      opportunities: opportunitiesCreated,
+    });
+  } catch (error) {
+    console.error("POST /api/refunds/opportunities/scan error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
