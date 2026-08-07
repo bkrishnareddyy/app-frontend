@@ -19,13 +19,27 @@ export interface PipelineOrchestrationInput {
   fileBuffer?: Buffer;
 }
 
+export interface RequiredFieldRequirement {
+  field: string;
+  reason: string;
+}
+
 export interface HumanReviewTask {
   taskId: string;
   priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   assignedTeam: string;
   reason: string;
   requiredAction: string;
+  requiredFields: RequiredFieldRequirement[];
   slaHours: number;
+}
+
+export interface BlockerDetail {
+  code: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM";
+  ownerAgent: string;
+  causedBy: string[];
+  message: string;
 }
 
 export interface PipelineOrchestrationOutput {
@@ -37,12 +51,7 @@ export interface PipelineOrchestrationOutput {
   readiness: {
     score: number;
     readyForTransmission: boolean;
-    blockers: Array<{
-      code: string;
-      severity: "CRITICAL" | "HIGH" | "MEDIUM";
-      agent: string;
-      message: string;
-    }>;
+    blockers: BlockerDetail[];
   };
   extractedData: {
     exporter: string | null;
@@ -52,6 +61,8 @@ export interface PipelineOrchestrationOutput {
     invoiceSubtotal: number | null;
     currency: string | null;
     lineItemsCount: number;
+    isValidCommercialInvoice: boolean;
+    validationFailures: string[];
   };
   agentsSummary: {
     total: number;
@@ -137,11 +148,7 @@ export class AgentOrchestrator {
       timestamp: new Date().toISOString(),
       status: agent2.status,
       summary: `Extracted ${agent2.lineItems.length} line items (Origin: ${agent2.originCountry || "Unknown"}, Invoice Value: ${agent2.invoiceSubtotal !== null ? `$${agent2.invoiceSubtotal}` : "NULL [Invoice Missing]"}).`,
-      confidence: {
-        dataConfidence: agent2.hasCommercialInvoice ? 95 : 30,
-        ruleConfidence: 95,
-        decisionConfidence: agent2.hasCommercialInvoice ? 95 : 30,
-      },
+      confidence: agent2.confidenceMetrics,
       aiProviderUsed: agent2.aiProviderUsed,
       decisionId: agent2.agentDecisionId,
     });
@@ -206,18 +213,18 @@ export class AgentOrchestrator {
       decisionId: agent4.agentDecisionId,
     });
 
-    // 5. Agent 5: Origin & Trade Agreement (Grounded Origin Evaluation)
+    // 5. Agent 5: Origin & Trade Agreement (with Strict Dependency Gating)
     const isHtsBlocked = agent4.status === "BLOCKED_MISSING_DESCRIPTION";
     const agent5 = await OriginRulesAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
       shipmentId: input.shipmentId,
-      lineItems: isHtsBlocked
+      lineItems: isHtsBlocked || !agent2.originCountry
         ? []
         : agent4.classifications.map((c) => ({
             lineNumber: c.lineNumber,
             htsCode: c.htsCode,
-            manufacturingCountry: agent2.originCountry || "CN",
+            manufacturingCountry: agent2.originCountry || undefined,
           })),
     });
     state.originOutput = agent5;
@@ -225,12 +232,14 @@ export class AgentOrchestrator {
       agentName: "Origin & Trade Agreement Agent",
       stepNumber: 5,
       timestamp: new Date().toISOString(),
-      status: agent5.status,
-      summary: `Qualified ${agent5.qualifications[0]?.countryOfOrigin || agent2.originCountry || "CN"} (${agent5.qualifications[0]?.ftaProgram || "NONE"} - Duty Savings: $${agent5.qualifications[0]?.estimatedSavings || 0})`,
+      status: agent5.status === "Completed" ? "Completed" : "Review Required",
+      summary: agent5.status === "Completed"
+        ? `Qualified ${agent5.qualifications[0]?.countryOfOrigin} (${agent5.qualifications[0]?.ftaProgram} - Duty Savings: $${agent5.qualifications[0]?.estimatedSavings})`
+        : "Origin Rules BLOCKED: Country of origin or product HTS classification unavailable",
       confidence: {
-        dataConfidence: agent2.originCountry ? 90 : 20,
+        dataConfidence: agent5.status === "Completed" ? 90 : 0,
         ruleConfidence: 98,
-        decisionConfidence: agent2.originCountry ? 90 : 20,
+        decisionConfidence: agent5.status === "Completed" ? 90 : 0,
       },
       aiProviderUsed: agent5.aiProviderUsed,
       decisionId: agent5.agentDecisionId,
@@ -269,7 +278,7 @@ export class AgentOrchestrator {
       htsCode: agent4.classifications[0]?.htsCode,
       countryOfOrigin: agent2.originCountry,
       supplierName: agent2.exporterName || undefined,
-      isHtsBlocked,
+      isHtsBlocked: isHtsBlocked || agent5.status === "BLOCKED_DEPENDENCY",
     });
     state.complianceOutput = agent7;
     state.recordAgentExecution({
@@ -375,13 +384,46 @@ export class AgentOrchestrator {
     if (agent2.invoiceSubtotal === null) blockingReasonCodes.push("MISSING_TRANSACTION_VALUE");
     if (agent3.status === "WAITING_FOR_EXTRACTION") blockingReasonCodes.push("MISSING_PRODUCT_DESCRIPTION");
     if (agent4.status === "BLOCKED_MISSING_DESCRIPTION") blockingReasonCodes.push("BLOCKED_HTS_CLASSIFICATION");
+    if (agent5.status === "BLOCKED_DEPENDENCY") blockingReasonCodes.push("BLOCKED_ORIGIN_DETERMINATION");
     if (agent7.status === "BLOCKED_DEPENDENCY") blockingReasonCodes.push("BLOCKED_COMPLIANCE_AUDIT");
     if (!agent8.readyForTransmission) blockingReasonCodes.push("BLOCKED_FILING_READINESS");
 
     const pipelineStatus = blockingReasonCodes.length === 0 ? "Completed" : "Review Required";
     const status = blockingReasonCodes.length === 0 ? "COMPLETED" : "BLOCKED";
 
-    // Human Review Task Creation
+    // Actionable Human Review Task with Required Fields
+    const requiredFields: RequiredFieldRequirement[] = [];
+    if (!agent2.hasCommercialInvoice) {
+      requiredFields.push({
+        field: "commercialInvoice",
+        reason: "Required for CBP importer of record entry packet declaration (19 CFR § 141.86)",
+      });
+    }
+    if (agent2.invoiceSubtotal === null) {
+      requiredFields.push({
+        field: "invoiceSubtotal",
+        reason: "Required for Transaction Value Method 1 valuation appraisal (19 U.S.C. § 1401a)",
+      });
+    }
+    if (!agent2.currency) {
+      requiredFields.push({
+        field: "currency",
+        reason: "Required for CBP official currency conversion and entered value calculation",
+      });
+    }
+    if (agent3.status === "WAITING_FOR_EXTRACTION") {
+      requiredFields.push({
+        field: "productDescription",
+        reason: "Required for GRI 1-6 10-digit HTS tariff code resolution and essential character verification",
+      });
+    }
+    if (!agent2.exporterName) {
+      requiredFields.push({
+        field: "exporterName",
+        reason: "Required for Manufacturer Identification (MID) code generation (19 CFR Part 102)",
+      });
+    }
+
     const humanReviewTask: HumanReviewTask | null = blockingReasonCodes.length > 0
       ? {
           taskId: `task_${Date.now()}`,
@@ -389,6 +431,7 @@ export class AgentOrchestrator {
           assignedTeam: "Customs Brokerage Operations",
           reason: `Pipeline blocked due to missing commercial data: ${blockingReasonCodes.join(", ")}`,
           requiredAction: "Upload itemized Commercial Invoice with pricing breakdown or provide verified product description",
+          requiredFields,
           slaHours: 24,
         }
       : null;
@@ -399,21 +442,71 @@ export class AgentOrchestrator {
     if (!agent2.exporterName) humanActions.push("Confirm Exporter / Shipper name and address");
     if (humanActions.length === 0) humanActions.push("Review CBP Form 7501 draft entry and click Transmit to ACE");
 
-    const blockers = blockingReasonCodes.map((code) => ({
-      code,
-      severity: "CRITICAL" as const,
-      agent: code.includes("INVOICE") || code.includes("VALUE") ? "Valuation & Assists Agent" : "HTS Classification Agent",
-      message: code.replace(/_/g, " "),
-    }));
+    // Blocker Ownership & Cause Mapping
+    const blockers: BlockerDetail[] = [
+      ...(!agent2.hasCommercialInvoice ? [{
+        code: "MISSING_COMMERCIAL_INVOICE",
+        severity: "CRITICAL" as const,
+        ownerAgent: "Document Intelligence Agent",
+        causedBy: ["Commercial Invoice document missing from packet"],
+        message: "Commercial Invoice missing from filing packet",
+      }] : []),
+      ...(agent2.invoiceSubtotal === null ? [{
+        code: "MISSING_TRANSACTION_VALUE",
+        severity: "CRITICAL" as const,
+        ownerAgent: "Valuation & Assists Agent",
+        causedBy: ["Commercial Invoice pricing missing (Agent 2)"],
+        message: "Appraised customs value missing due to absent invoice subtotal",
+      }] : []),
+      ...(agent3.status === "WAITING_FOR_EXTRACTION" ? [{
+        code: "MISSING_PRODUCT_DESCRIPTION",
+        severity: "HIGH" as const,
+        ownerAgent: "Product Intelligence Agent",
+        causedBy: ["OCR text extraction yielded no valid product description"],
+        message: "Product description missing for SKU enrichment",
+      }] : []),
+      ...(agent4.status === "BLOCKED_MISSING_DESCRIPTION" ? [{
+        code: "BLOCKED_HTS_CLASSIFICATION",
+        severity: "CRITICAL" as const,
+        ownerAgent: "HTS Classification Agent",
+        causedBy: ["Product description missing (Agent 3)"],
+        message: "HTS 10-digit classification blocked without verified product description",
+      }] : []),
+      ...(agent5.status === "BLOCKED_DEPENDENCY" ? [{
+        code: "BLOCKED_ORIGIN_DETERMINATION",
+        severity: "HIGH" as const,
+        ownerAgent: "Origin & Trade Agreement Agent",
+        causedBy: ["Country of origin unverified (Agent 2)", "HTS classification unavailable (Agent 4)"],
+        message: "Origin rules evaluation blocked without origin / HTS data",
+      }] : []),
+      ...(agent7.status === "BLOCKED_DEPENDENCY" ? [{
+        code: "BLOCKED_COMPLIANCE_AUDIT",
+        severity: "CRITICAL" as const,
+        ownerAgent: "Compliance & Audit Risk Agent",
+        causedBy: ["HTS classification unavailable (Agent 4)", "Origin unverified (Agent 5)"],
+        message: "Compliance pre-filing audit blocked due to missing HTS and Origin dependencies",
+      }] : []),
+      ...(!agent8.readyForTransmission ? [{
+        code: "BLOCKED_FILING_READINESS",
+        severity: "CRITICAL" as const,
+        ownerAgent: "Filing Readiness Agent",
+        causedBy: ["Form 7501 verification incomplete", "Missing commercial invoice"],
+        message: "Form 7501 readiness gate failed",
+      }] : []),
+    ];
 
-    // Count agents by status
+    // Summary Math: completed + blocked + skipped = 10 (Strict Identity)
     const allStatuses = [
       agent1.status, agent2.status, agent3.status, agent4.status, agent5.status,
       agent6.status, agent7.status, agent8.status, agent9.status, agent10.status,
     ];
 
-    const completedCount = allStatuses.filter((s) => s === "Completed" || String(s) === "ACCEPTED").length;
-    const blockedCount = allStatuses.filter((s) => s !== "Completed" && String(s) !== "ACCEPTED").length;
+    const isSkipped = (s: any) => String(s).startsWith("Skipped");
+    const isCompleted = (s: any) => s === "Completed" || String(s) === "ACCEPTED";
+
+    const completedCount = allStatuses.filter(isCompleted).length;
+    const skippedCount = allStatuses.filter(isSkipped).length;
+    const blockedCount = 10 - completedCount - skippedCount;
 
     return {
       shipmentId: input.shipmentId,
@@ -434,12 +527,14 @@ export class AgentOrchestrator {
         invoiceSubtotal: agent2.invoiceSubtotal,
         currency: agent2.currency,
         lineItemsCount: agent2.lineItems.length,
+        isValidCommercialInvoice: agent2.isValidCommercialInvoice,
+        validationFailures: agent2.validationFailures,
       },
       agentsSummary: {
         total: 10,
         completed: completedCount,
         blocked: blockedCount,
-        skipped: agent6.status === "Skipped - Missing Invoice Data" ? 1 : 0,
+        skipped: skippedCount,
       },
       humanActions,
       humanReviewTask,

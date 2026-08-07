@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
-import { AgentState } from "./agentState";
+import { AgentState, MultiDimensionalConfidence } from "./agentState";
 
 export interface LineItemExtraction {
   lineNumber: number;
@@ -33,6 +33,9 @@ export interface DocumentIntelligenceOutput {
   packetId: string;
   shipmentId: string;
   status: "Completed" | "Review Required";
+  detectedDocType: string;
+  isValidCommercialInvoice: boolean;
+  validationFailures: string[];
   rawDiscoveredKeyValues: Record<string, string | number | null>;
   exporterName: string | null;
   importerName: string | null;
@@ -48,7 +51,12 @@ export interface DocumentIntelligenceOutput {
   hasCommercialInvoice: boolean;
   missingFields: string[];
   lineItems: LineItemExtraction[];
-  confidence: number;
+  confidence: number | MultiDimensionalConfidence;
+  confidenceMetrics: {
+    extractionConfidence: number;
+    dataCompleteness: number;
+    filingConfidence: number;
+  };
   mathValidationPassed: boolean;
   mathDiscrepancy?: string;
   reasoningChain: string;
@@ -419,10 +427,21 @@ DISCOVERY DIRECTIVE:
       },
     });
 
+    const detectedDocType = isCoO ? "GENERAL_CERTIFICATE_OF_ORIGIN" : "COMMERCIAL_INVOICE";
+    const isValidCommercialInvoice = hasCommercialInvoice && missingFields.length === 0 && mathValidationPassed;
+    const validationFailures = [...missingFields];
+
+    const extractionConfidence = Object.keys(rawDiscoveredKeyValues).length > 0 ? 95 : 45;
+    const dataCompleteness = hasCommercialInvoice ? Math.max(0, Math.round(((4 - missingFields.length) / 4) * 100)) : 20;
+    const filingConfidence = isValidCommercialInvoice ? 95 : 0;
+
     return {
       packetId: input.packetId,
       shipmentId: input.shipmentId,
       status,
+      detectedDocType,
+      isValidCommercialInvoice,
+      validationFailures,
       rawDiscoveredKeyValues,
       exporterName,
       importerName,
@@ -438,7 +457,12 @@ DISCOVERY DIRECTIVE:
       hasCommercialInvoice,
       missingFields,
       lineItems,
-      confidence,
+      confidence: filingConfidence,
+      confidenceMetrics: {
+        extractionConfidence,
+        dataCompleteness,
+        filingConfidence,
+      },
       mathValidationPassed,
       mathDiscrepancy,
       reasoningChain,

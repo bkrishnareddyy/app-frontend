@@ -22,16 +22,17 @@ export interface OriginRulesInput {
   shipmentId: string;
   lineItems: Array<{
     lineNumber: number;
-    htsCode: string;
-    manufacturingCountry: string;
+    htsCode?: string | null;
+    manufacturingCountry?: string | null;
     rawMaterialOrigin?: string;
   }>;
 }
 
 export interface OriginRulesOutput {
   shipmentId: string;
-  status: "Completed" | "Review Required";
+  status: "Completed" | "Review Required" | "BLOCKED_DEPENDENCY";
   qualifications: OriginQualificationResult[];
+  blockingReasons?: string[];
   confidence: number;
   reasoningChain: string;
   agentDecisionId: string;
@@ -45,8 +46,54 @@ export class OriginRulesAgent {
 
   static async execute(input: OriginRulesInput): Promise<OriginRulesOutput> {
     let aiProvider = "Gemini 2.5 Flash Rules Engine (Google GenAI SDK)";
+
+    const primaryCountry = input.lineItems[0]?.manufacturingCountry;
+    const isMissingOrUnknownOrigin =
+      input.lineItems.length === 0 ||
+      !primaryCountry ||
+      primaryCountry === "UNKNOWN" ||
+      primaryCountry === "null";
+
+    // Dependency Gating: STOP if Country of Origin or HTS inputs are missing or blocked
+    if (isMissingOrUnknownOrigin) {
+      const blockingReasons = [
+        "Country of origin missing or unverified",
+        "Manufacturer details missing",
+        "Product HTS classification unavailable",
+      ];
+      const reasoningChain = "Origin Rules Agent Gating STOPPED: Cannot evaluate substantial transformation or FTA qualification because country of origin / HTS input is missing. 0 rules evaluated.";
+
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Origin Agent",
+          agentIcon: "Globe2",
+          status: "Needs Review",
+          confidence: 0,
+          decisionSummary: "Origin Rules Evaluation BLOCKED: Missing country of origin and product classification.",
+          purpose: "Country of origin rules evaluation and USMCA FTA qualification",
+          dataSources: ["Origin Rules Gate"],
+          regulations: ["19 CFR Part 102", "19 CFR Part 181 (USMCA)"],
+          proposedDescription: "BLOCKED_DEPENDENCY",
+          rulesApplied: ["Dependency Validation Prerequisite Gate"],
+        },
+      });
+
+      return {
+        shipmentId: input.shipmentId,
+        status: "BLOCKED_DEPENDENCY",
+        qualifications: [],
+        blockingReasons,
+        confidence: 0,
+        reasoningChain,
+        agentDecisionId: agentDecision.id,
+        aiProviderUsed: aiProvider,
+      };
+    }
+
     const qualifications: OriginQualificationResult[] = [];
-    let overallConfidence = 99;
+    let overallConfidence = 95;
 
     for (const item of input.lineItems) {
       const co = (item.manufacturingCountry || "CN").toUpperCase();
@@ -89,23 +136,24 @@ export class OriginRulesAgent {
           "USMCA Preference Criterion B Evaluation",
           "19 CFR § 134 Marking Verification",
         ],
-        evidenceItems: {
-          qualifications,
-          reasoningChain,
-        } as unknown as Prisma.InputJsonValue,
       },
     });
 
+    // Create Audit Log
     await createAuditLog({
       accountId: input.accountId,
       userId: input.userId,
-      action: "agent.origin_rules",
-      entity: "AgentDecision",
+      action: "AGENT_EXECUTION_COMPLETED",
+      entity: "AGENT_DECISION",
       entityId: agentDecision.id,
-      metadata: { origin: qualifications[0]?.countryOfOrigin, fta: qualifications[0]?.ftaProgram },
+      metadata: {
+        agentName: "Origin Agent",
+        primaryCountry: primaryCo,
+        ftaProgram: primaryFta,
+      },
     });
 
-    const output: OriginRulesOutput = {
+    return {
       shipmentId: input.shipmentId,
       status: "Completed",
       qualifications,
@@ -114,9 +162,5 @@ export class OriginRulesAgent {
       agentDecisionId: agentDecision.id,
       aiProviderUsed: aiProvider,
     };
-
-    agentEventBus.emit("origin:qualified", output);
-
-    return output;
   }
 }

@@ -10,9 +10,12 @@ import { CustomsFilingOutput } from "./customsFilingAgent";
 import { ResponseManagementOutput } from "./responseManagementAgent";
 
 export interface MultiDimensionalConfidence {
-  dataConfidence: number;      // Quality & presence of OCR/document input fields (0-100%)
-  ruleConfidence: number;      // Precision of the underlying compliance rules engine (0-100%)
-  decisionConfidence: number;  // Combined overall confidence = min(dataConfidence, ruleConfidence)
+  dataConfidence?: number;
+  ruleConfidence?: number;
+  decisionConfidence?: number;
+  extractionConfidence?: number;
+  dataCompleteness?: number;
+  filingConfidence?: number;
 }
 
 export interface AgentStateHistoryEntry {
