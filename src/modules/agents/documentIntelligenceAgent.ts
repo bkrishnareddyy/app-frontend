@@ -692,6 +692,16 @@ INSTRUCTIONS:
             "Zero-Hallucination Null Grounding Gate",
             "Google ADK Math Reconciliation Gate",
           ],
+          evidenceItems: {
+            exporterName: exporterName || null,
+            importerName: importerName || null,
+            originCountry: originCountry || null,
+            currency: currency || null,
+            invoiceSubtotal: invoiceSubtotal || null,
+            incoterm: incoterm || null,
+            hasCommercialInvoice,
+            lineItemCount: lineItems.length,
+          },
         },
       });
       agentDecisionId = agentDecision.id;

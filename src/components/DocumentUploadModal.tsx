@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Upload, X, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles } from "lucide-react";
 
 interface DocumentUploadModalProps {
@@ -21,9 +21,26 @@ export function DocumentUploadModal({
   const [file, setFile] = useState<File | null>(null);
   const [docType, setDocType] = useState<string>("Commercial Invoice");
   const [selectedShipmentId, setSelectedShipmentId] = useState<string>(initialShipmentId);
+  const [availableShipments, setAvailableShipments] = useState<any[]>(shipments);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetch("/api/shipments")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.shipments && Array.isArray(data.shipments) && data.shipments.length > 0) {
+            setAvailableShipments(data.shipments);
+            if (!selectedShipmentId || selectedShipmentId === "") {
+              setSelectedShipmentId(initialShipmentId || data.shipments[0].id);
+            }
+          }
+        })
+        .catch((err) => console.error("Modal shipment fetch error:", err));
+    }
+  }, [isOpen, initialShipmentId]);
 
   if (!isOpen) return null;
 
@@ -130,7 +147,7 @@ export function DocumentUploadModal({
               className="w-full px-4 py-2.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/20 transition-all"
             >
               <option value="" disabled>Select a Shipment</option>
-              {shipments.map((shp: any) => (
+              {(availableShipments.length > 0 ? availableShipments : shipments).map((shp: any) => (
                 <option key={shp.id} value={shp.id}>
                   {shp.shipmentNumber || shp.referenceNumber || shp.id} ({shp.status || "Unknown"})
                 </option>

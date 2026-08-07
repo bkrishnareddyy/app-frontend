@@ -350,7 +350,7 @@ export default function DocumentsPage() {
                       <p className="text-xs text-[#86868B] mt-1">Binary trade file stored securely in Qubere Document Vault.</p>
                     </div>
                     <a
-                      href={previewDoc.url}
+                      href={previewDoc.url.includes("vercel-storage.com") ? `/api/documents/proxy?url=${encodeURIComponent(previewDoc.url)}` : previewDoc.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#0071E3] text-white text-xs font-semibold hover:bg-[#0077ED] transition-colors"
@@ -387,7 +387,7 @@ export default function DocumentsPage() {
 
                 {previewDoc.url && previewDoc.url !== "#" && (
                   <a
-                    href={previewDoc.url}
+                    href={previewDoc.url.includes("vercel-storage.com") ? `/api/documents/proxy?url=${encodeURIComponent(previewDoc.url)}` : previewDoc.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-4 py-2 rounded-xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold flex items-center space-x-1.5 shadow-2xs transition-colors"

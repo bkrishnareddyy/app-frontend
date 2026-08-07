@@ -15,8 +15,8 @@ export async function GET(req: Request) {
       return new NextResponse("Invalid URL", { status: 400 });
     }
 
-    // Only proxy Vercel Blob URLs
-    if (!blobUrl.includes("public.blob.vercel-storage.com")) {
+    // Allow all Vercel Blob Storage URLs (public and private buckets)
+    if (!blobUrl.includes("vercel-storage.com")) {
       return new NextResponse("Invalid URL Host", { status: 403 });
     }
 

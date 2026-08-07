@@ -85,6 +85,19 @@ export async function POST(req: Request) {
       }
     }
 
+    // Persist document record to database vault
+    const docRecord = await db.shipmentDocument.create({
+      data: {
+        accountId,
+        shipmentId: targetShipmentId,
+        fileName: file.name,
+        docType: rawDocType || "Commercial Invoice",
+        fileUrl: storageResult.url,
+        checksum: storageResult.checksum,
+        confidence: 95,
+      },
+    });
+
     // Map doc type string to enum if provided
     let docTypeOverride: DocumentType | undefined = undefined;
     if (rawDocType && rawDocType !== "AUTO_DETECT") {
