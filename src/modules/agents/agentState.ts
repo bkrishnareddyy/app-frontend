@@ -18,6 +18,37 @@ export interface MultiDimensionalConfidence {
   filingConfidence?: number;
 }
 
+export interface AgentDependencyMetadata {
+  inputsRequired: string[];
+  inputsReceived: string[];
+  missingInputs: string[];
+  blockedByAgents: string[];
+}
+
+export interface CanonicalShipmentState {
+  shipmentId: string;
+  lifecycleStatus: "COMPLETED" | "BLOCKED" | "REVIEW_REQUIRED";
+  userActionStatus: "ACTION_REQUIRED" | "NONE";
+  completeness: {
+    score: number;
+    missingFields: string[];
+  };
+  compliance: {
+    status: "CLEARED" | "BLOCKED_DEPENDENCY" | "REVIEW_REQUIRED";
+    reason: string;
+  };
+  filing: {
+    status: "READY" | "NOT_READY";
+    blockersCount: number;
+  };
+  confidence: {
+    extraction: number;
+    completeness: number;
+    filing: number;
+  };
+  humanTasksCount: number;
+}
+
 export interface AgentStateHistoryEntry {
   agentName: string;
   stepNumber: number;

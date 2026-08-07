@@ -116,7 +116,7 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
       buyerAssists: 1500.0,
     });
     expect(res.enteredCustomsValue).toBe(46800.0);
-    expect(res.valuationMethod).toContain("TRANSACTION VALUE");
+    expect(res.valuationMethod).toContain("TRANSACTION_VALUE");
     expect(res.agentDecisionId).toBeDefined();
   });
 

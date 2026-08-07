@@ -8,7 +8,7 @@ import { ComplianceAuditAgent, ComplianceAuditOutput } from "./complianceAuditAg
 import { FilingReadinessAgent, FilingReadinessOutput } from "./filingReadinessAgent";
 import { CustomsFilingAgent, CustomsFilingOutput } from "./customsFilingAgent";
 import { ResponseManagementAgent, ResponseManagementOutput } from "./responseManagementAgent";
-import { AgentState, MultiDimensionalConfidence } from "./agentState";
+import { AgentState, CanonicalShipmentState } from "./agentState";
 
 export interface PipelineOrchestrationInput {
   accountId: string;
@@ -46,7 +46,10 @@ export interface PipelineOrchestrationOutput {
   shipmentId: string;
   packetId: string;
   status: "COMPLETED" | "BLOCKED" | "REVIEW_REQUIRED";
+  lifecycleStatus: "COMPLETED" | "BLOCKED" | "REVIEW_REQUIRED";
+  userActionStatus: "ACTION_REQUIRED" | "NONE";
   pipelineStatus: "Completed" | "Review Required";
+  canonicalShipmentState: CanonicalShipmentState;
   blockingReasonCodes: string[];
   readiness: {
     score: number;
@@ -261,16 +264,13 @@ export class AgentOrchestrator {
       summary: agent6.enteredCustomsValue !== null
         ? `Computed Entered Customs Value $${agent6.enteredCustomsValue} (Transaction Value Method 1)`
         : "Valuation Skipped: Missing Commercial Invoice Pricing Data",
-      confidence: {
-        dataConfidence: agent2.invoiceSubtotal !== null ? 95 : 0,
-        ruleConfidence: 95,
-        decisionConfidence: agent2.invoiceSubtotal !== null ? 95 : 0,
-      },
+      confidence: agent6.confidenceMetrics,
       aiProviderUsed: agent6.aiProviderUsed,
       decisionId: agent6.agentDecisionId,
     });
 
     // 7. Agent 7: Compliance & Audit Risk (with Strict Dependency Gating)
+    const isOriginBlocked = agent5.status === "BLOCKED_DEPENDENCY";
     const agent7 = await ComplianceAuditAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
@@ -278,7 +278,7 @@ export class AgentOrchestrator {
       htsCode: agent4.classifications[0]?.htsCode,
       countryOfOrigin: agent2.originCountry,
       supplierName: agent2.exporterName || undefined,
-      isHtsBlocked: isHtsBlocked || agent5.status === "BLOCKED_DEPENDENCY",
+      isHtsBlocked: isHtsBlocked || isOriginBlocked,
     });
     state.complianceOutput = agent7;
     state.recordAgentExecution({
@@ -298,7 +298,8 @@ export class AgentOrchestrator {
       decisionId: agent7.agentDecisionId,
     });
 
-    // 8. Agent 8: Filing Readiness (Strict Completeness Gate)
+    // 8. Agent 8: Filing Readiness (Strict Completeness Gate & Summarization)
+    const isComplianceBlocked = agent7.status === "BLOCKED_DEPENDENCY";
     const agent8 = await FilingReadinessAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
@@ -307,6 +308,9 @@ export class AgentOrchestrator {
       dutyDue: 0.0,
       lineItemCount: agent2.lineItems.length,
       hasCommercialInvoice: agent2.hasCommercialInvoice,
+      isHtsBlocked,
+      isOriginBlocked,
+      isComplianceBlocked,
     });
     state.readinessOutput = agent8;
     state.recordAgentExecution({
@@ -367,7 +371,7 @@ export class AgentOrchestrator {
       agentName: "Response & Post-Summary Agent",
       stepNumber: 10,
       timestamp: new Date().toISOString(),
-      status: agent10.status,
+      status: agent10.status === "Completed" ? "Completed" : "Review Required",
       summary: `Post-Summary scan complete: $${agent10.totalPotentialRefund} in refund opportunities identified.`,
       confidence: {
         dataConfidence: agent2.hasCommercialInvoice ? 95 : 0,
@@ -389,7 +393,8 @@ export class AgentOrchestrator {
     if (!agent8.readyForTransmission) blockingReasonCodes.push("BLOCKED_FILING_READINESS");
 
     const pipelineStatus = blockingReasonCodes.length === 0 ? "Completed" : "Review Required";
-    const status = blockingReasonCodes.length === 0 ? "COMPLETED" : "BLOCKED";
+    const status: "COMPLETED" | "BLOCKED" = blockingReasonCodes.length === 0 ? "COMPLETED" : "BLOCKED";
+    const userActionStatus: "ACTION_REQUIRED" | "NONE" = status === "COMPLETED" ? "NONE" : "ACTION_REQUIRED";
 
     // Actionable Human Review Task with Required Fields
     const requiredFields: RequiredFieldRequirement[] = [];
@@ -502,17 +507,47 @@ export class AgentOrchestrator {
     ];
 
     const isSkipped = (s: any) => String(s).startsWith("Skipped");
-    const isCompleted = (s: any) => s === "Completed" || String(s) === "ACCEPTED";
+    const isCompleted = (s: any) => s === "Completed" || String(s) === "ACCEPTED" || String(s) === "COMPLETED_NO_ACTION";
 
     const completedCount = allStatuses.filter(isCompleted).length;
     const skippedCount = allStatuses.filter(isSkipped).length;
     const blockedCount = 10 - completedCount - skippedCount;
 
+    // Canonical Shipment State Object
+    const canonicalShipmentState: CanonicalShipmentState = {
+      shipmentId: input.shipmentId,
+      lifecycleStatus: status,
+      userActionStatus,
+      completeness: {
+        score: agent2.confidenceMetrics.dataCompleteness,
+        missingFields: agent2.missingFields,
+      },
+      compliance: {
+        status: agent7.status === "Completed" ? "CLEARED" : "BLOCKED_DEPENDENCY",
+        reason: agent7.status === "Completed"
+          ? "All pre-filing compliance audits cleared"
+          : "Compliance audit blocked due to missing HTS and Origin dependencies",
+      },
+      filing: {
+        status: agent8.readyForTransmission ? "READY" : "NOT_READY",
+        blockersCount: blockers.length,
+      },
+      confidence: {
+        extraction: agent2.confidenceMetrics.extractionConfidence,
+        completeness: agent2.confidenceMetrics.dataCompleteness,
+        filing: agent8.readinessScore,
+      },
+      humanTasksCount: humanReviewTask ? 1 : 0,
+    };
+
     return {
       shipmentId: input.shipmentId,
       packetId: agent1.packetId,
       status,
+      lifecycleStatus: status,
+      userActionStatus,
       pipelineStatus,
+      canonicalShipmentState,
       blockingReasonCodes,
       readiness: {
         score: agent8.readinessScore,
