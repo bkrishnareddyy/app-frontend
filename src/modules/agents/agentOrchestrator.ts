@@ -115,8 +115,10 @@ export class AgentOrchestrator {
       agentName: "Product Intelligence Agent",
       stepNumber: 3,
       timestamp: new Date().toISOString(),
-      status: agent3.status,
-      summary: `Enriched ${agent3.profiles.length} SKU profiles with GRI 3(b) essential character`,
+      status: agent3.status === "Completed" ? "Completed" : "Review Required",
+      summary: agent3.status === "Completed"
+        ? `Enriched ${agent3.profiles.length} SKU profiles with GRI 3(b) essential character`
+        : "Product Intelligence Paused: Waiting for OCR / Product Description Extraction",
       confidence: agent3.confidence,
       aiProviderUsed: agent3.aiProviderUsed,
       decisionId: agent3.agentDecisionId,
@@ -140,8 +142,10 @@ export class AgentOrchestrator {
       agentName: "HTS Classification Agent",
       stepNumber: 4,
       timestamp: new Date().toISOString(),
-      status: agent4.status,
-      summary: `Classified line item to HTS ${agent4.classifications[0]?.htsCode} (Evaluator Score: ${agent4.classifications[0]?.evaluatorScore}%)`,
+      status: agent4.status === "Completed" ? "Completed" : "Review Required",
+      summary: agent4.status === "Completed"
+        ? `Classified line item to HTS ${agent4.classifications[0]?.htsCode} (Evaluator Score: ${agent4.classifications[0]?.evaluatorScore}%)`
+        : "HTS Classification Blocked: No Valid Product Description Present",
       confidence: agent4.overallConfidence,
       aiProviderUsed: agent4.aiProviderUsed,
       decisionId: agent4.agentDecisionId,

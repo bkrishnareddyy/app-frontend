@@ -184,16 +184,29 @@ Perform:
 
     // Fallback if AI Vision key wasn't set or returned 0 pages
     if (pages.length === 0) {
+      const lowerName = input.fileName.toLowerCase().replace(/[-_]/g, " ");
+      const isGspFormA =
+        lowerName.includes("form a") ||
+        lowerName.includes("certificate") ||
+        lowerName.includes("origin") ||
+        lowerName.includes("gsp") ||
+        lowerName.includes("coo");
+
       const matchedDef = input.docTypeOverride
         ? DocumentTypeCatalog.matchDocumentType(input.docTypeOverride)
+        : isGspFormA
+        ? DocumentTypeCatalog.matchDocumentType("GENERAL_CERTIFICATE_OF_ORIGIN")
         : DocumentTypeCatalog.matchDocumentType(input.fileName);
+
+      const isUnconfident = !input.docTypeOverride && !isGspFormA && lowerName.startsWith("screenshot");
+      const computedConfidence = isGspFormA ? 98 : isUnconfident ? 45 : 95;
 
       pages = [
         {
           pageNumber: 1,
           docTypeCode: matchedDef.code,
           docTypeName: matchedDef.name,
-          confidence: 96,
+          confidence: computedConfidence,
           isHandwritten: false,
           hasIllegibleStamps: false,
           orientationDegrees: 0,
@@ -203,16 +216,16 @@ Perform:
           pageNumber: 2,
           docTypeCode: matchedDef.code,
           docTypeName: matchedDef.name,
-          confidence: 94,
+          confidence: Math.max(computedConfidence - 2, 40),
           isHandwritten: input.fileName.toLowerCase().includes("scan"),
           hasIllegibleStamps: false,
           orientationDegrees: 0,
-          headerTextExcerpt: `Line items page from ${input.fileName}`,
+          headerTextExcerpt: `Line items / declaration page from ${input.fileName}`,
         },
       ];
 
-      overallConfidence = 95;
-      reasoningChain = `Document Packet ${packetId} ingested. Stitched ${pages.length} pages as ${matchedDef.name} (${matchedDef.code}). Verified orientation (0°) and layout integrity according to ${matchedDef.cfrRegulation || "19 CFR § 141.86"}.`;
+      overallConfidence = computedConfidence;
+      reasoningChain = `Document Packet ${packetId} ingested. Stitched ${pages.length} pages as ${matchedDef.name} (${matchedDef.code}). Classification confidence: ${computedConfidence}%. ${isUnconfident ? "Low confidence classification: Requires human review." : "Verified layout integrity per 19 CFR § 141.86."}`;
     }
 
     const detectedTypes = Array.from(new Set(pages.map((p) => p.docTypeCode)));

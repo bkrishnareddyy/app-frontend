@@ -33,7 +33,7 @@ export interface HTSClassificationInput {
 
 export interface HTSClassificationOutput {
   shipmentId: string;
-  status: "Completed" | "Review Required";
+  status: "Completed" | "Review Required" | "BLOCKED_MISSING_DESCRIPTION";
   classifications: ClassificationResultItem[];
   overallConfidence: number;
   reasoningChain: string;
@@ -48,8 +48,50 @@ export class HTSClassificationAgent {
 
   static async execute(input: HTSClassificationInput): Promise<HTSClassificationOutput> {
     let aiProvider = "Gemini 2.5 Pro Legal Engine (Evaluator-Optimizer Loop)";
-    const results: ClassificationResultItem[] = [];
 
+    // Prerequisite Check: STOP if no valid product profiles or descriptions exist
+    const hasValidDescription = input.productProfiles.some((p) => {
+      const d = (p.rawDescription || "").toLowerCase();
+      return (
+        d.length > 5 &&
+        !d.startsWith("screenshot") &&
+        !d.includes("needs classification") &&
+        !d.includes("general cargo")
+      );
+    });
+
+    if (input.productProfiles.length === 0 || !hasValidDescription) {
+      const reasoningChain = "HTS Classification Gating STOPPED: Product description is missing or invalid. HTS codes will NOT be assigned to unknown goods per 19 CFR Part 152.";
+
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "HTS Classification Agent",
+          agentIcon: "BookOpen",
+          status: "Needs Review",
+          confidence: 0,
+          decisionSummary: "HTS Classification Gating: Paused because product description is missing or unverified.",
+          purpose: "HTS 10-digit classification and GRI ruling legal analysis",
+          dataSources: ["HTS Classification Gate"],
+          regulations: ["19 CFR Part 152", "General Rules of Interpretation (GRI 1-6)"],
+          proposedDescription: "BLOCKED_MISSING_DESCRIPTION",
+          rulesApplied: ["Product Description Validation Prerequisite Rule"],
+        },
+      });
+
+      return {
+        shipmentId: input.shipmentId,
+        status: "BLOCKED_MISSING_DESCRIPTION",
+        classifications: [],
+        overallConfidence: 0,
+        reasoningChain,
+        agentDecisionId: agentDecision.id,
+        aiProviderUsed: aiProvider,
+      };
+    }
+
+    const results: ClassificationResultItem[] = [];
     let overallConfidence = 98;
 
     for (const item of input.productProfiles) {

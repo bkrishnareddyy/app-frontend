@@ -30,7 +30,7 @@ export interface ProductIntelligenceInput {
 
 export interface ProductIntelligenceOutput {
   shipmentId: string;
-  status: "Completed" | "Review Required";
+  status: "Completed" | "Review Required" | "WAITING_FOR_EXTRACTION";
   profiles: EnrichedProductProfile[];
   confidence: number;
   reasoningChain: string;
@@ -47,21 +47,64 @@ export class ProductIntelligenceAgent {
     let aiProvider = "Gemini 2.5 Flash (Google GenAI SDK)";
 
     const profiles: EnrichedProductProfile[] = [];
+
+    // Prerequisite Check: Stop if no valid line items or product descriptions exist
+    const hasValidDescription = input.lineItems.some((item) => {
+      const d = (item.description || "").toLowerCase();
+      return (
+        d.length > 5 &&
+        !d.startsWith("screenshot") &&
+        !d.includes("needs classification") &&
+        !d.includes("general cargo")
+      );
+    });
+
+    if (!hasValidDescription) {
+      const reasoningChain = "Product Intelligence Gating STOPPED: No valid product description present in document context. Status set to WAITING_FOR_EXTRACTION.";
+
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Product Intelligence Agent",
+          agentIcon: "Boxes",
+          status: "Needs Review",
+          confidence: 0,
+          decisionSummary: "Product Intelligence Gating: Missing valid product description. Pipeline paused for OCR extraction / document review.",
+          purpose: "SKU catalog enrichment and essential character analysis",
+          dataSources: ["Product Intelligence Gate"],
+          regulations: ["GRI 3(b) Essential Character"],
+          proposedDescription: "WAITING_FOR_EXTRACTION",
+          rulesApplied: ["Product Description Validation Prerequisite Rule"],
+        },
+      });
+
+      return {
+        shipmentId: input.shipmentId,
+        status: "WAITING_FOR_EXTRACTION",
+        profiles: [],
+        confidence: 0,
+        reasoningChain,
+        agentDecisionId: agentDecision.id,
+        aiProviderUsed: aiProvider,
+      };
+    }
+
     let overallConfidence = 95;
 
     for (const item of input.lineItems) {
-      const desc = item.description || "General Cargo Shipment";
+      const desc = item.description || "Unspecified Item";
       profiles.push({
         sku: item.sku || `SKU-${Date.now().toString().slice(-4)}`,
         rawDescription: desc,
-        enrichedDescription: `${desc} - Verified Commercial Grade Standard Specification`,
-        materialComposition: desc.toLowerCase().includes("steel") || desc.toLowerCase().includes("metal")
-          ? "Industrial Grade Alloy / Metal Composition"
-          : "Standard Commercial Manufactured Composition",
+        enrichedDescription: `${desc} - Standard Commercial Product Specification`,
+        materialComposition: desc.toLowerCase().includes("steel") || desc.toLowerCase().includes("metal") || desc.toLowerCase().includes("tin")
+          ? "Commercial Metal / Tin Steel Alloy"
+          : "Standard Manufactured Material Composition",
         essentialCharacter: `Primary function & commercial utility for ${desc} under GRI 3(b)`,
-        carbonContentPercentage: 0.05,
+        carbonContentPercentage: desc.toLowerCase().includes("steel") ? 0.05 : undefined,
         finish: "Standard Commercial Finish",
-        endUse: "Commercial & Industrial Supply Chain Item",
+        endUse: "Commercial Supply Chain Product",
         confidence: 95,
       });
     }
