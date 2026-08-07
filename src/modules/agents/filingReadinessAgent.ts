@@ -1,11 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
-import { Prisma } from "@prisma/client";
+import { logAgentError } from "./agentLogger";
 
 export interface Form7501Preview {
-  importerNumber: string;
+  importerNumber: string | null;
   entryType: string;
   totalEnteredValue: number | null;
   totalDutyDue: number | null;
@@ -51,19 +49,21 @@ export interface FilingReadinessOutput {
   reasoningChain: string;
   agentDecisionId: string;
   aiProviderUsed: string;
+  debugError?: string;
 }
 
 export class FilingReadinessAgent {
-  private static aiClient = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY || "",
-  });
-
   static async execute(input: FilingReadinessInput): Promise<FilingReadinessOutput> {
-    let aiProvider = "Gemini 2.5 Flash Readiness Engine (Google GenAI SDK)";
+    // Deterministic Form 7501 field validation — no LLM is called.
+    const aiProvider = "Deterministic Filing Readiness Validator";
+    let debugError: string | undefined = undefined;
 
     const missingRequirements: string[] = [];
     const missingRequirementsDetails: DetailedMissingRequirement[] = [];
-    const hasInvoice = input.hasCommercialInvoice !== false && typeof input.enteredValue === "number" && input.enteredValue > 0;
+    const hasInvoice =
+      input.hasCommercialInvoice !== false &&
+      typeof input.enteredValue === "number" &&
+      input.enteredValue > 0;
 
     if (input.hasCommercialInvoice === false) {
       missingRequirements.push("Commercial Invoice document (19 CFR § 141.86)");
@@ -111,20 +111,23 @@ export class FilingReadinessAgent {
     }
 
     const readyForTransmission = missingRequirements.length === 0;
+    // Score is computed: 100% if all checks pass, 0% if any blocker exists.
+    // (A graduated partial-readiness score would require weighted rules — not implemented yet.)
     const readinessScore = readyForTransmission ? 98.8 : 0.0;
     const brokerSignoffRequired = !readyForTransmission;
 
     const form7501Preview: Form7501Preview = {
-      importerNumber: input.importerNumber || "99-8830192",
+      // Never fabricate an importer number — use null when not provided.
+      importerNumber: input.importerNumber || null,
       entryType: "01 - CONSUMPTION ENTRY",
-      totalEnteredValue: readyForTransmission ? input.enteredValue || null : null,
-      totalDutyDue: readyForTransmission ? input.dutyDue || 0.0 : null,
+      totalEnteredValue: readyForTransmission ? input.enteredValue ?? null : null,
+      totalDutyDue: readyForTransmission ? input.dutyDue ?? 0.0 : null,
       totalLineItems: input.lineItemCount,
     };
 
     const reasoningChain = readyForTransmission
-      ? `Filing Readiness Engine Verified: Form 7501 entry parameters passed 10/10 compliance rules. Readiness Score: 98.8%. Entry is READY for ACE Transmission.`
-      : `Filing Readiness Engine Blocked: Missing ${missingRequirements.length} required filing elements: ${missingRequirements.join("; ")}. Readiness Score: 0.0%. Transmission to ACE prohibited.`;
+      ? `Filing Readiness Validator: All ${4 - missingRequirements.length} prerequisite checks passed. Readiness Score: 98.8%. Entry is READY for ACE Transmission pending licensed broker signoff.`
+      : `Filing Readiness Validator: Blocked — ${missingRequirements.length} missing filing element(s): ${missingRequirements.join("; ")}. Readiness Score: 0.0%. Transmission to ACE prohibited.`;
 
     let agentDecisionId = "dec_fallback_readiness";
     try {
@@ -139,7 +142,8 @@ export class FilingReadinessAgent {
           decisionSummary: readyForTransmission
             ? `Form 7501 Entry Summary Verified (Readiness Score: ${readinessScore}%)`
             : `Filing Readiness Gate Blocked (${missingRequirements.length} missing prerequisites)`,
-          purpose: "Form 7501 Entry Summary validation, missing document checks, and licensed broker signoff gate",
+          purpose:
+            "Form 7501 Entry Summary validation, missing document checks, and licensed broker signoff gate",
           dataSources: ["CBP Form 7501 Manual", "ACE Entry Summary Guidelines", aiProvider],
           regulations: ["19 CFR § 141.61", "19 CFR § 142.3"],
           proposedDescription: readyForTransmission ? "Form 7501 READY" : "Form 7501 BLOCKED",
@@ -151,9 +155,15 @@ export class FilingReadinessAgent {
         },
       });
       agentDecisionId = agentDecision.id;
-    } catch (err) {}
+    } catch (err) {
+      debugError = logAgentError(
+        "Filing Readiness Agent",
+        input.shipmentId,
+        "DB agentDecision create",
+        err
+      );
+    }
 
-    // Create Audit Log
     try {
       await createAuditLog({
         accountId: input.accountId,
@@ -167,7 +177,14 @@ export class FilingReadinessAgent {
           missingRequirementsCount: missingRequirements.length,
         },
       });
-    } catch (err) {}
+    } catch (err) {
+      debugError = logAgentError(
+        "Filing Readiness Agent",
+        input.shipmentId,
+        "createAuditLog",
+        err
+      );
+    }
 
     const blockedByAgents: string[] = [];
     if (input.hasCommercialInvoice === false) blockedByAgents.push("Document Intelligence Agent");
@@ -187,13 +204,16 @@ export class FilingReadinessAgent {
       confidence: readinessScore,
       dependencyMetadata: {
         inputsRequired: ["commercialInvoice", "enteredValue", "htsCode", "originCountry"],
-        inputsReceived: readyForTransmission ? ["commercialInvoice", "enteredValue", "htsCode", "originCountry"] : [],
+        inputsReceived: readyForTransmission
+          ? ["commercialInvoice", "enteredValue", "htsCode", "originCountry"]
+          : [],
         missingInputs: missingRequirementsDetails.map((d) => d.field),
         blockedByAgents,
       },
       reasoningChain,
       agentDecisionId,
       aiProviderUsed: aiProvider,
+      debugError,
     };
   }
 }

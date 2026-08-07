@@ -50,6 +50,8 @@ model Account {
   valuationAssistsRecords ValuationAssistsRecord[]
   auditTimelines         AuditTimeline[]
   screeningLogs          ScreeningLog[]
+  agentExecutionLogs     AgentExecutionLog[]
+  shipmentStateRecords   ShipmentStateRecord[]
 
   @@index([type])
   @@index([slug])
@@ -1003,3 +1005,44 @@ model TradeBenchmark {
 
   @@index([htsCode10])
 }
+
+model AgentExecutionLog {
+  id             String   @id @default(cuid())
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId     String
+  agentName      String
+  stepNumber     Int
+  status         String   // Completed | Review Required | Attention | BLOCKED
+  summary        String
+  confidence     Json?
+  aiProviderUsed String
+  decisionId     String
+  inputSnapshot  Json?
+  outputSnapshot Json?
+  timestamp      DateTime @default(now())
+
+  @@index([accountId])
+  @@index([shipmentId])
+  @@index([agentName])
+}
+
+model ShipmentStateRecord {
+  id               String   @id @default(cuid())
+  accountId        String
+  account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId       String   @unique
+  lifecycleStatus  String   // COMPLETED | BLOCKED | REVIEW_REQUIRED
+  userActionStatus String   // ACTION_REQUIRED | NONE
+  completenessScore Int     @default(0)
+  complianceStatus String   // CLEARED | BLOCKED_DEPENDENCY
+  readinessScore   Int      @default(0)
+  blockersCount    Int      @default(0)
+  snapshotData     Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([shipmentId])
+}
+

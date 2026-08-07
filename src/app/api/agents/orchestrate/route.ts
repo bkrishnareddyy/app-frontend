@@ -26,8 +26,9 @@ export async function POST(req: Request) {
       accountId: ctx.accountId,
       userId: ctx.userId,
       shipmentId: targetShipmentId,
-      fileName: body.fileName || "Commercial_Invoice_INV-88421.pdf",
-      fileUrl: body.fileUrl || "https://storage.qubere.ai/docs/inv-88421.pdf",
+      fileName: body.fileName,
+      fileUrl: body.fileUrl,
+      mimeType: body.mimeType,
     });
 
     return NextResponse.json({

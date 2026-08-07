@@ -59,6 +59,8 @@ export interface DocumentIntelligenceOutput {
   };
   mathValidationPassed: boolean;
   mathDiscrepancy?: string;
+  /** Populated when the Gemini vision call throws, so failures are visible in the API response. */
+  extractionError?: string;
   reasoningChain: string;
   agentDecisionId: string;
   aiProviderUsed: string;
@@ -119,44 +121,10 @@ const intelligenceSchema: Schema = {
   ],
 };
 
-// Synonym Extrapolation Engine: Maps raw discovered labels to standardized compliance fields
-const SYNONYM_MAP: Record<string, string[]> = {
-  exporterName: ["exporter", "shipper", "seller", "vendor", "manufacturer", "consignor", "exporting company"],
-  importerName: ["consignee", "importer", "buyer", "sold to", "ship to", "deliver to", "importing company"],
-  originCountry: ["origin", "country of origin", "made in", "origin country", "manufactured in"],
-  destinationCountry: ["destination", "country of destination", "to country", "final destination"],
-  transportDetails: ["transport", "vessel", "mode of transport", "port of loading", "port of discharge", "carrier"],
-  invoiceNumber: ["invoice no", "invoice number", "inv #", "invoice #", "bill no", "reference no"],
-  invoiceDate: ["invoice date", "date", "issued date", "date of issue", "certification date"],
-  currency: ["currency", "inv currency", "payment currency"],
-  invoiceSubtotal: ["subtotal", "total amount", "grand total", "invoice total", "invoice value", "amount"],
-};
-
 export class DocumentIntelligenceAgent {
   private static aiClient = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY || "",
   });
-
-  /**
-   * Extrapolates standardized domain fields from raw discovered key-value pairs via synonym matching.
-   * NEVER alters the raw discovered values.
-   */
-  private static extrapolateSynonyms(rawKVs: Record<string, string | number | null>): Partial<DocumentIntelligenceOutput> {
-    const result: Record<string, any> = {};
-
-    for (const [rawKey, rawValue] of Object.entries(rawKVs)) {
-      if (rawValue === null || rawValue === undefined) continue;
-      const normalizedKey = rawKey.trim().toLowerCase();
-
-      for (const [targetField, synonyms] of Object.entries(SYNONYM_MAP)) {
-        if (!result[targetField] && synonyms.some((syn) => normalizedKey.includes(syn))) {
-          result[targetField] = rawValue;
-        }
-      }
-    }
-
-    return result;
-  }
 
   static async execute(input: DocumentIntelligenceInput): Promise<DocumentIntelligenceOutput> {
     const isCoO =
@@ -180,6 +148,7 @@ export class DocumentIntelligenceAgent {
     let hasCommercialInvoice = !isCoO;
     let confidence = 95;
     const missingFields: string[] = [];
+    let extractionError: string | undefined = undefined;
 
     let lineItems: LineItemExtraction[] = [];
     let aiProvider = "Gemini 2.5 Flash Vision (Google GenAI SDK)";
@@ -190,11 +159,14 @@ export class DocumentIntelligenceAgent {
         const base64Data = input.fileBuffer.toString("base64");
 
         const prompt = `You are Qubere's autonomous Document Intelligence Agent (Agent 2 of 10).
-Perform Key-Value Discovery & Extraction from this trade document.
-DISCOVERY DIRECTIVE:
-1. Discover ALL raw label-value pairs on the document (e.g. {"PO No": "290051", "Exporter": "SHENZHEN NICE FIT...", "Consignee": "POUNDLAND LTD", "Origin": "China"}).
-2. Do NOT mutate or invent missing values. If a field (e.g. invoice value, currency, HTS code) is NOT present on the document, set it to null.
-3. Extract exporter, importer, country of origin, destination country, transport details, invoice number/date, MID, incoterm, currency, invoice subtotal, and line items.`;
+Perform Key-Value Discovery & Semantic Field Mapping from this trade document.
+
+INSTRUCTIONS:
+1. Discover ALL raw label-value pairs on the document (e.g. {"PO No": "290051", "Shipper": "ACME Corp", "Consignee": "Logistics LLC", "Origin": "China"}) and populate 'discoveredKeyValues'.
+2. Semantically map discovered labels to canonical customs fields (e.g. map "Shipper"/"Consignor"/"Seller"/"Vendor" to 'exporterName', map "Consignee"/"Buyer"/"Ship To" to 'importerName', map "Country of Origin"/"Made in" to 2-letter ISO 'originCountry', map "Subtotal"/"Grand Total"/"Amount" to numeric 'invoiceSubtotal').
+3. Extract all itemized tabular line items into 'lineItems'.
+4. Do NOT mutate or invent missing values. If a field is NOT present on the document, set it to null.
+5. Set 'hasCommercialInvoice' to true ONLY if financial line items and subtotal pricing are present on the document.`;
 
         const response = await this.aiClient.models.generateContent({
           model: "gemini-2.5-flash",
@@ -223,19 +195,7 @@ DISCOVERY DIRECTIVE:
           }
         }
 
-        // Run Synonym Extrapolation Engine on raw discovered key-value pairs
-        const extrapolated = this.extrapolateSynonyms(rawDiscoveredKeyValues);
-        if (extrapolated.exporterName) exporterName = String(extrapolated.exporterName);
-        if (extrapolated.importerName) importerName = String(extrapolated.importerName);
-        if (extrapolated.originCountry) originCountry = String(extrapolated.originCountry);
-        if (extrapolated.destinationCountry) destinationCountry = String(extrapolated.destinationCountry);
-        if (extrapolated.transportDetails) transportDetails = String(extrapolated.transportDetails);
-        if (extrapolated.invoiceNumber) invoiceNumber = String(extrapolated.invoiceNumber);
-        if (extrapolated.invoiceDate) invoiceDate = String(extrapolated.invoiceDate);
-        if (extrapolated.currency) currency = String(extrapolated.currency);
-        if (extrapolated.invoiceSubtotal !== undefined) invoiceSubtotal = Number(extrapolated.invoiceSubtotal);
-
-        // Direct schema overrides if present
+        // Direct LLM semantic mapping values
         if (parsed.exporterName) exporterName = parsed.exporterName;
         if (parsed.importerName) importerName = parsed.importerName;
         if (parsed.originCountry) originCountry = parsed.originCountry;
@@ -251,17 +211,20 @@ DISCOVERY DIRECTIVE:
         if (parsed.confidence) confidence = parsed.confidence;
         if (parsed.lineItems && parsed.lineItems.length > 0) lineItems = parsed.lineItems;
       } catch (err: any) {
-        console.warn("Agent 2 Gemini Vision extraction note:", err?.message || err);
+        console.warn("Agent 2 Gemini Vision extraction error:", err?.message || err);
         aiProvider = "Qubere Key-Value Discovery Engine";
+        extractionError = err?.message || String(err);
       }
     } else {
       aiProvider = "Qubere Key-Value Discovery Engine";
     }
 
-    // Grounded Fallback Discovery for Form A Certificate of Origin or Test Fixture
+    // Grounded Fallback Discovery — only runs when Gemini returned 0 line items
     if (lineItems.length === 0) {
-      if (isCoO) {
-        rawDiscoveredKeyValues = {
+      if (isCoO && process.env.NODE_ENV === "test") {
+        // TEST-ONLY fixture: CoO sample data (SHENZHEN NICE FIT / POUNDLAND).
+        // Gated behind NODE_ENV=test so it can never run in production.
+        const COO_FIXTURE_KVS: Record<string, string | number | null> = {
           "Exporter": "SHENZHEN NICE FIT IMP & EXP CO., LTD",
           "Consignee": "POUNDLAND LTD",
           "Origin": "China",
@@ -276,10 +239,10 @@ DISCOVERY DIRECTIVE:
           "Item No": "61539535",
           "Quantity": "257 cartons (12,336 pcs)",
         };
+        rawDiscoveredKeyValues = COO_FIXTURE_KVS;
 
-        const extrapolated = this.extrapolateSynonyms(rawDiscoveredKeyValues);
-        exporterName = String(extrapolated.exporterName || "SHENZHEN NICE FIT IMP & EXP CO., LTD");
-        importerName = String(extrapolated.importerName || "POUNDLAND LTD");
+        exporterName = "SHENZHEN NICE FIT IMP & EXP CO., LTD";
+        importerName = "POUNDLAND LTD";
         originCountry = "CN";
         destinationCountry = "GB";
         transportDetails = "From Yantian, China to UK by Sea";
@@ -301,38 +264,9 @@ DISCOVERY DIRECTIVE:
             countryOfOrigin: "CN",
           },
         ];
-      } else if (!input.fileBuffer || input.fileName === "Commercial_Invoice_INV-88421.pdf") {
-        rawDiscoveredKeyValues = {
-          "Exporter": "Shenzhen Precision Hardware Corp",
-          "Importer": "Qubere Enterprise Logistics LLC",
-          "Origin": "Mexico",
-          "Currency": "USD",
-          "Invoice Subtotal": 48500.0,
-          "Incoterm": "FOB SHENZHEN",
-          "Invoice No": "INV-88421",
-        };
-
-        exporterName = "Shenzhen Precision Hardware Corp";
-        importerName = "Qubere Enterprise Logistics LLC";
-        originCountry = "MX";
-        currency = "USD";
-        invoiceSubtotal = 48500.0;
-        hasCommercialInvoice = true;
-
-        lineItems = [
-          {
-            lineNumber: 1,
-            sku: "SKU-992-FAST",
-            description: "Stainless Steel Fasteners 1/4-20 Grade 304",
-            quantity: 10000,
-            unitPrice: 4.85,
-            totalAmount: 48500.0,
-            unitOfMeasure: "PCS",
-            countryOfOrigin: "MX",
-          },
-        ];
       } else {
-        // User uploaded file: DO NOT invent values
+        // Production fallback: Gemini returned no results (vision call failed or no key present).
+        // Ground all values to null — do NOT invent data.
         const rawFileName = input.fileName || "trade-document.pdf";
         const cleanFileName = rawFileName.replace(/[-_]/g, " ").replace(/\.[^/.]+$/, "");
         const formattedTitle = cleanFileName.charAt(0).toUpperCase() + cleanFileName.slice(1);
@@ -471,6 +405,7 @@ DISCOVERY DIRECTIVE:
       },
       mathValidationPassed,
       mathDiscrepancy,
+      extractionError,
       reasoningChain,
       agentDecisionId,
       aiProviderUsed: aiProvider,

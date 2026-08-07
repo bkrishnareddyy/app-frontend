@@ -103,6 +103,7 @@ export async function POST(req: Request) {
       fileName: file.name,
       fileUrl: storageResult.url,
       fileBuffer,
+      mimeType: file.type || "application/pdf",
     });
 
     return NextResponse.json({

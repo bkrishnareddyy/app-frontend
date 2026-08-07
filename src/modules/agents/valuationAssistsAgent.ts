@@ -1,8 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
-import { Prisma } from "@prisma/client";
+import { logAgentError } from "./agentLogger";
 
 export interface ValuationAdjustment {
   type: string;
@@ -39,21 +37,23 @@ export interface ValuationAssistsOutput {
   reasoningChain: string;
   agentDecisionId: string;
   aiProviderUsed: string;
+  /** Populated when a DB or audit call throws, so failures are visible in the API response. */
+  debugError?: string;
 }
 
 export class ValuationAssistsAgent {
-  private static aiClient = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY || "",
-  });
-
   static async execute(input: ValuationAssistsInput): Promise<ValuationAssistsOutput> {
-    let aiProvider = "Gemini 2.5 Flash Valuation Engine (Google GenAI SDK)";
+    // Deterministic arithmetic per 19 U.S.C. § 1401a — no LLM is called.
+    const aiProvider = "Deterministic Valuation Calculator (19 U.S.C. § 1401a)";
+    let debugError: string | undefined = undefined;
 
-    const hasInvoiceValue = typeof input.invoiceSubtotal === "number" && input.invoiceSubtotal > 0;
+    const hasInvoiceValue =
+      typeof input.invoiceSubtotal === "number" && input.invoiceSubtotal > 0;
 
     if (!hasInvoiceValue) {
-      const reasoningChain = "Valuation Agent skipped: Commercial Invoice pricing data is missing from document packet. Cannot appraise transaction value per 19 U.S.C. § 1401a without invoice totals.";
-      
+      const reasoningChain =
+        "Valuation Agent skipped: Commercial Invoice pricing data is missing from document packet. Cannot appraise transaction value per 19 U.S.C. § 1401a without invoice totals.";
+
       let agentDecisionId = "dec_fallback_valuation";
       try {
         const agentDecision = await db.agentDecision.create({
@@ -63,17 +63,25 @@ export class ValuationAssistsAgent {
             agentName: "Valuation Agent",
             agentIcon: "Calculator",
             status: "Needs Review",
-            confidence: 100,
+            confidence: 0,
             decisionSummary: "Valuation Skipped: Missing Commercial Invoice pricing data.",
-            purpose: "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
-            dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider],
+            purpose:
+              "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
+            dataSources: ["19 U.S.C. § 1401a Valuation Manual"],
             regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
             proposedDescription: "Valuation Skipped (No Invoice)",
             rulesApplied: ["19 U.S.C. 1401a Transaction Value Pre-Requisite Check"],
           },
         });
         agentDecisionId = agentDecision.id;
-      } catch (err) {}
+      } catch (err) {
+        debugError = logAgentError(
+          "Valuation Agent",
+          input.shipmentId,
+          "DB agentDecision create (skipped path)",
+          err
+        );
+      }
 
       return {
         shipmentId: input.shipmentId,
@@ -82,10 +90,7 @@ export class ValuationAssistsAgent {
         valuationMethod: "METHOD_1_TRANSACTION_VALUE_UNAVAILABLE",
         adjustments: [],
         confidence: 0,
-        confidenceMetrics: {
-          decisionConfidence: 100,
-          valuationConfidence: 0,
-        },
+        confidenceMetrics: { decisionConfidence: 100, valuationConfidence: 0 },
         dependencyMetadata: {
           inputsRequired: ["invoiceSubtotal", "currency"],
           inputsReceived: [],
@@ -95,63 +100,108 @@ export class ValuationAssistsAgent {
         reasoningChain,
         agentDecisionId,
         aiProviderUsed: aiProvider,
+        debugError,
       };
     }
 
-    const baseVal = input.invoiceSubtotal || 0;
-    const freightDeduction = input.oceanFreight || 3200.0;
-    const assistAddition = input.buyerAssists || 1500.0;
-    const enteredCustomsValue = Math.max(0, baseVal - freightDeduction + assistAddition);
+    const baseVal = input.invoiceSubtotal!;
 
-    const adjustments: ValuationAdjustment[] = [
-      {
+    // Only apply adjustments when the caller explicitly provides the values.
+    // Never silently assume $3,200 freight or $1,500 buyer assists on every shipment.
+    const adjustments: ValuationAdjustment[] = [];
+
+    if (typeof input.oceanFreight === "number" && input.oceanFreight > 0) {
+      adjustments.push({
         type: "DEDUCTION_INTERNATIONAL_FREIGHT",
-        amount: -freightDeduction,
+        amount: -input.oceanFreight,
         description: "Nondutiable Ocean Freight & Insurance per 19 CFR § 152.103",
-      },
-      {
+      });
+    }
+
+    if (typeof input.buyerAssists === "number" && input.buyerAssists > 0) {
+      adjustments.push({
         type: "ADDITION_BUYER_ASSIST",
-        amount: assistAddition,
+        amount: input.buyerAssists,
         description: "Tooling & Design Assist furnished by buyer per 19 U.S.C. § 1401a",
-      },
-    ];
+      });
+    }
 
-    const reasoningChain = `Invoice Subtotal: $${baseVal.toFixed(2)}. Deducted $${freightDeduction.toFixed(2)} non-dutiable ocean freight per 19 CFR 152.103. Added $${assistAddition.toFixed(2)} buyer tooling assist per 19 U.S.C. 1401a. Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)} USD under Method 1 (Transaction Value).`;
+    const totalAdjustment = adjustments.reduce((sum, a) => sum + a.amount, 0);
+    const enteredCustomsValue = Math.max(0, baseVal + totalAdjustment);
 
-    const agentDecision = await db.agentDecision.create({
-      data: {
+    // Confidence is proportional to input completeness, not a hardcoded constant.
+    const inputsReceived = ["invoiceSubtotal"];
+    const inputsRequired = ["invoiceSubtotal", "currency"];
+    const completeness = Math.round((inputsReceived.length / inputsRequired.length) * 100);
+
+    const adjustmentNote =
+      adjustments.length > 0
+        ? adjustments
+            .map((a) => `${a.type}: $${Math.abs(a.amount).toFixed(2)}`)
+            .join("; ")
+        : "No adjustments applied (oceanFreight and buyerAssists not provided by caller)";
+
+    const reasoningChain = `Invoice Subtotal: $${baseVal.toFixed(2)}. ${adjustmentNote}. Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)} USD under Method 1 (Transaction Value).`;
+
+    let agentDecisionId = "dec_fallback_valuation";
+    try {
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Valuation Agent",
+          agentIcon: "Calculator",
+          status: "Approved",
+          confidence: completeness,
+          decisionSummary: `Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)} (Method 1 Transaction Value). ${adjustments.length} adjustments applied.`,
+          purpose:
+            "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
+          dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider],
+          regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
+          proposedDescription: `Appraised Customs Value: $${enteredCustomsValue.toFixed(2)}`,
+          rulesApplied: [
+            "19 U.S.C. 1401a Transaction Value Calculation",
+            ...(adjustments.length > 0
+              ? [
+                  "19 CFR § 152.103 International Freight Deduction",
+                  "Tooling Assist Allocation Rule",
+                ]
+              : []),
+          ],
+        },
+      });
+      agentDecisionId = agentDecision.id;
+    } catch (err) {
+      debugError = logAgentError(
+        "Valuation Agent",
+        input.shipmentId,
+        "DB agentDecision create",
+        err
+      );
+    }
+
+    try {
+      await createAuditLog({
         accountId: input.accountId,
-        shipmentId: input.shipmentId,
-        agentName: "Valuation Agent",
-        agentIcon: "Calculator",
-        status: "Approved",
-        confidence: 99,
-        decisionSummary: `Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)} (Method 1 Transaction Value)`,
-        purpose: "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
-        dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider],
-        regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
-        proposedDescription: `Appraised Customs Value: $${enteredCustomsValue.toFixed(2)}`,
-        rulesApplied: [
-          "19 U.S.C. 1401a Transaction Value Calculation",
-          "19 CFR § 152.103 International Freight Deduction",
-          "Tooling Assist Allocation Rule",
-        ],
-      },
-    });
-
-    // Create Audit Log
-    await createAuditLog({
-      accountId: input.accountId,
-      userId: input.userId,
-      action: "AGENT_EXECUTION_COMPLETED",
-      entity: "AGENT_DECISION",
-      entityId: agentDecision.id,
-      metadata: {
-        agentName: "Valuation Agent",
-        enteredCustomsValue,
-        valuationMethod: "METHOD_1_TRANSACTION_VALUE",
-      },
-    });
+        userId: input.userId,
+        action: "AGENT_EXECUTION_COMPLETED",
+        entity: "AGENT_DECISION",
+        entityId: agentDecisionId,
+        metadata: {
+          agentName: "Valuation Agent",
+          enteredCustomsValue,
+          valuationMethod: "METHOD_1_TRANSACTION_VALUE",
+          adjustmentsApplied: adjustments.length,
+        },
+      });
+    } catch (err) {
+      debugError = logAgentError(
+        "Valuation Agent",
+        input.shipmentId,
+        "createAuditLog",
+        err
+      );
+    }
 
     return {
       shipmentId: input.shipmentId,
@@ -159,20 +209,21 @@ export class ValuationAssistsAgent {
       enteredCustomsValue,
       valuationMethod: "METHOD_1_TRANSACTION_VALUE",
       adjustments,
-      confidence: 99,
+      confidence: completeness,
       confidenceMetrics: {
-        decisionConfidence: 99,
-        valuationConfidence: 99,
+        decisionConfidence: completeness,
+        valuationConfidence: completeness,
       },
       dependencyMetadata: {
-        inputsRequired: ["invoiceSubtotal", "currency"],
-        inputsReceived: ["invoiceSubtotal"],
+        inputsRequired,
+        inputsReceived,
         missingInputs: [],
         blockedByAgents: [],
       },
       reasoningChain,
-      agentDecisionId: agentDecision.id,
+      agentDecisionId,
       aiProviderUsed: aiProvider,
+      debugError,
     };
   }
 }

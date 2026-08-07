@@ -53,6 +53,8 @@ export interface DocumentIntakeAgentOutput {
   shipmentDocumentId: string;
   aiProviderUsed: string;
   apiKeyActive: boolean;
+  /** Populated when the Gemini vision call throws, so failures are visible in the API response. */
+  extractionError?: string;
 }
 
 // Flexible JSON schema for Gemini 2.5 Vision Output
@@ -125,6 +127,7 @@ export class DocumentIntakeAgent {
     let pages: PageAnalysisResult[] = [];
     let overallConfidence = 95;
     let reasoningChain = "";
+    let extractionError: string | undefined = undefined;
 
     // 1. If Gemini API Key is active & file buffer is provided, run Gemini 2.5 Vision Multi-modal Agent
     if (this.aiClient && input.fileBuffer) {
@@ -176,9 +179,10 @@ Perform:
             headerTextExcerpt: p.headerTextExcerpt || matchedDef.description,
           };
         });
-      } catch (err) {
+      } catch (err: any) {
         console.warn("[DocumentIntakeAgent] Gemini API call exception, using DocumentCatalog Engine fallback:", err);
         aiProvider = "DocumentCatalog Vision Engine (Fallback)";
+        extractionError = err?.message || String(err);
       }
     }
 
@@ -331,6 +335,7 @@ Perform:
       shipmentDocumentId: shipmentDocId,
       aiProviderUsed: aiProvider,
       apiKeyActive,
+      extractionError,
     };
 
     // 6. Reactive Multi-Agent Pipeline Trigger: Emit event to wake up Agent 2
