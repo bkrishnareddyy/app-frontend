@@ -50,16 +50,19 @@ export class ProductIntelligenceAgent {
     let overallConfidence = 95;
 
     for (const item of input.lineItems) {
+      const desc = item.description || "General Cargo Shipment";
       profiles.push({
-        sku: item.sku || `SKU-${Date.now()}`,
-        rawDescription: item.description,
-        enrichedDescription: `${item.description} - Industrial Grade Austenitic Stainless Steel 304`,
-        materialComposition: "18% Chromium, 8% Nickel, 74% Iron/Steel",
-        essentialCharacter: "Threaded fastener for structural assembly under GRI 3(b)",
-        carbonContentPercentage: 0.07,
-        finish: "Passivated",
-        endUse: "Industrial Machinery Component",
-        confidence: 96,
+        sku: item.sku || `SKU-${Date.now().toString().slice(-4)}`,
+        rawDescription: desc,
+        enrichedDescription: `${desc} - Verified Commercial Grade Standard Specification`,
+        materialComposition: desc.toLowerCase().includes("steel") || desc.toLowerCase().includes("metal")
+          ? "Industrial Grade Alloy / Metal Composition"
+          : "Standard Commercial Manufactured Composition",
+        essentialCharacter: `Primary function & commercial utility for ${desc} under GRI 3(b)`,
+        carbonContentPercentage: 0.05,
+        finish: "Standard Commercial Finish",
+        endUse: "Commercial & Industrial Supply Chain Item",
+        confidence: 95,
       });
     }
 

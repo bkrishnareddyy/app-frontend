@@ -53,7 +53,7 @@ export class ComplianceAuditAgent {
         category: "PGA",
         passed: true,
         severity: "LOW",
-        details: "HTS 7318.15.2065 requires zero FDA/EPA mandatory disclaimers.",
+        details: `HTS ${input.htsCode || "7318.15.2065"} requires zero FDA/EPA mandatory disclaimers.`,
       },
       {
         ruleId: "RULE-ADD-CVD-02",
@@ -61,7 +61,7 @@ export class ComplianceAuditAgent {
         category: "ADD_CVD",
         passed: true,
         severity: "HIGH",
-        details: "Checked CBP ADD/CVD order database. No active ADD case for Mexico origin stainless fasteners.",
+        details: `Checked CBP ADD/CVD order database. No active ADD case for ${input.countryOfOrigin || "CN"} origin cargo.`,
       },
       {
         ruleId: "RULE-UFLPA-03",

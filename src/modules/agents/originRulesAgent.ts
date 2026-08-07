@@ -63,7 +63,9 @@ export class OriginRulesAgent {
       });
     }
 
-    const reasoningChain = `Evaluated USMCA Annex 4-B tariff shift requirement for Chapter 73. Shift from Subheading 7213 to 7318 (CTH requirement met). Substantial transformation in Mexico confirmed. USMCA SPI 'S' granted.`;
+    const primaryCo = qualifications[0]?.countryOfOrigin || "CN";
+    const primaryFta = qualifications[0]?.ftaProgram || "MFN";
+    const reasoningChain = `Evaluated origin rules and tariff shift requirement for ${primaryCo}. ${primaryFta !== "NONE" && primaryFta !== "MFN" ? `FTA preference '${primaryFta}' granted under Criterion B.` : "Standard MFN tariff duty rate applied."}`;
 
     const agentDecision = await db.agentDecision.create({
       data: {

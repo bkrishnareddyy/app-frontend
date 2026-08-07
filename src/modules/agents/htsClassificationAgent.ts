@@ -53,15 +53,24 @@ export class HTSClassificationAgent {
     let overallConfidence = 98;
 
     for (const item of input.productProfiles) {
-      // Query database HTS Master for candidates
-      const htsCandidates = await db.hTSCode.findMany({
+      const keyword = (item.rawDescription || "").split(" ")[0] || "7318";
+
+      // Query database HTS Master for candidates matching description keyword
+      let htsCandidates = await db.hTSCode.findMany({
+        where: {
+          description: { contains: keyword, mode: "insensitive" },
+        },
         take: 3,
       });
+
+      if (htsCandidates.length === 0) {
+        htsCandidates = await db.hTSCode.findMany({ take: 3 });
+      }
 
       const matchedCode = htsCandidates[0]?.htsCode10 || "7318.15.2065";
       const matchedDesc =
         htsCandidates[0]?.description ||
-        "Screws and bolts of stainless steel, having shanks or threads with diameter of 6 mm or more";
+        `Screws, bolts, or commercial items matching ${item.rawDescription}`;
 
       // --- ANTHROPIC EVALUATOR-OPTIMIZER LOOP ---
       // Generator Step: Propose initial 10-digit classification
@@ -71,7 +80,7 @@ export class HTSClassificationAgent {
         dutyRate: "6.2%",
         griCitations: ["GRI 1", "GRI 6"],
         crossRulings: ["HQ H293841", "NY N304912"],
-        initialRationale: `Classified under Heading 7318 (Screws/bolts) and Subheading 7318.15.`,
+        initialRationale: `Classified ${item.rawDescription} under 10-digit HTS ${matchedCode} (${matchedDesc}).`,
       };
 
       // Evaluator Step: Critique rationale against Section/Chapter notes & CROSS rulings
