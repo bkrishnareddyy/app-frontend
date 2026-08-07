@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
-import { Building2 } from "lucide-react";
+import { Building2, Globe } from "lucide-react";
 
 interface HeaderProps {
   tenantName?: string;
@@ -9,6 +10,8 @@ interface HeaderProps {
 }
 
 export function Header({ tenantName = "Acme Corporation", userName = "User" }: HeaderProps) {
+  const router = useRouter();
+
   return (
     <header className="h-16 border-b border-[#E5E5EA] bg-[#F5F5F7]/80 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-30">
       <div className="flex items-center space-x-3">
@@ -23,17 +26,33 @@ export function Header({ tenantName = "Acme Corporation", userName = "User" }: H
       </div>
 
       <div className="flex items-center space-x-4">
-        <div className="text-right hidden sm:block">
-          <p className="text-xs font-semibold text-[#1D1D1F]">{userName}</p>
-          <p className="text-[10px] text-[#86868B]">Authenticated Session</p>
-        </div>
+        <button
+          onClick={() => router.push("/app/admin")}
+          className="text-right hidden sm:block hover:opacity-80 transition-opacity cursor-pointer group"
+          title="Click to view Account Profile & Language settings"
+        >
+          <p className="text-xs font-semibold text-[#1D1D1F] group-hover:text-[#0071E3] flex items-center justify-end space-x-1">
+            <span>{userName}</span>
+            <Globe className="w-3 h-3 text-[#0071E3] inline-block" />
+          </p>
+          <p className="text-[10px] text-[#86868B]">Account Profile & Language</p>
+        </button>
+
         <UserButton
           appearance={{
             elements: {
-              avatarBox: "w-9 h-9 border border-[#E5E5EA] shadow-xs",
+              avatarBox: "w-9 h-9 border border-[#E5E5EA] shadow-xs cursor-pointer",
             },
           }}
-        />
+        >
+          <UserButton.MenuItems>
+            <UserButton.Action
+              label="Account Profile & Country/Language"
+              labelIcon={<Globe className="w-4 h-4 text-[#0071E3]" />}
+              onClick={() => router.push("/app/admin")}
+            />
+          </UserButton.MenuItems>
+        </UserButton>
       </div>
     </header>
   );

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -19,7 +20,9 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" className="h-full dark">
         <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-50 antialiased`}>
-          {children}
+          <LanguageProvider>
+            {children}
+          </LanguageProvider>
         </body>
       </html>
     </ClerkProvider>

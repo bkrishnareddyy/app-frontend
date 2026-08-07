@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, Code2 } from "lucide-react";
+import { ShieldCheck, Code2, Bot } from "lucide-react";
 import { ApiStatusDrawer } from "./ApiStatusDrawer";
+
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 export function LandingPageHeader() {
   const [isApiDrawerOpen, setIsApiDrawerOpen] = useState(false);
+  const { t } = useLanguage();
 
   return (
     <>
@@ -19,19 +23,28 @@ export function LandingPageHeader() {
             <span className="text-xl font-bold tracking-tight text-[#1D1D1F]">Qubere</span>
           </Link>
 
-          <nav className="flex items-center space-x-4">
+          <nav className="flex items-center space-x-3">
             <button
               onClick={() => setIsApiDrawerOpen(true)}
               className="px-4 py-2 text-sm font-bold bg-white hover:bg-slate-50 text-[#0071E3] border border-[#E5E5EA] rounded-full shadow-2xs transition-all flex items-center space-x-1.5 cursor-pointer hover:scale-105"
             >
               <Code2 className="w-4 h-4" />
-              <span>API</span>
+              <span>{t.header.apiButton}</span>
             </button>
+
+            <Link
+              href="/agents"
+              className="px-4 py-2 text-sm font-bold bg-white hover:bg-slate-50 text-[#0071E3] border border-[#E5E5EA] rounded-full shadow-2xs transition-all flex items-center space-x-1.5 cursor-pointer hover:scale-105"
+            >
+              <Bot className="w-4 h-4" />
+              <span>{t.header.agentsButton}</span>
+            </Link>
+
             <Link
               href="/sign-in"
               className="px-4 py-2 text-sm font-medium bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-full shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
-              Sign In
+              {t.header.signIn}
             </Link>
           </nav>
         </div>

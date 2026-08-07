@@ -14,9 +14,13 @@ import {
   Settings,
   Shield,
   FileText,
+  Files,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
+
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 interface SidebarProps {
   currentAccountId: string;
@@ -41,25 +45,27 @@ export function Sidebar({
   memberships = [],
 }: SidebarProps) {
   const pathname = usePathname();
+  const { t } = useLanguage();
 
   const mainNavigation = [
-    { name: "Command Center", href: "/app/dashboard", icon: LayoutDashboard },
-    { name: "Shipments", href: "/app/shipments", icon: FileText },
-    { name: "Decisions", href: "/app/decisions", icon: Scale },
-    { name: "Customs Filing", href: "/app/filing", icon: FileCheck2 },
-    { name: "Regulatory Intel", href: "/app/regulatory", icon: Globe },
+    { name: t.nav.commandCenter, href: "/app/dashboard", icon: LayoutDashboard },
+    { name: t.nav.shipments, href: "/app/shipments", icon: FileText },
+    { name: t.nav.tradeDocuments, href: "/app/documents", icon: Files },
+    { name: t.nav.decisions, href: "/app/decisions", icon: Scale },
+    { name: t.nav.customsFiling, href: "/app/filing", icon: FileCheck2 },
+    { name: t.nav.regulatoryIntel, href: "/app/regulatory", icon: Globe },
   ];
 
   const adminNavigation = [
-    { name: "Account Profile", href: "/app/admin", icon: Building2 },
-    { name: "User Management", href: "/app/admin/users", icon: Users },
-    { name: "Settings & Audit", href: "/app/admin/settings", icon: Settings },
+    { name: t.nav.accountProfile, href: "/app/admin", icon: Building2 },
+    { name: t.nav.userManagement, href: "/app/admin/users", icon: Users },
+    { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings },
   ];
 
   return (
     <aside className="w-64 bg-[#F5F5F7] border-r border-[#E5E5EA] flex flex-col h-screen sticky top-0 z-40">
       {/* Brand Header */}
-      <div className="h-16 px-6 flex items-center border-b border-[#E5E5EA]">
+      <div className="h-16 px-6 flex items-center justify-between border-b border-[#E5E5EA]">
         <Link href="/app/dashboard" className="flex items-center space-x-3 group">
           <div className="w-9 h-9 rounded-xl bg-[#0071E3] flex items-center justify-center text-white shadow-md shadow-[#0071E3]/20 group-hover:scale-105 transition-transform">
             <ShieldCheck className="w-5 h-5" />
@@ -94,7 +100,7 @@ export function Sidebar({
       <div className="flex-1 px-3 space-y-6 overflow-y-auto py-2">
         <div>
           <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#86868B] mb-2">
-            Main Operations
+            {t.nav.mainOperations}
           </p>
           <nav className="space-y-1">
             {mainNavigation.map((item) => {

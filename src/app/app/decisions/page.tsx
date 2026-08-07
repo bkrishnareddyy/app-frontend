@@ -40,11 +40,27 @@ export default async function DecisionReviewCenterPage(props: {
     decisions.find((d) => searchParams.shipmentId ? d.shipmentId === searchParams.shipmentId : true) ||
     decisions[0];
 
-  const evidenceList = (selectedDecision?.evidenceItems as { title: string; detail: string; source: string }[]) || [
-    { title: "Invoice Description", detail: "Electronic Controller Unit - INV-45678.pdf Page 1 Line 2", source: "Invoice Document" },
-    { title: "Historical Match", detail: "8537.10.2030 used in 14 previous shipments with 99% acceptance", source: "Customs Entry Database" },
-    { title: "Tariff Ruling NY N302145", detail: "CBP ruled similar programmable controllers under 8537.10.2030", source: "CBP CROSS Rulings" },
-  ];
+  const rawEvidence = selectedDecision?.evidenceItems;
+  let evidenceList: { title: string; detail: string; source: string }[] = [];
+
+  if (Array.isArray(rawEvidence)) {
+    evidenceList = rawEvidence as { title: string; detail: string; source: string }[];
+  } else if (rawEvidence && typeof rawEvidence === "object") {
+    const obj = rawEvidence as Record<string, any>;
+    evidenceList = Object.entries(obj).map(([key, val]) => ({
+      title: key.replace(/([A-Z])/g, " $1").replace(/^./, (str) => str.toUpperCase()),
+      detail: typeof val === "object" ? JSON.stringify(val) : String(val),
+      source: selectedDecision?.agentName || "Agent Provenance",
+    }));
+  }
+
+  if (!Array.isArray(evidenceList) || evidenceList.length === 0) {
+    evidenceList = [
+      { title: "Invoice Description", detail: "Electronic Controller Unit - INV-45678.pdf Page 1 Line 2", source: "Invoice Document" },
+      { title: "Historical Match", detail: "8537.10.2030 used in 14 previous shipments with 99% acceptance", source: "Customs Entry Database" },
+      { title: "Tariff Ruling NY N302145", detail: "CBP ruled similar programmable controllers under 8537.10.2030", source: "CBP CROSS Rulings" },
+    ];
+  }
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">

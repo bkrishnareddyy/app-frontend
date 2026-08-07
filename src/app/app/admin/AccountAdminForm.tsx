@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Save, CheckCircle2, AlertCircle, Loader2, Shield } from "lucide-react";
+import { Building2, Save, CheckCircle2, AlertCircle, Loader2, Shield, Globe, Languages } from "lucide-react";
+import { COUNTRIES, useLanguage, Locale } from "@/lib/i18n/LanguageContext";
 
 interface AccountAdminFormProps {
   account: {
@@ -22,6 +23,8 @@ export function AccountAdminForm({ account, userRole }: AccountAdminFormProps) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const { country, setCountryByCode, locale, setLocale } = useLanguage();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -36,7 +39,7 @@ export function AccountAdminForm({ account, userRole }: AccountAdminFormProps) {
 
       const data = await res.json();
       if (res.ok) {
-        setMessage({ type: "success", text: "Account profile updated successfully. Audit log created." });
+        setMessage({ type: "success", text: "Account profile and country preferences saved. Audit log created." });
         router.refresh();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to update account" });
@@ -87,6 +90,61 @@ export function AccountAdminForm({ account, userRole }: AccountAdminFormProps) {
         </div>
       </div>
 
+      {/* Country & Language Localization Preference (New Profile Section) */}
+      <div className="space-y-4 apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
+        <h3 className="text-sm font-bold text-[#1D1D1F] uppercase tracking-wider mb-2 flex items-center space-x-2">
+          <Globe className="w-4 h-4 text-[#0071E3]" />
+          <span>Country & Language Localization</span>
+        </h3>
+        <p className="text-xs text-[#86868B] mb-4">
+          Select your primary operating country. Qubere automatically adapts interface localization, language defaults, and regional customs regulations.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-[#1D1D1F] mb-1.5">Operating Country & Region</label>
+            <select
+              value={country.code}
+              onChange={(e) => setCountryByCode(e.target.value)}
+              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.name} — {c.languageName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#1D1D1F] mb-1.5 flex items-center space-x-1.5">
+              <Languages className="w-3.5 h-3.5 text-[#0071E3]" />
+              <span>Interface Language</span>
+            </label>
+            <select
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as Locale)}
+              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
+            >
+              <option value="en">🇺🇸 English (United States)</option>
+              <option value="es">🇲🇽 / 🇪🇸 Español (Spanish)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-100 flex items-center space-x-3 text-xs text-[#0071E3]">
+          <span className="text-xl">{country.flag}</span>
+          <div>
+            <p className="font-extrabold text-[#1D1D1F]">
+              Active Region: {country.name} ({country.languageName})
+            </p>
+            <p className="text-[11px] text-[#86868B] mt-0.5">
+              Customs & Tariff Authority: <strong className="text-[#0071E3]">{country.regionalTariffAuthority}</strong>
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Editable Fields */}
       <div className="space-y-4 apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
         <h3 className="text-sm font-bold text-[#1D1D1F] uppercase tracking-wider mb-4 flex items-center space-x-2">
@@ -126,10 +184,10 @@ export function AccountAdminForm({ account, userRole }: AccountAdminFormProps) {
         <button
           type="submit"
           disabled={loading}
-          className="px-6 py-3 bg-[#0071E3] hover:bg-[#0077ED] text-white font-semibold rounded-full text-sm shadow-md shadow-[#0071E3]/20 flex items-center space-x-2 transition-all disabled:opacity-50"
+          className="px-6 py-3 bg-[#0071E3] hover:bg-[#0077ED] text-white font-semibold rounded-full text-sm shadow-md shadow-[#0071E3]/20 flex items-center space-x-2 transition-all disabled:opacity-50 cursor-pointer"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          <span>Save Account Changes</span>
+          <span>Save Profile Preferences</span>
         </button>
       </div>
     </form>

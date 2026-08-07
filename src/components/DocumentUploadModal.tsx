@@ -122,9 +122,10 @@ export function DocumentUploadModal({
             onChange={(e) => setDocType(e.target.value)}
             className="w-full p-3 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3] font-medium"
           >
+            <option value="AUTO_DETECT">✨ Auto-Detect Document Type (AI Agent Classification)</option>
+            <option value="Bill of Lading">Bill of Lading (B/L)</option>
             <option value="Commercial Invoice">Commercial Invoice</option>
             <option value="Packing List">Packing List</option>
-            <option value="Bill of Lading">Bill of Lading</option>
             <option value="Arrival Notice">Arrival Notice</option>
             <option value="Insurance Certificate">Insurance Certificate</option>
             <option value="Certificate of Origin">Certificate of Origin</option>

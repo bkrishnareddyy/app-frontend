@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { storeDocumentFile } from "@/lib/storage";
-import { createAuditLog } from "@/lib/audit";
+import {
+  DocumentIntakeAgent,
+  DocumentType,
+  agentEventBus,
+} from "@/modules/intake/documentIntakeAgent";
+import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
 
 export async function POST(req: Request) {
   try {
@@ -13,14 +18,18 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-    const docType = (formData.get("docType") as string) || "Commercial Invoice";
+    const rawDocType = formData.get("docType") as string | null;
     const shipmentId = formData.get("shipmentId") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Step 1: Upload via Dual Storage Engine (Vercel Blob / Local Storage)
+    // Convert file to Node Buffer for Gemini Vision / Multi-modal agent processing
+    const fileArrayBuffer = await file.arrayBuffer();
+    const fileBuffer = Buffer.from(fileArrayBuffer);
+
+    // Step 1: Upload file via Dual Storage Engine (Vercel Blob / Local Storage)
     const storageResult = await storeDocumentFile(file, file.name);
 
     // Step 2: Associate with shipment or find default shipment
@@ -36,40 +45,48 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No target shipment found" }, { status: 404 });
     }
 
-    // Step 3: Upsert or Create ShipmentDocument record in PostgreSQL
-    const confidence = Math.floor(Math.random() * 15) + 85; // 85% - 99% AI confidence
+    // Map doc type string to enum if provided
+    let docTypeOverride: DocumentType | undefined = undefined;
+    if (rawDocType) {
+      const formatted = rawDocType.toUpperCase().replace(/\s+/g, "_");
+      if (
+        ["COMMERCIAL_INVOICE", "BILL_OF_LADING", "PACKING_LIST", "CERTIFICATE_OF_ORIGIN"].includes(
+          formatted
+        )
+      ) {
+        docTypeOverride = formatted as DocumentType;
+      }
+    }
 
-    const shipmentDocument = await db.shipmentDocument.create({
-      data: {
-        shipmentId: targetShipmentId,
-        accountId: ctx.accountId,
-        docType,
-        fileName: file.name,
-        pageCount: 2,
-        fileUrl: storageResult.url,
-        confidence,
-        status: "Received",
-      },
-    });
-
-    // Step 4: Record Audit Log
-    await createAuditLog({
+    const agentInput = {
       accountId: ctx.accountId,
       userId: ctx.userId,
-      action: "document.upload",
-      entity: "ShipmentDocument",
-      entityId: shipmentDocument.id,
-      metadata: {
-        fileName: file.name,
-        docType,
-        storageProvider: storageResult.provider,
-        fileUrl: storageResult.url,
-      },
+      shipmentId: targetShipmentId,
+      fileName: file.name,
+      fileUrl: storageResult.url,
+      fileBuffer,
+      mimeType: file.type || "application/pdf",
+      docTypeOverride,
+    };
+
+    // Step 3: Emit background reactive event so Agent 1 is triggered via EventBus
+    agentEventBus.emit("document:uploaded", agentInput);
+
+    // Step 4: Execute Full Autonomous Multi-Agent Pipeline (Agents 1 through 10)
+    const pipelineOutput = await AgentOrchestrator.runFullPipeline({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      shipmentId: targetShipmentId,
+      fileName: file.name,
+      fileUrl: storageResult.url,
+      fileBuffer,
     });
 
     return NextResponse.json({
-      document: shipmentDocument,
+      success: true,
+      orchestration: "Qubere Autonomous Multi-Agent Pipeline (10 Agents)",
       storage: storageResult,
+      pipelineResult: pipelineOutput,
     });
   } catch (error) {
     console.error("POST /api/documents/upload error:", error);
