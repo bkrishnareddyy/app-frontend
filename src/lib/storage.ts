@@ -65,12 +65,19 @@ export async function storeDocumentFile(
   const checksum = createHash("sha256").update(buffer).digest("hex");
 
   const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const isServerless = Boolean(
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.cwd().startsWith("/var/task")
+  );
+
+  const safeFilename = `${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
 
   // Provider 1: Vercel Blob Storage
   if (token) {
     try {
-      console.log(`[Storage] Uploading ${filename} (${file.size} bytes) sha256=${checksum} to Vercel Blob Storage...`);
-      const blob = await put(`documents/${Date.now()}-${filename}`, buffer, {
+      console.log(`[Storage] Uploading ${safeFilename} (${file.size} bytes) sha256=${checksum} to Vercel Blob Storage...`);
+      const blob = await put(`documents/${safeFilename}`, buffer, {
         access: "public",
         token,
       });
@@ -82,42 +89,30 @@ export async function storeDocumentFile(
         checksum,
         provider: "vercel-blob",
       };
-    } catch (err) {
-      console.warn("[Storage] Vercel Blob upload failed, falling back to local storage:", err);
+    } catch (err: any) {
+      console.error("[Storage] Vercel Blob upload failed:", err);
+      // In serverless environments, local filesystem is read-only.
+      // Do not fall through silently; surface the Vercel Blob error directly.
+      if (isServerless) {
+        throw new Error(`[Storage] Vercel Blob upload failed: ${err?.message || String(err)}`);
+      }
     }
+  } else if (isServerless) {
+    throw new Error(`[Storage] BLOB_READ_WRITE_TOKEN environment variable is missing in Vercel production environment. Please set BLOB_READ_WRITE_TOKEN in Vercel Project Settings and redeploy.`);
   }
 
-  // Provider 2: Local Filesystem Storage with Serverless /tmp Fallback
+  // Provider 2: Local Filesystem Storage (For local development ONLY)
   let uploadDir = path.join(process.cwd(), "public", "uploads");
-  let isTmpFallback = false;
 
   try {
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
-  } catch (dirErr) {
-    // Serverless environments (Vercel, AWS Lambda at /var/task) have read-only execution bundles.
-    // Fall back to os.tmpdir() (/tmp/uploads) which is guaranteed to be writable in serverless lambdas.
-    console.warn("[Storage] Public uploads directory unwritable in serverless environment, falling back to /tmp/uploads:", dirErr);
-    uploadDir = path.join(os.tmpdir(), "uploads");
-    isTmpFallback = true;
-    try {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-    } catch (tmpErr) {
-      console.error("[Storage] Failed to create /tmp/uploads directory:", tmpErr);
-    }
-  }
-
-  try {
-    const safeFilename = `${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     const filePath = path.join(uploadDir, safeFilename);
-
     fs.writeFileSync(filePath, buffer);
     const publicUrl = `/uploads/${safeFilename}`;
 
-    console.log(`[Storage] Saved ${filename} ${isTmpFallback ? "to serverless /tmp" : "locally"} at ${publicUrl} sha256=${checksum}`);
+    console.log(`[Storage] Saved ${filename} locally at ${publicUrl} sha256=${checksum}`);
 
     return {
       url: publicUrl,
@@ -126,8 +121,25 @@ export async function storeDocumentFile(
       checksum,
       provider: "local-fs",
     };
-  } catch (err) {
-    console.error("[Storage] Filesystem write error:", err);
-    throw new Error(`[Storage] Failed to persist file "${filename}" to storage provider. ${err}`);
+  } catch (err: any) {
+    try {
+      const tmpDir = path.join(os.tmpdir(), "uploads");
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+      const tmpFilePath = path.join(tmpDir, safeFilename);
+      fs.writeFileSync(tmpFilePath, buffer);
+      console.log(`[Storage] Saved ${filename} to /tmp/uploads fallback`);
+      return {
+        url: `/uploads/${safeFilename}`,
+        filename,
+        size: file.size,
+        checksum,
+        provider: "local-fs",
+      };
+    } catch (tmpErr) {
+      console.error("[Storage] Filesystem write error:", err, tmpErr);
+      throw new Error(`[Storage] Failed to persist file "${filename}" to local storage. ${err?.message || err}`);
+    }
   }
 }
