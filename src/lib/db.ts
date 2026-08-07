@@ -13,18 +13,10 @@ function getDatasourceUrl(): string | undefined {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) return undefined;
 
-  // Check if string points to Supabase pooler on port 5432 (Session Mode)
-  if (dbUrl.includes("pooler.supabase.com:5432")) {
-    let patched = dbUrl.replace("pooler.supabase.com:5432", "pooler.supabase.com:6543");
-    if (!patched.includes("pgbouncer=true")) {
-      patched += (patched.includes("?") ? "&" : "?") + "pgbouncer=true&connection_limit=10&pool_timeout=15";
-    }
-    return patched;
-  }
-
-  // If pgbouncer/transaction pooler URL doesn't have connection_limit set, append reasonable defaults
-  if (dbUrl.includes(":6543") && !dbUrl.includes("connection_limit")) {
-    return dbUrl + (dbUrl.includes("?") ? "&" : "?") + "pgbouncer=true&connection_limit=10&pool_timeout=15";
+  // Append serverless connection limit defaults for Supabase if missing
+  if (dbUrl.includes("supabase.com") && !dbUrl.includes("connection_limit")) {
+    const separator = dbUrl.includes("?") ? "&" : "?";
+    return `${dbUrl}${separator}connection_limit=10&pool_timeout=15`;
   }
 
   return dbUrl;
