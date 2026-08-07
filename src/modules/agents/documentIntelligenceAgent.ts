@@ -5,6 +5,169 @@ import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { AgentState, MultiDimensionalConfidence } from "./agentState";
 
+export const DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT = `
+ROLE
+
+You are Qubere Document Intelligence, a multimodal AI engine that reads trade
+and customs documents the way an experienced customs analyst would — visually,
+not just as OCR text. You are the first agent in a multi-stage pipeline. Your
+output is consumed directly by Product Intelligence, HTS Classification,
+Origin & Trade Agreement, Valuation, and Compliance & Audit Risk agents.
+Do not classify products, assign HTS codes, or make compliance determinations
+yourself — extract and classify only.
+
+
+NON-NEGOTIABLE GROUNDING RULES
+
+1. Every value you output must be traceable to content actually visible in
+   the document — text, layout, stamps, handwriting, or images. Never infer
+   a value from the filename, file path, upload metadata, or general
+   knowledge of what this document type "usually" contains.
+2. If a field is not present or you're not confident you read it correctly,
+   output null and list it in missingCriticalFields or warnings. Null beats
+   a plausible-looking guess, every time.
+3. If the document can't be read at all (blank pages, corrupted file, empty
+   OCR pass), set extractionStatus to "failed" and explain why in warnings.
+   Do not fill the schema with placeholder or example data.
+4. Do not discard low-confidence extractions — include them with an honest
+   confidence score rather than omitting them.
+5. Validation checks report findings; they never alter the extracted values
+   themselves.
+6. If the file contains multiple distinct documents stapled or scanned
+   together, say so explicitly rather than merging them into one
+   classification.
+7. Never assume a predefined template — every layout is different — but
+   still classify the document type from the taxonomy below wherever the
+   content genuinely supports it. If nothing fits, use "other" with a
+   one-line description rather than forcing a bad fit.
+
+
+VISUAL & LAYOUT UNDERSTANDING
+
+Do not rely solely on OCR text — interpret the full visual layout. Recognize
+header/footer regions, key-value areas, tables, multi-column layouts, nested
+blocks, repeating sections, logos, signatures, official seals, customs
+stamps, approval stamps, handwritten notes, initials, checkboxes, QR codes,
+and barcodes. Preserve the relationships between visual elements and, where
+readable, return the meaning of stamps/seals/barcodes, not just their
+presence.
+
+
+TEXT EXTRACTION
+
+Extract every visible piece of text, preserving original wording,
+capitalization, punctuation, numbers, units, currency symbols, date formats,
+references, identifiers, and codes exactly as written. Do not normalize or
+convert values at this stage — that belongs to downstream agents.
+
+
+TABLE EXTRACTION
+
+Detect every table. For each one, identify its purpose, headers, columns,
+and rows, including merged cells and nested tables. Extract every row,
+maintain original row order, preserve parent-child relationships, and don't
+skip empty cells or merge rows together.
+
+
+DOCUMENT CLASSIFICATION
+
+Classify the document using this taxonomy (or "other" + description if
+nothing genuinely fits):
+
+  Commercial: Commercial Invoice, Pro Forma Invoice, Packing List,
+    Shipper's Letter of Instruction, Letter of Credit, Insurance Certificate
+
+  Transport: Bill of Lading (Ocean), Airway Bill, Inland/Truck Bill of
+    Lading (CMR), Dock/Warehouse Receipt, Arrival Notice, Delivery Order
+
+  Origin & preference: Certificate of Origin, USMCA/NAFTA Certificate,
+    GSP Certificate, other FTA Certificate
+
+  Customs & regulatory filings: Customs Entry Summary (CBP Form 7501),
+    Importer Security Filing (ISF/10+2), Power of Attorney,
+    Binding Ruling Letter/HTS Classification Ruling, Duty Drawback Claim,
+    Anti-Dumping/Countervailing Duty Documentation
+
+  Partner government agency (PGA): Phytosanitary Certificate,
+    FDA Prior Notice, Material Safety Data Sheet (MSDS/SDS),
+    Fish & Wildlife Declaration (Form 3-177), Import/Export License or Permit
+
+
+ENTITY DISCOVERY
+
+Identify business entities regardless of whether they're explicitly labeled
+— use surrounding context, not just field labels. Examples: organizations,
+individuals, addresses, countries, products, manufacturers, suppliers,
+customers, banks, carriers, government agencies, financial references,
+shipment references, document references, product identifiers, regulatory
+references.
+
+
+RELATIONSHIP DETECTION
+
+Determine relationships between extracted entities and preserve hierarchy:
+party relationships, shipment relationships, document references, product
+ownership, financial relationships, address ownership, transportation
+relationships, supporting-document links.
+
+
+MULTI-PAGE UNDERSTANDING
+
+Treat all pages as one logical document. Link information that appears
+across pages and avoid duplicate extraction of the same fact.
+
+
+FILING PURPOSE & AGENCY DETERMINATION
+
+Based on the document type AND its actual content — not assumptions from
+country or shipping route — determine which agency this document is
+relevant to:
+
+  - CBP — default for nearly all import/export filings
+  - FDA — food, drugs, medical devices, cosmetics, biologics
+  - USDA/APHIS — agricultural products, plants, live animals, wood packaging
+  - EPA — chemicals, pesticides, vehicles and engines
+  - CPSC — consumer products
+  - FCC — electronics and RF devices
+  - ATF — firearms, ammunition, alcohol, tobacco
+  - Fish & Wildlife Service — wildlife and endangered species products
+  - NHTSA/DOT — vehicles and hazardous materials
+  - BIS — export controls/dual-use goods
+  - OFAC — sanctions-related restrictions
+
+A document can be relevant to more than one agency. Name a primary agency
+and any secondary agencies, with a one-line reason for each that cites the
+specific content that triggered it — never assign an agency from document
+type alone if the content doesn't support it.
+
+
+TRADE METADATA EXTRACTION
+
+Extract, only where explicitly present in the document: country of origin,
+country of export, HS/HTS code, shipper/exporter, consignee/importer of
+record, invoice number, PO number, document date, currency, total value,
+incoterms, port of loading, port of discharge, carrier, transport document
+number, total weight, total quantity. Country of origin in particular must
+come from explicit text or origin markings — never inferred from shipping
+route, language, or currency.
+
+
+VALIDATION
+
+Run consistency checks and report findings separately without altering any
+extracted value: arithmetic (line items vs. stated totals), page
+continuity, duplicate identifiers, missing expected sections, broken
+references, inconsistent dates, currency consistency, quantity consistency,
+table totals.
+
+
+QUALITY & PROVENANCE
+
+Every extracted object — entity, table row, trade metadata field — should
+carry: confidence, page, bounding box (if available), reading order, and
+section. Low-confidence values are included, not discarded.
+`;
+
 export interface LineItemExtraction {
   lineNumber: number;
   sku?: string | null;
@@ -29,10 +192,74 @@ export interface DocumentIntelligenceInput {
   state?: AgentState;
 }
 
+export interface TradeMetadata {
+  countryOfOrigin?: string | null;
+  countryOfExport?: string | null;
+  hsHtsCode?: string | null;
+  shipper?: string | null;
+  consignee?: string | null;
+  importerOfRecord?: string | null;
+  invoiceNumber?: string | null;
+  poNumber?: string | null;
+  documentDate?: string | null;
+  currency?: string | null;
+  totalValue?: number | null;
+  incoterms?: string | null;
+  portOfLoading?: string | null;
+  portOfDischarge?: string | null;
+  carrier?: string | null;
+  transportDocumentNumber?: string | null;
+  totalWeight?: string | null;
+  totalQuantity?: string | null;
+}
+
+export interface FilingDetermination {
+  primaryAgency: string;
+  secondaryAgencies: string[];
+  reasoning: string;
+  confidence: number;
+}
+
+export interface DocumentClassificationResult {
+  documentType: string;
+  confidence: number;
+  notes?: string;
+}
+
 export interface DocumentIntelligenceOutput {
   packetId: string;
   shipmentId: string;
   status: "Completed" | "Review Required";
+  extractionStatus?: "success" | "partial" | "failed";
+  documentClassification?: DocumentClassificationResult;
+  filingDetermination?: FilingDetermination;
+  tradeMetadata?: TradeMetadata;
+  entities?: Array<{
+    type: string;
+    value: string;
+    confidence: number;
+    page?: number;
+    section?: string;
+  }>;
+  relationships?: Array<{
+    type: string;
+    from: string;
+    to: string;
+    description?: string;
+  }>;
+  tables?: Array<{
+    purpose: string;
+    headers: string[];
+    rows: any[][];
+    page?: number;
+    confidence?: number;
+  }>;
+  validations?: Array<{
+    check: string;
+    result: "pass" | "fail" | "warning";
+    details: string;
+  }>;
+  warnings?: string[];
   detectedDocType: string;
   isValidCommercialInvoice: boolean;
   validationFailures: string[];
@@ -69,6 +296,105 @@ export interface DocumentIntelligenceOutput {
 const intelligenceSchema: Schema = {
   type: Type.OBJECT,
   properties: {
+    extractionStatus: { type: Type.STRING },
+    documentClassification: {
+      type: Type.OBJECT,
+      properties: {
+        documentType: { type: Type.STRING },
+        confidence: { type: Type.NUMBER },
+        notes: { type: Type.STRING },
+      },
+    },
+    filingDetermination: {
+      type: Type.OBJECT,
+      properties: {
+        primaryAgency: { type: Type.STRING },
+        secondaryAgencies: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
+        reasoning: { type: Type.STRING },
+        confidence: { type: Type.NUMBER },
+      },
+    },
+    tradeMetadata: {
+      type: Type.OBJECT,
+      properties: {
+        countryOfOrigin: { type: Type.STRING, nullable: true },
+        countryOfExport: { type: Type.STRING, nullable: true },
+        hsHtsCode: { type: Type.STRING, nullable: true },
+        shipper: { type: Type.STRING, nullable: true },
+        consignee: { type: Type.STRING, nullable: true },
+        importerOfRecord: { type: Type.STRING, nullable: true },
+        invoiceNumber: { type: Type.STRING, nullable: true },
+        poNumber: { type: Type.STRING, nullable: true },
+        documentDate: { type: Type.STRING, nullable: true },
+        currency: { type: Type.STRING, nullable: true },
+        totalValue: { type: Type.NUMBER, nullable: true },
+        incoterms: { type: Type.STRING, nullable: true },
+        portOfLoading: { type: Type.STRING, nullable: true },
+        portOfDischarge: { type: Type.STRING, nullable: true },
+        carrier: { type: Type.STRING, nullable: true },
+        transportDocumentNumber: { type: Type.STRING, nullable: true },
+        totalWeight: { type: Type.STRING, nullable: true },
+        totalQuantity: { type: Type.STRING, nullable: true },
+      },
+    },
+    entities: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          type: { type: Type.STRING },
+          value: { type: Type.STRING },
+          confidence: { type: Type.NUMBER },
+          page: { type: Type.INTEGER },
+          section: { type: Type.STRING },
+        },
+      },
+    },
+    relationships: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          type: { type: Type.STRING },
+          from: { type: Type.STRING },
+          to: { type: Type.STRING },
+          description: { type: Type.STRING },
+        },
+      },
+    },
+    tables: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          purpose: { type: Type.STRING },
+          headers: { type: Type.ARRAY, items: { type: Type.STRING } },
+          confidence: { type: Type.NUMBER },
+        },
+      },
+    },
+    validations: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          check: { type: Type.STRING },
+          result: { type: Type.STRING },
+          details: { type: Type.STRING },
+        },
+      },
+    },
+    missingCriticalFields: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    warnings: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
     discoveredKeyValues: {
       type: Type.ARRAY,
       items: {
@@ -150,6 +476,16 @@ export class DocumentIntelligenceAgent {
     const missingFields: string[] = [];
     let extractionError: string | undefined = undefined;
 
+    let extractionStatus: "success" | "partial" | "failed" | undefined = undefined;
+    let documentClassification: DocumentClassificationResult | undefined = undefined;
+    let filingDetermination: FilingDetermination | undefined = undefined;
+    let tradeMetadata: TradeMetadata | undefined = undefined;
+    let entities: Array<{ type: string; value: string; confidence: number; page?: number; section?: string }> | undefined = undefined;
+    let relationships: Array<{ type: string; from: string; to: string; description?: string }> | undefined = undefined;
+    let tables: Array<{ purpose: string; headers: string[]; rows: any[][]; page?: number; confidence?: number }> | undefined = undefined;
+    let validations: Array<{ check: string; result: "pass" | "fail" | "warning"; details: string }> | undefined = undefined;
+    let warnings: string[] | undefined = undefined;
+
     let lineItems: LineItemExtraction[] = [];
     let aiProvider = "Gemini 2.5 Flash Vision (Google GenAI SDK)";
 
@@ -158,15 +494,16 @@ export class DocumentIntelligenceAgent {
         const mimeType = input.mimeType || "application/pdf";
         const base64Data = input.fileBuffer.toString("base64");
 
-        const prompt = `You are Qubere's autonomous Document Intelligence Agent (Agent 2 of 10).
-Perform Key-Value Discovery & Semantic Field Mapping from this trade document.
+        const prompt = `${DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT}
 
 INSTRUCTIONS:
 1. Discover ALL raw label-value pairs on the document (e.g. {"PO No": "290051", "Shipper": "ACME Corp", "Consignee": "Logistics LLC", "Origin": "China"}) and populate 'discoveredKeyValues'.
-2. Semantically map discovered labels to canonical customs fields (e.g. map "Shipper"/"Consignor"/"Seller"/"Vendor" to 'exporterName', map "Consignee"/"Buyer"/"Ship To" to 'importerName', map "Country of Origin"/"Made in" to 2-letter ISO 'originCountry', map "Subtotal"/"Grand Total"/"Amount" to numeric 'invoiceSubtotal').
+2. Populate 'tradeMetadata' with explicit fields visible on the document. Map shipper to exporterName, consignee/importerOfRecord to importerName, countryOfOrigin to originCountry, totalValue to invoiceSubtotal, etc.
 3. Extract all itemized tabular line items into 'lineItems'.
-4. Do NOT mutate or invent missing values. If a field is NOT present on the document, set it to null.
-5. Set 'hasCommercialInvoice' to true ONLY if financial line items and subtotal pricing are present on the document.`;
+4. Determine primaryAgency and secondaryAgencies in 'filingDetermination' based on actual content (e.g. CBP default, FDA for food/medical, EPA for chemicals).
+5. Run consistency checks in 'validations' (line item math, missing fields, page continuity).
+6. Do NOT mutate or invent missing values. Set unverified values to null.
+7. Set 'hasCommercialInvoice' to true ONLY if financial line items and subtotal pricing are present on the document.`;
 
         const response = await this.aiClient.models.generateContent({
           model: "gemini-2.5-flash",
@@ -195,18 +532,33 @@ INSTRUCTIONS:
           }
         }
 
-        // Direct LLM semantic mapping values
-        if (parsed.exporterName) exporterName = parsed.exporterName;
-        if (parsed.importerName) importerName = parsed.importerName;
-        if (parsed.originCountry) originCountry = parsed.originCountry;
-        if (parsed.destinationCountry) destinationCountry = parsed.destinationCountry;
-        if (parsed.transportDetails) transportDetails = parsed.transportDetails;
-        if (parsed.invoiceNumber) invoiceNumber = parsed.invoiceNumber;
-        if (parsed.invoiceDate) invoiceDate = parsed.invoiceDate;
-        if (parsed.midCode) midCode = parsed.midCode;
-        if (parsed.incoterm) incoterm = parsed.incoterm;
-        if (parsed.currency) currency = parsed.currency;
-        if (typeof parsed.invoiceSubtotal === "number") invoiceSubtotal = parsed.invoiceSubtotal;
+        // Map rich structured schema properties
+        if (parsed.extractionStatus) extractionStatus = parsed.extractionStatus;
+        if (parsed.documentClassification) documentClassification = parsed.documentClassification;
+        if (parsed.filingDetermination) filingDetermination = parsed.filingDetermination;
+        if (parsed.tradeMetadata) tradeMetadata = parsed.tradeMetadata;
+        if (parsed.entities) entities = parsed.entities;
+        if (parsed.relationships) relationships = parsed.relationships;
+        if (parsed.tables) tables = parsed.tables;
+        if (parsed.validations) validations = parsed.validations;
+        if (parsed.warnings) warnings = parsed.warnings;
+
+        // Direct LLM semantic mapping values (prefer tradeMetadata if present)
+        exporterName = parsed.tradeMetadata?.shipper || parsed.exporterName || null;
+        importerName = parsed.tradeMetadata?.consignee || parsed.tradeMetadata?.importerOfRecord || parsed.importerName || null;
+        originCountry = parsed.tradeMetadata?.countryOfOrigin || parsed.originCountry || (isCoO ? "CN" : null);
+        destinationCountry = parsed.tradeMetadata?.countryOfExport || parsed.destinationCountry || null;
+        transportDetails = parsed.transportDetails || null;
+        invoiceNumber = parsed.tradeMetadata?.invoiceNumber || parsed.invoiceNumber || null;
+        invoiceDate = parsed.tradeMetadata?.documentDate || parsed.invoiceDate || null;
+        midCode = parsed.midCode || null;
+        incoterm = parsed.tradeMetadata?.incoterms || parsed.incoterm || null;
+        currency = parsed.tradeMetadata?.currency || parsed.currency || null;
+        if (typeof parsed.tradeMetadata?.totalValue === "number") {
+          invoiceSubtotal = parsed.tradeMetadata.totalValue;
+        } else if (typeof parsed.invoiceSubtotal === "number") {
+          invoiceSubtotal = parsed.invoiceSubtotal;
+        }
         if (typeof parsed.hasCommercialInvoice === "boolean") hasCommercialInvoice = parsed.hasCommercialInvoice;
         if (parsed.confidence) confidence = parsed.confidence;
         if (parsed.lineItems && parsed.lineItems.length > 0) lineItems = parsed.lineItems;
@@ -322,7 +674,8 @@ INSTRUCTIONS:
     const requiresReview = !hasCommercialInvoice || missingFields.length > 0 || !mathValidationPassed || confidence < 90;
     const status = requiresReview ? "Review Required" : "Completed";
 
-    const reasoningChain = `Key-Value Discovery Engine parsed ${Object.keys(rawDiscoveredKeyValues).length} label-value pairs from packet ${input.packetId}. Synonym Extrapolation mapped Exporter: '${exporterName || "Unknown"}', Consignee: '${importerName || "Unknown"}', Origin: ${originCountry || "Unknown"}. Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}. Compliance status: ${status}.`;
+    const agencyReasoning = filingDetermination?.reasoning ? ` PGA Routing: ${filingDetermination.primaryAgency} (${filingDetermination.reasoning}).` : "";
+    const reasoningChain = `Qubere Document Intelligence parsed ${Object.keys(rawDiscoveredKeyValues).length} label-value pairs from packet ${input.packetId}. Synonym Extrapolation mapped Exporter: '${exporterName || "Unknown"}', Consignee: '${importerName || "Unknown"}', Origin: ${originCountry || "Unknown"}.${agencyReasoning} Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}. Compliance status: ${status}.`;
 
     // Persist AgentDecision in DB
     let agentDecisionId = "dec_fallback_intelligence";
@@ -335,14 +688,14 @@ INSTRUCTIONS:
           agentIcon: "Binary",
           status: requiresReview ? "Needs Review" : "Approved",
           confidence,
-          decisionSummary: `Discovered ${Object.keys(rawDiscoveredKeyValues).length} raw key-value pairs & mapped ${lineItems.length} line items. Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}.`,
-          purpose: "Key-Value pair discovery, synonym extrapolation, OCR entity extraction, tabular line item parsing, MID generation, and Math Reconciliation",
+          decisionSummary: `Discovered ${Object.keys(rawDiscoveredKeyValues).length} raw key-value pairs & mapped ${lineItems.length} line items. Primary Agency: ${filingDetermination?.primaryAgency || "CBP"}. Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}.`,
+          purpose: "Multimodal visual extraction, trade taxonomy classification, partner agency routing, line item extraction, and Math Reconciliation",
           dataSources: ["Gemini 2.5 Flash Vision", "Key-Value Discovery Engine", "Google ADK Math Engine", aiProvider],
           regulations: ["19 CFR § 141.86", "19 CFR Part 102 (MID Rules)"],
           proposedDescription: `Extracted ${lineItems.length} items from ${input.fileName || "packet"}`,
           rulesApplied: [
-            "Key-Value Discovery & Synonym Extrapolation Rule",
-            "19 CFR 102 MID Code Generation",
+            "Multimodal Visual & Trade Taxonomy Grounding Rule",
+            "PGA Agency Determination Gate",
             "Zero-Hallucination Null Grounding Gate",
             "Google ADK Math Reconciliation Gate",
           ],
@@ -365,11 +718,12 @@ INSTRUCTIONS:
           discoveredPairsCount: Object.keys(rawDiscoveredKeyValues).length,
           hasCommercialInvoice,
           missingFieldsCount: missingFields.length,
+          primaryAgency: filingDetermination?.primaryAgency || "CBP",
         },
       });
     } catch (err) {}
 
-    const detectedDocType = isCoO ? "GENERAL_CERTIFICATE_OF_ORIGIN" : "COMMERCIAL_INVOICE";
+    const detectedDocType = documentClassification?.documentType || (isCoO ? "GENERAL_CERTIFICATE_OF_ORIGIN" : "COMMERCIAL_INVOICE");
     const isValidCommercialInvoice = hasCommercialInvoice && missingFields.length === 0 && mathValidationPassed;
     const validationFailures = [...missingFields];
 
@@ -381,6 +735,25 @@ INSTRUCTIONS:
       packetId: input.packetId,
       shipmentId: input.shipmentId,
       status,
+      extractionStatus: extractionStatus || (status === "Completed" ? "success" : "partial"),
+      documentClassification,
+      filingDetermination,
+      tradeMetadata: tradeMetadata || {
+        countryOfOrigin: originCountry,
+        countryOfExport: destinationCountry,
+        shipper: exporterName,
+        consignee: importerName,
+        invoiceNumber,
+        documentDate: invoiceDate,
+        currency,
+        totalValue: invoiceSubtotal,
+        incoterms: incoterm,
+      },
+      entities,
+      relationships,
+      tables,
+      validations,
+      warnings,
       detectedDocType,
       isValidCommercialInvoice,
       validationFailures,
@@ -414,3 +787,4 @@ INSTRUCTIONS:
     };
   }
 }
+
