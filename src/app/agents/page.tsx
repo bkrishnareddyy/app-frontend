@@ -22,6 +22,7 @@ import {
   X,
   Code2,
   Check,
+  Copy,
   ShieldCheck,
   Brain,
   SlidersHorizontal,
@@ -428,6 +429,13 @@ export default function AgentsPage() {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
+  const [copiedJson, setCopiedJson] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedJson(id);
+    setTimeout(() => setCopiedJson(null), 2000);
+  };
 
   const handleOpenAgentModal = (agent: AgentSpec) => {
     setActiveModalAgent(agent);
@@ -932,7 +940,22 @@ export default function AgentsPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-[#1D1D1F]">Input Contract Payload</span>
-                      <span className="text-[10px] font-mono text-[#86868B]">JSON</span>
+                      <button
+                        onClick={() => copyToClipboard(activeModalAgent.inputPayload, "inputPayload")}
+                        className="flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-white hover:bg-slate-100 border border-[#E5E5EA] text-[#0071E3] transition-all cursor-pointer shadow-2xs"
+                      >
+                        {copiedJson === "inputPayload" ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-600">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-[#0071E3]" />
+                            <span>Copy JSON</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                     <pre className="p-4 rounded-2xl bg-slate-900 text-emerald-400 font-mono text-[11px] overflow-x-auto border border-slate-800">
                       {activeModalAgent.inputPayload}
@@ -942,7 +965,22 @@ export default function AgentsPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-[#1D1D1F]">Output Contract Payload</span>
-                      <span className="text-[10px] font-mono text-[#86868B]">JSON</span>
+                      <button
+                        onClick={() => copyToClipboard(activeModalAgent.outputPayload, "outputPayload")}
+                        className="flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-white hover:bg-slate-100 border border-[#E5E5EA] text-[#0071E3] transition-all cursor-pointer shadow-2xs"
+                      >
+                        {copiedJson === "outputPayload" ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-600">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-[#0071E3]" />
+                            <span>Copy JSON</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                     <pre className="p-4 rounded-2xl bg-slate-900 text-blue-400 font-mono text-[11px] overflow-x-auto border border-slate-800">
                       {activeModalAgent.outputPayload}
@@ -1062,8 +1100,28 @@ export default function AgentsPage() {
 
                     {/* Right Column: Live Output & Provenance Panel */}
                     <div className="flex flex-col border border-[#E5E5EA] rounded-2xl overflow-hidden bg-white shadow-2xs">
-                      <div className="px-4 py-2.5 bg-[#F5F5F7] border-b border-[#E5E5EA] flex items-center justify-between">
-                        <span className="font-bold text-xs text-[#1D1D1F]">Agent Execution Output</span>
+                      <div className="px-4 py-2 bg-[#F5F5F7] border-b border-[#E5E5EA] flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-xs text-[#1D1D1F]">Agent Execution Output</span>
+                          {testResult && (
+                            <button
+                              onClick={() => copyToClipboard(JSON.stringify(testResult, null, 2), "testResult")}
+                              className="flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-white hover:bg-slate-100 border border-[#E5E5EA] text-[#0071E3] transition-all cursor-pointer shadow-2xs"
+                            >
+                              {copiedJson === "testResult" ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-600 font-bold">Copied JSON!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5 text-[#0071E3]" />
+                                  <span>Copy JSON</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
                         {executionTime !== null && (
                           <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                             Latency: {executionTime}ms
