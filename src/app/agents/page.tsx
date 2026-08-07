@@ -420,7 +420,82 @@ export default function AgentsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All Agents");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [activeModalAgent, setActiveModalAgent] = useState<AgentSpec | null>(null);
-  const [modalTab, setModalTab] = useState<"overview" | "reasoning" | "payloads">("overview");
+  const [modalTab, setModalTab] = useState<"overview" | "reasoning" | "payloads" | "action">("overview");
+
+  const [testInputJson, setTestInputJson] = useState<string>("");
+  const [dropFile, setDropFile] = useState<File | null>(null);
+  const [inputMode, setInputMode] = useState<"file" | "json">("file");
+  const [isExecuting, setIsExecuting] = useState<boolean>(false);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [executionTime, setExecutionTime] = useState<number | null>(null);
+
+  const handleOpenAgentModal = (agent: AgentSpec) => {
+    setActiveModalAgent(agent);
+    setModalTab("overview");
+    setTestInputJson(agent.inputPayload);
+    setDropFile(null);
+    setInputMode(agent.id === "document-intake" ? "file" : "json");
+    setTestResult(null);
+    setExecutionTime(null);
+  };
+
+  const handleRunAgentTest = async () => {
+    if (!activeModalAgent) return;
+    setIsExecuting(true);
+    setTestResult(null);
+    setExecutionTime(null);
+    const startTime = Date.now();
+
+    try {
+      if (inputMode === "file" && dropFile) {
+        const formData = new FormData();
+        formData.append("file", dropFile);
+        formData.append("shipmentId", "shp_demo_default");
+        formData.append("docType", "AUTO_DETECT");
+
+        const res = await fetch("/api/documents/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+        const elapsed = Date.now() - startTime;
+        setExecutionTime(elapsed);
+        setTestResult(data);
+        return;
+      }
+
+      let parsedInput: any = {};
+      try {
+        parsedInput = JSON.parse(testInputJson);
+      } catch (err) {
+        parsedInput = { rawInput: testInputJson };
+      }
+
+      const endpoint = activeModalAgent.id === "document-intake" ? "/api/intake/agent" : `/api/agents/${activeModalAgent.id}`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: "acc_demo_default",
+          userId: "user_demo_default",
+          shipmentId: "shp_demo_default",
+          ...parsedInput,
+        }),
+      });
+
+      const data = await res.json();
+      const elapsed = Date.now() - startTime;
+      setExecutionTime(elapsed);
+      setTestResult(data);
+    } catch (err: any) {
+      const elapsed = Date.now() - startTime;
+      setExecutionTime(elapsed);
+      setTestResult({ error: err?.message || "Execution failed" });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
 
   // Helper to map icon name string to Lucide component
   const renderAgentIcon = (iconName: string, className = "w-5 h-5") => {
@@ -486,10 +561,7 @@ export default function AgentsPage() {
             {AGENTS.map((agent) => (
               <button
                 key={agent.id}
-                onClick={() => {
-                  setActiveModalAgent(agent);
-                  setModalTab("overview");
-                }}
+                onClick={() => handleOpenAgentModal(agent)}
                 className="group flex flex-col items-center justify-between p-3 rounded-2xl bg-[#F5F5F7] hover:bg-[#0071E3]/10 border border-[#E5E5EA] hover:border-[#0071E3] transition-all cursor-pointer text-center relative"
               >
                 <span className="text-[10px] font-bold text-[#86868B] group-hover:text-[#0071E3] mb-1">
@@ -621,10 +693,7 @@ export default function AgentsPage() {
                     </div>
 
                     <button
-                      onClick={() => {
-                        setActiveModalAgent(agent);
-                        setModalTab("overview");
-                      }}
+                      onClick={() => handleOpenAgentModal(agent)}
                       className="w-full py-2.5 px-4 bg-[#F5F5F7] hover:bg-[#0071E3] text-[#0071E3] hover:text-white font-semibold text-xs rounded-xl transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                     >
                       <span>Inspect Agent Spec</span>
@@ -781,6 +850,17 @@ export default function AgentsPage() {
               >
                 Input / Output Schemas (JSON)
               </button>
+              <button
+                onClick={() => setModalTab("action")}
+                className={`py-3 px-4 text-xs font-bold border-b-2 cursor-pointer transition-all flex items-center space-x-1.5 ${
+                  modalTab === "action"
+                    ? "border-[#0071E3] text-[#0071E3] bg-blue-50/50"
+                    : "border-transparent text-[#0071E3] hover:bg-blue-50/30"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#0071E3]" />
+                <span>✨ Agent in Action (Live Test)</span>
+              </button>
             </div>
 
             {/* Modal Body */}
@@ -867,6 +947,147 @@ export default function AgentsPage() {
                     <pre className="p-4 rounded-2xl bg-slate-900 text-blue-400 font-mono text-[11px] overflow-x-auto border border-slate-800">
                       {activeModalAgent.outputPayload}
                     </pre>
+                  </div>
+                </div>
+              )}
+
+              {modalTab === "action" && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-blue-50/80 border border-blue-100 rounded-2xl text-xs text-[#0071E3] flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Sparkles className="w-4 h-4 shrink-0 text-[#0071E3]" />
+                      <span>
+                        <strong className="text-[#1D1D1F]">Interactive Agent Playground:</strong> Test {activeModalAgent.name} live with real inputs.
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded-full border border-blue-200 text-[#0071E3]">
+                      API: POST /api/agents/{activeModalAgent.id}
+                    </span>
+                  </div>
+
+                  {/* Split Screen Playground */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[420px]">
+                    {/* Left Column: Input Data Panel */}
+                    <div className="flex flex-col border border-[#E5E5EA] rounded-2xl overflow-hidden bg-white shadow-2xs">
+                      <div className="px-4 py-2 bg-[#F5F5F7] border-b border-[#E5E5EA] flex items-center justify-between">
+                        <span className="font-bold text-xs text-[#1D1D1F]">
+                          {inputMode === "file" ? "Drop Trade Document (Vision OCR)" : "Input Contract Payload"}
+                        </span>
+                        <div className="flex items-center space-x-1 bg-white rounded-lg p-0.5 border border-[#E5E5EA]">
+                          <button
+                            onClick={() => setInputMode("file")}
+                            className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                              inputMode === "file"
+                                ? "bg-[#0071E3] text-white shadow-2xs"
+                                : "text-[#86868B] hover:text-[#1D1D1F]"
+                            }`}
+                          >
+                            📄 Drop File
+                          </button>
+                          <button
+                            onClick={() => setInputMode("json")}
+                            className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                              inputMode === "json"
+                                ? "bg-[#0071E3] text-white shadow-2xs"
+                                : "text-[#86868B] hover:text-[#1D1D1F]"
+                            }`}
+                          >
+                            💻 JSON
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-3 flex-1 flex flex-col space-y-2 justify-between">
+                        {inputMode === "file" ? (
+                          <div className="flex-1 flex flex-col justify-center">
+                            <div className="relative border-2 border-dashed border-[#E5E5EA] hover:border-[#0071E3] rounded-2xl p-6 text-center bg-[#F5F5F7] transition-all cursor-pointer group flex flex-col items-center justify-center space-y-2">
+                              <input
+                                type="file"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    setDropFile(e.target.files[0]);
+                                  }
+                                }}
+                                accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.csv"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                              <div className="w-12 h-12 rounded-full bg-white border border-[#E5E5EA] flex items-center justify-center text-[#0071E3] group-hover:scale-110 transition-transform">
+                                <FileCheck2 className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-[#1D1D1F]">
+                                  {dropFile ? dropFile.name : "Drop trade document here or click to browse"}
+                                </p>
+                                <p className="text-[10px] text-[#86868B] mt-0.5">
+                                  {dropFile
+                                    ? `${(dropFile.size / 1024).toFixed(1)} KB (${dropFile.type || "Document"})`
+                                    : "PDF, PNG, JPG, WEBP, XLSX up to 25MB (Multi-Modal Vision Engine)"}
+                                </p>
+                              </div>
+                              {dropFile && (
+                                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  Ready to Process with {activeModalAgent.name}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <textarea
+                            value={testInputJson}
+                            onChange={(e) => setTestInputJson(e.target.value)}
+                            className="w-full flex-1 p-3 bg-slate-900 text-emerald-400 font-mono text-[11px] rounded-xl border border-slate-800 focus:outline-hidden focus:border-[#0071E3] resize-none"
+                            placeholder="Paste JSON input payload here..."
+                          />
+                        )}
+
+                        <button
+                          onClick={handleRunAgentTest}
+                          disabled={isExecuting || (inputMode === "file" && !dropFile)}
+                          className="w-full py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {isExecuting ? (
+                            <>
+                              <Cpu className="w-4 h-4 animate-spin text-white" />
+                              <span>Executing {activeModalAgent.name}...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4" />
+                              <span>⚡ Run {activeModalAgent.name} in Real-Time</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Live Output & Provenance Panel */}
+                    <div className="flex flex-col border border-[#E5E5EA] rounded-2xl overflow-hidden bg-white shadow-2xs">
+                      <div className="px-4 py-2.5 bg-[#F5F5F7] border-b border-[#E5E5EA] flex items-center justify-between">
+                        <span className="font-bold text-xs text-[#1D1D1F]">Agent Execution Output</span>
+                        {executionTime !== null && (
+                          <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            Latency: {executionTime}ms
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-3 flex-1 overflow-y-auto bg-slate-950 text-slate-100 font-mono text-[11px]">
+                        {isExecuting ? (
+                          <div className="h-full flex flex-col items-center justify-center space-y-3 text-slate-400">
+                            <Cpu className="w-8 h-8 text-[#0071E3] animate-pulse" />
+                            <p className="text-xs font-sans text-slate-300">Agent reasoning and executing rules...</p>
+                          </div>
+                        ) : testResult ? (
+                          <pre className="text-blue-300 whitespace-pre-wrap">
+                            {JSON.stringify(testResult, null, 2)}
+                          </pre>
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center space-y-2 text-slate-500">
+                            <Bot className="w-8 h-8 text-slate-600" />
+                            <p className="text-xs font-sans">Click 'Run Agent in Real-Time' to trigger live execution.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

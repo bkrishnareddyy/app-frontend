@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
-import { Building2, Globe } from "lucide-react";
+import { Building2, Globe, Bot } from "lucide-react";
 
 interface HeaderProps {
   tenantName?: string;
@@ -46,6 +46,11 @@ export function Header({ tenantName = "Acme Corporation", userName = "User" }: H
           }}
         >
           <UserButton.MenuItems>
+            <UserButton.Action
+              label="AI Agents Roster & Testing"
+              labelIcon={<Bot className="w-4 h-4 text-[#0071E3]" />}
+              onClick={() => router.push("/agents")}
+            />
             <UserButton.Action
               label="Account Profile & Country/Language"
               labelIcon={<Globe className="w-4 h-4 text-[#0071E3]" />}

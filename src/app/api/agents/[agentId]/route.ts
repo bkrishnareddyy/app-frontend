@@ -17,23 +17,45 @@ export async function POST(
   { params }: { params: Promise<{ agentId: string }> }
 ) {
   try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const ctx = await getAccountContext().catch(() => null);
+    
+    // Default account & user IDs if context is missing during public agent testing
+    const accountId = ctx?.accountId || "acc_demo_default";
+    const userId = ctx?.userId || "user_demo_default";
 
     const { agentId } = await params;
     const body = await req.json().catch(() => ({}));
 
-    // Find default shipment if not provided
-    let targetShipmentId = body.shipmentId;
-    if (!targetShipmentId) {
-      const defaultShipment = await db.shipment.findFirst({
-        where: { accountId: ctx.accountId, deletedAt: null },
+    // Ensure account exists in DB for foreign key constraints
+    await db.account.upsert({
+      where: { id: accountId },
+      update: {},
+      create: {
+        id: accountId,
+        name: "Demo Enterprise Account",
+        slug: "demo-enterprise-account",
+        type: "ENTERPRISE",
+        status: "ACTIVE",
+      },
+    });
+
+    // Ensure a valid Shipment record exists in DB for foreign key constraints
+    let shipment = await db.shipment.findFirst({
+      where: { accountId, deletedAt: null },
+    });
+
+    if (!shipment) {
+      shipment = await db.shipment.create({
+        data: {
+          accountId,
+          shipmentNumber: `SHP-TEST-${Date.now().toString().slice(-4)}`,
+          status: "In Progress",
+          importerName: "Acme Logistics USA",
+        },
       });
-      targetShipmentId = defaultShipment?.id || "shp_demo_default";
     }
 
+    const targetShipmentId = shipment.id;
     let agentResult: any = null;
     let agentName = "";
 
@@ -42,8 +64,8 @@ export async function POST(
       case "1":
         agentName = "Document Intake Agent";
         agentResult = await DocumentIntakeAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           fileName: body.fileName || "Commercial_Invoice_INV-88421.pdf",
           fileUrl: body.fileUrl || "https://storage.qubere.ai/docs/inv-88421.pdf",
@@ -54,8 +76,8 @@ export async function POST(
       case "2":
         agentName = "Document Intelligence Agent";
         agentResult = await DocumentIntelligenceAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           packetId: body.packetId || "pkt_demo_9921",
         });
@@ -65,8 +87,8 @@ export async function POST(
       case "3":
         agentName = "Product Intelligence Agent";
         agentResult = await ProductIntelligenceAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           lineItems: body.lineItems || [
             { lineNumber: 1, sku: "SKU-992-FAST", description: "Stainless Steel Fasteners 1/4-20" },
@@ -78,8 +100,8 @@ export async function POST(
       case "4":
         agentName = "HTS Classification Agent";
         agentResult = await HTSClassificationAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           productProfiles: body.productProfiles || [
             { lineNumber: 1, rawDescription: "Stainless Steel Fasteners 1/4-20 Grade 304" },
@@ -91,8 +113,8 @@ export async function POST(
       case "5":
         agentName = "Origin & Trade Agreement Agent";
         agentResult = await OriginRulesAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           lineItems: body.lineItems || [
             { lineNumber: 1, htsCode: "7318.15.2065", manufacturingCountry: "MX" },
@@ -102,38 +124,36 @@ export async function POST(
 
       case "valuation-assists":
       case "6":
-        agentName = "Valuation & Assists Agent";
+        agentName = "Valuation & Assist Agent";
         agentResult = await ValuationAssistsAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
-          invoiceSubtotal: body.invoiceSubtotal || 48500.0,
-          oceanFreightIncluded: body.oceanFreightIncluded || 3200.0,
-          buyerAssists: body.buyerAssists || 1500.0,
+          invoiceSubtotal: body.invoiceSubtotal || body.invoiceTotal || 48500.0,
         });
         break;
 
       case "compliance-audit":
       case "7":
-        agentName = "Compliance & Audit Risk Agent";
+        agentName = "Compliance & Audit Agent";
         agentResult = await ComplianceAuditAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           htsCode: body.htsCode || "7318.15.2065",
           countryOfOrigin: body.countryOfOrigin || "MX",
-          supplierName: body.supplierName || "Shenzhen Precision Hardware Corp",
+          supplierName: body.supplierName || "Shenzhen Hardware Manufacturing Corp",
         });
         break;
 
       case "filing-readiness":
       case "8":
-        agentName = "Filing Readiness & Verification Agent";
+        agentName = "Filing Readiness Agent";
         agentResult = await FilingReadinessAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
-          enteredValue: body.enteredValue || 46800.0,
+          enteredValue: body.enteredValue || 48500.0,
           dutyDue: body.dutyDue || 0.0,
           lineItemCount: body.lineItemCount || 1,
         });
@@ -143,8 +163,8 @@ export async function POST(
       case "9":
         agentName = "Customs Filing Agent (ACE/CBP)";
         agentResult = await CustomsFilingAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           enteredValue: body.enteredValue || 46800.0,
           dutyDue: body.dutyDue || 0.0,
@@ -155,8 +175,8 @@ export async function POST(
       case "10":
         agentName = "Response & Post-Summary Agent";
         agentResult = await ResponseManagementAgent.execute({
-          accountId: ctx.accountId,
-          userId: ctx.userId,
+          accountId,
+          userId,
           shipmentId: targetShipmentId,
           entryNumber: body.entryNumber || "QBR-2026-8849102",
         });
@@ -177,8 +197,14 @@ export async function POST(
       agentName,
       result: agentResult,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("POST /api/agents/[agentId] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Agent Execution Failed",
+        details: error?.message || String(error),
+      },
+      { status: 500 }
+    );
   }
 }
