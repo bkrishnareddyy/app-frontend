@@ -9,8 +9,8 @@ import { OriginRulesAgent } from "@/modules/agents/originRulesAgent";
 import { ValuationAssistsAgent } from "@/modules/agents/valuationAssistsAgent";
 import { ComplianceAuditAgent } from "@/modules/agents/complianceAuditAgent";
 import { FilingReadinessAgent } from "@/modules/agents/filingReadinessAgent";
-import { CustomsFilingAgent } from "@/modules/agents/customsFilingAgent";
-import { ResponseManagementAgent } from "@/modules/agents/responseManagementAgent";
+import { CustomsFilingAgent } from "@/modules/demo/customsFilingAgent";
+import { ResponseManagementAgent } from "@/modules/demo/responseManagementAgent";
 
 export async function POST(
   req: Request,
@@ -31,36 +31,10 @@ export async function POST(
     const { agentId } = await params;
     const body = await req.json().catch(() => ({}));
 
-    // Ensure account exists in DB for foreign key constraints
-    await db.account.upsert({
-      where: { id: accountId },
-      update: {},
-      create: {
-        id: accountId,
-        name: "Demo Enterprise Account",
-        slug: "demo-enterprise-account",
-        type: "ENTERPRISE",
-        status: "ACTIVE",
-      },
-    });
-
-    // Ensure a valid Shipment record exists in DB for foreign key constraints
-    let shipment = await db.shipment.findFirst({
-      where: { accountId, deletedAt: null },
-    });
-
-    if (!shipment) {
-      shipment = await db.shipment.create({
-        data: {
-          accountId,
-          shipmentNumber: `SHP-TEST-${Date.now().toString().slice(-4)}`,
-          status: "In Progress",
-          importerName: "Acme Logistics USA",
-        },
-      });
+    let targetShipmentId = body.shipmentId;
+    if (!targetShipmentId) {
+      return NextResponse.json({ error: "Shipment ID is required" }, { status: 400 });
     }
-
-    const targetShipmentId = shipment.id;
     let agentResult: any = null;
     let agentName = "";
 
@@ -84,7 +58,7 @@ export async function POST(
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          packetId: body.packetId || "pkt_demo_9921",
+          packetId: body.packetId,
         });
         break;
 

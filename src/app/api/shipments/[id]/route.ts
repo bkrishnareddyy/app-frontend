@@ -10,12 +10,18 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const whereClause: any = {
+      accountId: ctx.accountId,
+      OR: [{ id: params.id }, { shipmentNumber: params.id }],
+      deletedAt: null,
+    };
+
+    if (ctx.roleName === "PLANNER") {
+      whereClause.assignedBrokerId = ctx.userId;
+    }
+
     const shipment = await db.shipment.findFirst({
-      where: {
-        accountId: ctx.accountId,
-        OR: [{ id: params.id }, { shipmentNumber: params.id }],
-        deletedAt: null,
-      },
+      where: whereClause,
       include: {
         documents: true,
         lineItems: true,

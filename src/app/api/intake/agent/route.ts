@@ -46,36 +46,11 @@ export async function POST(req: Request) {
       docTypeOverride = json.docType as DocumentType | undefined;
     }
 
-    // Ensure account exists in DB for foreign key constraints
-    await db.account.upsert({
-      where: { id: accountId },
-      update: {},
-      create: {
-        id: accountId,
-        name: "Demo Enterprise Account",
-        slug: "demo-enterprise-account",
-        type: "ENTERPRISE",
-        status: "ACTIVE",
-      },
-    });
-
-    // Resolve target shipment if not explicitly provided
-    let shipment = await db.shipment.findFirst({
-      where: { accountId, deletedAt: null },
-    });
-
-    if (!shipment) {
-      shipment = await db.shipment.create({
-        data: {
-          accountId,
-          shipmentNumber: `SHP-TEST-${Date.now().toString().slice(-4)}`,
-          status: "In Progress",
-          importerName: "Acme Logistics USA",
-        },
-      });
+    if (!shipmentId) {
+      return NextResponse.json({ error: "Shipment ID is required" }, { status: 400 });
     }
 
-    const targetShipmentId = shipment.id;
+    const targetShipmentId = shipmentId;
 
     // Invoke Document Intake Agent
     const result = await DocumentIntakeService.ingestDocumentPacket({

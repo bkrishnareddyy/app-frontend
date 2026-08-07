@@ -50,7 +50,7 @@ export function calculateLineItemDuty(
   lineItem: Partial<ShipmentLineItem>,
   htsCode?: Partial<HTSCode> | null
 ): LineItemDutyResult {
-  const customsValue = Math.round(((lineItem.totalValue || (lineItem.quantity || 1) * (lineItem.unitPrice || 0))) * 100) / 100;
+  const customsValue = Math.round(((Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0))) * 100) / 100;
 
   // Base duty rate extraction from HTS master or fallback
   let baseDutyRate = 0.028;
@@ -59,8 +59,8 @@ export function calculateLineItemDuty(
     if (!isNaN(parsed)) baseDutyRate = parsed / 100;
   }
 
-  const section301Rate = htsCode?.section301Applicable ? (htsCode.section301AdditionalRate || 0) / 100 : 0;
-  const section232Rate = htsCode?.section232Applicable ? (htsCode.section232AdditionalRate || 0) / 100 : 0;
+  const section301Rate = htsCode?.section301Applicable ? (Number(htsCode.section301AdditionalRate) || 0) / 100 : 0;
+  const section232Rate = htsCode?.section232Applicable ? (Number(htsCode.section232AdditionalRate) || 0) / 100 : 0;
 
   const baseDutyAmount = Math.round((customsValue * baseDutyRate) * 100) / 100;
   const section301Amount = Math.round((customsValue * section301Rate) * 100) / 100;

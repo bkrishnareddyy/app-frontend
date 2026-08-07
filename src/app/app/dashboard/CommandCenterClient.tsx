@@ -61,9 +61,6 @@ export function CommandCenterClient({
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight">{t.dashboard.commandCenter}</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-              {t.dashboard.demoMode}
-            </span>
           </div>
           <p className="text-xs text-[#86868B] mt-1">
             {t.dashboard.subtitle}{" "}

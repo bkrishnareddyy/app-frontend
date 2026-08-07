@@ -60,16 +60,16 @@ export async function PATCH(
 
     const updateData: import("@prisma/client").Prisma.PostSummaryCorrectionUpdateInput = {};
     if (status) {
-      updateData.status = status;
-      if (status === "Filed" && !existingPsc.filedAt) {
-        updateData.filedAt = new Date();
-      }
+      return NextResponse.json(
+        { error: "Forbidden: State mutations must be performed via the workflow engine." },
+        { status: 403 }
+      );
     }
 
     if (cbpResponseCode) updateData.cbpResponseCode = cbpResponseCode;
     if (correctedDutyAmount !== undefined) {
       updateData.correctedDutyAmount = correctedDutyAmount;
-      updateData.refundAmount = Math.max(0, existingPsc.originalDutyAmount - correctedDutyAmount);
+      updateData.refundAmount = Math.max(0, Number(existingPsc.originalDutyAmount) - correctedDutyAmount);
     }
 
     const updatedPsc = await db.postSummaryCorrection.update({

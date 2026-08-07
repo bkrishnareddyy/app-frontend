@@ -16,6 +16,7 @@ import {
   Info,
 } from "lucide-react";
 import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
+import { PipelineProgressTracker } from "./PipelineProgressTracker";
 
 export default async function ShipmentWorkspacePage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -38,10 +39,11 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
 
   if (!shipment) notFound();
 
-  const totalInvoiceAmount = shipment.lineItems.reduce((acc, item) => acc + item.quantity * item.unitPrice, 0);
+  const totalInvoiceAmount = shipment.lineItems.reduce((acc, item) => acc + Number(item.quantity) * Number(item.unitPrice), 0);
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
+      <PipelineProgressTracker shipmentId={shipment.id} />
       {/* Top Banner Header */}
       <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -191,8 +193,8 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
                         <td className="py-2.5 px-2 text-[#0071E3] font-medium whitespace-nowrap">{item.htsCode}</td>
                         <td className="py-2.5 px-2 text-[#86868B] whitespace-nowrap">{item.countryOfOrigin}</td>
                         <td className="py-2.5 px-2 text-[#1D1D1F] text-center whitespace-nowrap">{item.quantity} PCS</td>
-                        <td className="py-2.5 px-2 text-[#1D1D1F] text-right whitespace-nowrap">${item.unitPrice.toFixed(2)}</td>
-                        <td className="py-2.5 pl-2 text-right font-bold text-[#1D1D1F] whitespace-nowrap">${(item.quantity * item.unitPrice).toLocaleString()}</td>
+                        <td className="py-2.5 px-2 text-[#1D1D1F] text-right whitespace-nowrap">${Number(item.unitPrice).toFixed(2)}</td>
+                        <td className="py-2.5 pl-2 text-right font-bold text-[#1D1D1F] whitespace-nowrap">${(Number(item.quantity) * Number(item.unitPrice)).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -246,7 +248,7 @@ export default async function ShipmentWorkspacePage(props: { params: Promise<{ i
                   </div>
                   <div className="flex justify-between text-[11px] text-[#86868B]">
                     <span>HTS: <strong className="text-[#0071E3]">{item.htsCode}</strong> ({item.countryOfOrigin})</span>
-                    <span>USD ${(item.unitPrice * item.quantity).toLocaleString()}</span>
+                    <span>USD ${(Number(item.unitPrice) * Number(item.quantity)).toLocaleString()}</span>
                   </div>
                 </div>
               ))}

@@ -78,7 +78,7 @@ export async function storeDocumentFile(
     try {
       console.log(`[Storage] Uploading ${safeFilename} (${file.size} bytes) sha256=${checksum} to Vercel Blob Storage...`);
       const blob = await put(`documents/${safeFilename}`, buffer, {
-        access: "public",
+        access: "private",
         token,
       });
 

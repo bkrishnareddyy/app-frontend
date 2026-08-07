@@ -28,19 +28,19 @@ export async function POST(
     }
 
     const lineCalculations = scenario.lineItems.map((item) => {
-      const customsValue = item.unitValue * item.quantity;
+      const customsValue = Number(item.unitValue) * Number(item.quantity);
       const hts = item.htsCode;
       const baseDutyRate = item.dutyRateOverride !== null && item.dutyRateOverride !== undefined
-        ? item.dutyRateOverride / 100
+        ? Number(item.dutyRateOverride) / 100
         : parseFloat(hts.generalDutyRate.replace("%", "")) / 100 || 0.028;
 
-      const sec301Rate = hts.section301Applicable ? (hts.section301AdditionalRate || 0) / 100 : 0.0;
-      const sec232Rate = hts.section232Applicable ? (hts.section232AdditionalRate || 0) / 100 : 0.0;
+      const sec301Rate = hts.section301Applicable ? (Number(hts.section301AdditionalRate) || 0) / 100 : 0.0;
+      const sec232Rate = hts.section232Applicable ? (Number(hts.section232AdditionalRate) || 0) / 100 : 0.0;
       const effectiveRate = baseDutyRate + sec301Rate + sec232Rate;
 
       const duty = Math.round((customsValue * effectiveRate) * 100) / 100;
       const fees = Math.round((customsValue * 0.003464 + customsValue * 0.00125) * 100) / 100;
-      const landedCost = customsValue + item.freightCost + item.insuranceCost + duty + fees;
+      const landedCost = customsValue + (item.freightCost ? Number(item.freightCost) : 0) + (item.insuranceCost ? Number(item.insuranceCost) : 0) + duty + fees;
 
       return {
         id: item.id,

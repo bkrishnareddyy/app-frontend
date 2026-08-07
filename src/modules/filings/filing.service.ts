@@ -31,8 +31,8 @@ export class FilingService {
       throw new Error(`Entry number ${input.entryNumber} is already registered.`);
     }
 
-    const totalVal = shipment.lineItems.reduce((acc, l) => acc + l.totalValue, 0);
-    const totalDuty = Math.round(shipment.lineItems.reduce((acc, l) => acc + (l.totalValue * 0.028), 0) * 100) / 100;
+    const totalVal = shipment.lineItems.reduce((acc, l) => acc + Number(l.totalValue), 0);
+    const totalDuty = Math.round(shipment.lineItems.reduce((acc, l) => acc + (Number(l.totalValue) * 0.028), 0) * 100) / 100;
 
     const filing = await db.customsFiling.create({
       data: {

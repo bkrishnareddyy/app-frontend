@@ -77,12 +77,13 @@ export async function POST(req: Request) {
         companyName: result.account.name,
         slug: result.account.slug,
         ownerEmail,
-        invitationToken: result.invitation.token,
+        invitationToken: "[REDACTED]",
       },
       success: true,
     });
 
-    return NextResponse.json({ success: true, account: result.account, invitation: result.invitation });
+    const { token, ...invitationSafe } = result.invitation;
+    return NextResponse.json({ success: true, account: result.account, invitation: invitationSafe });
   } catch (error) {
     console.error("Error creating enterprise account:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

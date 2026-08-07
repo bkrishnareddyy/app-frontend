@@ -7,17 +7,20 @@ interface DocumentUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   shipmentId: string;
+  shipments?: any[];
   onUploadSuccess?: () => void;
 }
 
 export function DocumentUploadModal({
   isOpen,
   onClose,
-  shipmentId,
+  shipmentId: initialShipmentId,
+  shipments = [],
   onUploadSuccess,
 }: DocumentUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [docType, setDocType] = useState<string>("Commercial Invoice");
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string>(initialShipmentId);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -42,10 +45,14 @@ export function DocumentUploadModal({
     setSuccessMsg(null);
 
     try {
+      if (!selectedShipmentId) {
+        throw new Error("Please select a shipment.");
+      }
+      
       const formData = new FormData();
       formData.append("file", file);
       formData.append("docType", docType);
-      formData.append("shipmentId", shipmentId);
+      formData.append("shipmentId", selectedShipmentId);
 
       const res = await fetch("/api/documents/upload", {
         method: "POST",
@@ -114,7 +121,24 @@ export function DocumentUploadModal({
           </div>
         )}
 
-        {/* Document Type Selector */}
+          {/* Shipment Selection */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#1D1D1F] ml-1">Target Shipment</label>
+            <select
+              value={selectedShipmentId}
+              onChange={(e) => setSelectedShipmentId(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/20 transition-all"
+            >
+              <option value="" disabled>Select a Shipment</option>
+              {shipments.map((shp: any) => (
+                <option key={shp.id} value={shp.id}>
+                  {shp.shipmentNumber || shp.referenceNumber || shp.id} ({shp.status || "Unknown"})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Document Type Dropdown */}
         <div className="space-y-1.5">
           <label className="text-xs font-bold text-[#1D1D1F]">Document Type</label>
           <select

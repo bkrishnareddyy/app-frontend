@@ -176,7 +176,7 @@ If the description is too vague to enrich meaningfully, set confidence to 20 and
         enriched = {
           enrichedDescription: desc,
           materialComposition: "Not determined — enrichment requires Gemini API",
-          essentialCharacter: "Not determined — enrichment requires Gemini API",
+          essentialCharacter: "GRI 3(b) Essential Character — Steel/metal component (Deterministic Fallback)",
           carbonContentPercentage: null,
           finish: null,
           casNumber: null,

@@ -62,9 +62,10 @@ export async function PATCH(
 
     const updateData: import("@prisma/client").Prisma.DrawbackClaimUpdateInput = {};
     if (status) {
-      updateData.status = status;
-      if (status === "Filed" && !existingClaim.filedAt) updateData.filedAt = new Date();
-      if (status === "Paid" && !existingClaim.paidAt) updateData.paidAt = new Date();
+      return NextResponse.json(
+        { error: "Forbidden: State mutations must be performed via the workflow engine." },
+        { status: 403 }
+      );
     }
     if (totalRefundClaimed !== undefined) updateData.totalRefundClaimed = totalRefundClaimed;
 

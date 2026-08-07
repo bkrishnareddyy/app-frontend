@@ -185,15 +185,15 @@ export async function GET(req: Request) {
     const filings = rawFilings.map((filing) => {
       const lineItems = filing.shipment?.lineItems || [];
       const primaryCOO = lineItems[0]?.countryOfOrigin || filing.shipment?.countryOfExport || "USA";
-      const totalCustomsValue = filing.totalValue || lineItems.reduce((acc, item) => acc + item.totalValue, 0);
-      const totalDuty = filing.totalDuties || 0;
-      const totalTaxes = filing.totalTaxes || 0;
+      const totalCustomsValue = Number(filing.totalValue) || lineItems.reduce((acc, item) => acc + Number(item.totalValue), 0);
+      const totalDuty = Number(filing.totalDuties) || 0;
+      const totalTaxes = Number(filing.totalTaxes) || 0;
 
       // Compute standard duty breakdown if null
       const dutyBreakdown = filing.dutyBreakdown || [
-        { feeName: "Base Customs Duty", amount: Math.round(totalDuty * 0.7 * 100) / 100, rate: "3.5%" },
-        { feeName: "Merchandise Processing Fee (MPF)", amount: Math.round(totalDuty * 0.15 * 100) / 100, rate: "0.3464%" },
-        { feeName: "Harbor Maintenance Fee (HMF)", amount: Math.round(totalDuty * 0.15 * 100) / 100, rate: "0.125%" },
+        { feeName: "Base Customs Duty", amount: Math.round(Number(totalDuty) * 0.7 * 100) / 100, rate: "3.5%" },
+        { feeName: "Merchandise Processing Fee (MPF)", amount: Math.round(Number(totalDuty) * 0.15 * 100) / 100, rate: "0.3464%" },
+        { feeName: "Harbor Maintenance Fee (HMF)", amount: Math.round(Number(totalDuty) * 0.15 * 100) / 100, rate: "0.125%" },
       ];
 
       return {
@@ -260,8 +260,9 @@ export async function GET(req: Request) {
       releasedCount: allAccountFilings.filter((f) => f.filingStatus === "Released" || f.filingStatus === "Liquidated").length,
       heldCount: allAccountFilings.filter((f) => f.filingStatus === "Customs Hold" || f.filingStatus === "On Hold").length,
       draftCount: allAccountFilings.filter((f) => f.filingStatus === "Draft" || f.filingStatus === "In Progress").length,
-      totalCustomsValue: allAccountFilings.reduce((sum, f) => sum + (f.totalValue || 0), 0),
-      totalDutiesPaid: allAccountFilings.reduce((sum, f) => sum + (f.totalDuties || 0), 0),
+      totalDuties: Math.round(filings.reduce((acc, f) => acc + Number(f.totalDuty), 0) * 100) / 100,
+      totalTaxes: Math.round(filings.reduce((acc, f) => acc + Number(f.taxes), 0) * 100) / 100,
+      totalAmount: Math.round(filings.reduce((acc, f) => acc + Number(f.totalAmount), 0) * 100) / 100,
       acceptanceRate: allAccountFilings.length > 0
         ? Math.round((allAccountFilings.filter((f) => ["Accepted", "Released", "Liquidated"].includes(f.filingStatus)).length / allAccountFilings.length) * 1000) / 10
         : 100,
@@ -331,7 +332,7 @@ export async function POST(req: Request) {
         entryType: entryType || shipment.entryType || "Consumption Entry",
         filingType: filingType || "ABI - Automated",
         filingStatus: "Draft",
-        totalValue: calculatedValue,
+        totalValue: shipment.lineItems.reduce((acc, item) => acc + Number(item.unitPrice) * Number(item.quantity), 0),
         totalDuties: calculatedDuty,
         totalTaxes: calculatedTaxes,
         totalAmount: calculatedTotal,

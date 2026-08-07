@@ -1,0 +1,34 @@
+import { NextResponse } from "next/server";
+import { authorizeRequest } from "@/lib/api/auth-guards";
+import { HtsIngestionService } from "@/modules/hts/htsIngestionService";
+
+export async function POST(req: Request) {
+  const { ctx, errorResponse } = await authorizeRequest();
+  if (errorResponse) return errorResponse;
+  if (!ctx?.isPlatformAdmin) {
+    return NextResponse.json({ error: "Platform Admin privileges required for HTS ingestion" }, { status: 403 });
+  }
+
+  try {
+    const body = await req.json();
+    const { editionYear, revisionNumber, releaseName, sourceUrl, sourceFormat, rawContent, items } = body;
+
+    if (!releaseName || !items || !Array.isArray(items)) {
+      return NextResponse.json({ error: "Missing required releaseName or items array" }, { status: 400 });
+    }
+
+    const release = await HtsIngestionService.stageRelease({
+      editionYear: editionYear || new Date().getFullYear(),
+      revisionNumber: revisionNumber || 1,
+      releaseName,
+      sourceUrl: sourceUrl || "https://hts.usitc.gov/export",
+      sourceFormat: sourceFormat || "JSON",
+      rawContent: rawContent || JSON.stringify(items),
+      items,
+    });
+
+    return NextResponse.json({ release, status: "STAGED_DRAFT" });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Failed to stage HTS release" }, { status: 400 });
+  }
+}

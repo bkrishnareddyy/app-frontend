@@ -29,10 +29,10 @@ export async function POST(req: Request) {
     });
 
     const comparisons = scenarios.map((s) => {
-      const totalCustomsValue = s.lineItems.reduce((acc, l) => acc + l.unitValue * l.quantity, 0);
-      const totalDuty = s.lineItems.reduce((acc, l) => acc + l.computedDuty, 0);
-      const totalFees = s.lineItems.reduce((acc, l) => acc + l.computedFees, 0);
-      const totalLandedCost = s.lineItems.reduce((acc, l) => acc + (l.computedLandedCost || l.unitValue * l.quantity + l.computedDuty + l.computedFees), 0);
+      const totalCustomsValue = s.lineItems.reduce((acc, l) => acc + Number(l.unitValue) * Number(l.quantity), 0);
+      const totalDuty = s.lineItems.reduce((acc, l) => acc + Number(l.computedDuty), 0);
+      const totalFees = s.lineItems.reduce((acc, l) => acc + Number(l.computedFees), 0);
+      const totalLandedCost = s.lineItems.reduce((acc, l) => acc + (Number(l.computedLandedCost) || (Number(l.unitValue) * Number(l.quantity) + Number(l.computedDuty) + Number(l.computedFees))), 0);
 
       return {
         scenarioId: s.id,

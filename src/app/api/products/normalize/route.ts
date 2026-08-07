@@ -36,16 +36,16 @@ export async function POST(req: Request) {
         data: {
           accountId: ctx.accountId,
           canonicalName,
-          partNumber: partNumber || "PN-9901",
-          countryOfOrigin: countryOfOrigin || "Germany",
-          htsCode: htsCode || "8481.80.5090",
-          dutyRate: "2.8%",
+          partNumber: partNumber || null,
+          countryOfOrigin: countryOfOrigin || null,
+          htsCode: htsCode || null,
+          dutyRate: null,
           aliases: {
             create: [
               {
                 aliasName: rawDescription,
-                source: source || "Commercial Invoice",
-                matchConfidence: 96,
+                source: source || "User Entry",
+                matchConfidence: 0,
               },
             ],
           },
@@ -58,10 +58,14 @@ export async function POST(req: Request) {
         data: {
           canonicalProductId: canonicalProduct.id,
           aliasName: rawDescription,
-          source: source || "Packing List",
-          matchConfidence: 94,
+          source: source || "User Entry",
+          matchConfidence: 0,
         },
       });
+    }
+
+    if (!canonicalProduct) {
+      return NextResponse.json({ error: "Failed to create canonical product" }, { status: 500 });
     }
 
     await createAuditLog({
@@ -82,8 +86,8 @@ export async function POST(req: Request) {
         countryOfOrigin: canonicalProduct.countryOfOrigin,
         htsCode: canonicalProduct.htsCode,
         dutyRate: canonicalProduct.dutyRate,
-        matchedConfidence: 96,
-        aliasesCount: canonicalProduct.aliases.length + 1,
+        matchedConfidence: 0,
+        aliasesCount: (canonicalProduct.aliases?.length || 0) + 1,
       },
     });
   } catch (error) {

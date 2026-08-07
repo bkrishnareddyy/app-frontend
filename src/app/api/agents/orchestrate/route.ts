@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
+import { PgQueue } from "@/lib/queue/pgQueue";
 
 export async function POST(req: Request) {
   try {
@@ -13,28 +14,31 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
 
     // Resolve target shipment
-    let targetShipmentId = body.shipmentId;
+    const targetShipmentId = body.shipmentId;
     if (!targetShipmentId) {
-      const defaultShipment = await db.shipment.findFirst({
-        where: { accountId: ctx.accountId, deletedAt: null },
-      });
-      targetShipmentId = defaultShipment?.id || "shp_demo_default";
+      return NextResponse.json({ error: "Shipment ID is required" }, { status: 400 });
     }
 
-    // Run end-to-end multi-agent orchestration pipeline across all 10 agents
-    const pipelineResult = await AgentOrchestrator.runFullPipeline({
+    // Dispatch to PG Queue for background orchestration
+    const job = await PgQueue.enqueueJob({
       accountId: ctx.accountId,
       userId: ctx.userId,
       shipmentId: targetShipmentId,
-      fileName: body.fileName,
-      fileUrl: body.fileUrl,
-      mimeType: body.mimeType,
+      initialState: {
+        intakeOutput: {
+          fileName: body.fileName,
+          fileUrl: body.fileUrl,
+          mimeType: body.mimeType,
+        },
+      },
+      totalSteps: 10,
     });
 
     return NextResponse.json({
       success: true,
-      orchestration: "Qubere Autonomous Multi-Agent Suite (10 Agents)",
-      result: pipelineResult,
+      orchestration: "Dispatched to Qubere Autonomous Multi-Agent Suite (10 Agents)",
+      jobId: job.id,
+      result: { status: "processing", shipmentId: targetShipmentId },
     });
   } catch (error) {
     console.error("POST /api/agents/orchestrate error:", error);

@@ -1,0 +1,199 @@
+import { db } from "@/lib/db";
+import { createAuditLog } from "@/lib/audit";
+import { logAgentError } from "../agents/agentLogger";
+
+export interface ACEResponsePayload {
+  status: "ACCEPTED" | "REJECTED" | "DOCS_REQUIRED" | "BLOCKED";
+  cbpEntryNumber: string | null;
+  cbpActionCode: string;
+  transmittedAt: string;
+  filerCode: string;
+  portCode: string;
+  rejectionReason?: string;
+}
+
+export interface CustomsFilingInput {
+  accountId: string;
+  userId: string;
+  shipmentId: string;
+  enteredValue?: number | null;
+  dutyDue?: number | null;
+  readyForTransmission?: boolean;
+  entryType?: string;
+  portCode?: string;
+}
+
+export interface CustomsFilingOutput {
+  shipmentId: string;
+  status: "Completed" | "Review Required";
+  customsFilingId: string | null;
+  aceResponse: ACEResponsePayload;
+  confidence: number;
+  reasoningChain: string;
+  agentDecisionId: string;
+  aiProviderUsed: string;
+  debugError?: string;
+}
+
+export class CustomsFilingAgent {
+  static async execute(input: CustomsFilingInput): Promise<CustomsFilingOutput> {
+    // ACE simulation — no LLM call and no real CBP ABI connection in this environment.
+    const aiProvider = "Deterministic ACE Simulation";
+    let debugError: string | undefined = undefined;
+
+    const timestamp = new Date().toISOString();
+    const isReady =
+      input.readyForTransmission !== false &&
+      typeof input.enteredValue === "number" &&
+      input.enteredValue > 0;
+
+    if (!isReady) {
+      const aceResponse: ACEResponsePayload = {
+        status: "BLOCKED",
+        cbpEntryNumber: null,
+        cbpActionCode: "BLOCKED - INCOMPLETE ENTRY PACKET (19 CFR § 141.86)",
+        transmittedAt: timestamp,
+        filerCode: "QBR",
+        portCode: input.portCode || "3501",
+        rejectionReason:
+          "Transmission blocked: Missing mandatory Commercial Invoice and transaction valuation data.",
+      };
+
+      const reasoningChain =
+        "ACE ABI EDI transmission BLOCKED: Mandatory customs entry documents (Commercial Invoice) missing. Filer code QBR prevented from submitting incomplete entry to CBP per 19 CFR § 141.86.";
+
+      let agentDecisionId = "dec_fallback_filing";
+      try {
+        const agentDecision = await db.agentDecision.create({
+          data: {
+            accountId: input.accountId,
+            shipmentId: input.shipmentId,
+            agentName: "Customs Filing Agent",
+            agentIcon: "Send",
+            status: "Needs Review",
+            confidence: 0,
+            decisionSummary: "CBP Transmission BLOCKED: Missing Commercial Invoice & Entry Pricing.",
+            purpose: "CBP ACE ABI EDIFACT entry summary transmission (simulation)",
+            dataSources: [aiProvider],
+            regulations: ["19 CFR § 141.86", "19 U.S.C. § 1484"],
+            proposedDescription: "ACE Transmission BLOCKED (Incomplete Entry)",
+            rulesApplied: ["CBP ABI Pre-Transmission Mandatory Document Check"],
+          },
+        });
+        agentDecisionId = agentDecision.id;
+      } catch (err) {
+        debugError = logAgentError(
+          "Customs Filing Agent",
+          input.shipmentId,
+          "DB agentDecision create (blocked path)",
+          err
+        );
+      }
+
+      return {
+        shipmentId: input.shipmentId,
+        status: "Review Required",
+        customsFilingId: null,
+        aceResponse,
+        confidence: 0,
+        reasoningChain,
+        agentDecisionId,
+        aiProviderUsed: aiProvider,
+        debugError,
+      };
+    }
+
+    const cbpEntryNumber = `QBR-${new Date().getFullYear()}-${Math.floor(
+      1000000 + Math.random() * 9000000
+    )}`;
+
+    const aceResponse: ACEResponsePayload = {
+      status: "ACCEPTED",
+      cbpEntryNumber,
+      cbpActionCode: "1C - CARGO RELEASED",
+      transmittedAt: timestamp,
+      filerCode: "QBR",
+      portCode: input.portCode || "3501",
+    };
+
+    const reasoningChain = `[SIMULATION] Simulated ABI EDIFACT payload for Entry Summary #${cbpEntryNumber}. ACE simulation response: '1C - CARGO RELEASED'. Note: no real CBP transmission occurred in this environment.`;
+
+    let customsFilingId: string | null = null;
+    let agentDecisionId = "dec_fallback_filing";
+    try {
+      const customsFiling = await db.customsFiling.create({
+        data: {
+          shipmentId: input.shipmentId,
+          accountId: input.accountId,
+          entryNumber: cbpEntryNumber,
+          entryType: input.entryType || "01",
+          filingStatus: "Accepted",
+          submittedAt: new Date(),
+          releasedAt: new Date(),
+          totalValue: input.enteredValue as number,
+          totalDuties: input.dutyDue || 0,
+        },
+      });
+      customsFilingId = customsFiling.id;
+
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Customs Filing Agent",
+          agentIcon: "Send",
+          status: "Approved",
+          confidence: 90,
+          decisionSummary: `[SIMULATION] Simulated ACE entry ${cbpEntryNumber} accepted.`,
+          purpose: "CBP ACE ABI EDIFACT entry summary transmission (simulation)",
+          dataSources: [aiProvider],
+          regulations: ["19 U.S.C. § 1484 (Customs Entry)", "19 CFR Part 142"],
+          proposedDescription: `ACE Simulated: Entry #${cbpEntryNumber} (ACCEPTED)`,
+          rulesApplied: [
+            "CBP ABI EDIFACT Envelope Construction Rule",
+            "ACE Entry Summary Transmission Rule",
+            "Automated Cargo Release Gate",
+          ],
+        },
+      });
+      agentDecisionId = agentDecision.id;
+    } catch (err) {
+      debugError = logAgentError(
+        "Customs Filing Agent",
+        input.shipmentId,
+        "DB customsFiling or agentDecision create",
+        err
+      );
+    }
+
+    try {
+      await createAuditLog({
+        accountId: input.accountId,
+        userId: input.userId,
+        action: "AGENT_EXECUTION_COMPLETED",
+        entity: "AGENT_DECISION",
+        entityId: agentDecisionId,
+        metadata: { agentName: "Customs Filing Agent", cbpEntryNumber, simulation: true },
+      });
+    } catch (err) {
+      debugError = logAgentError(
+        "Customs Filing Agent",
+        input.shipmentId,
+        "createAuditLog",
+        err
+      );
+    }
+
+    return {
+      shipmentId: input.shipmentId,
+      status: "Completed",
+      customsFilingId,
+      aceResponse,
+      confidence: 90,
+      reasoningChain,
+      agentDecisionId,
+      aiProviderUsed: aiProvider,
+      debugError,
+    };
+  }
+}

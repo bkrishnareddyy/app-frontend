@@ -46,7 +46,7 @@ export async function POST(
       raisedExceptions.push(exc);
     }
 
-    if (filing.totalValue <= 0) {
+    if (Number(filing.totalValue) <= 0) {
       const exc = await db.exceptionItem.create({
         data: {
           accountId: ctx.accountId,

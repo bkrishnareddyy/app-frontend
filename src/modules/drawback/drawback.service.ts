@@ -40,7 +40,7 @@ export class DrawbackService {
       if (matchingImport && matchingImport.quantity > 0) {
         const matchedQuantity = Math.min(matchingImport.quantity, exp.quantity);
         // Decimal-safe refund calculation: 99% drawback rate on paid duties
-        const estDuty = Math.round(matchedQuantity * matchingImport.unitPrice * 0.028 * 0.99 * 100) / 100;
+        const estDuty = Math.round(matchedQuantity * Number(matchingImport.unitPrice) * 0.028 * 0.99 * 100) / 100;
 
         proposedMatches.push({
           shipmentLineItemId: matchingImport.id,

@@ -12,6 +12,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { query } = body;
 
+    if (!ctx.permissions.includes("intel.read") && ctx.roleName !== "OWNER" && !ctx.isPlatformAdmin) {
+      return NextResponse.json({ error: "Forbidden: Missing intel.read capability" }, { status: 403 });
+    }
+
     if (!query) {
       return NextResponse.json({ error: "Query prompt is required" }, { status: 400 });
     }

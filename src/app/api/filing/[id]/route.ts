@@ -105,7 +105,7 @@ export async function GET(
     const aiInsights = [
       `HTS code ${primaryHTS} evaluated for entry line items.`,
       `Product classification confidence calculated at ${lineItems[0]?.htsConfidence || 96}%.`,
-      `Duty assessed at $${filing.totalDuties.toFixed(2)} matching predicted tariff calculations.`,
+      `Duty assessed at $${Number(filing.totalDuties).toFixed(2)} matching predicted tariff calculations.`,
     ];
 
     const htsRecommendation = {
@@ -150,12 +150,12 @@ export async function GET(
       shipmentReference: filing.shipment.shipmentNumber,
 
       // Financial Breakdown
-      totalCustomsValue: filing.totalValue,
+      totalCustomsValue: Number(filing.totalValue),
       currency: "USD",
       totalDuty: filing.totalDuties,
       totalTaxes: filing.totalTaxes,
-      totalFees: Math.round((filing.totalDuties * 0.1) * 100) / 100,
-      totalAmount: filing.totalAmount,
+      totalFees: Math.round((Number(filing.totalDuties) * 0.1) * 100) / 100,
+      totalAmount: Number(filing.totalAmount),
       dutyBreakdown,
 
       // Associated Entities
@@ -210,15 +210,11 @@ export async function PATCH(
 
     const updateData: import("@prisma/client").Prisma.CustomsFilingUpdateInput = {};
 
-    if (filingStatus) {
-      updateData.filingStatus = filingStatus;
-      if (filingStatus === "Released" && !existingFiling.releasedAt) {
-        updateData.releasedAt = new Date();
-      }
-    }
-
-    if (paymentStatus) {
-      updateData.paymentStatus = paymentStatus;
+    if (filingStatus || paymentStatus) {
+      return NextResponse.json(
+        { error: "Forbidden: State mutations must be performed via the workflow engine." },
+        { status: 403 }
+      );
     }
 
     if (dutyBreakdown) {

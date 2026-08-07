@@ -30,7 +30,12 @@ import {
   ExternalLink,
   Cpu,
   Lock,
-  Workflow
+  Workflow,
+  Database,
+  Gavel,
+  AlertTriangle,
+  BarChart3,
+  Loader2
 } from "lucide-react";
 import { LandingPageHeader } from "@/components/LandingPageHeader";
 
@@ -433,6 +438,55 @@ export default function AgentsPage() {
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [copiedJson, setCopiedJson] = useState<string | null>(null);
 
+  // Classification Engine Playground State
+  const [ceActiveTab, setCeActiveTab] = useState<"hts-search" | "gri-classify" | "cross-verify" | "rate-parse">("hts-search");
+  const [ceInput, setCeInput] = useState<string>("");
+  const [ceResult, setCeResult] = useState<any>(null);
+  const [ceIsLoading, setCeIsLoading] = useState<boolean>(false);
+  const [ceLatency, setCeLatency] = useState<number | null>(null);
+
+  const handleClassificationTest = async () => {
+    setCeIsLoading(true);
+    setCeResult(null);
+    setCeLatency(null);
+    const startTime = Date.now();
+
+    try {
+      let endpoint = "";
+      let method = "GET";
+      let body: string | undefined = undefined;
+
+      if (ceActiveTab === "hts-search") {
+        const q = encodeURIComponent(ceInput.trim() || "steel valves");
+        endpoint = `/api/v1/hts/search?q=${q}&limit=5`;
+      } else if (ceActiveTab === "gri-classify") {
+        endpoint = `/api/v1/hts/search?q=${encodeURIComponent(ceInput.trim() || "stainless steel ball valves")}&limit=3`;
+      } else if (ceActiveTab === "cross-verify") {
+        const rulingNumber = ceInput.trim() || "HQ999999_FAKE";
+        endpoint = `/api/v1/rulings/${encodeURIComponent(rulingNumber)}`;
+      } else if (ceActiveTab === "rate-parse") {
+        const q = encodeURIComponent(ceInput.trim() || "8481");
+        endpoint = `/api/v1/hts/search?q=${q}&limit=3`;
+      }
+
+      const res = await fetch(endpoint, {
+        method,
+        ...(body ? { headers: { "Content-Type": "application/json" }, body } : {}),
+      });
+
+      const data = await res.json();
+      const elapsed = Date.now() - startTime;
+      setCeLatency(elapsed);
+      setCeResult(data);
+    } catch (err: any) {
+      const elapsed = Date.now() - startTime;
+      setCeLatency(elapsed);
+      setCeResult({ error: err?.message || "Execution failed" });
+    } finally {
+      setCeIsLoading(false);
+    }
+  };
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedJson(id);
@@ -467,11 +521,23 @@ export default function AgentsPage() {
     const startTime = Date.now();
 
     try {
+      let parsedInput: any = {};
+      try {
+        parsedInput = JSON.parse(testInputJson);
+      } catch (err) {
+        parsedInput = { rawInput: testInputJson };
+      }
+
       if (inputMode === "file" && dropFile) {
         const formData = new FormData();
         formData.append("file", dropFile);
-        formData.append("shipmentId", "shp_demo_default");
         formData.append("docType", "AUTO_DETECT");
+        
+        // Note: For a real test, the user must provide a shipmentId somehow. 
+        // For now, if the API requires it, this will return a 400 Bad Request.
+        if (parsedInput?.shipmentId) {
+           formData.append("shipmentId", parsedInput.shipmentId);
+        }
 
         const res = await fetch("/api/documents/upload", {
           method: "POST",
@@ -485,21 +551,11 @@ export default function AgentsPage() {
         return;
       }
 
-      let parsedInput: any = {};
-      try {
-        parsedInput = JSON.parse(testInputJson);
-      } catch (err) {
-        parsedInput = { rawInput: testInputJson };
-      }
-
       const endpoint = activeModalAgent.id === "document-intake" ? "/api/intake/agent" : `/api/agents/${activeModalAgent.id}`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          accountId: "acc_demo_default",
-          userId: "user_demo_default",
-          shipmentId: "shp_demo_default",
           ...parsedInput,
         }),
       });
@@ -595,6 +651,166 @@ export default function AgentsPage() {
                 </p>
               </button>
             ))}
+          </div>
+        </section>
+
+        {/* CLASSIFICATION ENGINE PLAYGROUND */}
+        <section className="bg-white rounded-3xl border border-[#E5E5EA] shadow-sm overflow-hidden">
+          <div className="p-6 sm:p-8 border-b border-[#E5E5EA] bg-gradient-to-r from-indigo-50 via-blue-50 to-purple-50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-[#1D1D1F] flex items-center space-x-2">
+                  <Database className="w-5 h-5 text-indigo-600" />
+                  <span>AI Classification Engine Playground</span>
+                </h2>
+                <p className="text-xs text-[#86868B] mt-1">
+                  Test the HTS Master, GRI Rules Engine, CROSS Ruling verification, and duty rate parsing — all backed by production APIs.
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full border border-indigo-200 self-start sm:self-auto">
+                Phase 0–4 Live APIs
+              </span>
+            </div>
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="flex border-b border-[#E5E5EA] px-6 bg-white overflow-x-auto scrollbar-none">
+            {([
+              { id: "hts-search" as const, icon: <Search className="w-3.5 h-3.5" />, label: "HTS Code Search" },
+              { id: "gri-classify" as const, icon: <Scale className="w-3.5 h-3.5" />, label: "GRI Classification" },
+              { id: "cross-verify" as const, icon: <Gavel className="w-3.5 h-3.5" />, label: "CROSS Ruling Verify" },
+              { id: "rate-parse" as const, icon: <BarChart3 className="w-3.5 h-3.5" />, label: "Duty Rate Lookup" },
+            ]).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => { setCeActiveTab(tab.id); setCeResult(null); setCeLatency(null); setCeInput(""); }}
+                className={`py-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+                  ceActiveTab === tab.id
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-[#86868B] hover:text-[#1D1D1F]"
+                }`}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Playground Body */}
+          <div className="p-6 sm:p-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Input Panel */}
+              <div className="flex flex-col border border-[#E5E5EA] rounded-2xl overflow-hidden bg-white shadow-2xs">
+                <div className="px-4 py-3 bg-[#F5F5F7] border-b border-[#E5E5EA]">
+                  <span className="font-bold text-xs text-[#1D1D1F]">
+                    {ceActiveTab === "hts-search" && "Search HTS Master by code or description"}
+                    {ceActiveTab === "gri-classify" && "Enter product description for GRI analysis"}
+                    {ceActiveTab === "cross-verify" && "Enter CBP CROSS Ruling Number to verify"}
+                    {ceActiveTab === "rate-parse" && "Enter HTS code to look up duty rates"}
+                  </span>
+                </div>
+                <div className="p-4 flex-1 flex flex-col space-y-3">
+                  <input
+                    type="text"
+                    value={ceInput}
+                    onChange={(e) => setCeInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleClassificationTest(); }}
+                    placeholder={
+                      ceActiveTab === "hts-search" ? "e.g. steel valves, 8481, cotton shirts..."
+                      : ceActiveTab === "gri-classify" ? "e.g. Stainless steel ball valves for hydraulic systems..."
+                      : ceActiveTab === "cross-verify" ? "e.g. HQ H293841, NY N304912..."
+                      : "e.g. 8481, 7318, 6109..."
+                    }
+                    className="w-full px-4 py-3 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  />
+
+                  <div className="p-3 bg-slate-50 border border-[#E5E5EA] rounded-xl space-y-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#86868B]">API Endpoint</p>
+                    <code className="text-[11px] font-mono text-indigo-600 block">
+                      {ceActiveTab === "hts-search" && `GET /api/v1/hts/search?q=${ceInput || "steel valves"}`}
+                      {ceActiveTab === "gri-classify" && `GET /api/v1/hts/search?q=${ceInput || "stainless steel ball valves"}`}
+                      {ceActiveTab === "cross-verify" && `GET /api/v1/rulings/${ceInput || "HQ999999_FAKE"}`}
+                      {ceActiveTab === "rate-parse" && `GET /api/v1/hts/search?q=${ceInput || "8481"}`}
+                    </code>
+                  </div>
+
+                  <button
+                    onClick={handleClassificationTest}
+                    disabled={ceIsLoading}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {ceIsLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Querying Classification Engine...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>⚡ Execute Query</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Output Panel */}
+              <div className="flex flex-col border border-[#E5E5EA] rounded-2xl overflow-hidden bg-white shadow-2xs">
+                <div className="px-4 py-3 bg-[#F5F5F7] border-b border-[#E5E5EA] flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-xs text-[#1D1D1F]">Engine Response</span>
+                    {ceResult && (
+                      <button
+                        onClick={() => copyToClipboard(JSON.stringify(ceResult, null, 2), "ceResult")}
+                        className="flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-white hover:bg-slate-100 border border-[#E5E5EA] text-indigo-600 transition-all cursor-pointer shadow-2xs"
+                      >
+                        {copiedJson === "ceResult" ? (
+                          <><Check className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-600">Copied!</span></>
+                        ) : (
+                          <><Copy className="w-3.5 h-3.5" /><span>Copy JSON</span></>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  {ceLatency !== null && (
+                    <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      {ceLatency}ms
+                    </span>
+                  )}
+                </div>
+                <div className="p-4 flex-1 overflow-y-auto bg-slate-950 text-slate-100 font-mono text-[11px] min-h-[300px] max-h-[500px]">
+                  {ceIsLoading ? (
+                    <div className="h-full flex flex-col items-center justify-center space-y-3 text-slate-400 min-h-[250px]">
+                      <Cpu className="w-8 h-8 text-indigo-400 animate-pulse" />
+                      <p className="text-xs font-sans text-slate-300">Querying HTS Master & Classification Engine...</p>
+                    </div>
+                  ) : ceResult ? (
+                    ceResult.error && !ceResult.items ? (
+                      <div className="h-full flex flex-col items-center justify-center space-y-3 p-4 text-center min-h-[250px]">
+                        <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                          <AlertTriangle className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-amber-300">Response</p>
+                          <pre className="text-[11px] font-mono text-amber-200/80 mt-2 whitespace-pre-wrap text-left max-w-md">
+                            {JSON.stringify(ceResult, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    ) : (
+                      <pre className="text-blue-300 whitespace-pre-wrap">
+                        {JSON.stringify(ceResult, null, 2)}
+                      </pre>
+                    )
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center space-y-2 text-slate-500 min-h-[250px]">
+                      <Database className="w-8 h-8 text-slate-600" />
+                      <p className="text-xs font-sans">Enter a query and click Execute to test the Classification Engine.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 

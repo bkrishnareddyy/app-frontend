@@ -30,8 +30,8 @@ export async function POST(req: Request) {
         const lineItems = filing.shipment.lineItems || [];
         const hasChinaOrigin = lineItems.some((l) => l.countryOfOrigin?.toLowerCase() === "china");
         const estimatedRefundAmount = hasChinaOrigin
-          ? Math.round((filing.totalDuties * 0.4) * 100) / 100
-          : Math.round((filing.totalDuties * 0.15) * 100) / 100;
+          ? Math.round((Number(filing.totalDuties) * 0.4) * 100) / 100
+          : Math.round((Number(filing.totalDuties) * 0.15) * 100) / 100;
 
         if (estimatedRefundAmount > 0) {
           const opp = await db.refundOpportunity.create({
@@ -43,8 +43,8 @@ export async function POST(req: Request) {
               confidence: hasChinaOrigin ? 95 : 88,
               basis: {
                 rule: hasChinaOrigin ? "Section 301 Annex A Exclusion Expiration Refund" : "Valuation Adjustment Rule 44",
-                previousDutyPaid: filing.totalDuties,
-                predictedDuty: filing.totalDuties - estimatedRefundAmount,
+                previousDutyPaid: Number(filing.totalDuties),
+                predictedDuty: Number(filing.totalDuties) - estimatedRefundAmount,
               },
               status: "Identified",
             },

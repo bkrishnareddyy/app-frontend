@@ -20,8 +20,8 @@ export async function GET(req: Request) {
     const criticalFindings = openFindings.filter((f) => f.severity === "Critical" || f.severity === "High");
 
     const totalSuppliers = suppliers.length || 1;
-    const avgSupplierRisk = Math.round(suppliers.reduce((acc, s) => acc + s.score, 0) / totalSuppliers);
-    const avgBrokerAccuracy = brokers.length > 0 ? (brokers.reduce((acc, b) => acc + b.accuracyPct, 0) / brokers.length).toFixed(1) : "98.5";
+    const avgSupplierRisk = Math.round(suppliers.reduce((acc, s) => acc + Number(s.score), 0) / totalSuppliers);
+    const avgBrokerAccuracy = brokers.length > 0 ? (brokers.reduce((acc, b) => acc + Number(b.accuracyPct), 0) / brokers.length).toFixed(1) : "98.5";
 
     const overallReasonableCareScore = Math.max(0, 100 - openFindings.length * 5 - criticalFindings.length * 10);
     const careGrade = overallReasonableCareScore >= 90 ? "Excellent" : overallReasonableCareScore >= 75 ? "Acceptable" : overallReasonableCareScore >= 60 ? "Needs Improvement" : "High Risk";

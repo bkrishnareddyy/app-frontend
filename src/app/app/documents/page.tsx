@@ -39,11 +39,12 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<ShipmentDocumentItem[]>([]);
+  const [shipments, setShipments] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("ALL");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
-  const [targetShipmentId, setTargetShipmentId] = useState("shp_demo_default");
+  const [targetShipmentId, setTargetShipmentId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useLanguage();
 
@@ -59,6 +60,7 @@ export default function DocumentsPage() {
         const data = await res.json();
         const docs: ShipmentDocumentItem[] = [];
         if (data.shipments && Array.isArray(data.shipments)) {
+          setShipments(data.shipments);
           data.shipments.forEach((shp: any) => {
             if (shp.documents && Array.isArray(shp.documents)) {
               shp.documents.forEach((d: any) => {
@@ -330,13 +332,13 @@ export default function DocumentsPage() {
               {previewDoc.url && previewDoc.url !== "#" ? (
                 isImageFile(previewDoc.url, previewDoc.name) ? (
                   <img
-                    src={previewDoc.url}
+                    src={previewDoc.url.includes("vercel-storage.com") ? `/api/documents/proxy?url=${encodeURIComponent(previewDoc.url)}` : previewDoc.url}
                     alt={previewDoc.name}
                     className="max-h-[55vh] rounded-xl border border-[#E5E5EA] shadow-md object-contain"
                   />
                 ) : isPdfFile(previewDoc.url, previewDoc.name) ? (
                   <iframe
-                    src={previewDoc.url}
+                    src={previewDoc.url.includes("vercel-storage.com") ? `/api/documents/proxy?url=${encodeURIComponent(previewDoc.url)}` : previewDoc.url}
                     className="w-full h-[55vh] rounded-xl border border-[#E5E5EA]"
                     title={previewDoc.name}
                   />
@@ -405,6 +407,7 @@ export default function DocumentsPage() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         shipmentId={targetShipmentId}
+        shipments={shipments}
         onUploadSuccess={fetchDocuments}
       />
     </div>

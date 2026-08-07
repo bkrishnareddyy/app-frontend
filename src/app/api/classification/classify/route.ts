@@ -30,6 +30,17 @@ export async function POST(req: Request) {
   const bodyVal = await parseAndValidateBody(req, classifySchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
 
+  // Feature Flag / Kill Switch: Prevent legacy mock classification behavior
+  if (process.env.ENABLE_LEGACY_CLASSIFICATION_MOCK !== "true") {
+    return buildErrorResponse(
+      503,
+      "CLASSIFICATION_ENGINE_MIGRATION",
+      "The legacy synchronous classification endpoint is disabled while the production AI Classification Engine & HTS Master (asynchronous case pipeline) is under migration.",
+      undefined,
+      requestId
+    );
+  }
+
   try {
     const result = await ClassificationService.classifyProduct(ctx!.accountId, ctx!.userId, bodyVal.data);
 

@@ -181,5 +181,35 @@ export class AgentState {
       console.warn("[AgentState] Failed to persist state to PostgreSQL:", err);
     }
   }
+
+  toJSON(): Record<string, any> {
+    return {
+      accountId: this.accountId,
+      userId: this.userId,
+      shipmentId: this.shipmentId,
+      packetId: this.packetId,
+      mathValidationPassed: this.mathValidationPassed,
+      mathDiscrepancies: this.mathDiscrepancies,
+      evaluatorRefinementsCount: this.evaluatorRefinementsCount,
+      intakeOutput: this.intakeOutput,
+      intelligenceOutput: this.intelligenceOutput,
+      productOutput: this.productOutput,
+      classificationOutput: this.classificationOutput,
+      originOutput: this.originOutput,
+      valuationOutput: this.valuationOutput,
+      complianceOutput: this.complianceOutput,
+      readinessOutput: this.readinessOutput,
+      filingOutput: this.filingOutput,
+      responseOutput: this.responseOutput,
+      history: this.history,
+    };
+  }
+
+  static fromJSON(data: any): AgentState {
+    const json = typeof data === "string" ? JSON.parse(data) : (data || {});
+    const state = new AgentState(json.accountId || "", json.userId || "", json.shipmentId || "");
+    Object.assign(state, json);
+    return state;
+  }
 }
 

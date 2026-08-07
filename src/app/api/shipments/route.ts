@@ -10,8 +10,15 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const whereClause: any = { accountId: ctx.accountId, deletedAt: null };
+    
+    // RLS: Planners can only see shipments assigned to them
+    if (ctx.roleName === "PLANNER") {
+      whereClause.assignedBrokerId = ctx.userId;
+    }
+
     const shipments = await db.shipment.findMany({
-      where: { accountId: ctx.accountId, deletedAt: null },
+      where: whereClause,
       include: {
         documents: true,
         lineItems: true,
@@ -59,6 +66,7 @@ export async function POST(req: Request) {
         readinessScore: 85,
         riskScore: 20,
         ownerName: ctx.firstName || "Stephen",
+        assignedBrokerId: ctx.roleName === "PLANNER" ? ctx.userId : null,
       },
     });
 

@@ -45,6 +45,11 @@ Every administrative action (role change, status toggle, account modification, u
 - `ipAddress`, `userAgent`, `requestId`
 - `success` outcome status (`true` / `false`)
 
+### 6. Row-Level Security & Capability Gating
+To ensure data privacy within multi-tenant accounts:
+- **Row-Level Security (Data Segregation)**: Planners can only access their own assigned records (e.g., shipments), while Admins can view all data within the account.
+- **Capability Gating**: API routes strictly enforce capabilities via `hasPermission()` checks (e.g., `documents.create`, `filings.submit`, `intel.read`), returning `403 Forbidden` if a user lacks the necessary privilege.
+
 ---
 
 ## 📁 Repository Structure
@@ -156,9 +161,11 @@ Default password for all seeded test users: **`QuberePass2026!`**
 | `viewer.acme@qubere.ai` | Acme Corporation (`ENTERPRISE`) | `VIEWER` | Read-only Viewer |
 | `owner.global@qubere.ai` | Global Trade Logistics (`ENTERPRISE`) | `OWNER` | Enterprise Owner |
 | `multirole@qubere.ai` | Acme Corp & Global Trade | Multi-Account | Member @ Acme + Admin @ Global Trade |
-| `rachit@qubere.ai` | Rachit's Workspace (`INDIVIDUAL`) | `OWNER` | Self-Service Personal Workspace |
-| `sarah@qubere.ai` | Sarah's Workspace (`INDIVIDUAL`) | `OWNER` | Self-Service Personal Workspace |
-| `mike@qubere.ai` | Mike's Workspace (`INDIVIDUAL`) | `OWNER` | Self-Service Personal Workspace |
+| `joe@target.com` | Target (`ENTERPRISE`) | `ADMIN` | Account Admin (Views all Target data) |
+| `anna@target.com` | Target (`ENTERPRISE`) | `ADMIN` | Account Admin (Views all Target data) |
+| `sarah@target.com` | Target (`ENTERPRISE`) | `PLANNER` | Planner (Uploads docs; restricted to own data) |
+| `romeo@target.com` | Target (`ENTERPRISE`) | `PLANNER` | Planner (Uploads docs; restricted to own data) |
+| `eva@target.com` | Target (`ENTERPRISE`) | `PLANNER` | Planner (Uploads docs; restricted to own data) |
 
 ---
 

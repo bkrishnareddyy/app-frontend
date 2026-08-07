@@ -52,6 +52,9 @@ model Account {
   screeningLogs          ScreeningLog[]
   agentExecutionLogs     AgentExecutionLog[]
   shipmentStateRecords   ShipmentStateRecord[]
+  pipelineJobs           PipelineJob[]
+  classificationCases    ClassificationCase[]
+  caseDocuments          CaseDocument[]
 
   @@index([type])
   @@index([slug])
@@ -262,6 +265,7 @@ model Shipment {
   exceptionItems          ExceptionItem[]
   regulatoryUpdateImpacts RegulatoryUpdateImpact[]
   reconciliationIssues    ReconciliationIssue[]
+  pipelineJobs            PipelineJob[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -303,8 +307,8 @@ model ShipmentLineItem {
   partNumber      String?
   description     String   // e.g. Stainless Steel Valve 1/2" NPT, 316 Grade
   quantity        Int
-  unitPrice       Float
-  totalValue      Float
+  unitPrice       Decimal
+  totalValue      Decimal
   countryOfOrigin String   // e.g. Germany, China
   htsCode         String   // e.g. 8481.80.5090
   htsConfidence   Int      @default(97)
@@ -370,10 +374,10 @@ model CustomsFiling {
   filingType         String            @default("ABI - Automated")
   filingStatus       String            @default("Filed") // Draft, Filed, Accepted, Released, Closed
   paymentStatus      String            @default("Paid") // Pending, Paid, Deferred
-  totalValue         Float             @default(17750.00)
-  totalDuties        Float             @default(2850.00)
-  totalTaxes         Float             @default(13100.00)
-  totalAmount        Float             @default(16250.00)
+  totalValue         Decimal             @default(17750.00)
+  totalDuties        Decimal             @default(2850.00)
+  totalTaxes         Decimal             @default(13100.00)
+  totalAmount        Decimal             @default(16250.00)
   dutyBreakdown      Json?             // Array of itemized duty fee objects
   version            Int               @default(1)
   submittedAt        DateTime          @default(now())
@@ -450,9 +454,9 @@ model HTSCode {
   specialRatePrograms      Json?    // { "USMCA": "Free", "KORUS": "2.5%" }
   column2DutyRate          String?  @default("35%")
   section301Applicable     Boolean  @default(false)
-  section301AdditionalRate Float?   @default(0.0)
+  section301AdditionalRate Decimal?   @default(0.0)
   section232Applicable     Boolean  @default(false)
-  section232AdditionalRate Float?   @default(0.0)
+  section232AdditionalRate Decimal?   @default(0.0)
   effectiveDate            DateTime @default(now())
   expirationDate           DateTime?
   sourceRevision           String   @default("HTSUS 2026 Rev 1")
@@ -484,7 +488,7 @@ model OriginDetermination {
   tradeAgreement          TradeAgreement   @relation(fields: [tradeAgreementId], references: [id], onDelete: Cascade)
   qualifies               Boolean          @default(true)
   criterion               String           @default("Criterion A (Wholly Obtained)")
-  regionalValueContentPct Float?           @default(65.0)
+  regionalValueContentPct Decimal?           @default(65.0)
   calculationMethod       String           @default("net cost") // net cost | transaction value
   agentDecisionId         String?
   agentDecision           AgentDecision?   @relation(fields: [agentDecisionId], references: [id], onDelete: SetNull)
@@ -523,14 +527,14 @@ model LandedCostScenarioLineItem {
   description        String
   htsCodeId          String
   htsCode            HTSCode            @relation(fields: [htsCodeId], references: [id])
-  unitValue          Float
+  unitValue          Decimal
   quantity           Int
-  freightCost        Float              @default(0.0)
-  insuranceCost      Float              @default(0.0)
-  dutyRateOverride   Float?
-  computedDuty       Float              @default(0.0)
-  computedFees       Float              @default(0.0)
-  computedLandedCost Float              @default(0.0)
+  freightCost        Decimal              @default(0.0)
+  insuranceCost      Decimal              @default(0.0)
+  dutyRateOverride   Decimal?
+  computedDuty       Decimal              @default(0.0)
+  computedFees       Decimal              @default(0.0)
+  computedLandedCost Decimal              @default(0.0)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -545,7 +549,7 @@ model RefundOpportunity {
   filingId              String
   filing                CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
   opportunityType       String        // overpayment | retroactive_exclusion | classification_error
-  estimatedRefundAmount Float
+  estimatedRefundAmount Decimal
   confidence            Int           @default(92)
   basis                 Json          // Rule/Comparison details
   status                String        @default("Identified") // Identified | Dismissed | ConvertedToPSC
@@ -567,9 +571,9 @@ model PostSummaryCorrection {
   refundOpportunity   RefundOpportunity? @relation(fields: [refundOpportunityId], references: [id], onDelete: SetNull)
   reason              String
   correctionType      String             @default("classification") // classification | valuation | origin | other
-  originalDutyAmount  Float
-  correctedDutyAmount Float
-  refundAmount        Float
+  originalDutyAmount  Decimal
+  correctedDutyAmount Decimal
+  refundAmount        Decimal
   status              String             @default("Draft") // Draft | Filed | Accepted | Rejected | Refunded
   cbpResponseCode     String?            @default("PSC_ACK")
   filedAt             DateTime?
@@ -627,7 +631,7 @@ model ExportLineItem {
   description      String
   quantity         Int
   htsCode          String
-  unitValue        Float
+  unitValue        Decimal
   createdAt        DateTime       @default(now())
 
   drawbackMatches DrawbackMatch[]
@@ -642,7 +646,7 @@ model DrawbackClaim {
   account            Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   claimType          String   @default("unused_merchandise") // manufacturing | unused_merchandise | rejected_merchandise
   status             String   @default("Draft") // Draft | Filed | Accepted | Paid
-  totalRefundClaimed Float
+  totalRefundClaimed Decimal
   cbpClaimNumber     String?  @default("DBK-2026-9901")
   version            Int      @default(1)
   filedAt            DateTime?
@@ -665,7 +669,7 @@ model DrawbackMatch {
   exportLineItem     ExportLineItem   @relation(fields: [exportLineItemId], references: [id], onDelete: Cascade)
   matchedQuantity    Int
   matchMethod        String           @default("FIFO") // FIFO | LIFO | specific_identification
-  dutyAttributed     Float
+  dutyAttributed     Decimal
   createdAt          DateTime         @default(now())
 
   @@index([drawbackClaimId])
@@ -717,7 +721,7 @@ model Bond {
   bondType       String    @default("continuous") // continuous | single_transaction
   suretyName     String    @default("Roanoke Insurance Group")
   bondNumber     String    @unique
-  bondAmount     Float     @default(50000.0)
+  bondAmount     Decimal     @default(50000.0)
   effectiveDate  DateTime  @default(now())
   expirationDate DateTime?
   status         String    @default("Active") // Active | Expired | Revoked
@@ -909,9 +913,9 @@ model BrokerMetrics {
   account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   brokerName       String
   entriesProcessed Int      @default(142)
-  accuracyPct      Float    @default(98.5)
-  overrideRatePct  Float    @default(2.1)
-  correctionRatePct Float   @default(0.7)
+  accuracyPct      Decimal    @default(98.5)
+  overrideRatePct  Decimal    @default(2.1)
+  correctionRatePct Decimal   @default(0.7)
   avgReviewTimeMin Int      @default(18)
   rejectedCount    Int      @default(1)
   lastUpdated      DateTime @default(now())
@@ -926,7 +930,7 @@ model ValuationAssistsRecord {
   account              Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   filingId             String        @unique
   filing               CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
-  declaredValue        Float
+  declaredValue        Decimal
   transferPricingMatch Boolean       @default(true)
   freightIncluded      Boolean       @default(true)
   insuranceIncluded    Boolean       @default(true)
@@ -997,10 +1001,10 @@ model EmbargoRule {
 model TradeBenchmark {
   id              String   @id @default(cuid())
   htsCode10       String   @unique
-  industryAvgDuty Float    @default(3.5)
-  avgDeclaredPrice Float
+  industryAvgDuty Decimal    @default(3.5)
+  avgDeclaredPrice Decimal
   topOriginCountry String  @default("China")
-  totalUSVolumeVal Float
+  totalUSVolumeVal Decimal
   lastUpdated     DateTime @default(now())
 
   @@index([htsCode10])
@@ -1046,3 +1050,460 @@ model ShipmentStateRecord {
   @@index([shipmentId])
 }
 
+
+// ============================================================================
+// PIPELINE QUEUE & ORCHESTRATION (Postgres Queue)
+// ============================================================================
+
+model PipelineJob {
+  id             String    @id @default(cuid())
+  accountId      String
+  userId         String
+  shipmentId     String
+  status         String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  currentStep    Int       @default(1)
+  totalSteps     Int       @default(10)
+  priority       Int       @default(0) // Higher number = higher priority
+  state          Json      @default("{}") // The AgentState object
+  errorMessage   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  lockedAt       DateTime? // Used by worker to detect stalled jobs
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  stepExecutions PipelineStepExecution[]
+  shipment       Shipment  @relation(fields: [shipmentId], references: [id])
+  account        Account   @relation(fields: [accountId], references: [id])
+
+  @@index([status, priority, createdAt])
+  @@index([shipmentId])
+}
+
+model PipelineStepExecution {
+  id           String      @id @default(cuid())
+  jobId        String
+  stepNumber   Int
+  agentName    String
+  status       String      // SUCCESS, FAILED, SKIPPED, REVIEW_REQUIRED
+  startedAt    DateTime    @default(now())
+  completedAt  DateTime?
+  output       Json?       // The output returned by the agent
+  errorMessage String?
+  
+  job          PipelineJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, stepNumber])
+}
+
+// ============================================================================
+// AUTHORITATIVE HTS MASTER DOMAIN MODELS
+// ============================================================================
+
+model HtsRelease {
+  id                  String   @id @default(cuid())
+  editionYear         Int
+  revisionNumber      Int
+  releaseName         String
+  effectiveFrom       DateTime
+  publishedAt         DateTime?
+  sourceUrl           String
+  sourceFormat        String   // JSON, CSV, PDF
+  sha256              String
+  rawObjectKey        String?
+  retrievedAt         DateTime @default(now())
+  validationStatus    String   // PENDING, VALIDATED, FAILED
+  publicationStatus   String   @default("DRAFT") // DRAFT, PUBLISHED, SUPERSEDED, ROLLED_BACK
+  supersedesReleaseId String?
+
+  nodes          HtsNode[]
+  legalDocuments LegalDocument[]
+  changesFrom    HtsChange[]     @relation("HtsChangeFrom")
+  changesTo      HtsChange[]     @relation("HtsChangeTo")
+
+  @@index([publicationStatus])
+  @@index([effectiveFrom])
+  @@index([sha256])
+}
+
+model HtsNode {
+  id                   String   @id @default(cuid())
+  releaseId            String
+  sourceRowNumber      Int
+  parentId             String?
+  indentLevel          Int
+  htsNumberDisplay     String
+  htsNumberNormalized  String
+  codeLevel            Int      // 2 (Chapter), 4 (Heading), 6 (Subheading), 8 (Tariff Line), 10 (Stat Suffix)
+  description          String
+  fullDescription      String
+  isSuperiorHeading    Boolean  @default(false)
+  isClassifiable       Boolean  @default(true)
+  chapter              String
+  heading              String
+  subheading6          String?
+  tariffLine8          String?
+  statisticalSuffix10  String?
+
+  release        HtsRelease      @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  parent         HtsNode?        @relation("HtsNodeHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children       HtsNode[]       @relation("HtsNodeHierarchy")
+  dutyRates      HtsDutyRate[]
+  units          HtsUnit[]
+  noteLinks      HtsNoteLink[]
+  oldChanges     HtsChange[]     @relation("HtsChangeOld")
+  newChanges     HtsChange[]     @relation("HtsChangeNew")
+  proposals      ClassificationProposal[]
+  decisions      ClassificationDecision[]
+
+  @@index([releaseId])
+  @@index([htsNumberNormalized])
+  @@index([chapter, heading])
+  @@index([codeLevel])
+}
+
+model HtsDutyRate {
+  id                String   @id @default(cuid())
+  htsNodeId         String
+  rateColumn        String   // General, Special, Column 2
+  programCode       String?  // GSP, USMCA, etc.
+  rawRateText       String
+  rateType          String?  // Free, AdValorem, Specific, Compound, Unparsed
+  adValoremPercent  Float?
+  specificAmount    Float?
+  specificUnit      String?
+  currency          String   @default("USD")
+  isFree            Boolean  @default(false)
+  parseStatus       String   @default("PARSED") // PARSED, UNPARSED_FALLBACK, MANUAL_VERIFIED
+
+  node HtsNode @relation(fields: [htsNodeId], references: [id], onDelete: Cascade)
+
+  @@index([htsNodeId])
+  @@index([rateColumn])
+}
+
+model HtsUnit {
+  id        String  @id @default(cuid())
+  htsNodeId String
+  sequence  Int     @default(1)
+  unitCode  String
+
+  node HtsNode @relation(fields: [htsNodeId], references: [id], onDelete: Cascade)
+
+  @@index([htsNodeId])
+}
+
+model LegalDocument {
+  id               String    @id @default(cuid())
+  releaseId        String
+  documentType     String    // GeneralNote, SectionNote, ChapterNote, AdditionalUSNote
+  title            String
+  sourceUrl        String?
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  rawObjectKey     String?
+  checksum         String
+  extractionStatus String    @default("COMPLETED")
+
+  release   HtsRelease      @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  fragments LegalFragment[]
+
+  @@index([releaseId])
+  @@index([documentType])
+}
+
+model LegalFragment {
+  id               String   @id @default(cuid())
+  legalDocumentId  String
+  citation         String
+  text             String
+  parentFragmentId String?
+  pageOrLocation   String?
+
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+  noteLinks     HtsNoteLink[]
+
+  @@index([legalDocumentId])
+  @@index([citation])
+}
+
+model HtsNoteLink {
+  htsNodeId       String
+  legalFragmentId String
+  linkType        String @default("APPLIES_TO")
+
+  node     HtsNode       @relation(fields: [htsNodeId], references: [id], onDelete: Cascade)
+  fragment LegalFragment @relation(fields: [legalFragmentId], references: [id], onDelete: Cascade)
+
+  @@id([htsNodeId, legalFragmentId])
+}
+
+model HtsChange {
+  id                String   @id @default(cuid())
+  fromReleaseId     String
+  toReleaseId       String
+  oldHtsNodeId      String?
+  newHtsNodeId      String?
+  changeType        String   // ADDED, REMOVED, RENUMBERED, DESCRIPTION_CHANGED, RATE_CHANGED
+  changedFields     Json
+  sourceActionUrl   String?
+  reviewStatus      String   @default("PENDING")
+
+  fromRelease HtsRelease @relation("HtsChangeFrom", fields: [fromReleaseId], references: [id])
+  toRelease   HtsRelease @relation("HtsChangeTo", fields: [toReleaseId], references: [id])
+  oldNode     HtsNode?   @relation("HtsChangeOld", fields: [oldHtsNodeId], references: [id])
+  newNode     HtsNode?   @relation("HtsChangeNew", fields: [newHtsNodeId], references: [id])
+
+  @@index([fromReleaseId, toReleaseId])
+}
+
+// ============================================================================
+// CBP CROSS RULING DOMAIN MODELS
+// ============================================================================
+
+model Ruling {
+  id                       String    @id @default(cuid())
+  rulingNumber             String    @unique
+  sourceProvider           String    @default("CBP_CROSS")
+  sourceUrl                String?
+  issuedAt                 DateTime
+  office                   String?
+  rulingType               String    @default("HQ") // HQ, NY
+  title                    String
+  rawObjectKey             String?
+  checksum                 String?
+  publicationStatus        String    @default("PUBLISHED")
+  modifiedOrRevokedStatus  String    @default("EFFECTIVE")
+  lastVerifiedAt           DateTime  @default(now())
+
+  fragments     RulingFragment[]
+  htsReferences RulingHtsReference[]
+  fromRelations RulingRelationship[] @relation("RulingRelFrom")
+  toRelations   RulingRelationship[] @relation("RulingRelTo")
+
+  @@index([rulingNumber])
+  @@index([issuedAt])
+}
+
+model RulingFragment {
+  id               String  @id @default(cuid())
+  rulingId         String
+  fragmentType     String  // Facts, Issue, Holding, Analysis
+  text             String
+  citationLocation String?
+
+  ruling Ruling @relation(fields: [rulingId], references: [id], onDelete: Cascade)
+
+  @@index([rulingId])
+}
+
+model RulingHtsReference {
+  rulingId          String
+  htsNumberDisplay  String
+  relationType      String @default("CLASSIFIED_AS")
+
+  ruling Ruling @relation(fields: [rulingId], references: [id], onDelete: Cascade)
+
+  @@id([rulingId, htsNumberDisplay])
+}
+
+model RulingRelationship {
+  fromRulingId       String
+  toRulingId         String
+  relationshipType   String // MODIFIES, REVOKES, CITES, AFFIRMS
+  evidenceFragmentId String?
+
+  fromRuling Ruling @relation("RulingRelFrom", fields: [fromRulingId], references: [id], onDelete: Cascade)
+  toRuling   Ruling @relation("RulingRelTo", fields: [toRulingId], references: [id], onDelete: Cascade)
+
+  @@id([fromRulingId, toRulingId, relationshipType])
+}
+
+// ============================================================================
+// CLASSIFICATION CASE & PROPOSAL ENGINE DOMAIN MODELS
+// ============================================================================
+
+model ClassificationCase {
+  id                      String    @id @default(cuid())
+  accountId               String
+  externalReference       String?
+  status                  String    @default("DRAFT") // DRAFT, AWAITING_DOCUMENTS, NEEDS_INFORMATION, QUEUED, PROCESSING, PROPOSED, HUMAN_REVIEW_REQUIRED, APPROVED, REJECTED, SUPERSEDED, FAILED, CANCELLED
+  priority                String    @default("MEDIUM")
+  assigneeUserId          String?
+  requestedByUserId       String
+  jurisdiction            String    @default("US")
+  classificationAsOfDate  DateTime  @default(now())
+  htsReleaseId            String?
+  dueAt                   DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  rowVersion              Int       @default(1)
+
+  account          Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  subjects         ClassificationSubject[]
+  documents        CaseDocument[]
+  extractedFacts   ExtractedFact[]
+  runs             ClassificationRun[]
+  decisions        ClassificationDecision[]
+
+  @@index([accountId])
+  @@index([status])
+  @@index([assigneeUserId])
+}
+
+model ClassificationSubject {
+  id                       String   @id @default(cuid())
+  caseId                   String
+  canonicalProductId       String?
+  rawDescription           String
+  structuredAttributesJson Json     @default("{}")
+  countryOfOrigin          String?
+  intendedUse              String?
+  completenessScore        Int      @default(0)
+
+  case ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+}
+
+model CaseDocument {
+  id               String   @id @default(cuid())
+  caseId           String
+  accountId        String
+  objectKey        String
+  originalFilename String
+  detectedMimeType String
+  sha256           String
+  byteSize         Int
+  malwareStatus    String   @default("PASSED")
+  processingStatus String   @default("PENDING")
+  retentionClass   String   @default("STANDARD")
+
+  case           ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  extractedFacts ExtractedFact[]
+
+  @@index([caseId])
+  @@index([accountId])
+}
+
+model ExtractedFact {
+  id                   String    @id @default(cuid())
+  caseId               String
+  documentId           String?
+  factType             String
+  normalizedValueJson  Json
+  rawValue             String
+  confidence           Float
+  page                 Int?
+  regionJson           Json?
+  modelVersion         String
+  verificationStatus   String    @default("UNVERIFIED") // UNVERIFIED, VERIFIED, CORRECTED
+  verifiedByUserId     String?
+
+  case     ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  document CaseDocument?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([caseId])
+  @@index([factType])
+}
+
+model ClassificationRun {
+  id                   String    @id @default(cuid())
+  caseId               String
+  status               String    @default("RUNNING") // RUNNING, COMPLETED, FAILED
+  idempotencyKey       String?
+  htsReleaseId         String
+  promptVersion        String
+  modelProvider        String
+  modelVersion         String
+  rulesEngineVersion   String
+  retrievalIndexVersion String
+  startedAt            DateTime  @default(now())
+  completedAt          DateTime?
+  tokenUsageJson       Json?
+  costAmount           Float?
+  failureCode          String?
+
+  case      ClassificationCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  proposals ClassificationProposal[]
+
+  @@index([caseId])
+  @@index([status])
+}
+
+model ClassificationProposal {
+  id                    String   @id @default(cuid())
+  runId                 String
+  proposedHtsNodeId     String
+  rank                  Int
+  calibratedConfidence  Float
+  confidenceBand        String   // HIGH, MEDIUM, LOW
+  recommendationStatus  String   // PROPOSED, NEEDS_INFORMATION, HUMAN_REVIEW_REQUIRED
+  summary               String
+  missingFactsJson      Json     @default("[]")
+  createdAt             DateTime @default(now())
+
+  run            ClassificationRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  proposedNode   HtsNode              @relation(fields: [proposedHtsNodeId], references: [id])
+  griSteps       GriAnalysisStep[]
+  evidenceItems  ProposalEvidence[]
+  decisions      ClassificationDecision[]
+
+  @@index([runId])
+  @@index([proposedHtsNodeId])
+}
+
+model GriAnalysisStep {
+  id                      String  @id @default(cuid())
+  proposalId              String
+  sequence                Int
+  griRule                 String  // GRI 1, GRI 2a, GRI 2b, GRI 3a, GRI 3b, GRI 3c, GRI 4, GRI 5a, GRI 5b, GRI 6
+  question                String
+  conclusion              String
+  outcome                 String  // APPLIED, NOT_APPLICABLE, PASSED_TO_NEXT
+  deterministicChecksJson Json    @default("{}")
+
+  proposal ClassificationProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId, sequence])
+}
+
+model ProposalEvidence {
+  id                 String  @id @default(cuid())
+  proposalId         String
+  evidenceType       String  // HTS_NOTE, CROSS_RULING, SPEC_SHEET, PAST_DECISION
+  sourceEntityId     String?
+  sourceReleaseId    String?
+  sourceUrl          String?
+  citation           String
+  quotedFragment     String
+  relevanceScore     Float
+  supportsOrConflicts String  // SUPPORTS, CONFLICTS
+
+  proposal ClassificationProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+}
+
+model ClassificationDecision {
+  id                   String    @id @default(cuid())
+  caseId               String
+  proposalId           String?
+  decisionStatus       String    // APPROVED, REJECTED, OVERRIDDEN
+  approvedHtsNodeId    String
+  reviewerUserId       String
+  rationale            String
+  overrideReason       String?
+  attestedAt           DateTime  @default(now())
+  effectiveFrom        DateTime  @default(now())
+  effectiveTo          DateTime?
+  supersedesDecisionId String?
+
+  case         ClassificationCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  proposal     ClassificationProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  approvedNode HtsNode                 @relation(fields: [approvedHtsNodeId], references: [id])
+
+  @@index([caseId])
+  @@index([approvedHtsNodeId])
+}

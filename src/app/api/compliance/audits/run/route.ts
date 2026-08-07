@@ -49,8 +49,8 @@ export async function POST(req: Request) {
       },
       {
         item: "Commercial Invoice Valuation & Incoterms Reconciliation",
-        result: filing.totalValue > 0 ? "Pass" : "NeedsReview",
-        evidence: `Declared Customs Value $${filing.totalValue.toFixed(2)} matches Invoice.`,
+        result: Number(filing.totalValue) > 0 ? "Pass" : "NeedsReview",
+        evidence: `Declared Customs Value $${Number(filing.totalValue).toFixed(2)} matches Invoice.`,
       },
       {
         item: "Country of Origin Certificate & Marking Verification",

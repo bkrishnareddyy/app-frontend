@@ -465,7 +465,7 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
         <div className="pt-3 border-t border-[#E5E5EA] flex items-center justify-between shrink-0 text-xs text-[#86868B]">
           <span className="flex items-center space-x-1.5">
             <Server className="w-3.5 h-3.5 text-[#0071E3]" />
-            <span>Base URL: <strong className="text-[#1D1D1F]">https://demo-app.qubere.ai</strong></span>
+            <span>Base URL: <strong className="text-[#1D1D1F]">https://app.qubere.ai</strong></span>
           </span>
           <button
             onClick={onClose}

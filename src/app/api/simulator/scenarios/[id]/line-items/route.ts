@@ -46,8 +46,8 @@ export async function POST(
       ? dutyRateOverride / 100
       : parseFloat(hts.generalDutyRate.replace("%", "")) / 100 || 0.028;
 
-    const section301Rate = hts.section301Applicable ? (hts.section301AdditionalRate || 0) / 100 : 0.0;
-    const section232Rate = hts.section232Applicable ? (hts.section232AdditionalRate || 0) / 100 : 0.0;
+    const section301Rate = hts.section301Applicable ? (Number(hts.section301AdditionalRate) || 0) / 100 : 0.0;
+    const section232Rate = hts.section232Applicable ? (Number(hts.section232AdditionalRate) || 0) / 100 : 0.0;
 
     const totalDutyRate = baseDutyRate + section301Rate + section232Rate;
     const totalCustomsValue = (unitValue || 100) * (quantity || 1);

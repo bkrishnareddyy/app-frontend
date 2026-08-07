@@ -38,6 +38,9 @@ export interface DocumentIntakeAgentInput {
 }
 
 export interface DocumentIntakeAgentOutput {
+  fileName?: string;
+  fileUrl?: string;
+  mimeType?: string;
   packetId: string;
   shipmentId: string;
   status: "Completed" | "Review Required" | "Attention";

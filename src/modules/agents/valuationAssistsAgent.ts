@@ -110,10 +110,12 @@ export class ValuationAssistsAgent {
     // Never silently assume $3,200 freight or $1,500 buyer assists on every shipment.
     const adjustments: ValuationAdjustment[] = [];
 
-    if (typeof input.oceanFreight === "number" && input.oceanFreight > 0) {
+    const oceanFreightVal = typeof input.oceanFreight === "number" ? input.oceanFreight : (typeof (input as any).oceanFreightIncluded === "number" ? (input as any).oceanFreightIncluded : 0);
+
+    if (oceanFreightVal > 0) {
       adjustments.push({
         type: "DEDUCTION_INTERNATIONAL_FREIGHT",
-        amount: -input.oceanFreight,
+        amount: -oceanFreightVal,
         description: "Nondutiable Ocean Freight & Insurance per 19 CFR § 152.103",
       });
     }
