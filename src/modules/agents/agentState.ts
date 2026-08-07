@@ -9,13 +9,19 @@ import { FilingReadinessOutput } from "./filingReadinessAgent";
 import { CustomsFilingOutput } from "./customsFilingAgent";
 import { ResponseManagementOutput } from "./responseManagementAgent";
 
+export interface MultiDimensionalConfidence {
+  dataConfidence: number;      // Quality & presence of OCR/document input fields (0-100%)
+  ruleConfidence: number;      // Precision of the underlying compliance rules engine (0-100%)
+  decisionConfidence: number;  // Combined overall confidence = min(dataConfidence, ruleConfidence)
+}
+
 export interface AgentStateHistoryEntry {
   agentName: string;
   stepNumber: number;
   timestamp: string;
   status: "Completed" | "Review Required" | "Attention";
   summary: string;
-  confidence: number;
+  confidence: number | MultiDimensionalConfidence;
   aiProviderUsed: string;
   decisionId: string;
 }
@@ -59,12 +65,8 @@ export class AgentState {
     this.history.push(entry);
   }
 
-  public recordMathDiscrepancy(reason: string) {
+  public recordMathDiscrepancy(discrepancy: string) {
     this.mathValidationPassed = false;
-    this.mathDiscrepancies.push(reason);
-  }
-
-  public incrementRefinementCount() {
-    this.evaluatorRefinementsCount += 1;
+    this.mathDiscrepancies.push(discrepancy);
   }
 }
