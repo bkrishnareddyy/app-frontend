@@ -32,8 +32,44 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
 
     let targetShipmentId = body.shipmentId;
+
+    if (targetShipmentId) {
+      const existing = await db.shipment.findUnique({
+        where: { id: targetShipmentId },
+        select: { id: true },
+      });
+      if (!existing) {
+        targetShipmentId = null;
+      }
+    }
+
     if (!targetShipmentId) {
-      return NextResponse.json({ error: "Shipment ID is required" }, { status: 400 });
+      const activeShipment = await db.shipment.findFirst({
+        where: { accountId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+
+      if (activeShipment) {
+        targetShipmentId = activeShipment.id;
+      } else {
+        const count = await db.shipment.count({ where: { accountId } });
+        const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
+        const newShipment = await db.shipment.create({
+          data: {
+            accountId,
+            shipmentNumber,
+            importerName: "Demo Import Account",
+            poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
+            entryType: "Consumption Entry",
+            incoterm: "FOB SHENZHEN",
+            status: "In Progress",
+            readinessScore: 85,
+            riskScore: 20,
+          },
+        });
+        targetShipmentId = newShipment.id;
+      }
     }
     let agentResult: any = null;
     let agentName = "";

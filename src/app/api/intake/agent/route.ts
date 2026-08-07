@@ -23,6 +23,8 @@ export async function POST(req: Request) {
     let fileUrl: string = "https://storage.qubere.ai/docs/sample.pdf";
     let docTypeOverride: DocumentType | undefined = undefined;
 
+    let fileBuffer: Buffer | undefined = undefined;
+
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
@@ -35,6 +37,8 @@ export async function POST(req: Request) {
 
       if (file) {
         fileName = file.name;
+        const arrayBuffer = await file.arrayBuffer();
+        fileBuffer = Buffer.from(arrayBuffer);
         const storageResult = await storeDocumentFile(file, file.name);
         fileUrl = storageResult.url;
       }
@@ -46,19 +50,56 @@ export async function POST(req: Request) {
       docTypeOverride = json.docType as DocumentType | undefined;
     }
 
-    if (!shipmentId) {
-      return NextResponse.json({ error: "Shipment ID is required" }, { status: 400 });
+    let targetShipmentId = shipmentId;
+
+    if (targetShipmentId) {
+      const existing = await db.shipment.findUnique({
+        where: { id: targetShipmentId },
+        select: { id: true },
+      });
+      if (!existing) {
+        targetShipmentId = null;
+      }
     }
 
-    const targetShipmentId = shipmentId;
+    if (!targetShipmentId) {
+      const activeShipment = await db.shipment.findFirst({
+        where: { accountId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
 
-    // Invoke Document Intake Agent
-    const result = await DocumentIntakeService.ingestDocumentPacket({
+      if (activeShipment) {
+        targetShipmentId = activeShipment.id;
+      } else {
+        const count = await db.shipment.count({ where: { accountId } });
+        const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
+        const newShipment = await db.shipment.create({
+          data: {
+            accountId,
+            shipmentNumber,
+            importerName: "Demo Import Account",
+            poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
+            entryType: "Consumption Entry",
+            incoterm: "FOB SHENZHEN",
+            status: "In Progress",
+            readinessScore: 85,
+            riskScore: 20,
+          },
+        });
+        targetShipmentId = newShipment.id;
+      }
+    }
+
+    // Invoke Document Intake Agent directly with fileBuffer
+    const { DocumentIntakeAgent } = await import("@/modules/intake/documentIntakeAgent");
+    const result = await DocumentIntakeAgent.execute({
       accountId,
       userId,
       shipmentId: targetShipmentId,
       fileName,
       fileUrl,
+      fileBuffer,
       docTypeOverride,
     });
 

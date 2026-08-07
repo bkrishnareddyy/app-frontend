@@ -528,16 +528,13 @@ export default function AgentsPage() {
         parsedInput = { rawInput: testInputJson };
       }
 
+      const demoShipmentId = parsedInput?.shipmentId || `shp_demo_${Date.now().toString().slice(-6)}`;
+
       if (inputMode === "file" && dropFile) {
         const formData = new FormData();
         formData.append("file", dropFile);
         formData.append("docType", "AUTO_DETECT");
-        
-        // Note: For a real test, the user must provide a shipmentId somehow. 
-        // For now, if the API requires it, this will return a 400 Bad Request.
-        if (parsedInput?.shipmentId) {
-           formData.append("shipmentId", parsedInput.shipmentId);
-        }
+        formData.append("shipmentId", demoShipmentId);
 
         const res = await fetch("/api/documents/upload", {
           method: "POST",
@@ -556,6 +553,7 @@ export default function AgentsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          shipmentId: demoShipmentId,
           ...parsedInput,
         }),
       });

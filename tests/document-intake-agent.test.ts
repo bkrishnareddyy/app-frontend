@@ -37,6 +37,7 @@ describe("Agent 1: Document Intake Agent (AI Vision & Reactive Bus) Test Suite",
       fileName: "Commercial_Invoice_INV-994.pdf",
       fileUrl: "https://storage.qubere.ai/docs/inv-994.pdf",
       fileBuffer: Buffer.from("%PDF-1.4 Mock Commercial Invoice Content"),
+      docTypeOverride: "COMMERCIAL_INVOICE",
     });
 
     expect(result.packetId).toContain("pkt_");
@@ -50,13 +51,14 @@ describe("Agent 1: Document Intake Agent (AI Vision & Reactive Bus) Test Suite",
     expect(result.aiProviderUsed).toBeDefined();
   });
 
-  it("should classify Bill of Lading files correctly by filename inference when buffer is passed", async () => {
+  it("should classify Bill of Lading files correctly when docTypeOverride or vision is passed", async () => {
     const result = await DocumentIntakeAgent.execute({
       accountId: "acc_test_123",
       userId: "usr_test_123",
       shipmentId: "shp_test_123",
       fileName: "Master_Bill_of_Lading_BL882.pdf",
       fileUrl: "https://storage.qubere.ai/docs/bl882.pdf",
+      docTypeOverride: "OCEAN_BILL_OF_LADING",
     });
 
     expect(result.detectedTypes).toContain("OCEAN_BILL_OF_LADING");

@@ -54,7 +54,8 @@ describe("GSP Form A Certificate of Origin Zero-Hallucination Pipeline", () => {
       accountId,
       userId,
       shipmentId,
-      fileName: "Form_A_GSP_Certificate_of_Origin.png",
+      fileName: "Form_A_GSP_Certificate_of_Origin.pdf",
+      docTypeOverride: "GENERAL_CERTIFICATE_OF_ORIGIN",
     });
 
     const agent1 = output.agentResults.agent1_intake;

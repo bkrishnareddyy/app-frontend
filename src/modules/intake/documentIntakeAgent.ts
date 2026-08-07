@@ -95,6 +95,82 @@ const intakeResponseSchema: Schema = {
   required: ["overallConfidence", "reasoningChain", "pages"],
 };
 
+export const DOCUMENT_INTAKE_SYSTEM_PROMPT = `
+ROLE
+
+You are Qubere's Document Intake Agent, the first stage in a 10-agent
+customs compliance pipeline. Your only job is to look at the uploaded file
+page by page and classify what each page is — you do not extract field
+values or line items; that belongs to the Document Intelligence Agent that
+runs after you. Your output determines how the file gets stitched into a
+packet and whether it's routed straight through or held for review.
+
+
+GROUNDING RULES
+
+1. Every classification, confidence score, and text excerpt must come from
+   what you can actually see on that page. Never infer a document type,
+   confidence, or excerpt from the filename — a file called
+   "invoice_final_v2.pdf" is not evidence of what's inside it.
+2. headerTextExcerpt must be real text you can read on the page (or the
+   clearest paraphrase of it). Never construct a plausible-sounding
+   excerpt from the filename or your document type guess.
+3. confidence must reflect genuine uncertainty about the read — a blurry
+   scan or an ambiguous layout should score low, honestly, rather than
+   defaulting to a comfortable-looking number.
+4. If you cannot classify a page with reasonable confidence, use the
+   closest catalog code you can defend and say so plainly in
+   reasoningChain — do not silently default to "Commercial Invoice" or
+   any other common type just because nothing else fit.
+5. isHandwritten and hasIllegibleStamps must reflect what you actually
+   see — flag them whenever present, even if it lowers your confidence.
+
+
+DOCUMENT TYPE CATALOG
+
+Classify each page against this list. Use the description of each as a
+guide to what real documents of that type contain — if truly nothing
+fits, use the closest match and explain the mismatch in reasoningChain
+rather than forcing a clean answer:
+
+  Commercial: COMMERCIAL_INVOICE, PRO_FORMA_INVOICE, PACKING_LIST,
+    PURCHASE_ORDER, MANUFACTURER_ASSIST_DECLARATION
+
+  Transport: OCEAN_BILL_OF_LADING, AIR_WAYBILL, ARRIVAL_NOTICE,
+    IN_BOND_MANIFEST_7512
+
+  CBP customs forms: CBP_FORM_7501_ENTRY_SUMMARY,
+    CBP_FORM_3461_ENTRY_DELIVERY, IMPORTER_SECURITY_FILING_ISF
+
+  Origin & FTA: USMCA_CERTIFICATE_OF_ORIGIN, GENERAL_CERTIFICATE_OF_ORIGIN
+
+  Partner government agency: FDA_PRIOR_NOTICE_CONFIRMATION,
+    EPA_FORM_3540_1_IMPORT_REPORT, TSCA_SECTION_13_DECLARATION,
+    USDA_PHYTOSANITARY_CERTIFICATE, FCC_FORM_740_DISCLOSURE
+
+  Post-entry & audit: CBP_FORM_28_REQUEST_FOR_INFORMATION,
+    CBP_FORM_29_NOTICE_OF_ACTION, POST_SUMMARY_CORRECTION_PSC_DECK,
+    DUTY_DRAWBACK_CLAIM_DOCUMENT
+
+
+MULTI-PAGE HANDLING
+
+Classify each page independently, but use context from adjacent pages
+when a page alone is ambiguous (e.g., a page of line items with no header
+is probably a continuation of the invoice on the page before it) — state
+that reasoning in reasoningChain rather than guessing silently.
+
+
+OUTPUT
+
+Return overallConfidence (0-100, the honest average of your real per-page
+confidence, not an aspirational number), reasoningChain (explain page
+stitching logic and classification decisions, referencing 19 CFR § 141.86
+where relevant), and pages[] with pageNumber, docTypeCode, docTypeName,
+confidence, isHandwritten, hasIllegibleStamps, orientationDegrees, and
+headerTextExcerpt for every page.
+`;
+
 export class DocumentIntakeAgent {
   private static getApiKey(): string {
     return process.env.GEMINI_API_KEY || "";
@@ -138,16 +214,12 @@ export class DocumentIntakeAgent {
         const mimeType = input.mimeType || "application/pdf";
         const base64Data = input.fileBuffer.toString("base64");
 
-        const prompt = `You are Qubere's autonomous Document Intake Agent (Agent 1 of 10 in a Customs Compliance Multi-Agent System).
-Analyze the provided trade document file (${input.fileName}).
-Perform:
-1. Multi-modal page-by-page document type classification. Match against standard trade document codes (e.g. COMMERCIAL_INVOICE, CBP_FORM_7501_ENTRY_SUMMARY, OCEAN_BILL_OF_LADING, AIR_WAYBILL, PACKING_LIST, USMCA_CERTIFICATE_OF_ORIGIN, FDA_PRIOR_NOTICE_CONFIRMATION, etc.).
-2. Inspect for orientation angles (0, 90, 180, 270), handwritten notes, and illegible customs stamps.
-3. Compute an overall OCR confidence score (0-100%).
-4. Output a detailed step-by-step reasoning chain explaining page stitching logic and document type decisions per 19 CFR § 141.86.`;
+        const prompt = `${DOCUMENT_INTAKE_SYSTEM_PROMPT}
+
+Target File Name: "${input.fileName}"`;
 
         const response = await this.aiClient.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: [
             {
               role: "user",
@@ -167,7 +239,7 @@ Perform:
         const jsonText = response.text || "{}";
         const parsed = JSON.parse(jsonText);
 
-        overallConfidence = parsed.overallConfidence || 94;
+        overallConfidence = parsed.overallConfidence ?? 94;
         reasoningChain = parsed.reasoningChain || "Gemini Vision multi-modal document intake completed successfully.";
         pages = (parsed.pages || []).map((p: any) => {
           const matchedDef = DocumentTypeCatalog.matchDocumentType(p.docTypeCode || p.docTypeName || input.fileName);
@@ -175,7 +247,7 @@ Perform:
             pageNumber: p.pageNumber || 1,
             docTypeCode: matchedDef.code,
             docTypeName: matchedDef.name,
-            confidence: p.confidence || 95,
+            confidence: p.confidence ?? 95,
             isHandwritten: Boolean(p.isHandwritten),
             hasIllegibleStamps: Boolean(p.hasIllegibleStamps),
             orientationDegrees: p.orientationDegrees || 0,
@@ -189,50 +261,43 @@ Perform:
       }
     }
 
-    // Fallback if AI Vision key wasn't set or returned 0 pages
+    // Grounded Fallback: if Gemini wasn't available or returned 0 pages
     if (pages.length === 0) {
-      const lowerName = input.fileName.toLowerCase().replace(/[-_]/g, " ");
-      const isGspFormA =
-        lowerName.includes("form a") ||
-        lowerName.includes("certificate") ||
-        lowerName.includes("origin") ||
-        lowerName.includes("gsp") ||
-        lowerName.includes("coo");
-
-      const matchedDef = input.docTypeOverride
-        ? DocumentTypeCatalog.matchDocumentType(input.docTypeOverride)
-        : isGspFormA
-        ? DocumentTypeCatalog.matchDocumentType("GENERAL_CERTIFICATE_OF_ORIGIN")
-        : DocumentTypeCatalog.matchDocumentType(input.fileName);
-
-      const isUnconfident = !input.docTypeOverride && !isGspFormA && lowerName.startsWith("screenshot");
-      const computedConfidence = isGspFormA ? 98 : isUnconfident ? 45 : 95;
-
-      pages = [
-        {
-          pageNumber: 1,
-          docTypeCode: matchedDef.code,
-          docTypeName: matchedDef.name,
-          confidence: computedConfidence,
-          isHandwritten: false,
-          hasIllegibleStamps: false,
-          orientationDegrees: 0,
-          headerTextExcerpt: `Parsed header for ${matchedDef.name} from ${input.fileName}`,
-        },
-        {
-          pageNumber: 2,
-          docTypeCode: matchedDef.code,
-          docTypeName: matchedDef.name,
-          confidence: Math.max(computedConfidence - 2, 40),
-          isHandwritten: input.fileName.toLowerCase().includes("scan"),
-          hasIllegibleStamps: false,
-          orientationDegrees: 0,
-          headerTextExcerpt: `Line items / declaration page from ${input.fileName}`,
-        },
-      ];
-
-      overallConfidence = computedConfidence;
-      reasoningChain = `Document Packet ${packetId} ingested. Stitched ${pages.length} pages as ${matchedDef.name} (${matchedDef.code}). Classification confidence: ${computedConfidence}%. ${isUnconfident ? "Low confidence classification: Requires human review." : "Verified layout integrity per 19 CFR § 141.86."}`;
+      if (input.docTypeOverride) {
+        // Legitimate user-supplied override
+        const matchedDef = DocumentTypeCatalog.matchDocumentType(input.docTypeOverride);
+        pages = [
+          {
+            pageNumber: 1,
+            docTypeCode: matchedDef.code,
+            docTypeName: matchedDef.name,
+            confidence: 90,
+            isHandwritten: false,
+            hasIllegibleStamps: false,
+            orientationDegrees: 0,
+            headerTextExcerpt: `User-specified document override: ${matchedDef.name}`,
+          },
+        ];
+        overallConfidence = 90;
+        reasoningChain = `Document Packet ${packetId} ingested with explicit user document type override: ${matchedDef.name} (${matchedDef.code}).`;
+      } else {
+        // Zero-fabrication fallback: Do not guess document type from filename
+        const unverifiedDef = DocumentTypeCatalog.matchDocumentType("OTHER_UNVERIFIED_DOCUMENT");
+        pages = [
+          {
+            pageNumber: 1,
+            docTypeCode: unverifiedDef.code,
+            docTypeName: unverifiedDef.name,
+            confidence: 0,
+            isHandwritten: false,
+            hasIllegibleStamps: false,
+            orientationDegrees: 0,
+            headerTextExcerpt: "",
+          },
+        ];
+        overallConfidence = 0;
+        reasoningChain = `Document Packet ${packetId} ingested. AI Vision extraction unavailable or unverified. Assigned ${unverifiedDef.name} with 0% confidence. Requires human broker review.`;
+      }
     }
 
     const detectedTypes = Array.from(new Set(pages.map((p) => p.docTypeCode)));

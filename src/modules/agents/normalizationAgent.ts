@@ -400,7 +400,7 @@ Structured JSON from Document Intelligence Agent:
 ${JSON.stringify(docData, null, 2)}`;
 
         const response = await this.aiClient.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: {
             responseMimeType: "application/json",
@@ -481,8 +481,12 @@ ${JSON.stringify(docData, null, 2)}`;
         packages: [],
         transport: [],
         financials: {
-          currency: { originalLabel: "Currency", originalValue: docData.currency || "USD", normalizedValue: docData.currency || "USD", confidence: 95, processingTimestamp: timestamp },
-          totalValue: { originalLabel: "Invoice Subtotal", originalValue: docData.invoiceSubtotal || 0, normalizedValue: docData.invoiceSubtotal || 0, confidence: 95, processingTimestamp: timestamp },
+          currency: docData.currency
+            ? { originalLabel: "Currency", originalValue: docData.currency, normalizedValue: docData.currency, confidence: 95, processingTimestamp: timestamp }
+            : { originalLabel: "Currency", originalValue: null, normalizedValue: null, confidence: 0, processingTimestamp: timestamp },
+          totalValue: typeof docData.invoiceSubtotal === "number"
+            ? { originalLabel: "Invoice Subtotal", originalValue: docData.invoiceSubtotal, normalizedValue: docData.invoiceSubtotal, confidence: 95, processingTimestamp: timestamp }
+            : { originalLabel: "Invoice Subtotal", originalValue: null, normalizedValue: null, confidence: 0, processingTimestamp: timestamp },
           incoterms: docData.incoterm ? { originalLabel: "Incoterms", originalValue: docData.incoterm, normalizedValue: docData.incoterm, confidence: 95, processingTimestamp: timestamp } : null,
         },
         references,

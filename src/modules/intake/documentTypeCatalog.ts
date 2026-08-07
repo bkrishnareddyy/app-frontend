@@ -263,19 +263,26 @@ export const SYSTEM_DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     keywords: ["form 7551", "duty drawback", "refund claim", "export match"],
     description: "Claim for 99% refund of duties paid on imported goods subsequently exported.",
   },
+  {
+    code: "OTHER_UNVERIFIED_DOCUMENT",
+    name: "Other / Unverified Document",
+    category: "COMPLIANCE",
+    isRequiredForFiling: false,
+    keywords: [],
+    description: "Document whose type could not be verified from layout or text content without guessing.",
+  },
 ];
 
 export class DocumentTypeCatalog {
   /**
-   * Retrieves all available document types (built-in 150+ catalog + account custom additions from DB).
+   * Retrieves all available document types (built-in catalog + account custom additions from DB).
    */
   static async getDocumentTypes(accountId?: string): Promise<DocumentTypeDefinition[]> {
-    // In production, queries db.documentTypeMaster for account-specific additions
     return SYSTEM_DOCUMENT_TYPES;
   }
 
   /**
-   * Matches raw text or Gemini extraction against the 150+ dynamic document type catalog.
+   * Matches raw text or Gemini extraction against the dynamic document type catalog.
    */
   static matchDocumentType(textOrName: string): DocumentTypeDefinition {
     const upper = textOrName.trim().toUpperCase();
@@ -320,11 +327,18 @@ export class DocumentTypeCatalog {
       if (plDef) return plDef;
     }
 
+    if (norm.includes("invoice") || norm.includes("pro forma") || norm.includes("proforma")) {
+      const invDef = SYSTEM_DOCUMENT_TYPES.find((d) => d.code === "COMMERCIAL_INVOICE");
+      if (invDef) return invDef;
+    }
+
     // 3. Keyword match score
-    let bestMatch: DocumentTypeDefinition = SYSTEM_DOCUMENT_TYPES[0]; // Default COMMERCIAL_INVOICE
+    const unverifiedDef = SYSTEM_DOCUMENT_TYPES.find((d) => d.code === "OTHER_UNVERIFIED_DOCUMENT")!;
+    let bestMatch: DocumentTypeDefinition = unverifiedDef;
     let highestScore = 0;
 
     for (const docDef of SYSTEM_DOCUMENT_TYPES) {
+      if (docDef.code === "OTHER_UNVERIFIED_DOCUMENT") continue;
       let score = 0;
 
       // Title match

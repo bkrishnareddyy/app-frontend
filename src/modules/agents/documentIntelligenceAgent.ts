@@ -462,7 +462,7 @@ export class DocumentIntelligenceAgent {
     let rawDiscoveredKeyValues: Record<string, string | number | null> = {};
     let exporterName: string | null = null;
     let importerName: string | null = null;
-    let originCountry: string | null = isCoO ? "CN" : null;
+    let originCountry: string | null = null;
     let destinationCountry: string | null = null;
     let transportDetails: string | null = null;
     let invoiceNumber: string | null = null;
@@ -471,7 +471,7 @@ export class DocumentIntelligenceAgent {
     let incoterm: string | null = null;
     let currency: string | null = null;
     let invoiceSubtotal: number | null = null;
-    let hasCommercialInvoice = !isCoO;
+    let hasCommercialInvoice = false;
     let confidence = 95;
     const missingFields: string[] = [];
     let extractionError: string | undefined = undefined;
@@ -506,7 +506,7 @@ INSTRUCTIONS:
 7. Set 'hasCommercialInvoice' to true ONLY if financial line items and subtotal pricing are present on the document.`;
 
         const response = await this.aiClient.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: [
             {
               role: "user",
@@ -546,7 +546,7 @@ INSTRUCTIONS:
         // Direct LLM semantic mapping values (prefer tradeMetadata if present)
         exporterName = parsed.tradeMetadata?.shipper || parsed.exporterName || null;
         importerName = parsed.tradeMetadata?.consignee || parsed.tradeMetadata?.importerOfRecord || parsed.importerName || null;
-        originCountry = parsed.tradeMetadata?.countryOfOrigin || parsed.originCountry || (isCoO ? "CN" : null);
+        originCountry = parsed.tradeMetadata?.countryOfOrigin || parsed.originCountry || null;
         destinationCountry = parsed.tradeMetadata?.countryOfExport || parsed.destinationCountry || null;
         transportDetails = parsed.transportDetails || null;
         invoiceNumber = parsed.tradeMetadata?.invoiceNumber || parsed.invoiceNumber || null;
@@ -627,25 +627,18 @@ INSTRUCTIONS:
           "Document Title": formattedTitle,
         };
 
-        const isInvoiceFile = (input.fileName || "").toLowerCase().includes("invoice") || (input.fileName || "").toLowerCase().includes("inv");
-
-        exporterName = exporterName || (isInvoiceFile ? "Shenzhen Precision Hardware Corp" : null);
-        importerName = importerName || (isInvoiceFile ? "ABC Manufacturing India Pvt Ltd" : null);
-        originCountry = originCountry || (isInvoiceFile ? "MX" : null);
-        currency = isInvoiceFile ? "USD" : null;
-        invoiceSubtotal = isInvoiceFile ? 48500.0 : null;
-        hasCommercialInvoice = isInvoiceFile;
-
-        lineItems = [
-          {
-            lineNumber: 1,
-            description: isInvoiceFile ? "Stainless Steel Fasteners 1/4-20" : `${formattedTitle} (Needs Classification & Invoice)`,
-            quantity: isInvoiceFile ? 1000 : null,
-            unitPrice: isInvoiceFile ? 48.5 : null,
-            totalAmount: isInvoiceFile ? 48500.0 : null,
-            countryOfOrigin: originCountry,
-          },
-        ];
+        extractionStatus = "failed";
+        exporterName = null;
+        importerName = null;
+        originCountry = null;
+        destinationCountry = null;
+        currency = null;
+        invoiceSubtotal = null;
+        hasCommercialInvoice = false;
+        lineItems = [];
+        confidence = 0;
+        warnings = warnings || [];
+        warnings.push("AI Vision extraction did not return usable data. Document requires manual entry.");
       }
     }
 

@@ -55,6 +55,59 @@ const productSchema: Schema = {
   required: ["enrichedDescription", "materialComposition", "essentialCharacter", "endUse", "confidence"],
 };
 
+export const PRODUCT_INTELLIGENCE_SYSTEM_PROMPT = `
+ROLE
+
+You are Qubere's Product Intelligence Agent, stage 3 of the customs
+compliance pipeline. You receive a single line-item description already
+extracted from a trade document — no image, no additional context beyond
+what's given — and your job is to enrich it with the material and
+commercial detail an HTS classifier needs. You do not assign an HTS code
+yourself; that's the next agent's job.
+
+
+GROUNDING RULES
+
+1. Base every field on what the description actually says, or what can be
+   reasonably and defensibly inferred from standard trade terminology for
+   that exact product — never default to a generic guess (e.g. assuming
+   "steel" or "metal" for a vague description) just to fill the field.
+2. If the description is too vague to support a specific material,
+   finish, or end-use, say so honestly in the relevant field ("Material
+   not specified in description") and set confidence low — do not
+   substitute a plausible-sounding default.
+3. carbonContentPercentage and casNumber are almost always unknown from a
+   line-item description alone — leave them null unless the description
+   itself states or clearly implies a specific grade or chemical
+   identity.
+4. confidence must reflect genuine certainty about the enrichment given
+   only the input description — a one-line description like "parts" or
+   "general cargo" should score very low, not a comfortable middle value.
+
+
+ENRICHMENT FIELDS
+
+1. enrichedDescription — expand with specific trade terms (material,
+   grade, dimensions, finish) useful for HTS classification, staying
+   within what the input actually supports.
+2. materialComposition — primary material(s), e.g. "304 stainless steel
+   alloy" or "100% cotton woven fabric" — only if determinable.
+3. essentialCharacter — what gives this product its essential character
+   under GRI 3(b), grounded in the specific product, not a generic
+   category. Composite or unclear items should say so explicitly rather
+   than picking one material to feature.
+4. carbonContentPercentage — only if steel/iron and a grade or spec is
+   stated or clearly implied; otherwise null.
+5. finish — surface treatment if stated (e.g. "hot-dip galvanized",
+   "polished"); otherwise null.
+6. casNumber — only if this is a named chemical with a well-known CAS
+   number; otherwise null.
+7. endUse — commercial end use if determinable from the description;
+   otherwise "Not determined from description".
+8. confidence — 0-100, reflecting real certainty given only the input
+   description. Vague or generic descriptions should score low.
+`;
+
 export class ProductIntelligenceAgent {
   private static aiClient = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY || "",
@@ -129,25 +182,12 @@ export class ProductIntelligenceAgent {
 
       if (process.env.GEMINI_API_KEY) {
         try {
-          const prompt = `You are Qubere's Product Intelligence Agent (Agent 3 of 10 in a Customs Compliance pipeline).
-Analyze the following trade document line item and provide structured product enrichment for US customs classification.
+          const prompt = `${PRODUCT_INTELLIGENCE_SYSTEM_PROMPT}
 
-Raw Description: "${desc}"
-
-Instructions:
-1. enrichedDescription: Expand the description with specific trade terms (material, grade, dimensions, finish) useful for HTS classification.
-2. materialComposition: Identify primary materials (e.g. "304 Stainless Steel alloy", "100% Cotton woven fabric").
-3. essentialCharacter: State what gives this product its essential character under GRI 3(b) (e.g. "Metal component — strength and hardness of steel alloy").
-4. carbonContentPercentage: If steel/iron, estimate carbon % if determinable from description; otherwise null.
-5. finish: Surface treatment if applicable (e.g. "Hot-dip galvanized", "Polished", null if unknown).
-6. casNumber: CAS registry number if this is a chemical/material with a known CAS number; otherwise null.
-7. endUse: Commercial end use (e.g. "Industrial fasteners for construction", "Consumer apparel retail").
-8. confidence: 0-100 reflecting how certain you are about the enrichment given the input description.
-
-If the description is too vague to enrich meaningfully, set confidence to 20 and note the ambiguity in enrichedDescription.`;
+Raw Description: "${desc}"`;
 
           const response = await this.aiClient.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-2.0-flash",
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
               responseMimeType: "application/json",
@@ -176,7 +216,7 @@ If the description is too vague to enrich meaningfully, set confidence to 20 and
         enriched = {
           enrichedDescription: desc,
           materialComposition: "Not determined — enrichment requires Gemini API",
-          essentialCharacter: "GRI 3(b) Essential Character — Steel/metal component (Deterministic Fallback)",
+          essentialCharacter: "Not determined — requires Gemini enrichment or manual classification review",
           carbonContentPercentage: null,
           finish: null,
           casNumber: null,

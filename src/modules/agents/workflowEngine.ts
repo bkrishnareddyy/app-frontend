@@ -25,6 +25,7 @@ export interface PipelineOrchestrationInput {
   fileUrl?: string;
   fileBuffer?: Buffer;
   mimeType?: string;
+  docTypeOverride?: string;
 }
 
 export interface PipelineOrchestrationOutput {
@@ -104,6 +105,7 @@ export class DocumentIntakeStep implements ComplianceAgent<PipelineOrchestration
       fileUrl,
       fileBuffer: input.fileBuffer,
       mimeType: input.mimeType,
+      docTypeOverride: input.docTypeOverride,
     });
 
     state.packetId = output.packetId;

@@ -44,10 +44,45 @@ export async function POST(req: Request) {
     // Step 1: Upload file via Dual Storage Engine (Vercel Blob / Local Storage)
     const storageResult = await storeDocumentFile(file, file.name);
 
-    const targetShipmentId = formData.get("shipmentId") as string;
-    
+    let targetShipmentId = formData.get("shipmentId") as string | null;
+
+    if (targetShipmentId) {
+      const existing = await db.shipment.findUnique({
+        where: { id: targetShipmentId },
+        select: { id: true },
+      });
+      if (!existing) {
+        targetShipmentId = null;
+      }
+    }
+
     if (!targetShipmentId) {
-      return NextResponse.json({ error: "Shipment ID is required" }, { status: 400 });
+      const activeShipment = await db.shipment.findFirst({
+        where: { accountId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+
+      if (activeShipment) {
+        targetShipmentId = activeShipment.id;
+      } else {
+        const count = await db.shipment.count({ where: { accountId } });
+        const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
+        const newShipment = await db.shipment.create({
+          data: {
+            accountId,
+            shipmentNumber,
+            importerName: "Demo Import Account",
+            poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
+            entryType: "Consumption Entry",
+            incoterm: "FOB SHENZHEN",
+            status: "In Progress",
+            readinessScore: 85,
+            riskScore: 20,
+          },
+        });
+        targetShipmentId = newShipment.id;
+      }
     }
 
     // Map doc type string to enum if provided
@@ -77,7 +112,27 @@ export async function POST(req: Request) {
     // Step 3: Emit background reactive event so Agent 1 is triggered via EventBus
     agentEventBus.emit("document:uploaded", agentInput);
 
-    // Step 4: Dispatch Event to PG Queue to run Autonomous Pipeline asynchronously
+    // Step 4: Execute Document Intake Agent & Document Intelligence Agent for synchronous real-time inspection
+    const intakeResult = await DocumentIntakeAgent.execute(agentInput);
+
+    let intelligenceResult: any = null;
+    try {
+      const { DocumentIntelligenceAgent } = await import("@/modules/agents/documentIntelligenceAgent");
+      intelligenceResult = await DocumentIntelligenceAgent.execute({
+        accountId,
+        userId,
+        shipmentId: targetShipmentId,
+        packetId: intakeResult.packetId,
+        fileBuffer,
+        fileName: file.name,
+        mimeType: file.type || "application/pdf",
+        docTypeCode: intakeResult.classifications[0]?.docTypeCode,
+      });
+    } catch (err: any) {
+      console.warn("DocumentIntelligenceAgent execution on upload error:", err?.message || err);
+    }
+
+    // Step 5: Dispatch Event to PG Queue to run Autonomous Pipeline asynchronously
     const job = await PgQueue.enqueueJob({
       accountId,
       userId,
@@ -92,6 +147,8 @@ export async function POST(req: Request) {
       shipmentId: targetShipmentId,
       orchestration: "Dispatched to Qubere Autonomous Multi-Agent Pipeline (10 Agents)",
       storage: storageResult,
+      intakeResult,
+      intelligenceResult,
       pipelineResult: { status: "processing", shipmentId: targetShipmentId },
     });
   } catch (error: any) {

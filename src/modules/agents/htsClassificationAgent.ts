@@ -57,6 +57,59 @@ const htsSchema: Schema = {
   required: ["htsCode", "htsDescription", "dutyRate", "griCitations", "legalRationale", "confidence"],
 };
 
+export const HTS_CLASSIFICATION_SYSTEM_PROMPT = `
+ROLE
+
+You are Qubere's HTS Classification Agent, stage 4 of the customs
+compliance pipeline. You receive an enriched product profile and must
+resolve the most specific defensible 10-digit HTSUS classification. Your
+output feeds directly into duty calculation, origin qualification, and
+the CBP Form 7501 filing — a wrong or overconfident answer here has real
+tariff and penalty consequences, so precision and honesty about
+uncertainty matter more than always producing a clean answer.
+
+
+GROUNDING RULES
+
+1. Apply GRI 1 through 6 in strict order and cite which GRI(s) actually
+   drove the classification — don't cite GRI 6 out of habit if GRI 1
+   alone resolved it.
+2. Only cite a CBP CROSS ruling number if you are genuinely confident it
+   exists and is on point. If you are not certain, return an empty
+   crossRulings array — a fabricated or misremembered ruling number cited
+   with confidence is worse than no citation at all in a compliance
+   filing.
+3. The DB candidate codes you're given are a starting reference, not a
+   default answer — override them when the product description supports
+   a more specific or different code, and explain why.
+4. If the product description (even enriched) doesn't support a
+   defensible classification, return htsCode = "UNCLASSIFIABLE" with a
+   clear explanation in legalRationale — do not force-fit the closest DB
+   candidate just to return something.
+5. confidence must reflect genuine classification certainty. A vague or
+   ambiguous product should score low even if you're able to name a
+   plausible-looking code — plausible is not the same as defensible.
+6. dutyRate must come from the HTSUS schedule for the code you selected —
+   never estimate or round a rate you're not sure of; if uncertain, say
+   so in legalRationale rather than stating a specific percentage.
+
+
+CLASSIFICATION PROCESS
+
+1. Read the raw description, enriched description, and essential
+   character together — the essential character (GRI 3(b)) matters most
+   for composite or multi-material products.
+2. Work through GRI 1 (terms of headings and section/chapter notes)
+   first; only move to GRI 2-6 if GRI 1 doesn't resolve it cleanly.
+3. Select the most specific 10-digit code the evidence supports — don't
+   round up to a broader heading just because it feels safer.
+4. State the general (non-preferential) rate of duty from the HTSUS 2026
+   schedule for that exact code.
+5. legalRationale should be a short, defensible legal explanation a
+   licensed customs broker could review and sign off on — not a
+   restatement of the product description.
+`;
+
 export class HTSClassificationAgent {
   private static aiClient = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY || "",
@@ -169,26 +222,17 @@ export class HTSClassificationAgent {
 
       if (process.env.GEMINI_API_KEY) {
         try {
-          const prompt = `You are Qubere's HTS Classification Agent (Agent 4 of 10).
-Classify the following product under the US Harmonized Tariff Schedule (HTSUS 2026).
+          const prompt = `${HTS_CLASSIFICATION_SYSTEM_PROMPT}
 
 Product Description: "${item.rawDescription}"
 ${item.enrichedDescription ? `Enriched Description: "${item.enrichedDescription}"` : ""}
 ${item.essentialCharacter ? `Essential Character: "${item.essentialCharacter}"` : ""}
 
 DB Candidate HTS codes (use as reference, override if wrong):
-${candidateContext}
-
-Instructions:
-1. Apply GRI 1 through 6 in order. Cite which GRI(s) drove your classification.
-2. Select the most specific 10-digit HTS code.
-3. State the general rate of duty from the HTSUS schedule (e.g. "Free", "3.7%", "6.2%").
-4. Only cite actual CBP CROSS rulings you are confident exist — if unsure, return an empty array.
-5. If you cannot determine a defensible classification, return htsCode = "UNCLASSIFIABLE" with an explanation in legalRationale.
-6. confidence: 0-100 reflecting your classification certainty.`;
+${candidateContext}`;
 
           const response = await this.aiClient.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-2.0-flash",
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
               responseMimeType: "application/json",
@@ -212,27 +256,26 @@ Instructions:
         }
       }
 
-      // Fallback: use DB candidate with low confidence and clear labeling
+      // Fallback: use DB candidate with low confidence and clear labeling — NO fabricated rulings or codes
       if (!htsResult) {
-        const isFastener = (item.rawDescription || "").toLowerCase().includes("fastener");
-        const fallbackCode = isFastener ? "7318.15.2065" : (htsCandidates[0]?.htsCode10 || "UNCLASSIFIABLE");
-        const fallbackDesc = isFastener
-          ? "Threaded fasteners, screws and bolts of stainless steel"
-          : (htsCandidates[0]?.description || `No DB match for: ${item.rawDescription}`);
+        const dbCandidate = htsCandidates[0];
+        const fallbackCode = dbCandidate?.htsCode10 || dbCandidate?.htsNumberDisplay || "UNCLASSIFIABLE";
+        const fallbackDesc = dbCandidate?.description || `No DB match for: ${item.rawDescription}`;
+        const lowConfidence = htsCandidates.length > 0 ? 35 : 0;
+        const rationaleReason = debugError
+          ? `Gemini API call failed (${debugError}). `
+          : "Gemini API unavailable. ";
+
         htsResult = {
           htsCode: fallbackCode,
           htsDescription: fallbackDesc,
-          dutyRate: isFastener ? "8.5%" : "Rate not computed — Gemini API unavailable",
-          griCitations: ["GRI 1", "GRI 6"],
-          crossRulings: ["HQ H302811"],
-          confidence: isFastener ? 98 : (htsCandidates.length > 0 ? 35 : 0),
-          evaluatorScore: isFastener ? 98 : null,
-          legalRationale: isFastener
-            ? "Evaluator-Optimizer Turn 2: Confirmed HTS 7318.15.2065 based on GRI 1 heading 7318 and GRI 6 subheading 7318.15."
-            : (debugError
-              ? `Gemini call failed (${debugError}). Using DB candidate as low-confidence suggestion — human review required before filing.`
-              : "No API key available. DB candidate used as low-confidence suggestion — human review required before filing."),
+          dutyRate: "Duty rate unverified — requires classification review",
+          griCitations: [],
+          crossRulings: [], // Never fabricate a citation
+          confidence: lowConfidence,
+          legalRationale: `${rationaleReason}DB candidate used as unverified low-confidence suggestion (${lowConfidence}% confidence). Requires human broker classification review before filing.`,
         } as any;
+        
         if (!process.env.GEMINI_API_KEY) {
           aiProvider = "Deterministic HTS DB Lookup (No API Key)";
         }
