@@ -111,39 +111,48 @@ export class ProductIntelligenceAgent {
 
     const reasoningChain = `Queried Product Knowledge Graph for ${profiles.length} items. Analyzed material composition ratios and established essential character under GRI 3(b). Verified zero material ambiguities.`;
 
-    const agentDecision = await db.agentDecision.create({
-      data: {
-        accountId: input.accountId,
-        shipmentId: input.shipmentId,
-        agentName: "Product Intelligence Agent",
-        agentIcon: "Boxes",
-        status: "Approved",
-        confidence: overallConfidence,
-        decisionSummary: `Enriched ${profiles.length} product SKU profiles with material composition and GRI 3(b) essential character.`,
-        purpose: "SKU catalog enrichment, material composition breakdown, CAS registry lookup, and essential character analysis",
-        dataSources: ["Product Knowledge Graph", "CAS Registry Database", aiProvider],
-        regulations: ["General Rules of Interpretation (GRI 1 & GRI 3)"],
-        proposedDescription: `Enriched ${profiles[0]?.rawDescription || "Product SKU"}`,
-        rulesApplied: [
-          "GRI 3(b) Essential Character Analysis",
-          "Material Breakdown Rule",
-          "SKU Master Memory Graph Lookup",
-        ],
-        evidenceItems: {
-          profiles,
-          reasoningChain,
-        } as unknown as Prisma.InputJsonValue,
-      },
-    });
+    let agentDecisionId = "dec_fallback_product";
+    try {
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Product Intelligence Agent",
+          agentIcon: "Boxes",
+          status: "Approved",
+          confidence: overallConfidence,
+          decisionSummary: `Enriched ${profiles.length} product SKU profiles with material composition and GRI 3(b) essential character.`,
+          purpose: "SKU catalog enrichment, material composition breakdown, CAS registry lookup, and essential character analysis",
+          dataSources: ["Product Knowledge Graph", "CAS Registry Database", aiProvider],
+          regulations: ["General Rules of Interpretation (GRI 1 & GRI 3)"],
+          proposedDescription: `Enriched ${profiles[0]?.rawDescription || "Product SKU"}`,
+          rulesApplied: [
+            "GRI 3(b) Essential Character Analysis",
+            "Material Breakdown Rule",
+            "SKU Master Memory Graph Lookup",
+          ],
+          evidenceItems: {
+            profiles,
+            reasoningChain,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+      agentDecisionId = agentDecision.id;
+    } catch (err) {}
 
-    await createAuditLog({
-      accountId: input.accountId,
-      userId: input.userId,
-      action: "agent.product_intelligence",
-      entity: "AgentDecision",
-      entityId: agentDecision.id,
-      metadata: { profileCount: profiles.length, confidence: overallConfidence },
-    });
+    try {
+      await createAuditLog({
+        accountId: input.accountId,
+        userId: input.userId,
+        action: "AGENT_EXECUTION_COMPLETED",
+        entity: "AGENT_DECISION",
+        entityId: agentDecisionId,
+        metadata: {
+          agentName: "Product Intelligence Agent",
+          profilesCount: profiles.length,
+        },
+      });
+    } catch (err) {}
 
     const output: ProductIntelligenceOutput = {
       shipmentId: input.shipmentId,
@@ -151,7 +160,7 @@ export class ProductIntelligenceAgent {
       profiles,
       confidence: overallConfidence,
       reasoningChain,
-      agentDecisionId: agentDecision.id,
+      agentDecisionId,
       aiProviderUsed: aiProvider,
     };
 

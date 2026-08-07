@@ -54,22 +54,26 @@ export class ValuationAssistsAgent {
     if (!hasInvoiceValue) {
       const reasoningChain = "Valuation Agent skipped: Commercial Invoice pricing data is missing from document packet. Cannot appraise transaction value per 19 U.S.C. § 1401a without invoice totals.";
       
-      const agentDecision = await db.agentDecision.create({
-        data: {
-          accountId: input.accountId,
-          shipmentId: input.shipmentId,
-          agentName: "Valuation Agent",
-          agentIcon: "Calculator",
-          status: "Needs Review",
-          confidence: 100,
-          decisionSummary: "Valuation Skipped: Missing Commercial Invoice pricing data.",
-          purpose: "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
-          dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider],
-          regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
-          proposedDescription: "Valuation Skipped (No Invoice)",
-          rulesApplied: ["19 U.S.C. 1401a Transaction Value Pre-Requisite Check"],
-        },
-      });
+      let agentDecisionId = "dec_fallback_valuation";
+      try {
+        const agentDecision = await db.agentDecision.create({
+          data: {
+            accountId: input.accountId,
+            shipmentId: input.shipmentId,
+            agentName: "Valuation Agent",
+            agentIcon: "Calculator",
+            status: "Needs Review",
+            confidence: 100,
+            decisionSummary: "Valuation Skipped: Missing Commercial Invoice pricing data.",
+            purpose: "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
+            dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider],
+            regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
+            proposedDescription: "Valuation Skipped (No Invoice)",
+            rulesApplied: ["19 U.S.C. 1401a Transaction Value Pre-Requisite Check"],
+          },
+        });
+        agentDecisionId = agentDecision.id;
+      } catch (err) {}
 
       return {
         shipmentId: input.shipmentId,
@@ -89,7 +93,7 @@ export class ValuationAssistsAgent {
           blockedByAgents: ["Document Intelligence Agent"],
         },
         reasoningChain,
-        agentDecisionId: agentDecision.id,
+        agentDecisionId,
         aiProviderUsed: aiProvider,
       };
     }

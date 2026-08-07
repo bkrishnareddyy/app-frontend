@@ -95,8 +95,11 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/app/dashboard
 NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/app/dashboard
 
-# Supabase PostgreSQL Connection String
-DATABASE_URL="postgresql://postgres.cqrhojmrdbrfrgtkurzj:[PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+# Supabase Connection Strings (Transaction Pooler vs Direct Connection)
+# DATABASE_URL uses Port 6543 (Transaction Mode) for Next.js App / Serverless API routes
+DATABASE_URL="postgresql://postgres.cqrhojmrdbrfrgtkurzj:[PASSWORD]@aws-1-us-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10"
+# DIRECT_URL uses Port 5432 (Session Mode) for Prisma Migrations & CLI commands
+DIRECT_URL="postgresql://postgres.cqrhojmrdbrfrgtkurzj:[PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
 ```
 
 ### 3. Install Dependencies

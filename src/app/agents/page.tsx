@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 import {
   FileCheck2,
   ScanText,
@@ -418,6 +419,7 @@ const CATEGORIES = [
 ] as const;
 
 export default function AgentsPage() {
+  const { isSignedIn } = useUser();
   const [selectedCategory, setSelectedCategory] = useState<string>("All Agents");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [activeModalAgent, setActiveModalAgent] = useState<AgentSpec | null>(null);
@@ -449,6 +451,16 @@ export default function AgentsPage() {
 
   const handleRunAgentTest = async () => {
     if (!activeModalAgent) return;
+
+    if (!isSignedIn) {
+      setTestResult({
+        error: "Unauthorized",
+        message: "🔒 Authentication Required: Only signed-in users can test Qubere AI Agents. Please sign in to execute live agent tests.",
+        unauthorized: true,
+      });
+      return;
+    }
+
     setIsExecuting(true);
     setTestResult(null);
     setExecutionTime(null);
@@ -1135,9 +1147,30 @@ export default function AgentsPage() {
                             <p className="text-xs font-sans text-slate-300">Agent reasoning and executing rules...</p>
                           </div>
                         ) : testResult ? (
-                          <pre className="text-blue-300 whitespace-pre-wrap">
-                            {JSON.stringify(testResult, null, 2)}
-                          </pre>
+                          testResult.unauthorized || testResult.error === "Unauthorized" ? (
+                            <div className="h-full flex flex-col items-center justify-center space-y-3 p-4 text-center">
+                              <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                                <Lock className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-amber-300">Authentication Required</p>
+                                <p className="text-[11px] font-sans text-slate-300 max-w-xs mt-1">
+                                  Only signed-in Qubere users can execute live autonomous AI agents. Please sign in to your account to test.
+                                </p>
+                              </div>
+                              <Link
+                                href="/sign-in"
+                                className="mt-2 px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+                              >
+                                <span>Sign In to Test AI Agents</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </Link>
+                            </div>
+                          ) : (
+                            <pre className="text-blue-300 whitespace-pre-wrap">
+                              {JSON.stringify(testResult, null, 2)}
+                            </pre>
+                          )
                         ) : (
                           <div className="h-full flex flex-col items-center justify-center space-y-2 text-slate-500">
                             <Bot className="w-8 h-8 text-slate-600" />

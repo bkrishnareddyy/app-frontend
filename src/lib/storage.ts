@@ -1,6 +1,7 @@
 import { put } from "@vercel/blob";
 import { createHash } from "crypto";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 // QPR-004: Allowlisted MIME types for customs document uploads.
@@ -70,9 +71,6 @@ export async function storeDocumentFile(
     try {
       console.log(`[Storage] Uploading ${filename} (${file.size} bytes) sha256=${checksum} to Vercel Blob Storage...`);
       const blob = await put(`documents/${Date.now()}-${filename}`, buffer, {
-        // NOTE: @vercel/blob access must be 'public' currently; private blobs require
-        // Vercel Teams plan. When available, switch to 'private' and use signed URLs
-        // for all download links. Track: QPR-004 Gate 2.
         access: "public",
         token,
       });
@@ -89,20 +87,37 @@ export async function storeDocumentFile(
     }
   }
 
-  // Provider 2: Local Filesystem Storage (development only)
+  // Provider 2: Local Filesystem Storage with Serverless /tmp Fallback
+  let uploadDir = path.join(process.cwd(), "public", "uploads");
+  let isTmpFallback = false;
+
   try {
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
+  } catch (dirErr) {
+    // Serverless environments (Vercel, AWS Lambda at /var/task) have read-only execution bundles.
+    // Fall back to os.tmpdir() (/tmp/uploads) which is guaranteed to be writable in serverless lambdas.
+    console.warn("[Storage] Public uploads directory unwritable in serverless environment, falling back to /tmp/uploads:", dirErr);
+    uploadDir = path.join(os.tmpdir(), "uploads");
+    isTmpFallback = true;
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+    } catch (tmpErr) {
+      console.error("[Storage] Failed to create /tmp/uploads directory:", tmpErr);
+    }
+  }
 
+  try {
     const safeFilename = `${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     const filePath = path.join(uploadDir, safeFilename);
 
     fs.writeFileSync(filePath, buffer);
     const publicUrl = `/uploads/${safeFilename}`;
 
-    console.log(`[Storage] Saved ${filename} locally to ${publicUrl} sha256=${checksum}`);
+    console.log(`[Storage] Saved ${filename} ${isTmpFallback ? "to serverless /tmp" : "locally"} at ${publicUrl} sha256=${checksum}`);
 
     return {
       url: publicUrl,
@@ -112,11 +127,7 @@ export async function storeDocumentFile(
       provider: "local-fs",
     };
   } catch (err) {
-    // QPR-004: data: URL fallback removed — it embeds raw file bytes in API responses,
-    // exposes document content outside the storage layer, and cannot be audited or
-    // access-controlled. Callers must handle StorageUploadError appropriately.
-    console.error("[Storage] Local filesystem write error:", err);
-    throw new Error(`[Storage] Failed to persist file "${filename}" to any storage provider. ${err}`);
+    console.error("[Storage] Filesystem write error:", err);
+    throw new Error(`[Storage] Failed to persist file "${filename}" to storage provider. ${err}`);
   }
 }
-

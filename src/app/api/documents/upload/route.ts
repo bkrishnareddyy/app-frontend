@@ -12,8 +12,14 @@ import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
 export async function POST(req: Request) {
   try {
     const ctx = await getAccountContext().catch(() => null);
-    const accountId = ctx?.accountId || "acc_demo_default";
-    const userId = ctx?.userId || "user_demo_default";
+    if (!ctx || !ctx.accountId || !ctx.userId) {
+      return NextResponse.json(
+        { error: "Unauthorized", message: "Only logged-in users can test Qubere AI Agents. Please sign in." },
+        { status: 401 }
+      );
+    }
+    const accountId = ctx.accountId;
+    const userId = ctx.userId;
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

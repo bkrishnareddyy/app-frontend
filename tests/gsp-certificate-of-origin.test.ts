@@ -1,9 +1,40 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { describe, it, expect, vi } from "vitest";
+
+// Mock DB and audit calls to avoid hitting Supabase session connection limits in unit tests
+vi.mock("@/lib/db", () => ({
+  db: {
+    account: {
+      upsert: vi.fn().mockResolvedValue({ id: "acc_test_gsp" }),
+    },
+    user: {
+      upsert: vi.fn().mockResolvedValue({ id: "user_test_gsp" }),
+    },
+    shipment: {
+      upsert: vi.fn().mockResolvedValue({ id: "shp_test_gsp" }),
+    },
+    shipmentDocument: {
+      create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: `doc_${Date.now()}`, ...data })),
+    },
+    agentDecision: {
+      create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: `dec_${Date.now()}`, ...data })),
+    },
+    hTSCode: {
+      findMany: vi.fn().mockResolvedValue([
+        { htsCode10: "7318.15.2065", description: "Screws and bolts of stainless steel" },
+      ]),
+    },
+    customsFiling: {
+      create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: `filing_${Date.now()}`, ...data })),
+    },
+  },
+}));
+
+vi.mock("@/lib/audit", () => ({
+  createAuditLog: vi.fn().mockResolvedValue({ id: "audit_gsp" }),
+}));
+
 import { DocumentTypeCatalog } from "@/modules/intake/documentTypeCatalog";
 import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
-import { ProductIntelligenceAgent } from "@/modules/agents/productIntelligenceAgent";
-import { HTSClassificationAgent } from "@/modules/agents/htsClassificationAgent";
 import { OriginRulesAgent } from "@/modules/agents/originRulesAgent";
 import { ComplianceAuditAgent } from "@/modules/agents/complianceAuditAgent";
 
@@ -11,44 +42,6 @@ describe("GSP Form A Certificate of Origin Zero-Hallucination Pipeline", () => {
   const accountId = "acc_test_gsp";
   const userId = "user_test_gsp";
   const shipmentId = "shp_test_gsp";
-
-  beforeAll(async () => {
-    await db.account.upsert({
-      where: { id: accountId },
-      update: {},
-      create: {
-        id: accountId,
-        name: "Test Account GSP",
-        slug: "test-account-gsp",
-        type: "ENTERPRISE",
-        status: "ACTIVE",
-      },
-    });
-
-    await db.user.upsert({
-      where: { id: userId },
-      update: {},
-      create: {
-        id: userId,
-        clerkUserId: "clerk_user_test_gsp",
-        email: "gsp_tester@qubere.ai",
-        firstName: "GSP",
-        lastName: "Tester",
-      },
-    });
-
-    await db.shipment.upsert({
-      where: { id: shipmentId },
-      update: {},
-      create: {
-        id: shipmentId,
-        accountId,
-        shipmentNumber: "SHP-GSP-001",
-        status: "In Progress",
-        importerName: "Poundland Ltd",
-      },
-    });
-  });
 
   it("correctly classifies GSP Form A Certificate of Origin document type", () => {
     const catalogMatch = DocumentTypeCatalog.matchDocumentType("Form A Generalized System of Preferences Certificate of Origin");

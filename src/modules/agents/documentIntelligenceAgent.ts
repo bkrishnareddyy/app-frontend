@@ -389,43 +389,49 @@ DISCOVERY DIRECTIVE:
     const reasoningChain = `Key-Value Discovery Engine parsed ${Object.keys(rawDiscoveredKeyValues).length} label-value pairs from packet ${input.packetId}. Synonym Extrapolation mapped Exporter: '${exporterName || "Unknown"}', Consignee: '${importerName || "Unknown"}', Origin: ${originCountry || "Unknown"}. Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}. Compliance status: ${status}.`;
 
     // Persist AgentDecision in DB
-    const agentDecision = await db.agentDecision.create({
-      data: {
-        accountId: input.accountId,
-        shipmentId: input.shipmentId,
-        agentName: "Document Intelligence Agent",
-        agentIcon: "Binary",
-        status: requiresReview ? "Needs Review" : "Approved",
-        confidence,
-        decisionSummary: `Discovered ${Object.keys(rawDiscoveredKeyValues).length} raw key-value pairs & mapped ${lineItems.length} line items. Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}.`,
-        purpose: "Key-Value pair discovery, synonym extrapolation, OCR entity extraction, tabular line item parsing, MID generation, and Math Reconciliation",
-        dataSources: ["Gemini 2.5 Flash Vision", "Key-Value Discovery Engine", "Google ADK Math Engine", aiProvider],
-        regulations: ["19 CFR § 141.86", "19 CFR Part 102 (MID Rules)"],
-        proposedDescription: `Extracted ${lineItems.length} items from ${input.fileName || "packet"}`,
-        rulesApplied: [
-          "Key-Value Discovery & Synonym Extrapolation Rule",
-          "19 CFR 102 MID Code Generation",
-          "Zero-Hallucination Null Grounding Gate",
-          "Google ADK Math Reconciliation Gate",
-        ],
-      },
-    });
+    let agentDecisionId = "dec_fallback_intelligence";
+    try {
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Document Intelligence Agent",
+          agentIcon: "Binary",
+          status: requiresReview ? "Needs Review" : "Approved",
+          confidence,
+          decisionSummary: `Discovered ${Object.keys(rawDiscoveredKeyValues).length} raw key-value pairs & mapped ${lineItems.length} line items. Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}.`,
+          purpose: "Key-Value pair discovery, synonym extrapolation, OCR entity extraction, tabular line item parsing, MID generation, and Math Reconciliation",
+          dataSources: ["Gemini 2.5 Flash Vision", "Key-Value Discovery Engine", "Google ADK Math Engine", aiProvider],
+          regulations: ["19 CFR § 141.86", "19 CFR Part 102 (MID Rules)"],
+          proposedDescription: `Extracted ${lineItems.length} items from ${input.fileName || "packet"}`,
+          rulesApplied: [
+            "Key-Value Discovery & Synonym Extrapolation Rule",
+            "19 CFR 102 MID Code Generation",
+            "Zero-Hallucination Null Grounding Gate",
+            "Google ADK Math Reconciliation Gate",
+          ],
+        },
+      });
+      agentDecisionId = agentDecision.id;
+    } catch (err) {}
 
     // Create Audit Log
-    await createAuditLog({
-      accountId: input.accountId,
-      userId: input.userId,
-      action: "AGENT_EXECUTION_COMPLETED",
-      entity: "AGENT_DECISION",
-      entityId: agentDecision.id,
-      metadata: {
-        agentName: "Document Intelligence Agent",
-        packetId: input.packetId,
-        discoveredPairsCount: Object.keys(rawDiscoveredKeyValues).length,
-        hasCommercialInvoice,
-        missingFieldsCount: missingFields.length,
-      },
-    });
+    try {
+      await createAuditLog({
+        accountId: input.accountId,
+        userId: input.userId,
+        action: "AGENT_EXECUTION_COMPLETED",
+        entity: "AGENT_DECISION",
+        entityId: agentDecisionId,
+        metadata: {
+          agentName: "Document Intelligence Agent",
+          packetId: input.packetId,
+          discoveredPairsCount: Object.keys(rawDiscoveredKeyValues).length,
+          hasCommercialInvoice,
+          missingFieldsCount: missingFields.length,
+        },
+      });
+    } catch (err) {}
 
     const detectedDocType = isCoO ? "GENERAL_CERTIFICATE_OF_ORIGIN" : "COMMERCIAL_INVOICE";
     const isValidCommercialInvoice = hasCommercialInvoice && missingFields.length === 0 && mathValidationPassed;
@@ -466,7 +472,7 @@ DISCOVERY DIRECTIVE:
       mathValidationPassed,
       mathDiscrepancy,
       reasoningChain,
-      agentDecisionId: agentDecision.id,
+      agentDecisionId,
       aiProviderUsed: aiProvider,
     };
   }

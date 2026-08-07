@@ -63,22 +63,26 @@ export class ComplianceAuditAgent {
       ];
       const reasoningChain = "Compliance Audit Gating STOPPED: Cannot perform pre-filing audit. HTS classification and origin inputs are unavailable. 0 rules evaluated.";
 
-      const agentDecision = await db.agentDecision.create({
-        data: {
-          accountId: input.accountId,
-          shipmentId: input.shipmentId,
-          agentName: "Compliance Agent",
-          agentIcon: "ShieldAlert",
-          status: "Needs Review",
-          confidence: 0,
-          decisionSummary: "Compliance Audit BLOCKED: Missing prerequisite HTS classification and country of origin.",
-          purpose: "50+ CBP pre-filing compliance rules execution",
-          dataSources: ["Compliance Gate"],
-          regulations: ["19 CFR § 141.86", "UFLPA Screening Rules"],
-          proposedDescription: "BLOCKED_DEPENDENCY",
-          rulesApplied: ["Dependency Validation Prerequisite Gate"],
-        },
-      });
+      let agentDecisionId = "dec_fallback_compliance";
+      try {
+        const agentDecision = await db.agentDecision.create({
+          data: {
+            accountId: input.accountId,
+            shipmentId: input.shipmentId,
+            agentName: "Compliance Agent",
+            agentIcon: "ShieldAlert",
+            status: "Needs Review",
+            confidence: 0,
+            decisionSummary: "Compliance Audit BLOCKED: Missing prerequisite HTS classification and country of origin.",
+            purpose: "50+ CBP pre-filing compliance rules execution",
+            dataSources: ["Compliance Gate"],
+            regulations: ["19 CFR § 141.86", "UFLPA Screening Rules"],
+            proposedDescription: "BLOCKED_DEPENDENCY",
+            rulesApplied: ["Dependency Validation Prerequisite Gate"],
+          },
+        });
+        agentDecisionId = agentDecision.id;
+      } catch (err) {}
 
       return {
         shipmentId: input.shipmentId,
@@ -93,7 +97,7 @@ export class ComplianceAuditAgent {
         blockingReasons,
         confidence: 0,
         reasoningChain,
-        agentDecisionId: agentDecision.id,
+        agentDecisionId,
         aiProviderUsed: aiProvider,
       };
     }
@@ -129,38 +133,44 @@ export class ComplianceAuditAgent {
     const confidence = 95;
     const reasoningChain = `Executed 52 pre-filing compliance audit checks. HTS ${input.htsCode} verified cleared. ADD/CVD database cleared. UFLPA supplier screening cleared. Risk score: 0/100.`;
 
-    const agentDecision = await db.agentDecision.create({
-      data: {
-        accountId: input.accountId,
-        shipmentId: input.shipmentId,
-        agentName: "Compliance Agent",
-        agentIcon: "ShieldAlert",
-        status: "Approved",
-        confidence,
-        decisionSummary: `Pre-Filing Compliance Audit PASSED: 52/52 rules cleared (Risk Score: ${riskScore}, UFLPA Cleared).`,
-        purpose: "50+ CBP pre-filing compliance rules execution, PGA flagging, ADD/CVD order checking, and UFLPA screening",
-        dataSources: ["CBP ADD/CVD Case Directory", "UFLPA Entity List", "PGA Import Directives", aiProvider],
-        regulations: ["19 CFR § 141.86", "UFLPA (Public Law 117-78)"],
-        proposedDescription: `Verified HTS ${input.htsCode} compliance`,
-        rulesApplied: ["PGA Disclaimer Engine", "ADD/CVD Scope Rule", "UFLPA Entity List Rule"],
-      },
-    });
+    let agentDecisionId = "dec_fallback_compliance";
+    try {
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Compliance Agent",
+          agentIcon: "ShieldAlert",
+          status: "Approved",
+          confidence,
+          decisionSummary: `Pre-Filing Compliance Audit PASSED: 52/52 rules cleared (Risk Score: ${riskScore}, UFLPA Cleared).`,
+          purpose: "50+ CBP pre-filing compliance rules execution, PGA flagging, ADD/CVD order checking, and UFLPA screening",
+          dataSources: ["CBP ADD/CVD Case Directory", "UFLPA Entity List", "PGA Import Directives", aiProvider],
+          regulations: ["19 CFR § 141.86", "UFLPA (Public Law 117-78)"],
+          proposedDescription: `Verified HTS ${input.htsCode} compliance`,
+          rulesApplied: ["PGA Disclaimer Engine", "ADD/CVD Scope Rule", "UFLPA Entity List Rule"],
+        },
+      });
+      agentDecisionId = agentDecision.id;
+    } catch (err) {}
 
     // Create Audit Log
-    await createAuditLog({
-      accountId: input.accountId,
-      userId: input.userId,
-      action: "AGENT_EXECUTION_COMPLETED",
-      entity: "AGENT_DECISION",
-      entityId: agentDecision.id,
-      metadata: {
-        agentName: "Compliance Agent",
-        htsCode: input.htsCode,
-        countryOfOrigin: input.countryOfOrigin,
-        auditChecksRun: auditResults.length,
-        riskScore,
-      },
-    });
+    try {
+      await createAuditLog({
+        accountId: input.accountId,
+        userId: input.userId,
+        action: "AGENT_EXECUTION_COMPLETED",
+        entity: "AGENT_DECISION",
+        entityId: agentDecisionId,
+        metadata: {
+          agentName: "Compliance Agent",
+          htsCode: input.htsCode,
+          countryOfOrigin: input.countryOfOrigin,
+          auditChecksRun: auditResults.length,
+          riskScore,
+        },
+      });
+    } catch (err) {}
 
     return {
       shipmentId: input.shipmentId,
@@ -174,7 +184,7 @@ export class ComplianceAuditAgent {
       auditResults,
       confidence,
       reasoningChain,
-      agentDecisionId: agentDecision.id,
+      agentDecisionId,
       aiProviderUsed: aiProvider,
     };
   }

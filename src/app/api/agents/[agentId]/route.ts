@@ -18,10 +18,15 @@ export async function POST(
 ) {
   try {
     const ctx = await getAccountContext().catch(() => null);
-    
-    // Default account & user IDs if context is missing during public agent testing
-    const accountId = ctx?.accountId || "acc_demo_default";
-    const userId = ctx?.userId || "user_demo_default";
+    if (!ctx || !ctx.accountId || !ctx.userId) {
+      return NextResponse.json(
+        { error: "Unauthorized", message: "Only logged-in users can test Qubere AI Agents. Please sign in." },
+        { status: 401 }
+      );
+    }
+
+    const accountId = ctx.accountId;
+    const userId = ctx.userId;
 
     const { agentId } = await params;
     const body = await req.json().catch(() => ({}));
