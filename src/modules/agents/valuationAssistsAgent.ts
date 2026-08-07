@@ -15,7 +15,7 @@ export interface ValuationAssistsInput {
   accountId: string;
   userId: string;
   shipmentId: string;
-  invoiceSubtotal: number;
+  invoiceSubtotal?: number | null;
   oceanFreightIncluded?: number;
   buyerAssists?: number;
   isRelatedParty?: boolean;
@@ -23,8 +23,8 @@ export interface ValuationAssistsInput {
 
 export interface ValuationAssistsOutput {
   shipmentId: string;
-  status: "Completed" | "Review Required";
-  enteredCustomsValue: number;
+  status: "Completed" | "Review Required" | "Skipped - Missing Invoice Data";
+  enteredCustomsValue: number | null;
   valuationMethod: string;
   adjustments: ValuationAdjustment[];
   confidence: number;
@@ -40,28 +40,67 @@ export class ValuationAssistsAgent {
 
   static async execute(input: ValuationAssistsInput): Promise<ValuationAssistsOutput> {
     let aiProvider = "Gemini 2.5 Flash Valuation Engine (Google GenAI SDK)";
-    const oceanFreight = input.oceanFreightIncluded || 3200.0;
-    const assists = input.buyerAssists || 1500.0;
 
-    const enteredCustomsValue = input.invoiceSubtotal - oceanFreight + assists;
+    const hasInvoiceValue = typeof input.invoiceSubtotal === "number" && input.invoiceSubtotal > 0;
 
-    const adjustments: ValuationAdjustment[] = [
-      {
+    if (!hasInvoiceValue) {
+      const reasoningChain = "Valuation Agent skipped: Commercial Invoice pricing data is missing from document packet. Cannot appraise transaction value per 19 U.S.C. § 1401a without invoice totals.";
+      
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Valuation Agent",
+          agentIcon: "Calculator",
+          status: "Needs Review",
+          confidence: 100,
+          decisionSummary: "Valuation Skipped: Missing Commercial Invoice pricing data.",
+          purpose: "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
+          dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider],
+          regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
+          proposedDescription: "Valuation Skipped (No Invoice)",
+          rulesApplied: ["19 U.S.C. 1401a Transaction Value Pre-Requisite Check"],
+        },
+      });
+
+      return {
+        shipmentId: input.shipmentId,
+        status: "Skipped - Missing Invoice Data",
+        enteredCustomsValue: null,
+        valuationMethod: "NOT_APPLICABLE_NO_INVOICE",
+        adjustments: [],
+        confidence: 100,
+        reasoningChain,
+        agentDecisionId: agentDecision.id,
+        aiProviderUsed: aiProvider,
+      };
+    }
+
+    const subtotal = input.invoiceSubtotal as number;
+    const oceanFreight = input.oceanFreightIncluded || 0;
+    const assists = input.buyerAssists || 0;
+    const enteredCustomsValue = subtotal - oceanFreight + assists;
+
+    const adjustments: ValuationAdjustment[] = [];
+    if (oceanFreight > 0) {
+      adjustments.push({
         type: "DEDUCTION_OCEAN_FREIGHT",
         description: "Nondutiable international ocean freight deduction",
         amount: oceanFreight,
         cfrCitation: "19 U.S.C. § 1401a(b)(4)(A)",
-      },
-      {
+      });
+    }
+
+    if (assists > 0) {
+      adjustments.push({
         type: "ADDITION_TOOLING_ASSIST",
         description: "Buyer-furnished production tooling assist allocation",
         amount: assists,
         cfrCitation: "19 U.S.C. § 1401a(b)(1)(C)",
-      },
-    ];
+      });
+    }
 
-    const reasoningChain = `Invoice Subtotal: $${input.invoiceSubtotal.toFixed(2)}. Deducted $${oceanFreight.toFixed(2)} non-dutiable ocean freight per 19 U.S.C. 1401a(b)(4)(A). Added $${assists.toFixed(2)} buyer tooling assist. Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)}.`;
-
+    const reasoningChain = `Invoice Subtotal: $${subtotal.toFixed(2)}. Deducted $${oceanFreight.toFixed(2)} non-dutiable ocean freight. Added $${assists.toFixed(2)} buyer assists. Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)}.`;
     const requiresReview = Boolean(input.isRelatedParty);
 
     const agentDecision = await db.agentDecision.create({
@@ -70,7 +109,7 @@ export class ValuationAssistsAgent {
         shipmentId: input.shipmentId,
         agentName: "Valuation Agent",
         agentIcon: "Calculator",
-        status: requiresReview ? "Review Required" : "Approved",
+        status: requiresReview ? "Needs Review" : "Approved",
         confidence: 99,
         decisionSummary: `Transaction Valuation computed: Entered Value $${enteredCustomsValue.toLocaleString()} (Method 1 - Transaction Value).`,
         purpose: "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
@@ -78,29 +117,14 @@ export class ValuationAssistsAgent {
         regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
         proposedDescription: `Entered Value $${enteredCustomsValue.toFixed(2)} (Transaction Value)`,
         rulesApplied: [
-          "Transaction Value Method 1 Rule",
-          "Nondutiable Ocean Freight Deduction Rule 1401a(b)(4)(A)",
-          "Tooling Assist Allocation Rule 1401a(b)(1)(C)",
+          "19 U.S.C. 1401a(b) Transaction Value Rule",
+          "Nondutiable Freight Deduction Rule",
+          "Buyer Assist Addition Rule",
         ],
-        evidenceItems: {
-          invoiceSubtotal: input.invoiceSubtotal,
-          enteredCustomsValue,
-          adjustments,
-          reasoningChain,
-        } as unknown as Prisma.InputJsonValue,
       },
     });
 
-    await createAuditLog({
-      accountId: input.accountId,
-      userId: input.userId,
-      action: "agent.valuation_assists",
-      entity: "AgentDecision",
-      entityId: agentDecision.id,
-      metadata: { enteredValue: enteredCustomsValue, oceanFreight, assists },
-    });
-
-    const output: ValuationAssistsOutput = {
+    return {
       shipmentId: input.shipmentId,
       status: requiresReview ? "Review Required" : "Completed",
       enteredCustomsValue,
@@ -111,9 +135,5 @@ export class ValuationAssistsAgent {
       agentDecisionId: agentDecision.id,
       aiProviderUsed: aiProvider,
     };
-
-    agentEventBus.emit("valuation:calculated", output);
-
-    return output;
   }
 }

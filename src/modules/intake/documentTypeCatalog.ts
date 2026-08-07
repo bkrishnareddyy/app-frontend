@@ -160,12 +160,23 @@ export const SYSTEM_DOCUMENT_TYPES: DocumentTypeDefinition[] = [
   },
   {
     code: "GENERAL_CERTIFICATE_OF_ORIGIN",
-    name: "Chamber of Commerce Certificate of Origin",
+    name: "General / GSP Certificate of Origin (Form A)",
     category: "COMPLIANCE",
     cfrRegulation: "19 CFR § 10.31",
     isRequiredForFiling: false,
-    keywords: ["certificate of origin", "chamber of commerce", "country of origin stamp"],
-    description: "Third-party chamber notarized certificate attesting to manufacturing origin.",
+    keywords: [
+      "certificate of origin",
+      "generalized system of preferences",
+      "gsp",
+      "form a",
+      "combined declaration and certificate",
+      "chamber of commerce",
+      "country of origin stamp",
+      "origin certificate",
+      "made in china",
+      "preference criterion",
+    ],
+    description: "Third-party chamber or official government notarized certificate attesting to manufacturing origin (e.g. GSP Form A).",
   },
 
   // --- PARTNER GOVERNMENT AGENCY (PGA) DISCLOSURES ---
@@ -276,6 +287,9 @@ export class DocumentTypeCatalog {
       BOL: "OCEAN_BILL_OF_LADING",
       CERTIFICATE_OF_ORIGIN: "GENERAL_CERTIFICATE_OF_ORIGIN",
       COO: "GENERAL_CERTIFICATE_OF_ORIGIN",
+      FORM_A: "GENERAL_CERTIFICATE_OF_ORIGIN",
+      GSP: "GENERAL_CERTIFICATE_OF_ORIGIN",
+      GSP_FORM_A: "GENERAL_CERTIFICATE_OF_ORIGIN",
     };
 
     const targetCode = aliases[upper] || upper;
@@ -284,7 +298,29 @@ export class DocumentTypeCatalog {
     const exactCode = SYSTEM_DOCUMENT_TYPES.find((d) => d.code === targetCode);
     if (exactCode) return exactCode;
 
-    // 2. Keyword match score
+    // 2. Direct keyword / alias checks
+    if (
+      norm.includes("form a") ||
+      norm.includes("generalized system of preferences") ||
+      norm.includes("certificate of origin") ||
+      norm.includes("gsp") ||
+      norm.includes("coo")
+    ) {
+      const cooDef = SYSTEM_DOCUMENT_TYPES.find((d) => d.code === "GENERAL_CERTIFICATE_OF_ORIGIN");
+      if (cooDef) return cooDef;
+    }
+
+    if (norm.includes("bill of lading") || norm.includes("bol") || norm.includes("b/l")) {
+      const bolDef = SYSTEM_DOCUMENT_TYPES.find((d) => d.code === "OCEAN_BILL_OF_LADING");
+      if (bolDef) return bolDef;
+    }
+
+    if (norm.includes("packing list") || norm.includes("weight list")) {
+      const plDef = SYSTEM_DOCUMENT_TYPES.find((d) => d.code === "PACKING_LIST");
+      if (plDef) return plDef;
+    }
+
+    // 3. Keyword match score
     let bestMatch: DocumentTypeDefinition = SYSTEM_DOCUMENT_TYPES[0]; // Default COMMERCIAL_INVOICE
     let highestScore = 0;
 

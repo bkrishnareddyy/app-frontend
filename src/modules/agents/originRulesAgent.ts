@@ -49,17 +49,21 @@ export class OriginRulesAgent {
     let overallConfidence = 99;
 
     for (const item of input.lineItems) {
-      const isMexicoOrigin = item.manufacturingCountry.toUpperCase() === "MX";
+      const co = (item.manufacturingCountry || "CN").toUpperCase();
+      const isMexicoOrigin = co === "MX";
+      const isCanadaOrigin = co === "CA";
+      const isUsmca = isMexicoOrigin || isCanadaOrigin;
+
       qualifications.push({
         lineNumber: item.lineNumber,
-        countryOfOrigin: item.manufacturingCountry.toUpperCase(),
-        ftaProgram: isMexicoOrigin ? "USMCA" : "NONE",
-        spiCode: isMexicoOrigin ? "S" : "",
-        preferenceCriterion: isMexicoOrigin ? "B" : "N/A",
-        tariffShiftMet: true,
+        countryOfOrigin: co,
+        ftaProgram: isUsmca ? "USMCA" : "NONE",
+        spiCode: isUsmca ? "S" : "",
+        preferenceCriterion: isUsmca ? "B" : "N/A",
+        tariffShiftMet: isUsmca,
         standardDutyRate: "6.2%",
-        ftaDutyRate: isMexicoOrigin ? "0.0%" : "6.2%",
-        estimatedSavings: isMexicoOrigin ? 3007.0 : 0.0,
+        ftaDutyRate: isUsmca ? "0.0%" : "6.2%",
+        estimatedSavings: isUsmca ? 3007.0 : 0.0,
       });
     }
 

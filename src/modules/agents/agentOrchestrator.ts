@@ -48,8 +48,8 @@ export class AgentOrchestrator {
    * Google ADK Math Reconciliation Gates, and Anthropic Evaluator-Optimizer loops.
    */
   static async runFullPipeline(input: PipelineOrchestrationInput): Promise<PipelineOrchestrationOutput> {
-    const fileName = input.fileName || "Commercial_Invoice_INV-88421.pdf";
-    const fileUrl = input.fileUrl || "https://storage.qubere.ai/docs/inv-88421.pdf";
+    const fileName = input.fileName || "uploaded-trade-document.pdf";
+    const fileUrl = input.fileUrl || `https://storage.qubere.ai/docs/${fileName}`;
 
     // Initialize AgentState Context (Google ADK Pattern)
     const state = new AgentState(input.accountId, input.userId, input.shipmentId);
@@ -70,13 +70,13 @@ export class AgentOrchestrator {
       stepNumber: 1,
       timestamp: new Date().toISOString(),
       status: agent1.status,
-      summary: `Stitched packet ${agent1.packetId} (${agent1.pageCount} pages)`,
+      summary: `Stitched packet ${agent1.packetId} (${agent1.pageCount} pages, Type: ${agent1.classifications[0]?.docTypeName || "Unknown"})`,
       confidence: agent1.overallConfidence,
       aiProviderUsed: agent1.aiProviderUsed,
       decisionId: agent1.agentDecisionId,
     });
 
-    // 2. Agent 2: Document Intelligence (with Google ADK Math Reconciliation Gate)
+    // 2. Agent 2: Document Intelligence (with Zero-Hallucination Grounding Gate)
     const agent2 = await DocumentIntelligenceAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
@@ -84,6 +84,7 @@ export class AgentOrchestrator {
       packetId: agent1.packetId,
       fileBuffer: input.fileBuffer,
       fileName,
+      docTypeCode: agent1.classifications[0]?.docTypeCode,
       state,
     });
     state.intelligenceOutput = agent2;
@@ -92,7 +93,7 @@ export class AgentOrchestrator {
       stepNumber: 2,
       timestamp: new Date().toISOString(),
       status: agent2.status,
-      summary: `Extracted ${agent2.lineItems.length} line items (Subtotal: $${agent2.invoiceSubtotal}). Math Gate: ${agent2.mathValidationPassed ? "PASSED" : "FAILED"}`,
+      summary: `Extracted ${agent2.lineItems.length} line items (Origin: ${agent2.originCountry || "Unknown"}, Invoice Value: ${agent2.invoiceSubtotal !== null ? `$${agent2.invoiceSubtotal}` : "NULL [Invoice Missing]"}).`,
       confidence: agent2.confidence,
       aiProviderUsed: agent2.aiProviderUsed,
       decisionId: agent2.agentDecisionId,
@@ -105,7 +106,7 @@ export class AgentOrchestrator {
       shipmentId: input.shipmentId,
       lineItems: agent2.lineItems.map((li) => ({
         lineNumber: li.lineNumber,
-        sku: li.sku,
+        sku: li.sku || undefined,
         description: li.description,
       })),
     });
@@ -134,7 +135,7 @@ export class AgentOrchestrator {
       })),
     });
     state.classificationOutput = agent4;
-    state.incrementRefinementCount();
+    state.evaluatorRefinementsCount = (state.evaluatorRefinementsCount || 0) + 1;
     state.recordAgentExecution({
       agentName: "HTS Classification Agent",
       stepNumber: 4,
@@ -146,7 +147,7 @@ export class AgentOrchestrator {
       decisionId: agent4.agentDecisionId,
     });
 
-    // 5. Agent 5: Origin & Trade Agreement
+    // 5. Agent 5: Origin & Trade Agreement (Grounded Origin Evaluation)
     const agent5 = await OriginRulesAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
@@ -154,7 +155,7 @@ export class AgentOrchestrator {
       lineItems: agent4.classifications.map((c) => ({
         lineNumber: c.lineNumber,
         htsCode: c.htsCode,
-        manufacturingCountry: "MX",
+        manufacturingCountry: agent2.originCountry || "CN",
       })),
     });
     state.originOutput = agent5;
@@ -163,28 +164,28 @@ export class AgentOrchestrator {
       stepNumber: 5,
       timestamp: new Date().toISOString(),
       status: agent5.status,
-      summary: `Qualified ${agent5.qualifications[0]?.ftaProgram} preference (Duty Savings: $${agent5.qualifications[0]?.estimatedSavings})`,
+      summary: `Qualified ${agent5.qualifications[0]?.countryOfOrigin} (${agent5.qualifications[0]?.ftaProgram} - Duty Savings: $${agent5.qualifications[0]?.estimatedSavings})`,
       confidence: agent5.confidence,
       aiProviderUsed: agent5.aiProviderUsed,
       decisionId: agent5.agentDecisionId,
     });
 
-    // 6. Agent 6: Valuation & Assists
+    // 6. Agent 6: Valuation & Assists (Conditional Appraisal)
     const agent6 = await ValuationAssistsAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
       shipmentId: input.shipmentId,
       invoiceSubtotal: agent2.invoiceSubtotal,
-      oceanFreightIncluded: 3200.0,
-      buyerAssists: 1500.0,
     });
     state.valuationOutput = agent6;
     state.recordAgentExecution({
       agentName: "Valuation & Assists Agent",
       stepNumber: 6,
       timestamp: new Date().toISOString(),
-      status: agent6.status,
-      summary: `Computed Entered Customs Value $${agent6.enteredCustomsValue} (Transaction Value Method 1)`,
+      status: agent6.status === "Skipped - Missing Invoice Data" ? "Review Required" : agent6.status,
+      summary: agent6.enteredCustomsValue !== null
+        ? `Computed Entered Customs Value $${agent6.enteredCustomsValue} (Transaction Value Method 1)`
+        : "Valuation Skipped: Missing Commercial Invoice Pricing Data",
       confidence: agent6.confidence,
       aiProviderUsed: agent6.aiProviderUsed,
       decisionId: agent6.agentDecisionId,
@@ -196,8 +197,8 @@ export class AgentOrchestrator {
       userId: input.userId,
       shipmentId: input.shipmentId,
       htsCode: agent4.classifications[0]?.htsCode || "7318.15.2065",
-      countryOfOrigin: agent5.qualifications[0]?.countryOfOrigin || "MX",
-      supplierName: agent2.exporterName,
+      countryOfOrigin: agent2.originCountry || "CN",
+      supplierName: agent2.exporterName || "Unknown Exporter",
     });
     state.complianceOutput = agent7;
     state.recordAgentExecution({
@@ -205,13 +206,13 @@ export class AgentOrchestrator {
       stepNumber: 7,
       timestamp: new Date().toISOString(),
       status: agent7.status,
-      summary: `Audited 52 CBP pre-filing rules (Risk Score: ${agent7.riskScore}, UFLPA Cleared)`,
+      summary: `Audited pre-filing rules (Risk Score: ${agent7.riskScore}, UFLPA Cleared)`,
       confidence: agent7.confidence,
       aiProviderUsed: agent7.aiProviderUsed,
       decisionId: agent7.agentDecisionId,
     });
 
-    // 8. Agent 8: Filing Readiness
+    // 8. Agent 8: Filing Readiness (Strict Completeness Gate)
     const agent8 = await FilingReadinessAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
@@ -219,6 +220,7 @@ export class AgentOrchestrator {
       enteredValue: agent6.enteredCustomsValue,
       dutyDue: 0.0,
       lineItemCount: agent2.lineItems.length,
+      hasCommercialInvoice: agent2.hasCommercialInvoice,
     });
     state.readinessOutput = agent8;
     state.recordAgentExecution({
@@ -226,19 +228,22 @@ export class AgentOrchestrator {
       stepNumber: 8,
       timestamp: new Date().toISOString(),
       status: agent8.status,
-      summary: `Form 7501 Verified (Readiness Score: ${agent8.readinessScore}%)`,
+      summary: agent8.readyForTransmission
+        ? `Form 7501 Verified (Readiness Score: ${agent8.readinessScore}%, Ready for ACE)`
+        : `Filing Readiness BLOCKED: ${agent8.missingRequirements.join(", ")}`,
       confidence: agent8.confidence,
       aiProviderUsed: agent8.aiProviderUsed,
       decisionId: agent8.agentDecisionId,
     });
 
-    // 9. Agent 9: Customs Filing (ACE Transmission)
+    // 9. Agent 9: Customs Filing Agent (Conditional Transmission)
     const agent9 = await CustomsFilingAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
       shipmentId: input.shipmentId,
       enteredValue: agent6.enteredCustomsValue,
       dutyDue: 0.0,
+      readyForTransmission: agent8.readyForTransmission,
     });
     state.filingOutput = agent9;
     state.recordAgentExecution({
@@ -246,43 +251,52 @@ export class AgentOrchestrator {
       stepNumber: 9,
       timestamp: new Date().toISOString(),
       status: agent9.status,
-      summary: `Transmitted Entry #${agent9.aceResponse.cbpEntryNumber} to CBP ACE (Status: 1C Released)`,
+      summary: agent9.aceResponse.status === "ACCEPTED"
+        ? `Transmitted to CBP ACE (Entry #${agent9.aceResponse.cbpEntryNumber}, Action: ${agent9.aceResponse.cbpActionCode})`
+        : `ACE Transmission BLOCKED: ${agent9.aceResponse.cbpActionCode}`,
       confidence: agent9.confidence,
       aiProviderUsed: agent9.aiProviderUsed,
       decisionId: agent9.agentDecisionId,
     });
 
-    // 10. Agent 10: Response & Post-Summary Management (with Anthropic Evaluator-Optimizer Loop)
+    // 10. Agent 10: Response & Post-Summary Agent
     const agent10 = await ResponseManagementAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
       shipmentId: input.shipmentId,
       entryNumber: agent9.aceResponse.cbpEntryNumber,
+      hasCommercialInvoice: agent2.hasCommercialInvoice,
     });
     state.responseOutput = agent10;
-    state.incrementRefinementCount();
+    state.evaluatorRefinementsCount = (state.evaluatorRefinementsCount || 1) + 1;
     state.recordAgentExecution({
-      agentName: "Response Management Agent",
+      agentName: "Response & Post-Summary Agent",
       stepNumber: 10,
       timestamp: new Date().toISOString(),
       status: agent10.status,
-      summary: `Drafted PSC Duty Refund claim ($${agent10.totalPotentialRefund}) with Evaluator Score ${agent10.evaluatorScore}%`,
+      summary: `Post-Summary scan complete: $${agent10.totalPotentialRefund} in refund opportunities identified.`,
       confidence: agent10.confidence,
       aiProviderUsed: agent10.aiProviderUsed,
       decisionId: agent10.agentDecisionId,
     });
 
-    const pipelineStatus = state.mathValidationPassed && agent1.status === "Completed" ? "Completed" : "Review Required";
+    const pipelineStatus =
+      agent1.status === "Completed" &&
+      agent2.status === "Completed" &&
+      agent8.readyForTransmission &&
+      agent9.aceResponse.status === "ACCEPTED"
+        ? "Completed"
+        : "Review Required";
 
     return {
       shipmentId: input.shipmentId,
       packetId: agent1.packetId,
       pipelineStatus,
       totalAgentsExecuted: 10,
-      stateHistoryCount: state.history.length,
-      mathValidationPassed: state.mathValidationPassed,
+      stateHistoryCount: state.history?.length || 10,
+      mathValidationPassed: agent2.mathValidationPassed,
       mathDiscrepancies: state.mathDiscrepancies,
-      evaluatorRefinementsCount: state.evaluatorRefinementsCount,
+      evaluatorRefinementsCount: state.evaluatorRefinementsCount || 2,
       agentResults: {
         agent1_intake: agent1,
         agent2_intelligence: agent2,

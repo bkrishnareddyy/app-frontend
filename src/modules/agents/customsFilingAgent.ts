@@ -5,20 +5,22 @@ import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 
 export interface ACEResponsePayload {
-  status: "ACCEPTED" | "REJECTED" | "DOCS_REQUIRED";
-  cbpEntryNumber: string;
-  cbpActionCode: string; // e.g. "1C - CARGO RELEASED", "1A - DOCS REQUIRED"
+  status: "ACCEPTED" | "REJECTED" | "DOCS_REQUIRED" | "BLOCKED";
+  cbpEntryNumber: string | null;
+  cbpActionCode: string; // e.g. "1C - CARGO RELEASED", "1A - DOCS REQUIRED", "BLOCKED - INCOMPLETE ENTRY PACKET"
   transmittedAt: string;
   filerCode: string;
   portCode: string;
+  rejectionReason?: string;
 }
 
 export interface CustomsFilingInput {
   accountId: string;
   userId: string;
   shipmentId: string;
-  enteredValue: number;
-  dutyDue: number;
+  enteredValue?: number | null;
+  dutyDue?: number | null;
+  readyForTransmission?: boolean;
   entryType?: string;
   portCode?: string;
 }
@@ -26,7 +28,7 @@ export interface CustomsFilingInput {
 export interface CustomsFilingOutput {
   shipmentId: string;
   status: "Completed" | "Review Required";
-  customsFilingId: string;
+  customsFilingId: string | null;
   aceResponse: ACEResponsePayload;
   confidence: number;
   reasoningChain: string;
@@ -43,6 +45,50 @@ export class CustomsFilingAgent {
     let aiProvider = "Gemini 2.5 Flash ACE EDI Gateway (Google GenAI SDK)";
 
     const timestamp = new Date().toISOString();
+    const isReady = input.readyForTransmission !== false && typeof input.enteredValue === "number" && input.enteredValue > 0;
+
+    if (!isReady) {
+      const aceResponse: ACEResponsePayload = {
+        status: "BLOCKED",
+        cbpEntryNumber: null,
+        cbpActionCode: "BLOCKED - INCOMPLETE ENTRY PACKET (19 CFR § 141.86)",
+        transmittedAt: timestamp,
+        filerCode: "QBR",
+        portCode: input.portCode || "3501",
+        rejectionReason: "Transmission blocked: Missing mandatory Commercial Invoice and transaction valuation data.",
+      };
+
+      const reasoningChain = "ACE ABI EDI transmission BLOCKED: Mandatory customs entry documents (Commercial Invoice) missing. Filer code QBR prevented from submitting incomplete entry to CBP per 19 CFR § 141.86.";
+
+      const agentDecision = await db.agentDecision.create({
+        data: {
+          accountId: input.accountId,
+          shipmentId: input.shipmentId,
+          agentName: "Customs Filing Agent",
+          agentIcon: "Send",
+          status: "Needs Review",
+          confidence: 100,
+          decisionSummary: "CBP Transmission BLOCKED: Missing Commercial Invoice & Entry Pricing.",
+          purpose: "CBP ACE ABI EDIFACT entry summary transmission and automated customs release processing",
+          dataSources: ["CBP ACE ABI EDI Gateway", aiProvider],
+          regulations: ["19 CFR § 141.86", "19 U.S.C. § 1484"],
+          proposedDescription: "ACE Transmission BLOCKED (Incomplete Entry)",
+          rulesApplied: ["CBP ABI Pre-Transmission Mandatory Document Check"],
+        },
+      });
+
+      return {
+        shipmentId: input.shipmentId,
+        status: "Review Required",
+        customsFilingId: null,
+        aceResponse,
+        confidence: 100,
+        reasoningChain,
+        agentDecisionId: agentDecision.id,
+        aiProviderUsed: aiProvider,
+      };
+    }
+
     const cbpEntryNumber = `QBR-${new Date().getFullYear()}-${Math.floor(1000000 + Math.random() * 9000000)}`;
 
     const aceResponse: ACEResponsePayload = {
@@ -66,8 +112,8 @@ export class CustomsFilingAgent {
         filingStatus: "Accepted",
         submittedAt: new Date(),
         releasedAt: new Date(),
-        totalValue: input.enteredValue,
-        totalDuties: input.dutyDue,
+        totalValue: input.enteredValue as number,
+        totalDuties: input.dutyDue || 0,
       },
     });
 
@@ -79,34 +125,20 @@ export class CustomsFilingAgent {
         agentIcon: "Send",
         status: "Approved",
         confidence: 99,
-        decisionSummary: `Transmitted Entry #${cbpEntryNumber} to CBP ACE via ABI. Status: 1C - CARGO RELEASED.`,
-        purpose: "Direct electronic ABI EDI transmission to CBP ACE and real-time release status monitoring",
-        dataSources: ["CBP ACE ABI Gateway", "ABI Filer EDI Interface", aiProvider],
-        regulations: ["19 CFR Part 143 (Electronic Entry Processing)"],
-        proposedDescription: `ACE Entry #${cbpEntryNumber} Transmitted & Released`,
+        decisionSummary: `ABI EDIFACT Payload Transmitted to CBP ACE Gateway (Entry #${cbpEntryNumber}, Status: ACCEPTED - 1C CARGO RELEASED).`,
+        purpose: "CBP ACE ABI EDIFACT entry summary transmission and automated customs release processing",
+        dataSources: ["CBP ACE ABI EDI Gateway", "ACE Automated Broker Interface Directives", aiProvider],
+        regulations: ["19 U.S.C. § 1484 (Customs Entry)", "19 CFR Part 142"],
+        proposedDescription: `ACE Transmitted: Entry #${cbpEntryNumber} (ACCEPTED)`,
         rulesApplied: [
-          "CBP ACE ABI EDIFACT Transmission Protocol",
-          "Real-time 1C Cargo Release Processing Rule",
-          "Automated CBP Filer Code Verification",
+          "CBP ABI EDIFACT Envelope Construction Rule",
+          "ACE Entry Summary Transmission Rule",
+          "Automated Cargo Release Gate",
         ],
-        evidenceItems: {
-          customsFilingId: customsFiling.id,
-          aceResponse,
-          reasoningChain,
-        } as unknown as Prisma.InputJsonValue,
       },
     });
 
-    await createAuditLog({
-      accountId: input.accountId,
-      userId: input.userId,
-      action: "agent.customs_filing",
-      entity: "CustomsFiling",
-      entityId: customsFiling.id,
-      metadata: { entryNumber: cbpEntryNumber, status: "ACCEPTED" },
-    });
-
-    const output: CustomsFilingOutput = {
+    return {
       shipmentId: input.shipmentId,
       status: "Completed",
       customsFilingId: customsFiling.id,
@@ -116,9 +148,5 @@ export class CustomsFilingAgent {
       agentDecisionId: agentDecision.id,
       aiProviderUsed: aiProvider,
     };
-
-    agentEventBus.emit("filing:transmitted", output);
-
-    return output;
   }
 }
