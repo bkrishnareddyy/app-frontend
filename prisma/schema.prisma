@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -286,10 +287,12 @@ model ShipmentDocument {
   checksum   String?  // SHA-256 hash for duplicate detection
   version    String   @default("1.0")
   confidence Int      @default(95)
-  status     String   @default("Received") // Received, Missing, Review Required
-  required   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  status        String   @default("Received") // Received, Missing, Review Required
+  required      Boolean  @default(true)
+  extractedJson String?  @db.Text
+  rawContent    String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   extractionFields ExtractionField[]
 

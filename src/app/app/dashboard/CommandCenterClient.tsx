@@ -91,10 +91,13 @@ export function CommandCenterClient({
       {/* Top KPI Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         {/* 1. Overall Readiness Gauge */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
-            <span>{t.dashboard.kpiAvgReadiness}</span>
-            <ShieldCheck className="w-4 h-4 text-[#0071E3]" />
+        <Link
+          href="/app/shipments"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-[#0071E3] hover:shadow-md transition-all cursor-pointer group block"
+        >
+          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-[#0071E3]">
+            <span className="font-semibold">{t.dashboard.kpiAvgReadiness}</span>
+            <ShieldCheck className="w-4 h-4 text-[#0071E3] group-hover:scale-110 transition-transform" />
           </div>
           <div className="flex items-center space-x-3">
             <div className="relative w-14 h-14 flex items-center justify-center">
@@ -115,71 +118,91 @@ export function CommandCenterClient({
               <span className="absolute text-sm font-extrabold text-[#1D1D1F]">{avgReadiness}%</span>
             </div>
             <div>
-              <p className="text-xs font-bold text-[#1D1D1F]">{avgReadiness >= 90 ? "Ready to file" : "Verification in progress"}</p>
-              <p className="text-[10px] text-[#86868B]">{totalShipments} {t.nav.shipments}</p>
+              <p className="text-xs font-bold text-[#1D1D1F] group-hover:text-[#0071E3] transition-colors">{avgReadiness >= 90 ? "Ready to file" : "Verification in progress"}</p>
+              <p className="text-[10px] text-[#86868B]">{totalShipments} {t.nav.shipments} • Click for details</p>
             </div>
           </div>
-        </div>
+        </Link>
 
         {/* 2. Shipments in Progress */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
-            <span>{t.dashboard.kpiTotal}</span>
-            <FileText className="w-4 h-4 text-blue-500" />
+        <Link
+          href="/app/shipments"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group block"
+        >
+          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-blue-600">
+            <span className="font-semibold">{t.dashboard.kpiTotal}</span>
+            <FileText className="w-4 h-4 text-blue-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{inProgressCount}</p>
-          <div className="h-8 w-full mt-2 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg border border-blue-100 flex items-center justify-center text-[10px] text-blue-600 font-semibold">
+          <div className="h-8 w-full mt-2 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg border border-blue-100 flex items-center justify-between px-2 text-[10px] text-blue-600 font-semibold group-hover:bg-blue-600 group-hover:text-white transition-all">
             <span>Active Agent Pipelines</span>
+            <ChevronRight className="w-3 h-3" />
           </div>
-        </div>
+        </Link>
 
         {/* 3. Ready to File */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
-            <span>{t.dashboard.kpiReady}</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+        <Link
+          href="/app/filing"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
+        >
+          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
+            <span className="font-semibold">{t.dashboard.kpiReady}</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-emerald-600">{readyToFileCount}</p>
-          <div className="h-8 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-center text-[10px] text-emerald-700 font-semibold">
+          <div className="h-8 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between px-2 text-[10px] text-emerald-700 font-semibold group-hover:bg-emerald-600 group-hover:text-white transition-all">
             <span>Verified for ACE</span>
+            <ChevronRight className="w-3 h-3" />
           </div>
-        </div>
+        </Link>
 
         {/* 4. Requires Attention */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
-            <span>{t.dashboard.kpiAttention}</span>
-            <AlertCircle className="w-4 h-4 text-amber-500" />
+        <Link
+          href="/app/decisions?status=Needs+Review"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group block"
+        >
+          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-amber-600">
+            <span className="font-semibold">{t.dashboard.kpiAttention}</span>
+            <AlertCircle className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-amber-600">{onHoldCount}</p>
-          <div className="h-8 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-center text-[10px] text-amber-700 font-semibold">
+          <div className="h-8 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between px-2 text-[10px] text-amber-700 font-semibold group-hover:bg-amber-500 group-hover:text-white transition-all">
             <span>{reviewRequiredDecisions} Broker Reviews</span>
+            <ChevronRight className="w-3 h-3" />
           </div>
-        </div>
+        </Link>
 
         {/* 5. Submitted to ACE */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
-            <span>{t.dashboard.kpiSubmitted}</span>
-            <Send className="w-4 h-4 text-indigo-500" />
+        <Link
+          href="/app/filing"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group block"
+        >
+          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-indigo-600">
+            <span className="font-semibold">{t.dashboard.kpiSubmitted}</span>
+            <Send className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{submittedCount}</p>
-          <div className="h-8 w-full mt-2 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center justify-center text-[10px] text-indigo-700 font-semibold">
+          <div className="h-8 w-full mt-2 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center justify-between px-2 text-[10px] text-indigo-700 font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-all">
             <span>1C Released</span>
+            <ChevronRight className="w-3 h-3" />
           </div>
-        </div>
+        </Link>
 
         {/* 6. Completed Filings */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
-            <span>Completed Filings</span>
-            <TrendingUp className="w-4 h-4 text-emerald-500" />
+        <Link
+          href="/app/filing"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
+        >
+          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
+            <span className="font-semibold">Completed Filings</span>
+            <TrendingUp className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{completedCount}</p>
-          <div className="h-8 w-full mt-2 bg-slate-50 rounded-lg border border-[#E5E5EA] flex items-center justify-center text-[10px] text-[#86868B] font-semibold">
+          <div className="h-8 w-full mt-2 bg-slate-50 rounded-lg border border-[#E5E5EA] flex items-center justify-between px-2 text-[10px] text-[#86868B] font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
             <span>100% Audit Settled</span>
+            <ChevronRight className="w-3 h-3" />
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Main Content Layout Grid: Recent Shipments & Agent Insights */}

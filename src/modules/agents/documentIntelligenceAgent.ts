@@ -448,9 +448,11 @@ const intelligenceSchema: Schema = {
 };
 
 export class DocumentIntelligenceAgent {
-  private static aiClient = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY || "",
-  });
+  private static getAiClient(): GoogleGenAI | null {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) return null;
+    return new GoogleGenAI({ apiKey: key });
+  }
 
   static async execute(input: DocumentIntelligenceInput): Promise<DocumentIntelligenceOutput> {
     const isCoO =
@@ -487,9 +489,11 @@ export class DocumentIntelligenceAgent {
     let warnings: string[] | undefined = undefined;
 
     let lineItems: LineItemExtraction[] = [];
-    let aiProvider = "Gemini 2.5 Flash Vision (Google GenAI SDK)";
+    let aiProvider = "Gemini Flash Vision (Google GenAI SDK)";
 
-    if (input.fileBuffer && process.env.GEMINI_API_KEY) {
+    const aiClient = this.getAiClient();
+
+    if (input.fileBuffer && aiClient) {
       try {
         const mimeType = input.mimeType || "application/pdf";
         const base64Data = input.fileBuffer.toString("base64");
@@ -505,8 +509,8 @@ INSTRUCTIONS:
 6. Do NOT mutate or invent missing values. Set unverified values to null.
 7. Set 'hasCommercialInvoice' to true ONLY if financial line items and subtotal pricing are present on the document.`;
 
-        const response = await this.aiClient.models.generateContent({
-          model: "gemini-2.0-flash",
+        const response = await aiClient.models.generateContent({
+          model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
           contents: [
             {
               role: "user",
@@ -706,6 +710,55 @@ INSTRUCTIONS:
       });
       agentDecisionId = agentDecision.id;
     } catch (err) {}
+
+    // Save JSON Blob & raw extraction content directly onto ShipmentDocument
+    try {
+      if (db?.shipmentDocument?.findFirst) {
+        const extractedBlob = {
+          documentId: input.packetId,
+          shipmentId: input.shipmentId,
+          fileName: input.fileName,
+          extractedAt: new Date().toISOString(),
+          keyValuePairs: rawDiscoveredKeyValues,
+          tradeMetadata: {
+            exporterName: exporterName || null,
+            importerName: importerName || null,
+            originCountry: originCountry || null,
+            destinationCountry: destinationCountry || null,
+            incoterm: incoterm || null,
+            currency: currency || null,
+            invoiceSubtotal: invoiceSubtotal || null,
+            invoiceNumber: invoiceNumber || null,
+            invoiceDate: invoiceDate || null,
+          },
+          lineItems,
+          validations: validations || [],
+          missingFields,
+        };
+
+        const docToUpdate = await db.shipmentDocument.findFirst({
+          where: {
+            shipmentId: input.shipmentId,
+            accountId: input.accountId,
+            fileName: input.fileName,
+          },
+        });
+
+        if (docToUpdate) {
+          await db.shipmentDocument.update({
+            where: { id: docToUpdate.id },
+            data: {
+              extractedJson: JSON.stringify(extractedBlob, null, 2),
+              rawContent: Object.entries(rawDiscoveredKeyValues)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join("\n"),
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to persist extractedJson to ShipmentDocument:", err);
+    }
 
     // Create Audit Log
     try {

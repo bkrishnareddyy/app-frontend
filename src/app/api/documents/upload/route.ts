@@ -85,18 +85,49 @@ export async function POST(req: Request) {
       }
     }
 
-    // Persist document record to database vault
-    const docRecord = await db.shipmentDocument.create({
-      data: {
+    // Resolve user or AI document type
+    const { DocumentTypeCatalog } = await import("@/modules/intake/documentTypeCatalog");
+    let resolvedDocType = "Commercial Invoice";
+    if (rawDocType && rawDocType !== "AUTO_DETECT") {
+      resolvedDocType = rawDocType;
+    } else {
+      const matched = DocumentTypeCatalog.matchDocumentType(file.name);
+      resolvedDocType = matched.code !== "OTHER_UNVERIFIED_DOCUMENT" ? matched.name : "Commercial Invoice";
+    }
+
+    // Persist or find document record in database vault
+    const existingDoc = await db.shipmentDocument.findFirst({
+      where: {
         accountId,
         shipmentId: targetShipmentId,
         fileName: file.name,
-        docType: rawDocType || "Commercial Invoice",
-        fileUrl: storageResult.url,
-        checksum: storageResult.checksum,
-        confidence: 95,
       },
     });
+
+    let docRecord;
+    if (existingDoc) {
+      docRecord = await db.shipmentDocument.update({
+        where: { id: existingDoc.id },
+        data: {
+          docType: resolvedDocType,
+          fileUrl: storageResult.url,
+          checksum: storageResult.checksum,
+          confidence: 95,
+        },
+      });
+    } else {
+      docRecord = await db.shipmentDocument.create({
+        data: {
+          accountId,
+          shipmentId: targetShipmentId,
+          fileName: file.name,
+          docType: resolvedDocType,
+          fileUrl: storageResult.url,
+          checksum: storageResult.checksum,
+          confidence: 95,
+        },
+      });
+    }
 
     // Map doc type string to enum if provided
     let docTypeOverride: DocumentType | undefined = undefined;
@@ -145,7 +176,7 @@ export async function POST(req: Request) {
       console.warn("DocumentIntelligenceAgent execution on upload error:", err?.message || err);
     }
 
-    // Step 5: Dispatch Event to PG Queue to run Autonomous Pipeline asynchronously
+    // Step 5: Dispatch Event to PG Queue and trigger background pipeline worker execution
     const job = await PgQueue.enqueueJob({
       accountId,
       userId,
@@ -153,6 +184,26 @@ export async function POST(req: Request) {
       totalSteps: 10,
       priority: 10, // Documents get high priority
     });
+
+    // Immediately trigger background execution so job status advances PENDING -> PROCESSING -> COMPLETED!
+    void (async () => {
+      try {
+        await PgQueue.dequeueNextJob();
+        const pipelineOut = await AgentOrchestrator.runFullPipeline({
+          accountId,
+          userId,
+          shipmentId: targetShipmentId,
+          fileName: file.name,
+          fileUrl: storageResult.url,
+          fileBuffer,
+          mimeType: file.type || "application/pdf",
+        });
+        await PgQueue.completeJob(job.id, pipelineOut);
+      } catch (err: any) {
+        console.error("[UploadPipeline] Background worker error:", err);
+        await PgQueue.failJob(job.id, err?.message || String(err));
+      }
+    })();
 
     return NextResponse.json({
       success: true,

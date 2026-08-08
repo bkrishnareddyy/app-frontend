@@ -28,19 +28,22 @@ export function DocumentUploadModal({
 
   useEffect(() => {
     if (isOpen) {
+      if (initialShipmentId) {
+        setSelectedShipmentId(initialShipmentId);
+      }
       fetch("/api/shipments")
         .then((res) => res.json())
         .then((data) => {
           if (data.shipments && Array.isArray(data.shipments) && data.shipments.length > 0) {
             setAvailableShipments(data.shipments);
-            if (!selectedShipmentId || selectedShipmentId === "") {
-              setSelectedShipmentId(initialShipmentId || data.shipments[0].id);
+            if (!initialShipmentId) {
+              setSelectedShipmentId((prev) => prev || data.shipments[0].id);
             }
           }
         })
         .catch((err) => console.error("Modal shipment fetch error:", err));
     }
-  }, [isOpen, initialShipmentId]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -102,8 +105,18 @@ export function DocumentUploadModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-lg w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isUploading) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-lg w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3">
           <div className="flex items-center space-x-2.5">

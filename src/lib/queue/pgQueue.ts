@@ -101,7 +101,7 @@ export class PgQueue {
   /**
    * Marks a job as failed and stops it.
    */
-  static async failJob(jobId: string, errorMsg: string, state: Record<string, any>) {
+  static async failJob(jobId: string, errorMsg: string, state: Record<string, any> = {}) {
     await db.pipelineJob.update({
       where: { id: jobId },
       data: {

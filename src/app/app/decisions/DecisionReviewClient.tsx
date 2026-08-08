@@ -346,8 +346,16 @@ export function DecisionReviewClient({
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center space-x-2 truncate">
                         <FileText className="w-4 h-4 text-[#0071E3] shrink-0" />
-                        <span className="font-extrabold text-[#1D1D1F] truncate text-xs">
-                          {itemDocName}
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(dec.id);
+                            setIsPreviewOpen(true);
+                          }}
+                          className="font-extrabold text-[#0071E3] hover:underline cursor-pointer truncate text-xs flex items-center space-x-1"
+                          title="Click to view document modal"
+                        >
+                          <span>{itemDocName}</span>
                         </span>
                       </div>
                       <span
@@ -374,38 +382,23 @@ export function DecisionReviewClient({
                       </p>
                     </div>
 
-                    {/* Row 3: <Shipment Info> • <Preview Doc> • <Confidence> */}
+                    {/* Row 3: <Shipment Info> • <Confidence> */}
                     <div className="flex items-center justify-between pt-1 text-[10px]">
                       <span className="font-mono text-[#0071E3] font-bold">
                         {dec.shipment?.shipmentNumber || "SHP-2026"}
                       </span>
 
-                      <div className="flex items-center space-x-2">
-                        {/* PREVIEW BUTTON ALWAYS VISIBLE */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedId(dec.id);
-                            setIsPreviewOpen(true);
-                          }}
-                          className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center space-x-1 transition-colors shadow-2xs"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Preview Doc</span>
-                        </button>
-
-                        <span
-                          className={`font-bold ${
-                            dec.confidence >= 90
-                              ? "text-emerald-700"
-                              : dec.confidence > 0
-                              ? "text-amber-700"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {dec.confidence}% Conf.
-                        </span>
-                      </div>
+                      <span
+                        className={`font-bold ${
+                          dec.confidence >= 90
+                            ? "text-emerald-700"
+                            : dec.confidence > 0
+                            ? "text-amber-700"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {dec.confidence}% Conf.
+                      </span>
                     </div>
                   </div>
                 );
@@ -423,7 +416,13 @@ export function DecisionReviewClient({
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
                     <FileText className="w-5 h-5 text-[#0071E3]" />
-                    <h2 className="text-lg font-extrabold text-[#1D1D1F]">{docName}</h2>
+                    <h2
+                      onClick={() => setIsPreviewOpen(true)}
+                      className="text-lg font-extrabold text-[#0071E3] hover:underline cursor-pointer"
+                      title="Click to view document modal"
+                    >
+                      {docName}
+                    </h2>
                   </div>
                   <p className="text-xs text-[#86868B]">
                     Agent Evaluated: <span className="font-bold text-[#1D1D1F]">{selectedDecision.agentName}</span>
@@ -456,7 +455,7 @@ export function DecisionReviewClient({
                 </p>
               </div>
 
-              {/* Row 3: Shipment Info & Document Preview Bar */}
+              {/* Row 3: Shipment Info */}
               <div className="p-3.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between text-xs">
                 <div>
                   <span className="text-[#86868B]">Target Shipment: </span>
@@ -464,15 +463,6 @@ export function DecisionReviewClient({
                   <span className="text-[#86868B] ml-2">• Confidence: </span>
                   <span className="font-bold text-emerald-700">{selectedDecision.confidence}%</span>
                 </div>
-
-                {/* PREVIEW BUTTON ALWAYS VISIBLE IN WORKSTATION */}
-                <button
-                  onClick={() => setIsPreviewOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-extrabold flex items-center space-x-1.5 transition-colors shadow-2xs"
-                >
-                  <Eye className="w-4 h-4" />
-                  <span>Preview Document</span>
-                </button>
               </div>
 
               {/* Extracted Fields & Line Items Grid */}

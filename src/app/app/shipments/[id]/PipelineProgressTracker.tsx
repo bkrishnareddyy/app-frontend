@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface PipelineStatus {
   jobId: string;
@@ -12,55 +13,60 @@ interface PipelineStatus {
 }
 
 export function PipelineProgressTracker({ shipmentId }: { shipmentId: string }) {
+  const router = useRouter();
   const [status, setStatus] = useState<PipelineStatus | null>(null);
-  const [hasCompleted, setHasCompleted] = useState(false);
+  const [hasRefreshed, setHasRefreshed] = useState(false);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let timer: NodeJS.Timeout | null = null;
+    let isCancelled = false;
 
-    const fetchStatus = async () => {
+    const checkStatus = async () => {
       try {
         const res = await fetch(`/api/shipments/${shipmentId}/pipeline-status`);
-        if (!res.ok) return;
-        const data = await res.json();
-        
+        if (isCancelled) return;
+
+        if (!res.ok) {
+          return;
+        }
+
+        const data: PipelineStatus = await res.json();
+        if (isCancelled) return;
+
         setStatus(data);
 
-        if (data.status === "COMPLETED" && !hasCompleted) {
-          setHasCompleted(true);
-          // Reload to show the newly extracted data
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
+        // If pipeline completed, refresh data ONCE without page reload and stop polling
+        if (data.status === "COMPLETED") {
+          if (!hasRefreshed) {
+            setHasRefreshed(true);
+            router.refresh();
+          }
+          return;
+        }
+
+        if (data.status === "FAILED") {
+          return;
+        }
+
+        // If still PENDING or PROCESSING, poll after 5 seconds
+        if (data.status === "PENDING" || data.status === "PROCESSING") {
+          timer = setTimeout(checkStatus, 5000);
         }
       } catch (err) {
-        console.error("Error fetching pipeline status", err);
+        console.error("Error checking pipeline status", err);
       }
     };
 
-    fetchStatus();
-    interval = setInterval(fetchStatus, 3000);
+    checkStatus();
 
-    return () => clearInterval(interval);
-  }, [shipmentId, hasCompleted]);
+    return () => {
+      isCancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [shipmentId, hasRefreshed, router]);
 
-  if (!status || status.status === "COMPLETED" && hasCompleted) {
+  if (!status || status.status === "COMPLETED") {
     return null;
-  }
-
-  if (status.status === "COMPLETED" && !hasCompleted) {
-    return (
-      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3 text-emerald-800">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-          <div>
-            <h4 className="text-sm font-bold">Processing Complete</h4>
-            <p className="text-xs opacity-80">Refreshing workspace...</p>
-          </div>
-        </div>
-        <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
-      </div>
-    );
   }
 
   if (status.status === "FAILED") {
@@ -69,7 +75,7 @@ export function PipelineProgressTracker({ shipmentId }: { shipmentId: string }) 
         <div className="flex items-center space-x-3 text-red-800">
           <AlertCircle className="w-5 h-5 text-red-600" />
           <div>
-            <h4 className="text-sm font-bold">Processing Failed</h4>
+            <h4 className="text-sm font-bold">Processing Exception</h4>
             <p className="text-xs opacity-80">{status.errorMessage || "An error occurred during AI processing."}</p>
           </div>
         </div>

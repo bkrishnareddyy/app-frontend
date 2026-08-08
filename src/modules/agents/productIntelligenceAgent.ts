@@ -187,7 +187,7 @@ export class ProductIntelligenceAgent {
 Raw Description: "${desc}"`;
 
           const response = await this.aiClient.models.generateContent({
-            model: "gemini-2.0-flash",
+            model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
               responseMimeType: "application/json",

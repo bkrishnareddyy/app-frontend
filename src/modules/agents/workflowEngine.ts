@@ -508,6 +508,7 @@ export class ComplianceWorkflowEngine {
     // Execute registered agent steps in order
     for (const step of this.steps) {
       if (!step.canExecute(state)) {
+        console.log(`[Agent ${step.stepNumber}/10: ${step.name}] ⏭️  SKIPPED — Prerequisites missing from AgentState context.`);
         state.recordAgentExecution({
           agentName: step.name,
           stepNumber: step.stepNumber,
@@ -521,7 +522,16 @@ export class ComplianceWorkflowEngine {
         continue;
       }
 
+      console.log(`[Agent ${step.stepNumber}/10: ${step.name}] 🚀 WAKING UP — Processing Shipment ${input.shipmentId}...`);
+      const stepStartTime = Date.now();
+
       const result = await step.execute(state, input);
+
+      const durationMs = Date.now() - stepStartTime;
+      const nextStep = this.steps.find((s) => s.stepNumber === step.stepNumber + 1);
+      const handoffTarget = nextStep ? `Agent ${nextStep.stepNumber}: ${nextStep.name}` : "WORKFLOW_COMPLETE";
+
+      console.log(`[Agent ${step.stepNumber}/10: ${step.name}] ✅ FINISHED (${durationMs}ms) | Status: ${result.status} | Handing off context -> ${handoffTarget}`);
 
       state.recordAgentExecution({
         agentName: result.agentName,
@@ -534,6 +544,7 @@ export class ComplianceWorkflowEngine {
         decisionId: result.decisionId,
       });
     }
+
 
     // Persist AgentState to PostgreSQL asynchronously for audit defense
     await state.persistToDatabase().catch((err) => {

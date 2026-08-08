@@ -189,13 +189,12 @@ export default function DocumentsPage() {
                 <th className="py-3 px-5">{t.documents.colShipment}</th>
                 <th className="py-3 px-5">{t.documents.colStatus}</th>
                 <th className="py-3 px-5">{t.documents.colDate}</th>
-                <th className="py-3 px-5 text-right">{t.documents.colActions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5EA]">
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-[#86868B]">
+                  <td colSpan={5} className="py-12 text-center text-[#86868B]">
                     <FileText className="w-8 h-8 mx-auto text-[#86868B]/40 mb-2" />
                     <p className="font-semibold text-xs text-[#1D1D1F]">No Trade Documents Uploaded Yet</p>
                     <p className="text-[11px] text-[#86868B] mt-1">
@@ -239,33 +238,6 @@ export default function DocumentsPage() {
                     </td>
 
                     <td className="py-3.5 px-5 text-[#86868B]">{doc.uploadedAt}</td>
-
-                    {/* Actions Column: Opens in New Tab */}
-                    <td className="py-3.5 px-5 text-right space-x-2">
-                      <button
-                        onClick={() => setPreviewDoc(doc)}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] text-xs text-[#1D1D1F] font-medium transition-colors"
-                        title="Quick Modal Preview"
-                      >
-                        <Eye className="w-3 h-3 text-[#86868B]" />
-                        <span>Preview</span>
-                      </button>
-
-                      {doc.url && doc.url !== "#" ? (
-                        <a
-                          href={doc.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold shadow-2xs transition-colors"
-                          title="Open document in new browser tab"
-                        >
-                          <span>Open in New Tab</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-[#86868B]">In Store</span>
-                      )}
-                    </td>
                   </tr>
                 ))
               )}

@@ -24,10 +24,19 @@ export function ShipmentDocumentsSection({
   documents: initialDocs,
 }: ShipmentDocumentsSectionProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [documents, setDocuments] = useState<DocumentItem[]>(initialDocs);
+  // Deduplicate documents by fileName
+  const uniqueDocs = Array.from(
+    new Map(initialDocs.map((d) => [d.fileName || d.id, d])).values()
+  );
 
-  const receivedCount = documents.filter((d) => d.status === "Received").length;
-  const missingCount = documents.filter((d) => d.status === "Missing").length;
+  const [documents, setDocuments] = useState<DocumentItem[]>(uniqueDocs);
+
+  const isDocReceived = (d: DocumentItem) =>
+    d.status !== "Missing" &&
+    Boolean(d.fileUrl || d.status === "Received" || d.status === "Processed" || d.status === "Review Required" || d.status === "Completed");
+
+  const receivedCount = documents.filter(isDocReceived).length;
+  const missingCount = documents.length - receivedCount;
 
   return (
     <>
@@ -46,36 +55,40 @@ export function ShipmentDocumentsSection({
         </div>
 
         <div className="space-y-2">
-          {documents.map((doc) => (
-            <div
-              key={doc.id}
-              className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between text-xs hover:border-[#0071E3] transition-colors"
-            >
-              <div className="flex items-center space-x-2.5 min-w-0 pr-2">
-                {doc.status === "Received" ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <p className="font-bold text-[#1D1D1F] truncate">{doc.docType}</p>
-                  <p className="text-[10px] text-[#86868B] truncate">
-                    {doc.fileName} ({doc.pageCount} pages)
-                  </p>
+          {documents.map((doc) => {
+            const received = isDocReceived(doc);
+            return (
+              <div
+                key={doc.id}
+                className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between text-xs hover:border-[#0071E3] transition-colors"
+              >
+                <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                  {received ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-bold text-[#1D1D1F] truncate">{doc.docType}</p>
+                    <p className="text-[10px] text-[#86868B] truncate">
+                      {doc.fileName} ({doc.pageCount || 1} pages)
+                    </p>
+                  </div>
                 </div>
+                {received ? (
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                    {doc.confidence || 95}% Parsed
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 shrink-0">
+                    Missing
+                  </span>
+                )}
               </div>
-              {doc.status === "Received" ? (
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                  {doc.confidence}%
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 shrink-0">
-                  Missing
-                </span>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
+
 
         <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-800 space-y-1">
           <p className="font-bold">Document Set Summary</p>
