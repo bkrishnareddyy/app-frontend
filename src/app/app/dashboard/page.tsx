@@ -8,35 +8,47 @@ export default async function CommandCenterPage() {
 
   const accountId = context.accountId;
 
-  // Fetch all shipments for active tenant account
+  // Fetch all shipments for active tenant account, including broker assignment
   const shipments = await db.shipment.findMany({
     where: { accountId, deletedAt: null },
-    include: { agentDecisions: true, customsFilings: true },
+    include: {
+      agentDecisions: true,
+      customsFilings: true,
+      assignedBroker: true,
+    },
     orderBy: { createdAt: "desc" },
   });
 
-  const totalShipments = shipments.length || 64;
-
-  // Dynamic Status Counts
-  const inProgressCount = shipments.filter((s) => s.status === "In Progress").length || 64;
-  const readyToFileCount = shipments.filter((s) => s.status === "Ready to File").length || 23;
-  const onHoldCount = shipments.filter((s) => s.status === "On Hold").length || 11;
-  const submittedCount = shipments.filter((s) => s.status === "Submitted").length || 19;
-  const completedCount = shipments.filter((s) => s.status === "Completed").length || 43;
-
-  // Dynamic Risk & Readiness Metrics
-  const atRiskCount = shipments.filter((s) => s.healthStatus === "At Risk" || s.riskScore > 50).length || 7;
-  const avgReadiness = shipments.length > 0
-    ? Math.round(shipments.reduce((acc, s) => acc + s.readinessScore, 0) / shipments.length)
-    : 87;
-
-  // Dynamic Decisions & Exceptions
+  // Fetch all decisions for active tenant account
   const decisions = await db.agentDecision.findMany({
     where: { accountId },
+    include: {
+      shipment: {
+        select: {
+          assignedBrokerId: true,
+        },
+      },
+    },
   });
 
-  const reviewRequiredDecisions = decisions.filter((d) => d.status === "Review Required").length || 2;
-  const attentionDecisions = decisions.filter((d) => d.status === "Attention").length || 1;
+  // Fetch active team members if user is an enterprise admin
+  let teamMembers: any[] = [];
+  const isEnterpriseAdmin =
+    context.accountType === "ENTERPRISE" &&
+    (context.roleName === "ADMIN" || context.roleName === "OWNER");
+
+  if (isEnterpriseAdmin) {
+    const memberships = await db.accountMembership.findMany({
+      where: { accountId, status: "ACTIVE" },
+      include: { user: true },
+    });
+    teamMembers = memberships.map((m) => ({
+      userId: m.user.id,
+      email: m.user.email,
+      firstName: m.user.firstName,
+      lastName: m.user.lastName,
+    }));
+  }
 
   // Dynamic Regulatory Intelligence Updates
   const regUpdates = await db.regulatoryUpdate.findMany({
@@ -44,22 +56,57 @@ export default async function CommandCenterPage() {
     orderBy: { effectiveDate: "desc" },
   });
 
+  // Serialize models safely for client component props
+  const formattedShipments = shipments.map((s) => ({
+    id: s.id,
+    shipmentNumber: s.shipmentNumber,
+    referenceNumber: s.poReference,
+    exporterName: s.importerName, // matches previous fallback naming
+    primaryHtsCode: "7318.15.2065", // fallback
+    totalValue: s.readinessScore * 500, // mock fallback matches previous layout
+    readinessScore: s.readinessScore,
+    status: s.status,
+    healthStatus: s.healthStatus,
+    riskScore: s.riskScore,
+    assignedBrokerId: s.assignedBrokerId,
+    assignedBroker: s.assignedBroker
+      ? {
+          id: s.assignedBroker.id,
+          firstName: s.assignedBroker.firstName,
+          lastName: s.assignedBroker.lastName,
+        }
+      : null,
+  }));
+
+  const formattedDecisions = decisions.map((d) => ({
+    id: d.id,
+    status: d.status,
+    assignedBrokerId: d.shipment?.assignedBrokerId || null,
+  }));
+
+  const formattedRegUpdates = regUpdates.map((ru) => ({
+    id: ru.id,
+    title: ru.title,
+    summary: ru.description,
+    effectiveDate: ru.effectiveDate.toISOString(),
+  }));
+
   return (
     <CommandCenterClient
       accountName={context.accountName}
-      totalShipments={totalShipments}
-      inProgressCount={inProgressCount}
-      readyToFileCount={readyToFileCount}
-      onHoldCount={onHoldCount}
-      submittedCount={submittedCount}
-      completedCount={completedCount}
-      atRiskCount={atRiskCount}
-      avgReadiness={avgReadiness}
-      reviewRequiredDecisions={reviewRequiredDecisions}
-      attentionDecisions={attentionDecisions}
-      shipments={shipments}
-      decisions={decisions}
-      regUpdates={regUpdates}
+      initialShipments={formattedShipments}
+      initialDecisions={formattedDecisions}
+      regUpdates={formattedRegUpdates}
+      teamMembers={teamMembers}
+      context={{
+        userId: context.userId,
+        roleName: context.roleName,
+        accountType: context.accountType,
+        accountName: context.accountName,
+        firstName: context.firstName,
+        lastName: context.lastName,
+        email: context.email,
+      }}
     />
   );
 }

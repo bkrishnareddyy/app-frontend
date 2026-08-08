@@ -25,6 +25,11 @@ const usersToCreate = [
   { email: "rachit@qubere.ai", firstName: "Rachit", lastName: "Lohani" },
   { email: "sarah@qubere.ai", firstName: "Sarah", lastName: "Jones" },
   { email: "mike@qubere.ai", firstName: "Mike", lastName: "Brown" },
+  { email: "joe@target.com", firstName: "Joe", lastName: "TargetAdmin" },
+  { email: "anna@target.com", firstName: "Anna", lastName: "TargetAdmin" },
+  { email: "sarah@target.com", firstName: "Sarah", lastName: "TargetPlanner" },
+  { email: "romeo@target.com", firstName: "Romeo", lastName: "TargetPlanner" },
+  { email: "eva@target.com", firstName: "Eva", lastName: "TargetPlanner" },
 ];
 
 async function seedClerkUsers() {

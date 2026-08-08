@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Code, ExternalLink } from "lucide-react";
-import { RawExtractionModal } from "./RawExtractionModal";
+import { RawExtractionModal } from "@/components/RawExtractionModal";
 
 interface DocumentViewerControlsProps {
   documentId: string;
@@ -51,6 +51,8 @@ export function DocumentViewerControls({
         documentId={documentId}
         fileName={fileName}
         shipmentNumber={shipmentNumber}
+        fileUrl={fileUrl}
+        proxyUrl={proxyUrl}
       />
     </>
   );

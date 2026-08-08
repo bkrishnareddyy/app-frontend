@@ -24,6 +24,7 @@ export async function GET() {
         lineItems: true,
         agentDecisions: true,
         customsFilings: true,
+        assignedBroker: true,
       },
       orderBy: { createdAt: "desc" },
     });
