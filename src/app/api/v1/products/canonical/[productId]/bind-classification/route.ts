@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { ProductMasterService } from "@/modules/product/productMasterService";
+import { z } from "zod";
 
-export async function POST(req: Request, { params }: { params: Promise<{ productId: string }> }) {
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
+const paramsSchema = z.object({ productId: z.string().min(1) });
+
+export const POST = withAuthenticatedRoute<{ productId: string }>(async ({ req, ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { productId } = paramsVal.data;
 
   try {
-    const { productId } = await params;
     const body = await req.json();
     const { decisionId } = body;
 
@@ -16,8 +20,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
     }
 
     const product = await ProductMasterService.bindClassification({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       canonicalProductId: productId,
       decisionId,
     });
@@ -26,4 +30,4 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to bind classification decision" }, { status: 500 });
   }
-}
+});

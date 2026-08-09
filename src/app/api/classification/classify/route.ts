@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
@@ -18,12 +18,8 @@ const classifySchema = z.object({
   shipmentId: z.string().optional(),
 });
 
-export async function POST(req: Request) {
-  const requestId = generateRequestId();
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
-
-  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx!.accountId, requestId);
+export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
+  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
 
@@ -42,11 +38,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await ClassificationService.classifyProduct(ctx!.accountId, ctx!.userId, bodyVal.data);
+    const result = await ClassificationService.classifyProduct(ctx.accountId, ctx.userId, bodyVal.data);
 
     await createAuditLog({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       action: "classification.classify",
       entity: "ClassificationProposal",
       entityId: result.proposedClassification?.htsCode || "UNKNOWN",
@@ -56,11 +52,11 @@ export async function POST(req: Request) {
     const responsePayload = { ...result, requestId };
 
     if (idempotencyKey) {
-      await persistIdempotency(ctx!.accountId, idempotencyKey, "", 200, responsePayload);
+      await persistIdempotency(ctx.accountId, idempotencyKey, "", 200, responsePayload);
     }
 
     return NextResponse.json(responsePayload);
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to classify product", undefined, requestId);
   }
-}
+});

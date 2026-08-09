@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { CrossIngestionService } from "@/modules/regulatory/crossIngestionService";
 
-export async function POST(req: Request) {
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
-  if (!ctx?.isPlatformAdmin) {
+export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+  if (!ctx.isPlatformAdmin) {
     return NextResponse.json({ error: "Platform Admin privileges required for CROSS ruling ingestion" }, { status: 403 });
   }
 
@@ -34,4 +32,4 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to ingest CROSS ruling" }, { status: 400 });
   }
-}
+});

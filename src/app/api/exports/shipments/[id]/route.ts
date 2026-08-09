@@ -1,34 +1,27 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { z } from "zod";
 
-export async function GET(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+const paramsSchema = z.object({ id: z.string().min(1) });
 
-    const { id } = await context.params;
+export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
-    const exportShipment = await db.exportShipment.findFirst({
-      where: { id, accountId: ctx.accountId },
-      include: {
-        documents: true,
-        lineItems: true,
-      },
-    });
+  const exportShipment = await db.exportShipment.findFirst({
+    where: { id, accountId: ctx.accountId },
+    include: {
+      documents: true,
+      lineItems: true,
+    },
+  });
 
-    if (!exportShipment) {
-      return NextResponse.json({ error: "Export shipment not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ exportShipment });
-  } catch (error) {
-    console.error("GET /api/exports/shipments/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  if (!exportShipment) {
+    return NextResponse.json({ error: "Export shipment not found" }, { status: 404 });
   }
-}
+
+  return NextResponse.json({ exportShipment });
+});

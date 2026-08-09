@@ -1,63 +1,57 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { z } from "zod";
 
-export async function POST(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+const paramsSchema = z.object({ id: z.string().min(1) });
 
-    const { id } = await context.params;
-    const body = await req.json();
-    const { status, notes } = body;
+export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
-    const finding = await db.complianceFinding.findFirst({
-      where: { id, accountId: ctx.accountId },
-    });
+  const body = await req.json();
+  const { status, notes } = body;
 
-    if (!finding) {
-      return NextResponse.json({ error: "Compliance finding not found" }, { status: 404 });
-    }
+  const finding = await db.complianceFinding.findFirst({
+    where: { id, accountId: ctx.accountId },
+  });
 
-    const newStatus = status || "Resolved";
-
-    const updatedFinding = await db.complianceFinding.update({
-      where: { id },
-      data: {
-        status: newStatus,
-        resolvedAt: newStatus === "Resolved" || newStatus === "AcceptedRisk" ? new Date() : null,
-      },
-    });
-
-    // Write event to immutable audit timeline
-    await db.auditTimeline.create({
-      data: {
-        accountId: ctx.accountId,
-        filingId: finding.filingId,
-        event: `Compliance Finding Resolved: ${finding.rule} (${newStatus})`,
-        actor: `Compliance Analyst (${ctx.userId})`,
-        metadata: { findingId: id, status: newStatus, notes },
-      },
-    });
-
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "finding.resolve",
-      entity: "ComplianceFinding",
-      entityId: id,
-      metadata: { newStatus, notes },
-    });
-
-    return NextResponse.json({ finding: updatedFinding });
-  } catch (error) {
-    console.error("POST /api/findings/[id]/resolve error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  if (!finding) {
+    return NextResponse.json({ error: "Compliance finding not found" }, { status: 404 });
   }
-}
+
+  const newStatus = status || "Resolved";
+
+  const updatedFinding = await db.complianceFinding.update({
+    where: { id },
+    data: {
+      status: newStatus,
+      resolvedAt: newStatus === "Resolved" || newStatus === "AcceptedRisk" ? new Date() : null,
+    },
+  });
+
+  // Write event to immutable audit timeline
+  await db.auditTimeline.create({
+    data: {
+      accountId: ctx.accountId,
+      filingId: finding.filingId,
+      event: `Compliance Finding Resolved: ${finding.rule} (${newStatus})`,
+      actor: `Compliance Analyst (${ctx.userId})`,
+      metadata: { findingId: id, status: newStatus, notes },
+    },
+  });
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: "finding.resolve",
+    entity: "ComplianceFinding",
+    entityId: id,
+    metadata: { newStatus, notes },
+  });
+
+  return NextResponse.json({ finding: updatedFinding });
+});

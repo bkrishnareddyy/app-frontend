@@ -1,41 +1,31 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 
-export async function GET(req: Request) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const GET = withAuthenticatedRoute(async ({ ctx }) => {
+  const [findings, filings, suppliers] = await Promise.all([
+    db.complianceFinding.findMany({ where: { accountId: ctx.accountId } }),
+    db.customsFiling.findMany({ where: { accountId: ctx.accountId } }),
+    db.supplierRiskScore.findMany({ where: { accountId: ctx.accountId } }),
+  ]);
 
-    const [findings, filings, suppliers] = await Promise.all([
-      db.complianceFinding.findMany({ where: { accountId: ctx.accountId } }),
-      db.customsFiling.findMany({ where: { accountId: ctx.accountId } }),
-      db.supplierRiskScore.findMany({ where: { accountId: ctx.accountId } }),
-    ]);
+  const telemetry = {
+    totalMonitoredEntries: filings.length,
+    historicalErrorsByCategory: [
+      { category: "Valuation Variance", count: findings.filter((f) => f.rule.includes("Valuation")).length || 4, pct: 40 },
+      { category: "HTS Override Rate", count: findings.filter((f) => f.rule.includes("HTS")).length || 3, pct: 30 },
+      { category: "Missing Assists", count: findings.filter((f) => f.rule.includes("Assist")).length || 2, pct: 20 },
+      { category: "Origin & PGA Discrepancies", count: 1, pct: 10 },
+    ],
+    timeSeriesMonthlyAccuracy: [
+      { month: "2026-03", accuracyPct: 97.5 },
+      { month: "2026-04", accuracyPct: 98.1 },
+      { month: "2026-05", accuracyPct: 98.8 },
+      { month: "2026-06", accuracyPct: 99.1 },
+      { month: "2026-07", accuracyPct: 99.4 },
+    ],
+    topHighRiskSuppliers: suppliers.filter((s) => s.score > 40),
+  };
 
-    const telemetry = {
-      totalMonitoredEntries: filings.length,
-      historicalErrorsByCategory: [
-        { category: "Valuation Variance", count: findings.filter((f) => f.rule.includes("Valuation")).length || 4, pct: 40 },
-        { category: "HTS Override Rate", count: findings.filter((f) => f.rule.includes("HTS")).length || 3, pct: 30 },
-        { category: "Missing Assists", count: findings.filter((f) => f.rule.includes("Assist")).length || 2, pct: 20 },
-        { category: "Origin & PGA Discrepancies", count: 1, pct: 10 },
-      ],
-      timeSeriesMonthlyAccuracy: [
-        { month: "2026-03", accuracyPct: 97.5 },
-        { month: "2026-04", accuracyPct: 98.1 },
-        { month: "2026-05", accuracyPct: 98.8 },
-        { month: "2026-06", accuracyPct: 99.1 },
-        { month: "2026-07", accuracyPct: 99.4 },
-      ],
-      topHighRiskSuppliers: suppliers.filter((s) => s.score > 40),
-    };
-
-    return NextResponse.json({ telemetry });
-  } catch (error) {
-    console.error("GET /api/telemetry error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
-  }
-}
+  return NextResponse.json({ telemetry });
+});

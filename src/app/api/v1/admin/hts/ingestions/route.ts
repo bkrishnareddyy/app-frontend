@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { HtsIngestionService } from "@/modules/hts/htsIngestionService";
 
-export async function POST(req: Request) {
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
-  if (!ctx?.isPlatformAdmin) {
+export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+  if (!ctx.isPlatformAdmin) {
     return NextResponse.json({ error: "Platform Admin privileges required for HTS ingestion" }, { status: 403 });
   }
 
@@ -31,4 +29,4 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to stage HTS release" }, { status: 400 });
   }
-}
+});

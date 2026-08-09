@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 
@@ -38,53 +38,43 @@ async function ensureEmbargoesSeeded() {
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+  await ensureEmbargoesSeeded();
+
+  const body = await req.json();
+  const { countryOfOrigin, transshipmentPort, manufacturerLocation } = body;
+
+  const rules = await db.embargoRule.findMany();
+  const matchedRules = [];
+
+  for (const rule of rules) {
+    if (
+      (countryOfOrigin && countryOfOrigin.toLowerCase().includes(rule.countryName.toLowerCase())) ||
+      (transshipmentPort && transshipmentPort.toLowerCase().includes(rule.countryName.toLowerCase())) ||
+      (manufacturerLocation && manufacturerLocation.toLowerCase().includes(rule.countryName.toLowerCase()))
+    ) {
+      matchedRules.push(rule);
     }
-
-    await ensureEmbargoesSeeded();
-
-    const body = await req.json();
-    const { countryOfOrigin, transshipmentPort, manufacturerLocation } = body;
-
-    const rules = await db.embargoRule.findMany();
-    const matchedRules = [];
-
-    for (const rule of rules) {
-      if (
-        (countryOfOrigin && countryOfOrigin.toLowerCase().includes(rule.countryName.toLowerCase())) ||
-        (transshipmentPort && transshipmentPort.toLowerCase().includes(rule.countryName.toLowerCase())) ||
-        (manufacturerLocation && manufacturerLocation.toLowerCase().includes(rule.countryName.toLowerCase()))
-      ) {
-        matchedRules.push(rule);
-      }
-    }
-
-    const isEmbargoed = matchedRules.length > 0;
-
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "screening.embargo",
-      entity: "EmbargoRule",
-      entityId: ctx.accountId,
-      metadata: { countryOfOrigin, isEmbargoed, matchedCount: matchedRules.length },
-    });
-
-    return NextResponse.json({
-      embargoResult: {
-        countryOfOrigin,
-        isEmbargoed,
-        status: isEmbargoed ? "BLOCKED_SANCTIONED_REGION" : "CLEARED",
-        matchedRules,
-        actionRequired: isEmbargoed ? "Obtain specific OFAC/CBP authorization license before entry filing." : "None",
-      },
-    });
-  } catch (error) {
-    console.error("POST /api/screening/embargo error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+
+  const isEmbargoed = matchedRules.length > 0;
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: "screening.embargo",
+    entity: "EmbargoRule",
+    entityId: ctx.accountId,
+    metadata: { countryOfOrigin, isEmbargoed, matchedCount: matchedRules.length },
+  });
+
+  return NextResponse.json({
+    embargoResult: {
+      countryOfOrigin,
+      isEmbargoed,
+      status: isEmbargoed ? "BLOCKED_SANCTIONED_REGION" : "CLEARED",
+      matchedRules,
+      actionRequired: isEmbargoed ? "Obtain specific OFAC/CBP authorization license before entry filing." : "None",
+    },
+  });
+});

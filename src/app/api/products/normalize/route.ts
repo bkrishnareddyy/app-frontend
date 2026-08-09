@@ -1,97 +1,87 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 
-export async function POST(req: Request) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+  const body = await req.json();
+  const { rawDescription, source, partNumber, countryOfOrigin, htsCode } = body;
 
-    const body = await req.json();
-    const { rawDescription, source, partNumber, countryOfOrigin, htsCode } = body;
+  if (!rawDescription) {
+    return NextResponse.json({ error: "rawDescription is required" }, { status: 400 });
+  }
 
-    if (!rawDescription) {
-      return NextResponse.json({ error: "rawDescription is required" }, { status: 400 });
-    }
+  // Check for existing canonical product or create new
+  const cleanedName = rawDescription
+    .replace(/256gb|black|pro max|v-\d+/gi, "")
+    .trim();
+  const canonicalName = cleanedName.length > 5 ? cleanedName : rawDescription;
 
-    // Check for existing canonical product or create new
-    const cleanedName = rawDescription
-      .replace(/256gb|black|pro max|v-\d+/gi, "")
-      .trim();
-    const canonicalName = cleanedName.length > 5 ? cleanedName : rawDescription;
+  let canonicalProduct = await db.canonicalProduct.findFirst({
+    where: {
+      accountId: ctx.accountId,
+      canonicalName: { contains: canonicalName.split(" ")[0], mode: "insensitive" },
+    },
+    include: { aliases: true },
+  });
 
-    let canonicalProduct = await db.canonicalProduct.findFirst({
-      where: {
+  if (!canonicalProduct) {
+    canonicalProduct = await db.canonicalProduct.create({
+      data: {
         accountId: ctx.accountId,
-        canonicalName: { contains: canonicalName.split(" ")[0], mode: "insensitive" },
+        canonicalName,
+        partNumber: partNumber || null,
+        countryOfOrigin: countryOfOrigin || null,
+        htsCode: htsCode || null,
+        dutyRate: null,
+        aliases: {
+          create: [
+            {
+              aliasName: rawDescription,
+              source: source || "User Entry",
+              matchConfidence: 0,
+            },
+          ],
+        },
       },
       include: { aliases: true },
     });
-
-    if (!canonicalProduct) {
-      canonicalProduct = await db.canonicalProduct.create({
-        data: {
-          accountId: ctx.accountId,
-          canonicalName,
-          partNumber: partNumber || null,
-          countryOfOrigin: countryOfOrigin || null,
-          htsCode: htsCode || null,
-          dutyRate: null,
-          aliases: {
-            create: [
-              {
-                aliasName: rawDescription,
-                source: source || "User Entry",
-                matchConfidence: 0,
-              },
-            ],
-          },
-        },
-        include: { aliases: true },
-      });
-    } else {
-      // Attach alias if new
-      await db.productAlias.create({
-        data: {
-          canonicalProductId: canonicalProduct.id,
-          aliasName: rawDescription,
-          source: source || "User Entry",
-          matchConfidence: 0,
-        },
-      });
-    }
-
-    if (!canonicalProduct) {
-      return NextResponse.json({ error: "Failed to create canonical product" }, { status: 500 });
-    }
-
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "product.normalize",
-      entity: "CanonicalProduct",
-      entityId: canonicalProduct.id,
-      metadata: { rawDescription, canonicalName },
-    });
-
-    return NextResponse.json({
-      normalizedProduct: {
+  } else {
+    // Attach alias if new
+    await db.productAlias.create({
+      data: {
         canonicalProductId: canonicalProduct.id,
-        canonicalName: canonicalProduct.canonicalName,
-        sku: canonicalProduct.sku,
-        partNumber: canonicalProduct.partNumber,
-        countryOfOrigin: canonicalProduct.countryOfOrigin,
-        htsCode: canonicalProduct.htsCode,
-        dutyRate: canonicalProduct.dutyRate,
-        matchedConfidence: 0,
-        aliasesCount: (canonicalProduct.aliases?.length || 0) + 1,
+        aliasName: rawDescription,
+        source: source || "User Entry",
+        matchConfidence: 0,
       },
     });
-  } catch (error) {
-    console.error("POST /api/products/normalize error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+
+  if (!canonicalProduct) {
+    return NextResponse.json({ error: "Failed to create canonical product" }, { status: 500 });
+  }
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: "product.normalize",
+    entity: "CanonicalProduct",
+    entityId: canonicalProduct.id,
+    metadata: { rawDescription, canonicalName },
+  });
+
+  return NextResponse.json({
+    normalizedProduct: {
+      canonicalProductId: canonicalProduct.id,
+      canonicalName: canonicalProduct.canonicalName,
+      sku: canonicalProduct.sku,
+      partNumber: canonicalProduct.partNumber,
+      countryOfOrigin: canonicalProduct.countryOfOrigin,
+      htsCode: canonicalProduct.htsCode,
+      dutyRate: canonicalProduct.dutyRate,
+      matchedConfidence: 0,
+      aliasesCount: (canonicalProduct.aliases?.length || 0) + 1,
+    },
+  });
+});

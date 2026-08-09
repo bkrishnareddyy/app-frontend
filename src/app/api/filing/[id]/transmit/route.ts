@@ -1,30 +1,29 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse, errorMessage } from "@/lib/api/error";
+import { validatePathParams } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
 import { FilingService } from "@/modules/filings/filing.service";
+import { z } from "zod";
 
-export async function POST(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  const requestId = generateRequestId();
-  const { ctx, errorResponse } = await authorizeRequest("filings.submit");
-  if (errorResponse) return errorResponse;
+const paramsSchema = z.object({ id: z.string().min(1) });
 
-  const { id } = await context.params;
+export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
-  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx!.accountId, requestId);
+  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
 
   try {
-    const result = await FilingService.transmitFiling(ctx!.accountId, ctx!.userId, id);
+    const result = await FilingService.transmitFiling(ctx.accountId, ctx.userId, id);
 
     await createAuditLog({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       action: "filing.transmit",
       entity: "CustomsFiling",
       entityId: id,
@@ -43,7 +42,7 @@ export async function POST(
     };
 
     if (idempotencyKey) {
-      await persistIdempotency(ctx!.accountId, idempotencyKey, "", 200, responsePayload);
+      await persistIdempotency(ctx.accountId, idempotencyKey, "", 200, responsePayload);
     }
 
     return NextResponse.json(responsePayload);
@@ -53,4 +52,4 @@ export async function POST(
     }
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to transmit filing", undefined, requestId);
   }
-}
+}, { permission: "filings.submit" });

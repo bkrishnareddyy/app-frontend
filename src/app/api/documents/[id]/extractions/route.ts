@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse, errorMessage } from "@/lib/api/error";
+import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { z } from "zod";
 
-export async function GET(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  const requestId = generateRequestId();
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
+const paramsSchema = z.object({ id: z.string().min(1) });
 
-  const { id } = await context.params;
+export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
   try {
     const doc = await db.shipmentDocument.findFirst({
-      where: { id, accountId: ctx!.accountId },
+      where: { id, accountId: ctx.accountId },
       include: {
         extractionFields: true,
         shipment: {
@@ -55,8 +54,8 @@ export async function GET(
         if (fileBuffer) {
           const { DocumentIntelligenceAgent } = await import("@/modules/agents/documentIntelligenceAgent");
           await DocumentIntelligenceAgent.execute({
-            accountId: ctx!.accountId,
-            userId: ctx!.userId,
+            accountId: ctx.accountId,
+            userId: ctx.userId,
             shipmentId: doc.shipmentId,
             packetId: `pkt_ondemand_${doc.id.slice(0, 8)}`,
             fileBuffer,
@@ -130,4 +129,4 @@ export async function GET(
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to fetch document extractions", undefined, requestId);
   }
-}
+});
