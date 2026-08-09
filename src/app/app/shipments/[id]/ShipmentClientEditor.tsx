@@ -42,8 +42,8 @@ export function ShipmentClientEditor({
 
       setIsEditing(false);
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message || "Failed to update client");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update client");
       setClientId(initialClientId ?? "");
     } finally {
       setLoading(false);
