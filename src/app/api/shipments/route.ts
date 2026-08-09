@@ -25,6 +25,8 @@ export async function GET() {
         agentDecisions: true,
         customsFilings: true,
         assignedBroker: true,
+        masterShipment: true,
+        houseShipments: true,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { importerName, poReference, entryType, incoterm, estimatedArrival } = body;
+    const { importerName, poReference, entryType, incoterm, estimatedArrival, masterShipmentId } = body;
 
     // Dynamic sequence calculation directly from database count
     const shipmentCount = await db.shipment.count({
@@ -53,6 +55,16 @@ export async function POST(req: Request) {
 
     const nextSeq = shipmentCount + 1;
     const shipmentNumber = `SHP-2026-${String(nextSeq).padStart(6, "0")}`;
+
+    // Verify masterShipment exists and belongs to the same account if specified
+    if (masterShipmentId) {
+      const master = await db.shipment.findFirst({
+        where: { id: masterShipmentId, accountId: ctx.accountId },
+      });
+      if (!master) {
+        return NextResponse.json({ error: "Invalid masterShipmentId: Master shipment not found in this account" }, { status: 400 });
+      }
+    }
 
     const shipment = await db.shipment.create({
       data: {
@@ -68,6 +80,7 @@ export async function POST(req: Request) {
         riskScore: 20,
         ownerName: ctx.firstName || "Stephen",
         assignedBrokerId: ctx.roleName === "PLANNER" ? ctx.userId : null,
+        masterShipmentId: masterShipmentId || null,
       },
     });
 
@@ -77,7 +90,7 @@ export async function POST(req: Request) {
       action: "shipment.create",
       entity: "Shipment",
       entityId: shipment.id,
-      metadata: { shipmentNumber },
+      metadata: { shipmentNumber, masterShipmentId },
     });
 
     return NextResponse.json({ shipment }, { status: 201 });

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { X, Copy, Check, Code, FileText, Download, ExternalLink } from "lucide-react";
+import { X, Copy, Check, Code, FileText, Download, ExternalLink, Edit2 } from "lucide-react";
 
 interface RawExtractionModalProps {
   isOpen: boolean;
@@ -31,6 +31,16 @@ export function RawExtractionModal({
   // Set default active tab to "DOC" (Document Preview) as first option
   const [activeTab, setActiveTab] = useState<"DOC" | "KV" | "JSON">("DOC");
 
+  // Document renaming state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editingNameValue, setEditingNameValue] = useState(fileName);
+  const [renaming, setRenaming] = useState(false);
+
+  // Sync renaming state when fileName prop changes
+  useEffect(() => {
+    setEditingNameValue(fileName);
+  }, [fileName]);
+
   useEffect(() => {
     if (isOpen && documentId) {
       setLoading(true);
@@ -53,7 +63,7 @@ export function RawExtractionModal({
         {
           documentId,
           shipmentNumber,
-          fileName,
+          fileName: editingNameValue,
           extractedData: "Extraction pending vision agent processing",
         },
         null,
@@ -64,6 +74,38 @@ export function RawExtractionModal({
     navigator.clipboard.writeText(jsonString);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRenameDocument = async () => {
+    if (editingNameValue.trim() === "" || editingNameValue.trim() === fileName) {
+      setIsEditingName(false);
+      return;
+    }
+    setRenaming(true);
+    try {
+      const res = await fetch(`/api/documents/${documentId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fileName: editingNameValue.trim() }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to rename document");
+      }
+
+      setIsEditingName(false);
+      router.refresh();
+      // Reload page to reflect renamed document in parent component lists
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || "Failed to rename document");
+      setEditingNameValue(fileName);
+    } finally {
+      setRenaming(false);
+    }
   };
 
   const isImageFile = (url: string, name: string) => {
@@ -97,9 +139,58 @@ export function RawExtractionModal({
               <Code className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-[#1D1D1F]">Neutral OCR &amp; Raw Extraction Vault</h3>
-              <p className="text-xs text-[#86868B]">
-                Doc ID: <span className="font-mono">{documentId}</span> • Shipment: <span className="font-mono text-[#0071E3] font-bold">{shipmentNumber}</span>
+              {isEditingName ? (
+                <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="text"
+                    value={editingNameValue}
+                    onChange={(e) => setEditingNameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleRenameDocument();
+                      if (e.key === "Escape") {
+                        setIsEditingName(false);
+                        setEditingNameValue(fileName);
+                      }
+                    }}
+                    className="px-2.5 py-1 text-sm font-extrabold text-[#1D1D1F] border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white w-64"
+                    disabled={renaming}
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleRenameDocument}
+                    disabled={renaming}
+                    className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditingName(false);
+                      setEditingNameValue(fileName);
+                    }}
+                    disabled={renaming}
+                    className="p-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <h3 className="text-base font-extrabold text-[#1D1D1F] flex items-center space-x-2 group">
+                  <span>{editingNameValue}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditingName(true);
+                    }}
+                    className="p-1 rounded hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    title="Rename Document"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 animate-in fade-in" />
+                  </button>
+                </h3>
+              )}
+              <p className="text-xs text-[#86868B] mt-0.5">
+                Neutral OCR &amp; Raw Extraction Vault • Shipment: <span className="font-mono text-[#0071E3] font-bold">{shipmentNumber}</span>
               </p>
             </div>
           </div>
@@ -160,23 +251,23 @@ export function RawExtractionModal({
           ) : activeTab === "DOC" ? (
             <div className="flex-1 overflow-y-auto bg-[#F5F5F7] rounded-2xl border border-[#E5E5EA] p-4 flex items-center justify-center min-h-[350px]">
               {proxyUrl ? (
-                isImageFile(proxyUrl, fileName) ? (
+                isImageFile(proxyUrl, editingNameValue) ? (
                   <img
                     src={proxyUrl}
-                    alt={fileName}
+                    alt={editingNameValue}
                     className="max-h-[55vh] rounded-xl border border-[#E5E5EA] shadow-md object-contain"
                   />
-                ) : isPdfFile(proxyUrl, fileName) ? (
+                ) : isPdfFile(proxyUrl, editingNameValue) ? (
                   <iframe
                     src={proxyUrl}
                     className="w-full h-[55vh] rounded-xl border border-[#E5E5EA]"
-                    title={fileName}
+                    title={editingNameValue}
                   />
                 ) : (
                   <div className="text-center p-8 space-y-3">
                     <FileText className="w-12 h-12 text-[#0071E3] mx-auto" />
                     <div>
-                      <h4 className="font-extrabold text-[#1D1D1F] text-sm">{fileName}</h4>
+                      <h4 className="font-extrabold text-[#1D1D1F] text-sm">{editingNameValue}</h4>
                       <p className="text-xs text-[#86868B] mt-1">Binary trade file stored securely in Qubere Document Vault.</p>
                     </div>
                     <a
@@ -194,7 +285,7 @@ export function RawExtractionModal({
                 <div className="text-center p-8 space-y-3">
                   <FileText className="w-12 h-12 text-[#86868B]/50 mx-auto" />
                   <div>
-                    <h4 className="font-extrabold text-[#1D1D1F] text-sm">{fileName}</h4>
+                    <h4 className="font-extrabold text-[#1D1D1F] text-sm">{editingNameValue}</h4>
                     <p className="text-xs text-[#86868B] mt-1">Document preview is currently unavailable.</p>
                   </div>
                 </div>
@@ -231,7 +322,7 @@ export function RawExtractionModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-[#E5E5EA] shrink-0 text-xs">
-          <span className="text-[#86868B]">Source File: <strong>{fileName}</strong></span>
+          <span className="text-[#86868B]">Source File: <strong>{editingNameValue}</strong></span>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer"

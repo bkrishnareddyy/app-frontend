@@ -73,6 +73,54 @@ export class FilingService {
       throw new Error("Cannot submit entry filing without line items.");
     }
 
+    const snapshotData = {
+      shipment: {
+        id: filing.shipment.id,
+        shipmentNumber: filing.shipment.shipmentNumber,
+        importerName: filing.shipment.importerName,
+        portOfEntry: filing.shipment.portOfEntry,
+        carrierName: filing.shipment.carrierName,
+        incoterm: filing.shipment.incoterm,
+        entryType: filing.shipment.entryType,
+      },
+      lineItems: filing.shipment.lineItems.map(item => ({
+        id: item.id,
+        lineNumber: item.lineNumber,
+        description: item.description,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+        totalValue: Number(item.totalValue),
+        htsCode: item.htsCode,
+        countryOfOrigin: item.countryOfOrigin,
+      })),
+      documents: filing.shipment.documents.map(doc => ({
+        id: doc.id,
+        fileName: doc.fileName,
+        docType: doc.docType,
+      })),
+      filingHeader: {
+        entryNumber: filing.entryNumber,
+        entryType: filing.entryType,
+        totalValue: Number(filing.totalValue),
+        totalDuties: Number(filing.totalDuties),
+        totalTaxes: Number(filing.totalTaxes),
+        totalAmount: Number(filing.totalAmount),
+      },
+      metadata: {
+        generator: "Qubere Compliance Snapshot Engine",
+        version: filing.version,
+        timestamp: new Date().toISOString(),
+      }
+    };
+
+    // Save the snapshot in db
+    await db.filingSnapshot.create({
+      data: {
+        filingId,
+        snapshotData,
+      }
+    });
+
     const provider = new MockCustomsTransmissionProvider();
     const result = await provider.submitEntry({ entryNumber: filing.entryNumber });
 

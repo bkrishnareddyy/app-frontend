@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { RawExtractionModal } from "@/components/RawExtractionModal";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Scale,
@@ -26,6 +28,7 @@ interface DecisionReviewClientProps {
   allDocuments?: any[];
   initialDecisionId?: string;
   initialShipmentId?: string;
+  initialAgentName?: string;
 }
 
 export function DecisionReviewClient({
@@ -33,11 +36,29 @@ export function DecisionReviewClient({
   allDocuments = [],
   initialDecisionId,
   initialShipmentId,
+  initialAgentName,
 }: DecisionReviewClientProps) {
+  const router = useRouter();
+  const [localDecisions, setLocalDecisions] = useState(decisions);
+
+  useEffect(() => {
+    setLocalDecisions(decisions);
+  }, [decisions]);
+
   const [selectedId, setSelectedId] = useState<string>(
     initialDecisionId ||
-      decisions.find((d) => (initialShipmentId ? d.shipmentId === initialShipmentId : true))?.id ||
-      decisions[0]?.id ||
+      (initialShipmentId && initialAgentName
+        ? localDecisions.find(
+            (d) =>
+              d.shipmentId === initialShipmentId &&
+              d.agentName.toLowerCase().includes(initialAgentName.toLowerCase())
+          )?.id
+        : null) ||
+      (initialAgentName
+        ? localDecisions.find((d) => d.agentName.toLowerCase().includes(initialAgentName.toLowerCase()))?.id
+        : null) ||
+      localDecisions.find((d) => (initialShipmentId ? d.shipmentId === initialShipmentId : true))?.id ||
+      localDecisions[0]?.id ||
       ""
   );
 
@@ -46,21 +67,19 @@ export function DecisionReviewClient({
   const [actionLoading, setActionLoading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "NEED_REVIEW" | "APPROVED">("ALL");
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "NEED_REVIEW" | "APPROVED">("NEED_REVIEW");
 
-  const selectedDecision = decisions.find((d) => d.id === selectedId) || decisions[0];
+  const selectedDecision = localDecisions.find((d) => d.id === selectedId) || localDecisions[0];
 
   // Document provenance
   const shipment = selectedDecision?.shipment;
   const primaryDoc =
     shipment?.documents?.[0] ||
     allDocuments.find((d) => d.shipmentId === shipment?.id) ||
-    allDocuments[0] ||
-    null;
-
-  const docName = primaryDoc?.fileName || primaryDoc?.name || selectedDecision?.proposedDescription || "Trade Document Packet";
-  const docUrl = primaryDoc?.fileUrl || primaryDoc?.url || "";
-  const docType = primaryDoc?.docType || primaryDoc?.type || "COMMERCIAL_INVOICE";
+    (selectedDecision?.documentId ? allDocuments.find((d) => d.id === selectedDecision.documentId) : null);
+  const docName = primaryDoc?.fileName || "ForwardingInstructions_1.pdf";
+  const docUrl = primaryDoc?.fileUrl || "#";
+  const docType = primaryDoc?.docType || "Commercial Invoice";
 
   // Data sources & regulations
   const dataSources: string[] = selectedDecision?.dataSources || [];
@@ -69,7 +88,7 @@ export function DecisionReviewClient({
   const lineItems: any[] = shipment?.lineItems || [];
 
   // Filtered decisions list
-  const filteredDecisions = decisions.filter((d) => {
+  const filteredDecisions = localDecisions.filter((d) => {
     const statusMatch =
       activeFilter === "ALL"
         ? true
@@ -89,10 +108,19 @@ export function DecisionReviewClient({
     );
   });
 
+  // Auto-advance to next queue item when current is approved/filtered out
+  useEffect(() => {
+    if (filteredDecisions.length > 0 && !filteredDecisions.some((d) => d.id === selectedId)) {
+      setSelectedId(filteredDecisions[0].id);
+    }
+  }, [filteredDecisions, selectedId]);
+
   const handleAction = async (action: "APPROVE" | "REJECT" | "RE_EVALUATE") => {
     if (!selectedDecision) return;
     setActionLoading(true);
     setActionSuccess(null);
+
+    const newStatus = action === "APPROVE" ? "Approved" : action === "REJECT" ? "Rejected" : "In Progress";
 
     try {
       const res = await fetch("/api/decisions", {
@@ -108,6 +136,9 @@ export function DecisionReviewClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Action failed");
 
+      // Update local state reactively
+      setLocalDecisions(prev => prev.map(d => d.id === selectedDecision.id ? { ...d, status: newStatus } : d));
+
       setActionSuccess(
         action === "APPROVE"
           ? "Decision Approved & Signed into Database Audit Log."
@@ -115,7 +146,7 @@ export function DecisionReviewClient({
           ? "Decision Rejected. Flagged for human broker override."
           : "Re-evaluation requested."
       );
-      selectedDecision.status = action === "APPROVE" ? "Approved" : action === "REJECT" ? "Rejected" : "In Progress";
+      router.refresh();
     } catch (err: any) {
       alert(`Action failed: ${err.message || String(err)}`);
     } finally {
@@ -273,7 +304,7 @@ export function DecisionReviewClient({
                 activeFilter === "ALL" ? "bg-white text-[#1D1D1F] shadow-2xs" : "text-[#86868B]"
               }`}
             >
-              All ({decisions.length})
+              All ({localDecisions.length})
             </button>
             <button
               onClick={() => setActiveFilter("NEED_REVIEW")}
@@ -281,7 +312,7 @@ export function DecisionReviewClient({
                 activeFilter === "NEED_REVIEW" ? "bg-amber-500 text-white shadow-2xs" : "text-[#86868B]"
               }`}
             >
-              Needs Review
+              Needs Review ({localDecisions.filter((d) => d.status === "Review Required" || d.status === "Needs Review" || d.status === "In Progress" || d.status === "Pending").length})
             </button>
             <button
               onClick={() => setActiveFilter("APPROVED")}
@@ -289,7 +320,7 @@ export function DecisionReviewClient({
                 activeFilter === "APPROVED" ? "bg-emerald-600 text-white shadow-2xs" : "text-[#86868B]"
               }`}
             >
-              Approved
+              Approved ({localDecisions.filter((d) => d.status === "Approved").length})
             </button>
           </div>
 
@@ -459,7 +490,16 @@ export function DecisionReviewClient({
               <div className="p-3.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between text-xs">
                 <div>
                   <span className="text-[#86868B]">Target Shipment: </span>
-                  <span className="font-mono text-[#0071E3] font-bold">{shipment?.shipmentNumber || "SHP-2026"}</span>
+                  {shipment ? (
+                    <Link
+                      href={`/app/shipments/${shipment.id}`}
+                      className="font-mono text-[#0071E3] hover:text-[#0077ED] font-bold hover:underline"
+                    >
+                      {shipment.shipmentNumber}
+                    </Link>
+                  ) : (
+                    <span className="font-mono text-[#86868B] font-bold">N/A</span>
+                  )}
                   <span className="text-[#86868B] ml-2">• Confidence: </span>
                   <span className="font-bold text-emerald-700">{selectedDecision.confidence}%</span>
                 </div>
@@ -606,85 +646,16 @@ export function DecisionReviewClient({
       </div>
 
       {/* DOCUMENT PREVIEW MODAL */}
-      {isPreviewOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-4xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3">
-              <div>
-                <h3 className="text-base font-extrabold text-[#1D1D1F]">{docName}</h3>
-                <p className="text-xs text-[#86868B]">Shipment: {shipment?.shipmentNumber || "SHP-2026"} • Type: {docType}</p>
-              </div>
-              <button
-                onClick={() => setIsPreviewOpen(false)}
-                className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto bg-[#F5F5F7] rounded-2xl border border-[#E5E5EA] p-4 flex items-center justify-center min-h-[450px]">
-              {docUrl && docUrl !== "#" ? (
-                docName.toLowerCase().endsWith(".pdf") || docUrl.includes(".pdf") ? (
-                  <iframe
-                    src={getProxyUrl(docUrl)}
-                    className="w-full h-[60vh] rounded-xl border border-[#E5E5EA]"
-                    title={docName}
-                  />
-                ) : (
-                  <img
-                    src={getProxyUrl(docUrl)}
-                    alt={docName}
-                    className="max-h-[60vh] rounded-xl border border-[#E5E5EA] object-contain shadow-md"
-                  />
-                )
-              ) : (
-                <div className="text-center p-8 space-y-4 max-w-md">
-                  <div className="w-16 h-16 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] mx-auto shadow-xs">
-                    <FileText className="w-8 h-8" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <h4 className="font-extrabold text-[#1D1D1F] text-sm">{docName}</h4>
-                    <p className="text-xs text-[#86868B]">
-                      Document metadata is logged in database. File buffer is stored in Qubere Document Vault.
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-center space-x-3 pt-2">
-                    <Link
-                      href="/app/documents"
-                      className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-bold rounded-xl inline-flex items-center space-x-1.5 transition-colors shadow-2xs"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Manage Documents</span>
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-[#E5E5EA]">
-              <span className="text-xs text-[#86868B]">Qubere Document Store ID: {primaryDoc?.id || selectedDecision?.id}</span>
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => setIsPreviewOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-[#E5E5EA] hover:bg-[#F5F5F7] text-xs font-semibold text-[#1D1D1F]"
-                >
-                  Close
-                </button>
-                {docUrl && docUrl !== "#" && (
-                  <a
-                    href={getProxyUrl(docUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold flex items-center space-x-1.5"
-                  >
-                    <span>Open in New Tab</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+      {isPreviewOpen && primaryDoc && (
+        <RawExtractionModal
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          documentId={primaryDoc.id}
+          fileName={primaryDoc.fileName || docName}
+          shipmentNumber={shipment?.shipmentNumber || "SHP-2026"}
+          fileUrl={docUrl}
+          proxyUrl={docUrl ? getProxyUrl(docUrl) : undefined}
+        />
       )}
     </div>
   );
