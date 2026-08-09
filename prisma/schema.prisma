@@ -57,6 +57,7 @@ model Account {
   classificationCases    ClassificationCase[]
   caseDocuments          CaseDocument[]
   clients                Client[]
+  legalEntities          LegalEntity[]
 
   @@index([type])
   @@index([slug])
@@ -86,6 +87,7 @@ model User {
   assignedFindings    ComplianceFinding[]     @relation("FindingAssignee")
   createdScenarios    LandedCostScenario[]    @relation("ScenarioCreator")
   createdPSCs         PostSummaryCorrection[] @relation("PSCCreator")
+  shipmentChangeEvents ShipmentChangeEvent[]
 
   @@index([clerkUserId])
   @@index([email])
@@ -289,6 +291,8 @@ model Shipment {
   reconciliationIssues    ReconciliationIssue[]
   pipelineJobs            PipelineJob[]
   facts                   Fact[]
+  shipmentParties         ShipmentParty[]
+  changeEvents            ShipmentChangeEvent[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -318,6 +322,7 @@ model ShipmentDocument {
   updatedAt     DateTime @updatedAt
 
   extractionFields ExtractionField[]
+  parseVersions    DocumentParseVersion[]
 
   @@index([shipmentId])
   @@index([accountId])
@@ -763,6 +768,7 @@ model Client {
 
   shipments        Shipment[]
   importersOfRecord ImporterOfRecord[]
+  legalEntities    LegalEntity[]
 
   @@index([accountId])
   @@index([accountId, status])
@@ -804,6 +810,113 @@ model PowerOfAttorney {
 
   @@index([accountId])
   @@index([importerOfRecordId])
+}
+
+// -----------------------------------------------------------------------------
+// REFACTORED LEGAL ENTITY & CUSTOMS DOMAIN MODELS
+// -----------------------------------------------------------------------------
+
+model LegalEntity {
+  id                String          @id @default(cuid())
+  accountId         String
+  account           Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  clientId          String?
+  client            Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  legalName         String
+  tradeName         String?
+  entityType        String          @default("US_CORPORATION")
+  country           String          @default("US")
+  addressLine1      String?
+  addressLine2      String?
+  city              String?
+  stateProvince     String?
+  postalCode        String?
+  taxIdentifier     String?
+  taxIdentifierType String?
+  status            String          @default("ACTIVE")
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  customsProfiles   CustomsProfile[]
+  shipmentParties   ShipmentParty[]
+
+  @@index([accountId])
+  @@index([clientId])
+  @@index([legalName])
+}
+
+model CustomsProfile {
+  id                    String      @id @default(cuid())
+  legalEntityId         String
+  legalEntity           LegalEntity @relation(fields: [legalEntityId], references: [id], onDelete: Cascade)
+  cbpImporterNumber     String?
+  importerNumberType    String?
+  ein                   String?
+  einLast4              String?
+  bondType              String?
+  bondNumber            String?
+  continuousBond        Boolean     @default(false)
+  singleTransactionBond Boolean     @default(false)
+  customsBrokerOfRecord String?
+  powerOfAttorneyStatus String      @default("NOT_FILED")
+  active                Boolean     @default(true)
+  effectiveFrom         DateTime    @default(now())
+  effectiveTo           DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@index([legalEntityId])
+  @@index([cbpImporterNumber])
+}
+
+model ShipmentParty {
+  id            String      @id @default(cuid())
+  shipmentId    String
+  shipment      Shipment    @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  legalEntityId String
+  legalEntity   LegalEntity @relation(fields: [legalEntityId], references: [id], onDelete: Cascade)
+  role          String
+  source        String      @default("USER")
+  confidence    Float?      @default(1.0)
+  isVerified    Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([shipmentId])
+  @@index([legalEntityId])
+  @@index([shipmentId, role])
+}
+
+model DocumentParseVersion {
+  id            String           @id @default(cuid())
+  documentId    String
+  document      ShipmentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version       Int              @default(1)
+  parserVersion String           @default("2.0.0")
+  modelVersion  String           @default("gemini-3.6-flash")
+  rawJson       String           @db.Text
+  confidence    Float?
+  createdAt     DateTime         @default(now())
+
+  @@index([documentId])
+  @@index([documentId, version])
+}
+
+model ShipmentChangeEvent {
+  id            String   @id @default(cuid())
+  shipmentId    String
+  shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  changeType    String
+  field         String
+  previousValue String?  @db.Text
+  newValue      String?  @db.Text
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@index([shipmentId])
+  @@index([userId])
 }
 
 model ExceptionItem {

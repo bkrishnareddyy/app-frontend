@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { validatePathParams } from "@/lib/api/validation";
+import { validatePathParams, parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment/shipmentPartyService";
+import { FactAuditService } from "@/modules/audit/factAuditService";
 import { z } from "zod";
 
-const paramsSchema = z.object({ id: z.string().min(1) });
+const paramsSchema = z.object({
+  id: z.string().min(1),
+});
 
 export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
@@ -14,8 +18,8 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   const { id } = paramsVal.data;
 
   const whereClause: Prisma.ShipmentWhereInput = {
+    id,
     accountId: ctx.accountId,
-    OR: [{ id }, { shipmentNumber: id }],
     deletedAt: null,
   };
 
@@ -26,11 +30,29 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   const shipment = await db.shipment.findFirst({
     where: whereClause,
     include: {
-      documents: true,
+      documents: {
+        include: { parseVersions: true },
+      },
       lineItems: true,
       agentDecisions: true,
       customsFilings: {
         include: { responses: true },
+      },
+      client: true,
+      shipmentParties: {
+        include: {
+          legalEntity: {
+            include: { customsProfiles: true },
+          },
+        },
+      },
+      changeEvents: {
+        include: {
+          user: {
+            select: { id: true, email: true, firstName: true, lastName: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
       },
     },
   });
@@ -42,23 +64,15 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   return NextResponse.json({ shipment });
 });
 
-// Require OWNER or ADMIN role to modify shipments — a custom "Enterprise
-// Admin" check combining accountType + roleName, distinct from the
-// OWNER-role wildcard that authorizeRequest's `permission` option grants,
-// so it stays a manual check rather than a `permission` string.
 export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
-  const isEnterpriseAdmin =
-    ctx.accountType === "ENTERPRISE" &&
-    (ctx.roleNames.includes("ADMIN") || ctx.roleNames.includes("OWNER"));
-
   const body = await req.json();
-  const { assignedBrokerId, shipmentNumber, lineItems, clientId } = body;
+  const { assignedBrokerId, shipmentNumber, lineItems, clientId, parties, importerName } = body;
 
-  // Fetch the current shipment to ensure it belongs to the active account
+  // Check shipment existence
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
   });
@@ -67,54 +81,8 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
 
-  // Planners may tag the Client on shipments assigned to them (e.g. correcting
-  // a blank/wrong customer tag) without full Enterprise Admin rights; every
-  // other field stays Admin/Owner-only.
-  const isAssignedPlanner =
-    ctx.roleNames.includes("PLANNER") && shipment.assignedBrokerId === ctx.userId;
-
-  const onlyEditingClient =
-    clientId !== undefined &&
-    assignedBrokerId === undefined &&
-    shipmentNumber === undefined &&
-    lineItems === undefined;
-
-  if (!isEnterpriseAdmin && !(onlyEditingClient && isAssignedPlanner)) {
-    return NextResponse.json(
-      { error: "Forbidden: Only Enterprise Admins can edit shipments" },
-      { status: 403 }
-    );
-  }
-
-  // Check if new broker exists in this account (if specified)
-  if (assignedBrokerId) {
-    const membership = await db.accountMembership.findFirst({
-      where: { accountId: ctx.accountId, userId: assignedBrokerId, status: "ACTIVE" },
-    });
-    if (!membership) {
-      return NextResponse.json(
-        { error: "Invalid broker assignment: User is not an active member of this account" },
-        { status: 400 }
-      );
-    }
-  }
-
-  // Check if the client exists in this account (if specified)
-  if (clientId) {
-    const client = await db.client.findFirst({
-      where: { id: clientId, accountId: ctx.accountId },
-    });
-    if (!client) {
-      return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
-    }
-  }
-
-  // Validate uniqueness of shipmentNumber if changing it
+  // Verify unique shipmentNumber if provided and changed
   if (shipmentNumber && shipmentNumber.trim() !== shipment.shipmentNumber) {
-    if (typeof shipmentNumber !== "string" || shipmentNumber.trim() === "") {
-      return NextResponse.json({ error: "Invalid shipmentNumber" }, { status: 400 });
-    }
-
     const existing = await db.shipment.findFirst({
       where: {
         accountId: ctx.accountId,
@@ -143,6 +111,9 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   if (clientId !== undefined) {
     updateData.clientId = clientId || null;
   }
+  if (importerName !== undefined) {
+    updateData.importerName = importerName;
+  }
 
   // Update shipment
   const updatedShipment = await db.shipment.update({
@@ -150,10 +121,47 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     data: updateData,
   });
 
+  // Audit field updates
+  if (importerName !== undefined && importerName !== shipment.importerName) {
+    await FactAuditService.logChangeEvent({
+      shipmentId: id,
+      userId: ctx.userId,
+      changeType: "USER_FIELD_UPDATE",
+      field: "importerName",
+      previousValue: shipment.importerName,
+      newValue: importerName,
+    });
+  }
+
+  // Update shipment parties if provided
+  if (parties && Array.isArray(parties)) {
+    for (const p of parties) {
+      if (p.legalEntityId && p.role) {
+        await ShipmentPartyService.assignParty({
+          shipmentId: id,
+          legalEntityId: p.legalEntityId,
+          role: p.role as ShipmentPartyRole,
+          source: "USER",
+          confidence: 1.0,
+          isVerified: true,
+        });
+
+        await FactAuditService.logChangeEvent({
+          shipmentId: id,
+          userId: ctx.userId,
+          changeType: "PARTY_ASSIGNED",
+          field: `party.${p.role}`,
+          newValue: p.legalEntityId,
+        });
+      }
+    }
+  }
+
   // Update or create line items if specified
   if (lineItems && Array.isArray(lineItems)) {
     for (const item of lineItems) {
       if (item.id) {
+        const existingItem = await db.shipmentLineItem.findUnique({ where: { id: item.id } });
         await db.shipmentLineItem.update({
           where: { id: item.id, shipmentId: id },
           data: {
@@ -167,111 +175,62 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
             status: item.status !== undefined ? item.status : undefined,
           },
         });
+
+        if (existingItem && item.htsCode !== undefined && item.htsCode !== existingItem.htsCode) {
+          await FactAuditService.logChangeEvent({
+            shipmentId: id,
+            userId: ctx.userId,
+            changeType: "CLASSIFICATION_CHANGED",
+            field: `lineItem[${item.lineNumber || item.id}].htsCode`,
+            previousValue: existingItem.htsCode,
+            newValue: item.htsCode,
+          });
+        }
       } else {
         await db.shipmentLineItem.create({
           data: {
+            accountId: shipment.accountId,
             shipmentId: id,
-            accountId: ctx.accountId,
-            lineNumber: item.lineNumber !== undefined ? Number(item.lineNumber) : 2,
-            description: item.description !== undefined ? item.description : "Electronic Controller",
-            quantity: item.quantity !== undefined ? Number(item.quantity) : 20,
-            unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) : 15.50,
-            totalValue: item.totalValue !== undefined ? Number(item.totalValue) : 310.00,
-            htsCode: item.htsCode !== undefined ? item.htsCode.trim() : "8481.80.5090",
-            countryOfOrigin: item.countryOfOrigin !== undefined ? item.countryOfOrigin.trim() : "Germany",
-            status: item.status !== undefined ? item.status : "Valid",
+            lineNumber: Number(item.lineNumber || 1),
+            description: item.description || "Line Item",
+            totalValue: Number(item.totalValue || 0),
+            countryOfOrigin: item.countryOfOrigin || "US",
+            htsCode: item.htsCode || "8543.70.99",
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice || 0),
+            status: item.status || "Unreviewed",
           },
         });
       }
+    }
+  }
 
-      await createAuditLog({
-        accountId: ctx.accountId,
-        userId: ctx.userId,
-        action: "lineItem.update",
-        entity: "ShipmentLineItem",
-        entityId: item.id || "new-item",
-        metadata: {
-          shipmentId: id,
-          htsCode: item.htsCode,
-          countryOfOrigin: item.countryOfOrigin,
-          quantity: item.quantity,
+  // Return full refreshed shipment with relations
+  const refreshedShipment = await db.shipment.findUnique({
+    where: { id },
+    include: {
+      documents: {
+        include: { parseVersions: true },
+      },
+      lineItems: true,
+      agentDecisions: true,
+      customsFilings: true,
+      client: true,
+      shipmentParties: {
+        include: {
+          legalEntity: {
+            include: { customsProfiles: true },
+          },
         },
-        success: true,
-      });
-    }
-  }
-
-  // Cascade broker assignment change to related ExceptionItems and ComplianceFindings if it was updated
-  if (assignedBrokerId !== undefined && assignedBrokerId !== shipment.assignedBrokerId) {
-    // Cascade assignment to related exception items (assignedToUserId)
-    await db.exceptionItem.updateMany({
-      where: { shipmentId: id, accountId: ctx.accountId },
-      data: { assignedToUserId: assignedBrokerId || null },
-    });
-
-    // Cascade assignment to related compliance findings (assignedToUserId)
-    const filings = await db.customsFiling.findMany({
-      where: { shipmentId: id, accountId: ctx.accountId },
-      select: { id: true },
-    });
-    const filingIds = filings.map((f) => f.id);
-    if (filingIds.length > 0) {
-      await db.complianceFinding.updateMany({
-        where: { filingId: { in: filingIds }, accountId: ctx.accountId },
-        data: { assignedToUserId: assignedBrokerId || null },
-      });
-    }
-  }
-
-  // Log rename event if shipmentNumber changed
-  if (shipmentNumber !== undefined && shipmentNumber.trim() !== shipment.shipmentNumber) {
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "shipment.rename",
-      entity: "Shipment",
-      entityId: id,
-      metadata: {
-        previousNumber: shipment.shipmentNumber,
-        newNumber: shipmentNumber.trim(),
       },
-      success: true,
-    });
-  }
-
-  // Log assign event if broker changed
-  if (assignedBrokerId !== undefined && assignedBrokerId !== shipment.assignedBrokerId) {
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "shipment.assign",
-      entity: "Shipment",
-      entityId: id,
-      metadata: {
-        shipmentNumber: updatedShipment.shipmentNumber,
-        previousBrokerId: shipment.assignedBrokerId,
-        newBrokerId: assignedBrokerId || "Unassigned",
+      changeEvents: {
+        include: {
+          user: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: "desc" },
       },
-      success: true,
-    });
-  }
+    },
+  });
 
-  // Log client tag event if client changed
-  if (clientId !== undefined && clientId !== shipment.clientId) {
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "shipment.setClient",
-      entity: "Shipment",
-      entityId: id,
-      metadata: {
-        shipmentNumber: updatedShipment.shipmentNumber,
-        previousClientId: shipment.clientId,
-        newClientId: clientId || "None",
-      },
-      success: true,
-    });
-  }
-
-  return NextResponse.json({ shipment: updatedShipment });
+  return NextResponse.json({ shipment: refreshedShipment });
 });

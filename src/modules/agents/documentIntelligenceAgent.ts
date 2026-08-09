@@ -4,6 +4,8 @@ import { createAuditLog } from "@/lib/audit";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { AgentState, MultiDimensionalConfidence } from "./agentState";
+import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
+import { ShipmentPartyService } from "@/modules/shipment/shipmentPartyService";
 
 export const DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT = `
 ROLE
@@ -744,9 +746,12 @@ INSTRUCTIONS:
             accountId: input.accountId,
             fileName: input.fileName,
           },
+          include: { parseVersions: true },
         });
 
         if (docToUpdate) {
+          const nextVersion = (docToUpdate.parseVersions?.length || 0) + 1;
+
           await db.shipmentDocument.update({
             where: { id: docToUpdate.id },
             data: {
@@ -756,6 +761,53 @@ INSTRUCTIONS:
                 .join("\n"),
             },
           });
+
+          // Save immutable DocumentParseVersion
+          await db.documentParseVersion.create({
+            data: {
+              documentId: docToUpdate.id,
+              version: nextVersion,
+              parserVersion: "2.0.0",
+              modelVersion: "gemini-3.6-flash",
+              rawJson: JSON.stringify(extractedBlob, null, 2),
+              confidence: typeof confidence === "number" ? confidence : 90,
+            },
+          });
+
+          // Resolve & associate extracted party names (Importer / Exporter)
+          if (importerName) {
+            const resolvedImporter = await EntityResolutionService.findOrCreateEntity(
+              input.accountId,
+              importerName
+            );
+            if (resolvedImporter) {
+              await ShipmentPartyService.assignParty({
+                shipmentId: input.shipmentId,
+                legalEntityId: resolvedImporter.id,
+                role: "IMPORTER_OF_RECORD",
+                source: "DOCUMENT",
+                confidence: typeof confidence === "number" ? confidence / 100 : 0.9,
+                isVerified: false,
+              });
+            }
+          }
+
+          if (exporterName) {
+            const resolvedExporter = await EntityResolutionService.findOrCreateEntity(
+              input.accountId,
+              exporterName
+            );
+            if (resolvedExporter) {
+              await ShipmentPartyService.assignParty({
+                shipmentId: input.shipmentId,
+                legalEntityId: resolvedExporter.id,
+                role: "EXPORTER",
+                source: "DOCUMENT",
+                confidence: typeof confidence === "number" ? confidence / 100 : 0.9,
+                isVerified: false,
+              });
+            }
+          }
         }
       }
     } catch (err) {
