@@ -305,9 +305,12 @@ model Shipment {
 }
 
 model ShipmentDocument {
-  id         String   @id @default(cuid())
-  shipmentId String
-  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  // Nullable: a document can be detached from its shipment (keeping the
+  // row and extractedJson intact) and later reattached to a different
+  // shipment without redoing AI vision extraction.
+  shipmentId String?
+  shipment   Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
   accountId  String
   account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   docType    String   // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin

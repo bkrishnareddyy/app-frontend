@@ -40,6 +40,7 @@ interface ShipmentDocumentItem {
   assignedBrokerName: string;
   clientId?: string | null;
   clientName: string;
+  unattached?: boolean;
 }
 
 interface DocumentsClientProps {
@@ -102,10 +103,15 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   const fetchDocuments = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/shipments");
-      if (res.ok) {
-        const data = await res.json();
-        const docs: ShipmentDocumentItem[] = [];
+      const [shipmentsRes, unattachedRes] = await Promise.all([
+        fetch("/api/shipments"),
+        fetch("/api/documents/unattached"),
+      ]);
+
+      const docs: ShipmentDocumentItem[] = [];
+
+      if (shipmentsRes.ok) {
+        const data = await shipmentsRes.json();
         if (data.shipments && Array.isArray(data.shipments)) {
           setShipments(data.shipments);
           data.shipments.forEach((shp: any) => {
@@ -133,8 +139,37 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             }
           });
         }
-        setDocuments(docs);
       }
+
+      // Detached documents -- no shipmentId, but still real rows with their
+      // extractedJson intact, kept visible here so they're findable and
+      // reattachable rather than disappearing after being detached.
+      if (unattachedRes.ok) {
+        const data = await unattachedRes.json();
+        if (data.documents && Array.isArray(data.documents)) {
+          data.documents.forEach((d: any) => {
+            docs.push({
+              id: d.id,
+              name: d.fileName || "Trade_Document.pdf",
+              type: d.docType || "Commercial Invoice",
+              docType: d.docType || "COMMERCIAL_INVOICE",
+              status: d.status || "Received",
+              uploadedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "Just now",
+              url: d.fileUrl || "#",
+              shipmentId: "",
+              shipmentRef: "Unattached",
+              confidenceScore: d.confidence || 95,
+              assignedBrokerId: null,
+              assignedBrokerName: "—",
+              clientId: null,
+              clientName: "No Client",
+              unattached: true,
+            });
+          });
+        }
+      }
+
+      setDocuments(docs);
     } catch (err) {
       console.error("Failed to fetch documents:", err);
     } finally {
@@ -443,8 +478,14 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-5 font-mono text-[11px] text-[#0071E3]">
-                      {doc.shipmentRef}
+                    <td className="py-3.5 px-5 font-mono text-[11px]">
+                      {doc.unattached ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
+                          Unattached
+                        </span>
+                      ) : (
+                        <span className="text-[#0071E3]">{doc.shipmentRef}</span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-5">

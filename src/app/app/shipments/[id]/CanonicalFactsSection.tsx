@@ -8,15 +8,18 @@ import { FactProvenance } from "@/modules/shipment/canonicalShipmentService";
 interface CanonicalFactsSectionProps {
   shipmentId: string;
   facts: FactProvenance[];
+  currentCountryOfOrigin: string | null;
 }
 
-export function CanonicalFactsSection({ shipmentId, facts }: CanonicalFactsSectionProps) {
+export function CanonicalFactsSection({ shipmentId, facts, currentCountryOfOrigin }: CanonicalFactsSectionProps) {
   const router = useRouter();
   const [expandedFact, setExpandedFact] = useState<string | null>(null);
 
-  // Edit Origin Modal State
+  // Edit Origin Modal State -- must default to the shipment's actual current
+  // value, not a fixed country, since submitting without changing anything
+  // should be a no-op rather than silently overwriting the real origin.
   const [isEditingOrigin, setIsEditingOrigin] = useState(false);
-  const [newOrigin, setNewOrigin] = useState("India");
+  const [newOrigin, setNewOrigin] = useState(currentCountryOfOrigin || "");
   const [saveLoading, setSaveLoading] = useState(false);
 
   const handleSaveOrigin = async (e: React.FormEvent) => {
@@ -60,7 +63,10 @@ export function CanonicalFactsSection({ shipmentId, facts }: CanonicalFactsSecti
 
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => setIsEditingOrigin(true)}
+            onClick={() => {
+              setNewOrigin(currentCountryOfOrigin || "");
+              setIsEditingOrigin(true);
+            }}
             className="px-3 py-1.5 rounded-xl bg-white border border-[#E5E5EA] text-[#0071E3] font-bold text-xs hover:bg-[#F5F5F7] transition-all flex items-center space-x-1.5 shadow-2xs"
           >
             <Edit2 className="w-3.5 h-3.5" />
@@ -169,6 +175,7 @@ export function CanonicalFactsSection({ shipmentId, facts }: CanonicalFactsSecti
                   onChange={(e) => setNewOrigin(e.target.value)}
                   className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs font-bold text-[#1D1D1F] focus:outline-none focus:border-[#0071E3]"
                 >
+                  {!currentCountryOfOrigin && <option value="">Not set — select origin</option>}
                   <option value="Germany">Germany (DE)</option>
                   <option value="India">India (IN)</option>
                   <option value="United States">United States (US)</option>

@@ -9,9 +9,13 @@ interface ExceptionsDrawerProps {
   shipmentId: string;
   exceptionItems: any[];
   lineItems: any[];
+  // Required document types not yet uploaded, computed by the page from the
+  // live document list -- surfaced here as real action cards instead of
+  // living only in a separate, disconnected "Document Set Summary" box.
+  missingDocumentTypes?: string[];
 }
 
-export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems }: ExceptionsDrawerProps) {
+export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems, missingDocumentTypes = [] }: ExceptionsDrawerProps) {
   const [activeTab, setActiveTab] = useState<"ALL" | "MISSING" | "CONFLICTS" | "VALIDATION" | "WARNINGS">("ALL");
   const [selectedException, setSelectedException] = useState<any | null>(null);
 
@@ -95,6 +99,23 @@ export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems }: Exce
     };
   });
 
+  // Missing required documents the page detected directly from the live
+  // document list -- skip any type already represented by a real DB
+  // exception above so the same gap isn't shown twice.
+  const missingDocExceptions = missingDocumentTypes
+    .filter((type) => !exceptions.some((ex) => ex.title.toLowerCase().includes(type.toLowerCase())))
+    .map((type) => ({
+      id: `missing-doc-${type}`,
+      category: "MISSING",
+      title: `${type} Missing`,
+      desc: `Required for customs entry filing. Upload the ${type} to clear this requirement.`,
+      icon: <AlertTriangle className="w-4 h-4 text-amber-500" />,
+      actionText: `Add ${type} →`,
+      actionType: "UPLOAD_DIRECT",
+    }));
+
+  const allExceptions = [...exceptions, ...missingDocExceptions];
+
   const warnings = [
     {
       id: "bond-warning",
@@ -125,9 +146,9 @@ export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems }: Exce
     }
   ];
 
-  const filtered = activeTab === "WARNINGS" 
-    ? warnings 
-    : exceptions.filter((ex) => {
+  const filtered = activeTab === "WARNINGS"
+    ? warnings
+    : allExceptions.filter((ex) => {
         if (activeTab === "ALL") return true;
         if (activeTab === "MISSING") return ex.category === "MISSING";
         if (activeTab === "CONFLICTS") return ex.category === "CONFLICTS";
@@ -135,10 +156,10 @@ export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems }: Exce
         return true;
       });
 
-  const validationCount = exceptions.filter((e) => e.category === "VALIDATION").length;
-  const missingCount = exceptions.filter((e) => e.category === "MISSING").length;
-  const conflictsCount = exceptions.filter((e) => e.category === "CONFLICTS").length;
-  const totalCount = exceptions.length;
+  const validationCount = allExceptions.filter((e) => e.category === "VALIDATION").length;
+  const missingCount = allExceptions.filter((e) => e.category === "MISSING").length;
+  const conflictsCount = allExceptions.filter((e) => e.category === "CONFLICTS").length;
+  const totalCount = allExceptions.length;
 
   return (
     <>
@@ -202,7 +223,14 @@ export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems }: Exce
                 <span>{ex.title}</span>
               </div>
               <p className="text-[11px] text-[#86868B] leading-relaxed">{ex.desc}</p>
-              {ex.actionType ? (
+              {ex.actionType === "UPLOAD_DIRECT" ? (
+                <button
+                  onClick={() => window.dispatchEvent(new Event("qubere:open-upload-modal"))}
+                  className="text-xs font-semibold text-[#0071E3] hover:underline text-left pt-1 block w-full cursor-pointer"
+                >
+                  {ex.actionText}
+                </button>
+              ) : ex.actionType ? (
                 <button
                   onClick={() => setSelectedException(ex)}
                   className="text-xs font-semibold text-[#0071E3] hover:underline text-left pt-1 block w-full cursor-pointer"

@@ -56,7 +56,9 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
           await DocumentIntelligenceAgent.execute({
             accountId: ctx.accountId,
             userId: ctx.userId,
-            shipmentId: doc.shipmentId,
+            // Detached documents (shipmentId null) can still be extracted --
+            // the extracted data is what gets ported over on reattachment.
+            shipmentId: doc.shipmentId || "",
             packetId: `pkt_ondemand_${doc.id.slice(0, 8)}`,
             fileBuffer,
             fileName: doc.fileName,

@@ -9,8 +9,17 @@ export default async function DecisionReviewCenterPage(props: {
   const context = await getAccountContext();
   if (!context) return null;
 
+  // When arriving scoped to a shipment (e.g. from that shipment's Exceptions
+  // panel), filter to just that shipment's decisions -- previously this
+  // query always loaded every decision account-wide and only used the
+  // shipmentId client-side as a best-effort initial selection, which meant
+  // a shipment with no decisions of its own silently fell back to showing
+  // an unrelated shipment's decision and documents.
   const decisions = await db.agentDecision.findMany({
-    where: { accountId: context.accountId },
+    where: {
+      accountId: context.accountId,
+      ...(searchParams.shipmentId ? { shipmentId: searchParams.shipmentId } : {}),
+    },
     include: {
       shipment: {
         include: {
@@ -25,6 +34,7 @@ export default async function DecisionReviewCenterPage(props: {
   const allDocuments = await db.shipmentDocument.findMany({
     where: {
       shipment: { accountId: context.accountId },
+      ...(searchParams.shipmentId ? { shipmentId: searchParams.shipmentId } : {}),
     },
     orderBy: { createdAt: "desc" },
   });

@@ -33,7 +33,9 @@ export class CanonicalShipmentService {
       where: { id: shipmentId },
       include: {
         client: true,
-        importerOfRecord: true,
+        importerOfRecord: {
+          include: { bond: true, powersOfAttorney: true },
+        },
         shipmentParties: {
           include: {
             legalEntity: {
