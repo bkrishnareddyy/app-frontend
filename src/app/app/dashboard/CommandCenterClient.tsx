@@ -226,8 +226,8 @@ export function CommandCenterClient({
         </div>
       </div>
 
-      {/* Enterprise Admin Filter Controls below header */}
-      {isEnterpriseAdmin && (
+      {/* Task Scope & Assignment -- assignee controls for enterprise admins, client scope for everyone */}
+      {(isEnterpriseAdmin || clients.length > 0) && (
         <div className="bg-white p-4 rounded-2xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center space-x-2.5">
             <Users className="w-4 h-4 text-[#0071E3]" />
@@ -237,125 +237,120 @@ export function CommandCenterClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs">
-              <button
-                onClick={() => setSelectedUserIds([context.userId])}
-                className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  selectedUserIds.length === 1 && selectedUserIds[0] === context.userId
-                    ? "bg-white text-[#1D1D1F] shadow-3xs"
-                    : "text-[#86868B]"
-                }`}
-              >
-                My Tasks
-              </button>
-              <button
-                onClick={() => setSelectedUserIds([])}
-                className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  selectedUserIds.length === 0 ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
-                }`}
-              >
-                All Tasks
-              </button>
-            </div>
+            {isEnterpriseAdmin && (
+              <>
+                <div className="flex bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs">
+                  <button
+                    onClick={() => setSelectedUserIds([context.userId])}
+                    className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      selectedUserIds.length === 1 && selectedUserIds[0] === context.userId
+                        ? "bg-white text-[#1D1D1F] shadow-3xs"
+                        : "text-[#86868B]"
+                    }`}
+                  >
+                    My Tasks
+                  </button>
+                  <button
+                    onClick={() => setSelectedUserIds([])}
+                    className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      selectedUserIds.length === 0 ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
+                    }`}
+                  >
+                    All Tasks
+                  </button>
+                </div>
 
-            <div className="flex items-center space-x-2 text-xs relative">
-              <span className="text-[#86868B] font-semibold">Team Members:</span>
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
-              >
-                <span>
-                  {selectedUserIds.length === 0
-                    ? "All Team Members"
-                    : selectedUserIds.length === 1
-                    ? selectedUserIds[0] === context.userId
-                      ? `My Tasks (${context.firstName || "Me"})`
-                      : (() => {
-                          const user = fullTeamList.find((u) => u.userId === selectedUserIds[0]);
-                          return user
-                            ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email
-                            : "1 Selected";
-                        })()
-                    : `${selectedUserIds.length} Selected`}
-                </span>
-                <span className="text-[#86868B] text-[9px]">▼</span>
-              </button>
+                <div className="flex items-center space-x-2 text-xs relative">
+                  <span className="text-[#86868B] font-semibold">Team Members:</span>
+                  <button
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
+                  >
+                    <span>
+                      {selectedUserIds.length === 0
+                        ? "All Team Members"
+                        : selectedUserIds.length === 1
+                        ? selectedUserIds[0] === context.userId
+                          ? `My Tasks (${context.firstName || "Me"})`
+                          : (() => {
+                              const user = fullTeamList.find((u) => u.userId === selectedUserIds[0]);
+                              return user
+                                ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email
+                                : "1 Selected";
+                            })()
+                        : `${selectedUserIds.length} Selected`}
+                    </span>
+                    <span className="text-[#86868B] text-[9px]">▼</span>
+                  </button>
 
-              {isDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E5E5EA] rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
-                    <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-2 mb-1 text-[10px] font-bold text-[#86868B] uppercase">
-                      <span>Select Members</span>
-                      <div className="space-x-2">
-                        <button
-                          onClick={() => setSelectedUserIds(fullTeamList.map((t) => t.userId))}
-                          className="text-[#0071E3] hover:underline cursor-pointer"
-                        >
-                          All
-                        </button>
-                        <button
-                          onClick={() => setSelectedUserIds([])}
-                          className="text-[#0071E3] hover:underline cursor-pointer"
-                        >
-                          Clear
-                        </button>
+                  {isDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
+                      <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E5E5EA] rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
+                        <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-2 mb-1 text-[10px] font-bold text-[#86868B] uppercase">
+                          <span>Select Members</span>
+                          <div className="space-x-2">
+                            <button
+                              onClick={() => setSelectedUserIds(fullTeamList.map((t) => t.userId))}
+                              className="text-[#0071E3] hover:underline cursor-pointer"
+                            >
+                              All
+                            </button>
+                            <button
+                              onClick={() => setSelectedUserIds([])}
+                              className="text-[#0071E3] hover:underline cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          {fullTeamList.map((member) => {
+                            const isChecked = selectedUserIds.includes(member.userId);
+                            const memberName =
+                              member.firstName || member.lastName
+                                ? `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim()
+                                : member.email;
+
+                            return (
+                              <label
+                                key={member.userId}
+                                className="flex items-center space-x-2.5 p-2 hover:bg-[#F5F5F7] rounded-xl cursor-pointer text-left transition-colors"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleUser(member.userId)}
+                                  className="rounded border-[#E5E5EA] text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                                />
+                                <div className="truncate">
+                                  <p className="font-bold text-[#1D1D1F] text-xs truncate">
+                                    {memberName}
+                                    {member.userId === context.userId && " (Me)"}
+                                  </p>
+                                  <p className="text-[10px] text-[#86868B] truncate">
+                                    {member.email}
+                                  </p>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
 
-                    <div className="space-y-1">
-                      {fullTeamList.map((member) => {
-                        const isChecked = selectedUserIds.includes(member.userId);
-                        const memberName =
-                          member.firstName || member.lastName
-                            ? `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim()
-                            : member.email;
-
-                        return (
-                          <label
-                            key={member.userId}
-                            className="flex items-center space-x-2.5 p-2 hover:bg-[#F5F5F7] rounded-xl cursor-pointer text-left transition-colors"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => toggleUser(member.userId)}
-                              className="rounded border-[#E5E5EA] text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
-                            />
-                            <div className="truncate">
-                              <p className="font-bold text-[#1D1D1F] text-xs truncate">
-                                {memberName}
-                                {member.userId === context.userId && " (Me)"}
-                              </p>
-                              <p className="text-[10px] text-[#86868B] truncate">
-                                {member.email}
-                              </p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Client Scope Filter -- visible to all users, not just enterprise admins */}
-      {clients.length > 0 && (
-        <div className="bg-white p-4 rounded-2xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center space-x-2.5">
-            <Users className="w-4 h-4 text-[#0071E3]" />
-            <span className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider">
-              Client Scope
-            </span>
-          </div>
-          <select
-            value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-            className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-semibold"
+            {clients.length > 0 && (
+              <div className="flex items-center space-x-2 text-xs">
+                <span className="text-[#86868B] font-semibold">Client:</span>
+                <select
+                  value={selectedClientId}
+                  onChange={(e) => setSelectedClientId(e.target.value)}
+                  className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-semibold"
           >
             <option value="ALL">All Clients</option>
             <option value="UNASSIGNED">No Client</option>
@@ -364,7 +359,10 @@ export function CommandCenterClient({
                 {c.name}
               </option>
             ))}
-          </select>
+                </select>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
