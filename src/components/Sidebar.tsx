@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -12,6 +13,7 @@ import {
   Building2,
   Users,
   Settings,
+  Settings2,
   Shield,
   FileText,
   Files,
@@ -19,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
+import { ManageAccountModal } from "./ManageAccountModal";
 
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -47,22 +50,27 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useLanguage();
+  const [isManageAccountOpen, setIsManageAccountOpen] = useState(false);
 
   const mainNavigation = [
     { name: t.nav.commandCenter, href: "/app/dashboard", icon: LayoutDashboard },
     { name: t.nav.shipments, href: "/app/shipments", icon: FileText },
-    { name: t.nav.clients, href: "/app/clients", icon: Contact2 },
     { name: t.nav.tradeDocuments, href: "/app/documents", icon: Files },
     { name: t.nav.decisions, href: "/app/decisions", icon: Scale },
     { name: t.nav.customsFiling, href: "/app/filing", icon: FileCheck2 },
     { name: t.nav.regulatoryIntel, href: "/app/regulatory", icon: Globe },
   ];
 
-  const adminNavigation = [
-    { name: t.nav.accountProfile, href: "/app/admin", icon: Building2 },
-    { name: t.nav.userManagement, href: "/app/admin/users", icon: Users },
-    { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings },
+  const manageAccountItems = [
+    { name: t.nav.accountProfile, href: "/app/admin", icon: Building2, description: "Company details & preferences" },
+    { name: t.nav.userManagement, href: "/app/admin/users", icon: Users, description: "Members, roles & invitations" },
+    { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings, description: "Configuration & audit log" },
+    { name: t.nav.clients, href: "/app/clients", icon: Contact2, description: "Manage your customer portfolio" },
   ];
+
+  const isAccountAdminActive = manageAccountItems.some(
+    (item) => pathname === item.href || pathname.startsWith(item.href + "/")
+  );
 
   return (
     <aside className="w-64 bg-[#F5F5F7] border-r border-[#E5E5EA] flex flex-col h-screen sticky top-0 z-40">
@@ -135,27 +143,21 @@ export function Sidebar({
             Account Admin
           </p>
           <nav className="space-y-1">
-            {adminNavigation.map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all",
-                    isActive
-                      ? "bg-white text-[#0071E3] shadow-sm border border-[#E5E5EA] font-semibold"
-                      : "text-[#1D1D1F] hover:text-[#0071E3] hover:bg-white/60"
-                  )}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Icon className={cn("w-4 h-4", isActive ? "text-[#0071E3]" : "text-[#86868B]")} />
-                    <span>{item.name}</span>
-                  </div>
-                </Link>
-              );
-            })}
+            <button
+              type="button"
+              onClick={() => setIsManageAccountOpen(true)}
+              className={cn(
+                "w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer",
+                isAccountAdminActive
+                  ? "bg-white text-[#0071E3] shadow-sm border border-[#E5E5EA] font-semibold"
+                  : "text-[#1D1D1F] hover:text-[#0071E3] hover:bg-white/60"
+              )}
+            >
+              <div className="flex items-center space-x-3">
+                <Settings2 className={cn("w-4 h-4", isAccountAdminActive ? "text-[#0071E3]" : "text-[#86868B]")} />
+                <span>Manage Account</span>
+              </div>
+            </button>
           </nav>
         </div>
 
@@ -190,6 +192,12 @@ export function Sidebar({
         <p className="font-semibold text-[#1D1D1F]">Qubere AI Trade Platform</p>
         <p className="text-[11px] text-[#86868B]">Production Enterprise Core</p>
       </div>
+
+      <ManageAccountModal
+        isOpen={isManageAccountOpen}
+        onClose={() => setIsManageAccountOpen(false)}
+        items={manageAccountItems}
+      />
     </aside>
   );
 }
