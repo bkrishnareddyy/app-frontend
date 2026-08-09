@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Package, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
@@ -9,6 +9,7 @@ export default function NewShipmentPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
 
   const [formData, setFormData] = useState({
     importerName: "ABC Manufacturing India Pvt Ltd",
@@ -19,7 +20,15 @@ export default function NewShipmentPage() {
     carrierName: "Maersk Line",
     countryOfExport: "Germany",
     estimatedArrival: "2026-05-20",
+    clientId: "",
   });
+
+  useEffect(() => {
+    fetch("/api/clients")
+      .then((res) => res.json())
+      .then((data) => setClients(data.clients || []))
+      .catch((err) => console.error("Failed to fetch clients:", err));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +39,7 @@ export default function NewShipmentPage() {
       const res = await fetch("/api/shipments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, clientId: formData.clientId || undefined }),
       });
 
       const data = await res.json();
@@ -191,6 +200,23 @@ export default function NewShipmentPage() {
               onChange={(e) => setFormData({ ...formData, estimatedArrival: e.target.value })}
               className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
             />
+          </div>
+
+          {/* Client */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#1D1D1F]">Client</label>
+            <select
+              value={formData.clientId}
+              onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
+            >
+              <option value="">No Client</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

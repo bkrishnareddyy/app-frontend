@@ -38,6 +38,8 @@ interface ShipmentItem {
   healthStatus?: string | null;
   status: string;
   createdAt: any;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
   assignedBrokerId?: string | null;
   assignedBroker?: {
     id: string;
@@ -58,6 +60,7 @@ interface ShipmentsWorkbenchClientProps {
     firstName: string | null;
     lastName: string | null;
   }>;
+  clients: Array<{ id: string; name: string }>;
   context: {
     userId: string;
     roleNames: string[];
@@ -72,6 +75,7 @@ interface ShipmentsWorkbenchClientProps {
 export function ShipmentsWorkbenchClient({
   initialShipments,
   teamMembers,
+  clients,
   context,
 }: ShipmentsWorkbenchClientProps) {
   const isEnterpriseAdmin =
@@ -106,6 +110,7 @@ export function ShipmentsWorkbenchClient({
     readiness: "ALL", // ALL, READY, NOT_READY
     status: "ALL",
     owner: "ALL",
+    client: "ALL",
   });
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -233,6 +238,15 @@ export function ShipmentsWorkbenchClient({
         if (columnFilters.owner === "UNASSIGNED") {
           if (shp.assignedBrokerId) return false;
         } else if (shp.assignedBrokerId !== columnFilters.owner) {
+          return false;
+        }
+      }
+
+      // 10. Column Client Filter
+      if (columnFilters.client !== "ALL") {
+        if (columnFilters.client === "UNASSIGNED") {
+          if (shp.clientId) return false;
+        } else if (shp.clientId !== columnFilters.client) {
           return false;
         }
       }
@@ -456,6 +470,7 @@ export function ShipmentsWorkbenchClient({
               columnFilters.readiness !== "ALL" ||
               columnFilters.status !== "ALL" ||
               columnFilters.owner !== "ALL" ||
+              columnFilters.client !== "ALL" ||
               searchQuery) && (
               <button
                 onClick={() => {
@@ -467,6 +482,7 @@ export function ShipmentsWorkbenchClient({
                     readiness: "ALL",
                     status: "ALL",
                     owner: "ALL",
+                    client: "ALL",
                   });
                   setSearchQuery("");
                 }}
@@ -499,6 +515,7 @@ export function ShipmentsWorkbenchClient({
                 <th className="px-5 py-3.5">Port & Mode</th>
                 <th className="px-5 py-3.5">Readiness</th>
                 <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5">Client</th>
                 {isEnterpriseAdmin && <th className="px-5 py-3.5">Owner</th>}
               </tr>
             </thead>
@@ -576,6 +593,21 @@ export function ShipmentsWorkbenchClient({
                     <option value="On Hold">On Hold</option>
                   </select>
                 </td>
+                <td className="px-4 py-2">
+                  <select
+                    value={columnFilters.client}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, client: e.target.value })}
+                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3] cursor-pointer"
+                  >
+                    <option value="ALL">All Clients</option>
+                    <option value="UNASSIGNED">No Client</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
                 {isEnterpriseAdmin && (
                   <td className="px-4 py-2">
                     <select
@@ -600,7 +632,7 @@ export function ShipmentsWorkbenchClient({
               {filteredShipments.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={isEnterpriseAdmin ? 7 : 6}
+                    colSpan={isEnterpriseAdmin ? 8 : 7}
                     className="px-5 py-12 text-center text-[#86868B]"
                   >
                     <Package className="w-8 h-8 mx-auto text-[#86868B] mb-2 stroke-1" />
@@ -672,6 +704,16 @@ export function ShipmentsWorkbenchClient({
                         >
                           {shp.status}
                         </span>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        {shp.client ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                            {shp.client.name}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-[#86868B]">—</span>
+                        )}
                       </td>
 
                       {isEnterpriseAdmin && (

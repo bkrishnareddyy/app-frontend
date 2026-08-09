@@ -15,6 +15,7 @@ import {
   Shield,
   FileText,
   Files,
+  Contact2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -50,6 +51,7 @@ export function Sidebar({
   const mainNavigation = [
     { name: t.nav.commandCenter, href: "/app/dashboard", icon: LayoutDashboard },
     { name: t.nav.shipments, href: "/app/shipments", icon: FileText },
+    { name: t.nav.clients, href: "/app/clients", icon: Contact2 },
     { name: t.nav.tradeDocuments, href: "/app/documents", icon: Files },
     { name: t.nav.decisions, href: "/app/decisions", icon: Scale },
     { name: t.nav.customsFiling, href: "/app/filing", icon: FileCheck2 },

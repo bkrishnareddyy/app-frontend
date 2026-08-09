@@ -26,6 +26,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
       masterShipment: true,
       houseShipments: true,
       exceptionItems: true,
+      client: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -47,12 +48,13 @@ const createShipmentSchema = z.object({
   incoterm: z.string().min(1).optional(),
   estimatedArrival: z.string().datetime().optional().or(z.string().min(1).optional()),
   masterShipmentId: z.string().min(1).optional(),
+  clientId: z.string().min(1).optional(),
 });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, createShipmentSchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
-  const { importerName, poReference, entryType, incoterm, estimatedArrival, masterShipmentId } = bodyVal.data;
+  const { importerName, poReference, entryType, incoterm, estimatedArrival, masterShipmentId, clientId } = bodyVal.data;
 
   // Dynamic sequence calculation directly from database count
   const shipmentCount = await db.shipment.count({
@@ -72,6 +74,16 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     }
   }
 
+  // Verify client exists and belongs to the same account if specified
+  if (clientId) {
+    const client = await db.client.findFirst({
+      where: { id: clientId, accountId: ctx.accountId },
+    });
+    if (!client) {
+      return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
+    }
+  }
+
   const shipment = await db.shipment.create({
     data: {
       accountId: ctx.accountId,
@@ -87,6 +99,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       ownerName: ctx.firstName || "Stephen",
       assignedBrokerId: ctx.roleNames.includes("PLANNER") ? ctx.userId : null,
       masterShipmentId: masterShipmentId || null,
+      clientId: clientId || null,
     },
   });
 

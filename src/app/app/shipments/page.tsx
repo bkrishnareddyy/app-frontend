@@ -18,8 +18,14 @@ export default async function ShipmentsConsolePage() {
       customsFilings: true,
       assignedBroker: true,
       exceptionItems: true,
+      client: true,
     },
     orderBy: { createdAt: "desc" },
+  });
+
+  const clients = await db.client.findMany({
+    where: { accountId: ctx.accountId },
+    orderBy: { name: "asc" },
   });
 
   // Fetch active team members if user is an enterprise admin
@@ -57,6 +63,8 @@ export default async function ShipmentsConsolePage() {
     healthStatus: s.healthStatus,
     status: s.status,
     createdAt: s.createdAt.toISOString(),
+    clientId: s.clientId,
+    client: s.client ? { id: s.client.id, name: s.client.name } : null,
     assignedBrokerId: s.assignedBrokerId,
     assignedBroker: s.assignedBroker
       ? {
@@ -99,6 +107,7 @@ export default async function ShipmentsConsolePage() {
     <ShipmentsWorkbenchClient
       initialShipments={formattedShipments}
       teamMembers={teamMembers}
+      clients={clients.map((c) => ({ id: c.id, name: c.name }))}
       context={{
         userId: ctx.userId,
         roleNames: ctx.roleNames,

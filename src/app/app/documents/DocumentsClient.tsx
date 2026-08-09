@@ -38,6 +38,8 @@ interface ShipmentDocumentItem {
   confidenceScore?: number;
   assignedBrokerId?: string | null;
   assignedBrokerName: string;
+  clientId?: string | null;
+  clientName: string;
 }
 
 interface DocumentsClientProps {
@@ -82,6 +84,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   const [shipments, setShipments] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("ALL");
+  const [selectedClientId, setSelectedClientId] = useState("ALL");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
   const [targetShipmentId, setTargetShipmentId] = useState("");
@@ -123,6 +126,8 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                   assignedBrokerName: shp.assignedBroker
                     ? `${shp.assignedBroker.firstName ?? ""} ${shp.assignedBroker.lastName ?? ""}`.trim() || shp.assignedBroker.email
                     : "Unassigned",
+                  clientId: shp.clientId ?? null,
+                  clientName: shp.client?.name || "No Client",
                 });
               });
             }
@@ -143,6 +148,15 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     );
   };
 
+  // Derived from the shipments loaded via /api/shipments (already includes client)
+  const availableClients = useMemo(() => {
+    const map = new Map<string, string>();
+    shipments.forEach((shp: any) => {
+      if (shp.client) map.set(shp.client.id, shp.client.name);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [shipments]);
+
   const filteredDocs = documents.filter((doc) => {
     // 1. Assignee/Owner filter
     if (isEnterpriseAdmin) {
@@ -162,7 +176,12 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     // 3. Document type dropdown filter
     const matchesType = selectedType === "ALL" || doc.docType === selectedType;
 
-    return matchesSearch && matchesType;
+    // 4. Client dropdown filter
+    const matchesClient =
+      selectedClientId === "ALL" ||
+      (selectedClientId === "UNASSIGNED" ? !doc.clientId : doc.clientId === selectedClientId);
+
+    return matchesSearch && matchesType && matchesClient;
   });
 
   const isImageFile = (url: string, name: string) => {
@@ -349,6 +368,20 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             <option value="PACKING_LIST">Packing List</option>
           </select>
 
+          <select
+            value={selectedClientId}
+            onChange={(e) => setSelectedClientId(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+          >
+            <option value="ALL">All Clients</option>
+            <option value="UNASSIGNED">No Client</option>
+            {availableClients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
           <button
             onClick={fetchDocuments}
             disabled={isLoading}
@@ -370,6 +403,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                 <th className="py-3 px-5">{t.documents.colType}</th>
                 <th className="py-3 px-5">{t.documents.colShipment}</th>
                 <th className="py-3 px-5">{t.documents.colStatus}</th>
+                <th className="py-3 px-5">Client</th>
                 {isEnterpriseAdmin && <th className="py-3 px-5">Owner</th>}
                 <th className="py-3 px-5">{t.documents.colDate}</th>
               </tr>
@@ -377,7 +411,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             <tbody className="divide-y divide-[#E5E5EA]">
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={isEnterpriseAdmin ? 6 : 5} className="py-12 text-center text-[#86868B]">
+                  <td colSpan={isEnterpriseAdmin ? 7 : 6} className="py-12 text-center text-[#86868B]">
                     <FileText className="w-8 h-8 mx-auto text-[#86868B]/40 mb-2" />
                     <p className="font-semibold text-xs text-[#1D1D1F]">No Trade Documents Uploaded Yet</p>
                     <p className="text-[11px] text-[#86868B] mt-1">
@@ -418,6 +452,16 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                         <CheckCircle2 className="w-3 h-3" />
                         <span>Processed (98% Conf)</span>
                       </span>
+                    </td>
+
+                    <td className="py-3.5 px-5">
+                      {doc.clientId ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                          {doc.clientName}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-[#86868B]">—</span>
+                      )}
                     </td>
 
                     {isEnterpriseAdmin && (
