@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
-import { parseAndValidateBody } from "@/lib/api/validation";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse, errorMessage } from "@/lib/api/error";
+import { parseAndValidateBody, validatePathParams } from "@/lib/api/validation";
 import { createAuditLog } from "@/lib/audit";
 import { ExceptionService } from "@/modules/exceptions/exception.service";
 import { z } from "zod";
+
+const paramsSchema = z.object({ id: z.string().min(1) });
 
 const updateSchema = z.object({
   status: z.string().optional(),
@@ -14,24 +16,20 @@ const updateSchema = z.object({
   expectedVersion: z.number().int({ message: "expectedVersion integer is required for concurrency control" }),
 });
 
-export async function PATCH(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  const requestId = generateRequestId();
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
+export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
-  const { id } = await context.params;
   const bodyVal = await parseAndValidateBody(req, updateSchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
 
   try {
-    const updated = await ExceptionService.updateException(ctx!.accountId, id, bodyVal.data);
+    const updated = await ExceptionService.updateException(ctx.accountId, id, bodyVal.data);
 
     await createAuditLog({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       action: "exception.update",
       entity: "ExceptionItem",
       entityId: id,
@@ -48,4 +46,4 @@ export async function PATCH(
     }
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to update exception item", undefined, requestId);
   }
-}
+});
