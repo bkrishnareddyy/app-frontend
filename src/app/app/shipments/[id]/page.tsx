@@ -99,7 +99,7 @@ export default async function ShipmentWorkspacePage(props: {
               unitPrice: price,
               totalValue: total,
               countryOfOrigin: li.countryOfOrigin || "",
-              htsCode: li.sku || li.htsCode || "",
+              htsCode: li.htsCode || (li.sku && /^\d{4}/.test(li.sku) ? li.sku : ""),
               htsConfidence: 95,
               status: "Extracted",
               createdAt: doc.createdAt,
@@ -1035,7 +1035,7 @@ export default async function ShipmentWorkspacePage(props: {
                       unitPrice: Number(li.unitPrice || 0),
                       totalValue: Number(li.totalAmount || li.totalValue || 0),
                       countryOfOrigin: li.countryOfOrigin || "",
-                      htsCode: li.sku || li.htsCode || "",
+                      htsCode: li.htsCode || (li.sku && /^\d{4}/.test(li.sku) ? li.sku : ""),
                       htsConfidence: 95,
                     }));
                   }
