@@ -36,7 +36,11 @@ export default async function AppLayout({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <DataModeBanner dataMode={context.dataMode} />
-        <Header tenantName={context.accountName} userName={displayName} />
+        <Header
+          tenantName={context.accountName}
+          userName={displayName}
+          isPlatformAdmin={context.isPlatformAdmin}
+        />
         {/* min-h-0 lets this be the only scroll region; without it the shell grows and the window scrolls too. */}
         <main className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
