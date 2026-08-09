@@ -19,6 +19,7 @@ interface LineItem {
 interface LineItemsTableProps {
   shipmentId: string;
   initialLineItems: LineItem[];
+  isEnterpriseAdmin?: boolean;
 }
 
 export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableProps) {

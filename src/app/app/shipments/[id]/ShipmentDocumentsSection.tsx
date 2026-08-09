@@ -20,6 +20,7 @@ interface ShipmentDocumentsSectionProps {
   shipmentId: string;
   documents: DocumentItem[];
   originStatus?: string;
+  selectedDocId?: string;
 }
 
 export function ShipmentDocumentsSection({

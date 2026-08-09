@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Bot,
   Users,
+  DollarSign,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
@@ -132,13 +133,14 @@ export function CommandCenterClient({
     (s) => s.healthStatus === "At Risk" || s.riskScore > 50
   ).length;
 
-  const avgReadiness =
-    filteredShipments.length > 0
-      ? Math.round(
-          filteredShipments.reduce((acc, s) => acc + s.readinessScore, 0) /
-            filteredShipments.length
-        )
-      : 0;
+  // Value at Risk: total $ value tied up in shipments that aren't ready to
+  // file yet -- a dollar figure lands harder for a forwarder than an
+  // abstract average readiness percentage, since it's what's actually on
+  // the line (demurrage, detention, client trust) if something slips.
+  const notReadyShipments = filteredShipments.filter((s) => s.readinessScore < 85);
+  const clearedShipments = filteredShipments.filter((s) => s.readinessScore >= 85);
+  const valueAtRisk = notReadyShipments.reduce((sum, s) => sum + (s.totalValue || 0), 0);
+  const clearedValue = clearedShipments.reduce((sum, s) => sum + (s.totalValue || 0), 0);
 
   const reviewRequiredDecisions = filteredDecisions.filter(
     (d) => d.status === "Review Required" || d.status === "Needs Review"
@@ -323,41 +325,25 @@ export function CommandCenterClient({
 
       {/* Top KPI Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-        {/* 1. Overall Readiness Gauge */}
+        {/* 1. Value at Risk */}
         <Link
           href="/app/shipments"
-          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-[#0071E3] hover:shadow-md transition-all cursor-pointer group block"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-[#0071E3]">
-            <span className="font-semibold">{t.dashboard.kpiAvgReadiness}</span>
-            <ShieldCheck className="w-4 h-4 text-[#0071E3] group-hover:scale-110 transition-transform" />
+          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-red-600">
+            <span className="font-semibold">Value at Risk</span>
+            <DollarSign className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
           </div>
-          <div className="flex items-center space-x-3">
-            <div className="relative w-14 h-14 flex items-center justify-center">
-              <svg className="w-14 h-14 transform -rotate-90">
-                <circle cx="28" cy="28" r="22" stroke="#E5E5EA" strokeWidth="4" fill="transparent" />
-                <circle
-                  cx="28"
-                  cy="28"
-                  r="22"
-                  stroke="#0071E3"
-                  strokeWidth="4"
-                  strokeDasharray={138}
-                  strokeDashoffset={138 - (138 * avgReadiness) / 100}
-                  strokeLinecap="round"
-                  fill="transparent"
-                />
-              </svg>
-              <span className="absolute text-sm font-extrabold text-[#1D1D1F]">{avgReadiness}%</span>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-[#1D1D1F] group-hover:text-[#0071E3] transition-colors">
-                {avgReadiness >= 90 ? "Ready to file" : "Verification in progress"}
-              </p>
-              <p className="text-[10px] text-[#86868B]">
-                {totalShipments} {t.nav.shipments} • Click for details
-              </p>
-            </div>
+          <p className="text-2xl font-extrabold text-[#1D1D1F]">
+            ${valueAtRisk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </p>
+          <div className="flex items-center justify-between mt-2 gap-2">
+            <span className="text-[10px] text-[#86868B]">
+              {notReadyShipments.length} not ready to file
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+              {clearedShipments.length} cleared
+            </span>
           </div>
         </Link>
 

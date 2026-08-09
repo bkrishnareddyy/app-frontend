@@ -262,17 +262,18 @@ model Shipment {
   assignedBrokerId   String?
   assignedBroker     User?             @relation("ShipmentBroker", fields: [assignedBrokerId], references: [id], onDelete: SetNull)
   poReference        String?           // e.g. PO-778899
-  entryType          String            @default("Consumption Entry")
-  incoterm           String            @default("CIF Los Angeles")
-  portOfEntry        String?           @default("Port of Los Angeles (2704)")
-  carrierName        String?           @default("Maersk Line")
-  countryOfExport    String?           @default("Germany")
+  entryType          String?
+  incoterm           String?
+  portOfEntry        String?
+  carrierName        String?
+  countryOfExport    String?
+  countryOfOrigin    String?
   estimatedArrival   DateTime?
   status             String            @default("In Progress") // In Progress, Ready to File, On Hold, Submitted, Completed
   healthStatus       String            @default("Healthy") // Healthy, At Risk, Critical
-  readinessScore     Int               @default(87) // 0 - 100 percentage
-  riskScore          Int               @default(28) // 0 - 100 risk score
-  ownerName          String            @default("Stephen")
+  readinessScore     Int?
+  riskScore          Int?
+  ownerName          String?
   version            Int               @default(1)
   deletedAt          DateTime?
   createdAt          DateTime          @default(now())
@@ -293,6 +294,8 @@ model Shipment {
   facts                   Fact[]
   shipmentParties         ShipmentParty[]
   changeEvents            ShipmentChangeEvent[]
+  eventLogs               ShipmentEventLog[]
+  agentExecutionRecords   AgentExecutionRecord[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -927,18 +930,56 @@ model ExceptionItem {
   shipment         Shipment?      @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
   filingId         String?
   filing           CustomsFiling? @relation(fields: [filingId], references: [id], onDelete: SetNull)
+  code             String?
+  category         String?        // MISSING_DATA | CONFLICT | VALIDATION | COMPLIANCE | DOCUMENT | CLASSIFICATION | VALUATION | FILING
   type             String         // missing_document | data_mismatch | broker_hold | compliance_flag
   severity         String         @default("Medium") // High | Medium | Low | Critical
   description      String
   status           String         @default("Open") // Open | InProgress | Resolved
+  blocking         Boolean        @default(false)
+  requiredAction   String?
+  sourceAgent      String?
   version          Int            @default(1)
   assignedToUserId String?
   assignedToUser   User?          @relation("ExceptionAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   createdAt        DateTime       @default(now())
   resolvedAt       DateTime?
+  resolvedBy       String?
 
   @@index([accountId])
   @@index([status])
+}
+
+model ShipmentEventLog {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  eventType   String   // SHIPMENT_CREATED, DOCUMENT_UPLOADED, RECONCILIATION_REQUESTED, etc.
+  payload     Json?
+  triggeredBy String   @default("SYSTEM")
+  createdAt   DateTime @default(now())
+
+  @@index([shipmentId])
+  @@index([eventType])
+}
+
+model AgentExecutionRecord {
+  id                 String    @id @default(cuid())
+  shipmentId         String
+  shipment           Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  agentName          String
+  triggerEvent       String?
+  invokedBy          String?   @default("SYSTEM")
+  nextStep           String?
+  status             String    @default("COMPLETED") // RUNNING, COMPLETED, FAILED
+  durationMs         Int?
+  modelVersion       String?   @default("gemini-3.6-flash")
+  error              String?
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+
+  @@index([shipmentId])
+  @@index([agentName])
 }
 
 model RegulatoryUpdateImpact {

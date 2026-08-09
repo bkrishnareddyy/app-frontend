@@ -30,11 +30,11 @@ interface ShipmentItem {
   shipmentNumber: string;
   importerName: string;
   countryOfExport?: string | null;
-  entryType: string;
+  entryType?: string | null;
   poReference?: string | null;
   portOfEntry?: string | null;
   carrierName?: string | null;
-  readinessScore: number;
+  readinessScore?: number | null;
   healthStatus?: string | null;
   status: string;
   createdAt: any;
@@ -181,7 +181,7 @@ export function ShipmentsWorkbenchClient({
         const matchesGlobal =
           shp.shipmentNumber.toLowerCase().includes(q) ||
           shp.importerName.toLowerCase().includes(q) ||
-          shp.entryType.toLowerCase().includes(q) ||
+          (shp.entryType && shp.entryType.toLowerCase().includes(q)) ||
           (shp.poReference && shp.poReference.toLowerCase().includes(q)) ||
           (shp.portOfEntry && shp.portOfEntry.toLowerCase().includes(q));
         if (!matchesGlobal) return false;
@@ -207,7 +207,7 @@ export function ShipmentsWorkbenchClient({
       if (columnFilters.entryTypePo) {
         const q = columnFilters.entryTypePo.toLowerCase();
         const match =
-          shp.entryType.toLowerCase().includes(q) ||
+          (shp.entryType && shp.entryType.toLowerCase().includes(q)) ||
           (shp.poReference && shp.poReference.toLowerCase().includes(q));
         if (!match) return false;
       }
@@ -223,7 +223,7 @@ export function ShipmentsWorkbenchClient({
 
       // 7. Column Readiness Filter
       if (columnFilters.readiness !== "ALL") {
-        const isReady = shp.readinessScore >= 85;
+        const isReady = (shp.readinessScore ?? 0) >= 85;
         if (columnFilters.readiness === "READY" && !isReady) return false;
         if (columnFilters.readiness === "NOT_READY" && isReady) return false;
       }
@@ -259,7 +259,7 @@ export function ShipmentsWorkbenchClient({
   const totalCount = filteredShipments.length;
   const inProgressCount = filteredShipments.filter((s) => s.status === "In Progress").length;
   const readyCount = filteredShipments.filter(
-    (s) => s.status === "Ready to File" || s.readinessScore >= 90
+    (s) => s.status === "Ready to File" || (s.readinessScore ?? 0) >= 90
   ).length;
   const holdCount = filteredShipments.filter(
     (s) => s.status === "On Hold" || s.healthStatus === "Critical"
@@ -642,7 +642,7 @@ export function ShipmentsWorkbenchClient({
                 </tr>
               ) : (
                 filteredShipments.map((shp) => {
-                  const isReady = shp.readinessScore >= 85;
+                  const isReady = (shp.readinessScore ?? 0) >= 85;
                   const isCritical = shp.healthStatus === "Critical";
 
                   return (
