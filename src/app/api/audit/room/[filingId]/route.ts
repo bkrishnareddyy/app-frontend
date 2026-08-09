@@ -3,7 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 
-export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+export const POST = withAuthenticatedRoute<{ filingId: string }>(async ({ req, ctx }) => {
   const body = await req.json();
   const { filingId } = body;
 
