@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { withPublicRoute } from "@/lib/api/auth-guards";
 import { CrossIngestionService } from "@/modules/regulatory/crossIngestionService";
 
-export async function GET(req: Request, { params }: { params: Promise<{ rulingNumber: string }> }) {
+export const GET = withPublicRoute<{ rulingNumber: string }>(async ({ params }) => {
   try {
-    const { rulingNumber } = await params;
+    const { rulingNumber } = params;
     const verification = await CrossIngestionService.verifyCitation(rulingNumber);
 
     if (!verification.verified) {
@@ -14,4 +15,4 @@ export async function GET(req: Request, { params }: { params: Promise<{ rulingNu
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch CROSS ruling" }, { status: 500 });
   }
-}
+});

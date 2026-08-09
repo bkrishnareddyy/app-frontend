@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { withPublicRoute } from "@/lib/api/auth-guards";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 
-export async function GET(req: Request) {
+export const GET = withPublicRoute(async ({ req }) => {
   try {
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q") || undefined;
@@ -28,4 +29,4 @@ export async function GET(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to search HTS Master" }, { status: 500 });
   }
-}
+});

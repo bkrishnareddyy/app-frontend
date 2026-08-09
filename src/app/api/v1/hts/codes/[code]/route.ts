@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { withPublicRoute } from "@/lib/api/auth-guards";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 
-export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
+export const GET = withPublicRoute<{ code: string }>(async ({ req, params }) => {
   try {
-    const { code } = await params;
+    const { code } = params;
     const { searchParams } = new URL(req.url);
     const asOfDate = searchParams.get("asOfDate") || undefined;
 
@@ -16,4 +17,4 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch HTS code detail" }, { status: 500 });
   }
-}
+});

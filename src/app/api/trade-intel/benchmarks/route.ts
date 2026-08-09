@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 
 async function ensureBenchmarksSeeded() {
@@ -27,32 +27,22 @@ async function ensureBenchmarksSeeded() {
   }
 }
 
-export async function GET(req: Request) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const GET = withAuthenticatedRoute(async ({ req }) => {
+  await ensureBenchmarksSeeded();
 
-    await ensureBenchmarksSeeded();
+  const { searchParams } = new URL(req.url);
+  const htsCode = searchParams.get("htsCode");
 
-    const { searchParams } = new URL(req.url);
-    const htsCode = searchParams.get("htsCode");
-
-    if (htsCode) {
-      const benchmark = await db.tradeBenchmark.findFirst({
-        where: { htsCode10: { contains: htsCode } },
-      });
-      return NextResponse.json({ benchmark });
-    }
-
-    const benchmarks = await db.tradeBenchmark.findMany({
-      orderBy: { totalUSVolumeVal: "desc" },
+  if (htsCode) {
+    const benchmark = await db.tradeBenchmark.findFirst({
+      where: { htsCode10: { contains: htsCode } },
     });
-
-    return NextResponse.json({ benchmarks });
-  } catch (error) {
-    console.error("GET /api/trade-intel/benchmarks error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ benchmark });
   }
-}
+
+  const benchmarks = await db.tradeBenchmark.findMany({
+    orderBy: { totalUSVolumeVal: "desc" },
+  });
+
+  return NextResponse.json({ benchmarks });
+});

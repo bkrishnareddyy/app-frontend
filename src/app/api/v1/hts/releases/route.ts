@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { withPublicRoute } from "@/lib/api/auth-guards";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 
-export async function GET() {
+export const GET = withPublicRoute(async () => {
   try {
     const releases = await HtsSearchService.getReleases();
     return NextResponse.json({ releases });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch HTS releases" }, { status: 500 });
   }
-}
+});
