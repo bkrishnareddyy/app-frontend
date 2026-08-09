@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { MockCustomsTransmissionProvider } from "@/lib/providers";
 
@@ -10,7 +11,7 @@ import { MockCustomsTransmissionProvider } from "@/lib/providers";
  * - In production, asserts no mock customs transmission provider is active.
  * Returns 200 when healthy, 503 when not ready to serve production traffic.
  */
-export async function GET() {
+export const GET = withPublicRoute(async () => {
   const checks: Record<string, { ok: boolean; detail?: string }> = {};
 
   // --- Database check ---
@@ -55,4 +56,4 @@ export async function GET() {
     },
     { status }
   );
-}
+});

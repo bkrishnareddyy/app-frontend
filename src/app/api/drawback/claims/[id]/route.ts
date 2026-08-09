@@ -1,92 +1,75 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { z } from "zod";
 
-export async function GET(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+const paramsSchema = z.object({ id: z.string().min(1) });
 
-    const { id } = await context.params;
+export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
-    const claim = await db.drawbackClaim.findFirst({
-      where: { id, accountId: ctx.accountId },
-      include: {
-        matches: {
-          include: {
-            shipmentLineItem: true,
-            exportLineItem: true,
-          },
+  const claim = await db.drawbackClaim.findFirst({
+    where: { id, accountId: ctx.accountId },
+    include: {
+      matches: {
+        include: {
+          shipmentLineItem: true,
+          exportLineItem: true,
         },
       },
-    });
+    },
+  });
 
-    if (!claim) {
-      return NextResponse.json({ error: "Drawback claim not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ drawbackClaim: claim });
-  } catch (error) {
-    console.error("GET /api/drawback/claims/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  if (!claim) {
+    return NextResponse.json({ error: "Drawback claim not found" }, { status: 404 });
   }
-}
 
-export async function PATCH(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  return NextResponse.json({ drawbackClaim: claim });
+});
 
-    const { id } = await context.params;
-    const body = await req.json();
-    const { status, totalRefundClaimed } = body;
+export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
-    const existingClaim = await db.drawbackClaim.findFirst({
-      where: { id, accountId: ctx.accountId },
-    });
+  const body = await req.json();
+  const { status, totalRefundClaimed } = body;
 
-    if (!existingClaim) {
-      return NextResponse.json({ error: "Drawback claim not found" }, { status: 404 });
-    }
+  const existingClaim = await db.drawbackClaim.findFirst({
+    where: { id, accountId: ctx.accountId },
+  });
 
-    const updateData: import("@prisma/client").Prisma.DrawbackClaimUpdateInput = {};
-    if (status) {
-      return NextResponse.json(
-        { error: "Forbidden: State mutations must be performed via the workflow engine." },
-        { status: 403 }
-      );
-    }
-    if (totalRefundClaimed !== undefined) updateData.totalRefundClaimed = totalRefundClaimed;
-
-    const updatedClaim = await db.drawbackClaim.update({
-      where: { id },
-      data: updateData,
-      include: { matches: true },
-    });
-
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "drawback.claim_update",
-      entity: "DrawbackClaim",
-      entityId: id,
-      metadata: { newStatus: status || existingClaim.status },
-    });
-
-    return NextResponse.json({ drawbackClaim: updatedClaim });
-  } catch (error) {
-    console.error("PATCH /api/drawback/claims/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  if (!existingClaim) {
+    return NextResponse.json({ error: "Drawback claim not found" }, { status: 404 });
   }
-}
+
+  const updateData: import("@prisma/client").Prisma.DrawbackClaimUpdateInput = {};
+  if (status) {
+    return NextResponse.json(
+      { error: "Forbidden: State mutations must be performed via the workflow engine." },
+      { status: 403 }
+    );
+  }
+  if (totalRefundClaimed !== undefined) updateData.totalRefundClaimed = totalRefundClaimed;
+
+  const updatedClaim = await db.drawbackClaim.update({
+    where: { id },
+    data: updateData,
+    include: { matches: true },
+  });
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: "drawback.claim_update",
+    entity: "DrawbackClaim",
+    entityId: id,
+    metadata: { newStatus: status || existingClaim.status },
+  });
+
+  return NextResponse.json({ drawbackClaim: updatedClaim });
+});

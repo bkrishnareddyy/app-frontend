@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent } from "@/modules/agents/documentIntelligenceAgent";
@@ -11,66 +12,62 @@ import { ComplianceAuditAgent } from "@/modules/agents/complianceAuditAgent";
 import { FilingReadinessAgent } from "@/modules/agents/filingReadinessAgent";
 import { CustomsFilingAgent } from "@/modules/demo/customsFilingAgent";
 import { ResponseManagementAgent } from "@/modules/demo/responseManagementAgent";
+import { z } from "zod";
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ agentId: string }> }
-) {
+const paramsSchema = z.object({ agentId: z.string().min(1) });
+
+export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { agentId } = paramsVal.data;
+
+  const accountId = ctx.accountId;
+  const userId = ctx.userId;
+
+  const body = await req.json().catch(() => ({}));
+
+  let targetShipmentId = body.shipmentId;
+
+  if (targetShipmentId) {
+    const existing = await db.shipment.findUnique({
+      where: { id: targetShipmentId },
+      select: { id: true },
+    });
+    if (!existing) {
+      targetShipmentId = null;
+    }
+  }
+
+  if (!targetShipmentId) {
+    const activeShipment = await db.shipment.findFirst({
+      where: { accountId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+
+    if (activeShipment) {
+      targetShipmentId = activeShipment.id;
+    } else {
+      const count = await db.shipment.count({ where: { accountId } });
+      const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
+      const newShipment = await db.shipment.create({
+        data: {
+          accountId,
+          shipmentNumber,
+          importerName: "Demo Import Account",
+          poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
+          entryType: "Consumption Entry",
+          incoterm: "FOB SHENZHEN",
+          status: "In Progress",
+          readinessScore: 85,
+          riskScore: 20,
+        },
+      });
+      targetShipmentId = newShipment.id;
+    }
+  }
+
   try {
-    const ctx = await getAccountContext().catch(() => null);
-    if (!ctx || !ctx.accountId || !ctx.userId) {
-      return NextResponse.json(
-        { error: "Unauthorized", message: "Only logged-in users can test Qubere AI Agents. Please sign in." },
-        { status: 401 }
-      );
-    }
-
-    const accountId = ctx.accountId;
-    const userId = ctx.userId;
-
-    const { agentId } = await params;
-    const body = await req.json().catch(() => ({}));
-
-    let targetShipmentId = body.shipmentId;
-
-    if (targetShipmentId) {
-      const existing = await db.shipment.findUnique({
-        where: { id: targetShipmentId },
-        select: { id: true },
-      });
-      if (!existing) {
-        targetShipmentId = null;
-      }
-    }
-
-    if (!targetShipmentId) {
-      const activeShipment = await db.shipment.findFirst({
-        where: { accountId, deletedAt: null },
-        orderBy: { createdAt: "desc" },
-        select: { id: true },
-      });
-
-      if (activeShipment) {
-        targetShipmentId = activeShipment.id;
-      } else {
-        const count = await db.shipment.count({ where: { accountId } });
-        const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
-        const newShipment = await db.shipment.create({
-          data: {
-            accountId,
-            shipmentNumber,
-            importerName: "Demo Import Account",
-            poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
-            entryType: "Consumption Entry",
-            incoterm: "FOB SHENZHEN",
-            status: "In Progress",
-            readinessScore: 85,
-            riskScore: 20,
-          },
-        });
-        targetShipmentId = newShipment.id;
-      }
-    }
     let agentResult: any = null;
     let agentName = "";
 
@@ -222,4 +219,4 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+});

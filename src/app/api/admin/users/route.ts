@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { createAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
@@ -11,17 +11,13 @@ const updateUserSchema = z.object({
   roleName: z.enum(["OWNER", "ADMIN", "MEMBER", "VIEWER"]).default("MEMBER"),
 });
 
-export async function POST(req: Request) {
-  const requestId = generateRequestId();
-  const { ctx, errorResponse } = await authorizeRequest("users.manage");
-  if (errorResponse) return errorResponse;
-
+export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, updateUserSchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
 
   try {
     const role = await db.role.findFirst({
-      where: { name: bodyVal.data.roleName, OR: [{ accountId: ctx!.accountId }, { accountId: null }] },
+      where: { name: bodyVal.data.roleName, OR: [{ accountId: ctx.accountId }, { accountId: null }] },
     });
 
     if (!role) {
@@ -30,19 +26,19 @@ export async function POST(req: Request) {
 
     const invitation = await db.invitation.create({
       data: {
-        accountId: ctx!.accountId,
+        accountId: ctx.accountId,
         email: bodyVal.data.email.trim().toLowerCase(),
         roleId: role.id,
         status: "PENDING",
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        createdByUserId: ctx!.userId,
+        createdByUserId: ctx.userId,
       },
     });
 
     // SECURITY: Exclude raw invitation token from audit metadata log
     await createAuditLog({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       action: "USER_INVITED",
       entity: "Invitation",
       entityId: invitation.id,
@@ -63,4 +59,4 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to invite user", undefined, requestId);
   }
-}
+}, { permission: "users.manage" });
