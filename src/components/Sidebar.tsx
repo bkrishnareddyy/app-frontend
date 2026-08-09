@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,18 +9,11 @@ import {
   Scale,
   FileCheck2,
   Globe,
-  Building2,
-  Users,
-  Settings,
-  Settings2,
-  Shield,
   FileText,
   Files,
-  Contact2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
-import { ManageAccountModal } from "./ManageAccountModal";
 
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -50,7 +42,6 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useLanguage();
-  const [isManageAccountOpen, setIsManageAccountOpen] = useState(false);
 
   const mainNavigation = [
     { name: t.nav.commandCenter, href: "/app/dashboard", icon: LayoutDashboard },
@@ -60,17 +51,6 @@ export function Sidebar({
     { name: t.nav.customsFiling, href: "/app/filing", icon: FileCheck2 },
     { name: t.nav.regulatoryIntel, href: "/app/regulatory", icon: Globe },
   ];
-
-  const manageAccountItems = [
-    { name: t.nav.accountProfile, href: "/app/admin", icon: Building2, description: "Company details & preferences" },
-    { name: t.nav.userManagement, href: "/app/admin/users", icon: Users, description: "Members, roles & invitations" },
-    { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings, description: "Configuration & audit log" },
-    { name: t.nav.clients, href: "/app/clients", icon: Contact2, description: "Manage your customer portfolio" },
-  ];
-
-  const isAccountAdminActive = manageAccountItems.some(
-    (item) => pathname === item.href || pathname.startsWith(item.href + "/")
-  );
 
   return (
     <aside className="w-64 bg-[#F5F5F7] border-r border-[#E5E5EA] flex flex-col h-screen sticky top-0 z-40">
@@ -137,54 +117,6 @@ export function Sidebar({
           </nav>
         </div>
 
-        {/* Administration Section */}
-        <div>
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#86868B] mb-2">
-            Account Admin
-          </p>
-          <nav className="space-y-1">
-            <button
-              type="button"
-              onClick={() => setIsManageAccountOpen(true)}
-              className={cn(
-                "w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer",
-                isAccountAdminActive
-                  ? "bg-white text-[#0071E3] shadow-sm border border-[#E5E5EA] font-semibold"
-                  : "text-[#1D1D1F] hover:text-[#0071E3] hover:bg-white/60"
-              )}
-            >
-              <div className="flex items-center space-x-3">
-                <Settings2 className={cn("w-4 h-4", isAccountAdminActive ? "text-[#0071E3]" : "text-[#86868B]")} />
-                <span>Manage Account</span>
-              </div>
-            </button>
-          </nav>
-        </div>
-
-        {/* Platform Admin Link */}
-        {isPlatformAdmin && (
-          <div>
-            <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-2">
-              Platform Admin
-            </p>
-            <nav className="space-y-1">
-              <Link
-                href="/platform-admin"
-                className={cn(
-                  "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all",
-                  pathname === "/platform-admin"
-                    ? "bg-amber-500/10 text-amber-700 shadow-sm border border-amber-500/20 font-semibold"
-                    : "text-amber-800 hover:text-amber-900 hover:bg-amber-50/50"
-                )}
-              >
-                <div className="flex items-center space-x-3">
-                  <Shield className="w-4 h-4 text-amber-600" />
-                  <span>Qubere Console</span>
-                </div>
-              </Link>
-            </nav>
-          </div>
-        )}
       </div>
 
       {/* Footer Info */}
@@ -192,12 +124,6 @@ export function Sidebar({
         <p className="font-semibold text-[#1D1D1F]">Qubere AI Trade Platform</p>
         <p className="text-[11px] text-[#86868B]">Production Enterprise Core</p>
       </div>
-
-      <ManageAccountModal
-        isOpen={isManageAccountOpen}
-        onClose={() => setIsManageAccountOpen(false)}
-        items={manageAccountItems}
-      />
     </aside>
   );
 }

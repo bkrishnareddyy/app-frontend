@@ -1,16 +1,42 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
-import { Building2, Globe, Bot } from "lucide-react";
+import { useUser, useClerk } from "@clerk/nextjs";
+import { Building2, Globe, Bot, Settings2, Building, Users, Contact2, Shield, LogOut, UserCog } from "lucide-react";
+import { ManageAccountModal } from "./ManageAccountModal";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 interface HeaderProps {
   tenantName?: string;
   userName?: string;
+  isPlatformAdmin?: boolean;
 }
 
-export function Header({ tenantName = "Acme Corporation", userName = "User" }: HeaderProps) {
+export function Header({ tenantName = "Acme Corporation", userName = "User", isPlatformAdmin = false }: HeaderProps) {
   const router = useRouter();
+  const { t } = useLanguage();
+  const { user } = useUser();
+  const { signOut, openUserProfile } = useClerk();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isManageAccountOpen, setIsManageAccountOpen] = useState(false);
+
+  const manageAccountItems = [
+    { name: t.nav.accountProfile, href: "/app/admin", icon: Building, description: "Company details & preferences" },
+    { name: t.nav.userManagement, href: "/app/admin/users", icon: Users, description: "Members, roles & invitations" },
+    { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings2, description: "Configuration & audit log" },
+    { name: t.nav.clients, href: "/app/clients", icon: Contact2, description: "Manage your customer portfolio" },
+    ...(isPlatformAdmin
+      ? [{ name: "Qubere Console", href: "/platform-admin", icon: Shield, description: "Platform admin tools" }]
+      : []),
+  ];
+
+  const menuActions = [
+    { label: "Manage Account", icon: Settings2, onClick: () => setIsManageAccountOpen(true) },
+    { label: "Profile & Security", icon: UserCog, onClick: () => openUserProfile() },
+    { label: "Country / Language", icon: Globe, onClick: () => router.push("/app/admin") },
+    { label: "AI Agents Roster & Testing", icon: Bot, onClick: () => router.push("/agents") },
+  ];
 
   return (
     <header className="h-16 border-b border-[#E5E5EA] bg-[#F5F5F7]/80 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-30">
@@ -25,40 +51,87 @@ export function Header({ tenantName = "Acme Corporation", userName = "User" }: H
         </div>
       </div>
 
-      <div className="flex items-center space-x-4">
+      <div className="relative flex items-center">
         <button
-          onClick={() => router.push("/app/admin")}
-          className="text-right hidden sm:block hover:opacity-80 transition-opacity cursor-pointer group"
-          title="Click to view Account Profile & Language settings"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+          className="flex items-center space-x-2.5 pl-1 pr-2.5 py-1 rounded-full hover:bg-white/70 transition-colors cursor-pointer"
         >
-          <p className="text-xs font-semibold text-[#1D1D1F] group-hover:text-[#0071E3] flex items-center justify-end space-x-1">
-            <span>{userName}</span>
-            <Globe className="w-3 h-3 text-[#0071E3] inline-block" />
-          </p>
-          <p className="text-[10px] text-[#86868B]">Account Profile & Language</p>
+          {user?.imageUrl ? (
+            <img
+              src={user.imageUrl}
+              alt={userName}
+              className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-xs font-bold">
+              {userName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span className="text-xs font-semibold text-[#1D1D1F] hidden sm:inline">{userName}</span>
         </button>
 
-        <UserButton
-          appearance={{
-            elements: {
-              avatarBox: "w-9 h-9 border border-[#E5E5EA] shadow-xs cursor-pointer",
-            },
-          }}
-        >
-          <UserButton.MenuItems>
-            <UserButton.Action
-              label="AI Agents Roster & Testing"
-              labelIcon={<Bot className="w-4 h-4 text-[#0071E3]" />}
-              onClick={() => router.push("/agents")}
-            />
-            <UserButton.Action
-              label="Account Profile & Country/Language"
-              labelIcon={<Globe className="w-4 h-4 text-[#0071E3]" />}
-              onClick={() => router.push("/app/admin")}
-            />
-          </UserButton.MenuItems>
-        </UserButton>
+        {isMenuOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
+            <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E5E5EA] rounded-2xl shadow-lg z-20 overflow-hidden">
+              <div className="p-4 border-b border-[#E5E5EA] flex items-center space-x-3">
+                {user?.imageUrl ? (
+                  <img
+                    src={user.imageUrl}
+                    alt={userName}
+                    className="w-10 h-10 rounded-full border border-[#E5E5EA] object-cover"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full border border-[#E5E5EA] bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-sm font-bold">
+                    {userName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#1D1D1F] truncate">{userName}</p>
+                  <p className="text-xs text-[#86868B] truncate">
+                    {user?.primaryEmailAddress?.emailAddress}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-1.5">
+                {menuActions.map((action) => (
+                  <button
+                    key={action.label}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      action.onClick();
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-left text-sm font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors cursor-pointer"
+                  >
+                    <action.icon className="w-4 h-4 text-[#0071E3]" />
+                    <span>{action.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-1.5 border-t border-[#E5E5EA]">
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    signOut(() => router.push("/"));
+                  }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-left text-sm font-medium text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
+
+      <ManageAccountModal
+        isOpen={isManageAccountOpen}
+        onClose={() => setIsManageAccountOpen(false)}
+        items={manageAccountItems}
+      />
     </header>
   );
 }
