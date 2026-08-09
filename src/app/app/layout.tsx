@@ -26,7 +26,7 @@ export default async function AppLayout({
         currentAccountId={context.accountId}
         accountName={context.accountName}
         accountType={context.accountType}
-        roleName={context.roleName}
+        roleNames={context.roleNames}
         isPlatformAdmin={context.isPlatformAdmin}
         memberships={context.memberships}
       />

@@ -12,7 +12,7 @@ export default async function AdminUsersPage() {
 
   const memberships = await db.accountMembership.findMany({
     where: { accountId: context.accountId },
-    include: { user: true, role: true },
+    include: { user: true, roles: { include: { role: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -24,7 +24,7 @@ export default async function AdminUsersPage() {
     lastName: m.user.lastName,
     status: m.status,
     createdAt: m.createdAt.toISOString(),
-    roleName: m.role.name,
+    roleNames: m.roles.map((mr) => mr.role.name),
   }));
 
   return (
@@ -43,7 +43,6 @@ export default async function AdminUsersPage() {
       <UserManagementTable
         members={formattedMembers}
         currentUserId={context.userId}
-        currentRole={context.roleName}
       />
     </div>
   );

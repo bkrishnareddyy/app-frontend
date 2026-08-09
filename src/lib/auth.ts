@@ -16,15 +16,18 @@ export interface AccountContext {
   accountType: "ENTERPRISE" | "INDIVIDUAL" | string;
   ownerUserId?: string | null;
   membershipId: string;
-  roleId: string;
-  roleName: string; // OWNER, ADMIN, MEMBER, VIEWER, or custom
+  // A membership can hold multiple simultaneous roles (e.g. Admin + Agent) --
+  // roleIds/roleNames are always arrays, never a single value. `permissions`
+  // is the union of every assigned role's permissions.
+  roleIds: string[];
+  roleNames: string[]; // e.g. ["OWNER"], or ["ADMIN", "AGENT"], or custom role names
   permissions: string[];
   memberships: Array<{
     accountId: string;
     accountName: string;
     accountSlug: string;
     accountType: string;
-    roleName: string;
+    roleNames: string[];
   }>;
   account: {
     id: string;
@@ -71,10 +74,14 @@ export async function getAccountContext(): Promise<AccountContext | null> {
           where: { deletedAt: null },
           include: {
             account: true,
-            role: {
+            roles: {
               include: {
-                rolePermissions: {
-                  include: { permission: true },
+                role: {
+                  include: {
+                    rolePermissions: {
+                      include: { permission: true },
+                    },
+                  },
                 },
               },
             },
@@ -96,10 +103,14 @@ export async function getAccountContext(): Promise<AccountContext | null> {
             where: { deletedAt: null },
             include: {
               account: true,
-              role: {
+              roles: {
                 include: {
-                  rolePermissions: {
-                    include: { permission: true },
+                  role: {
+                    include: {
+                      rolePermissions: {
+                        include: { permission: true },
+                      },
+                    },
                   },
                 },
               },
@@ -154,8 +165,10 @@ export async function getAccountContext(): Promise<AccountContext | null> {
           memberships: {
             create: {
               accountId: individualAccount.id,
-              roleId: ownerRole.id,
               status: "ACTIVE",
+              roles: {
+                create: { roleId: ownerRole.id },
+              },
             },
           },
         },
@@ -164,9 +177,13 @@ export async function getAccountContext(): Promise<AccountContext | null> {
           memberships: {
             include: {
               account: true,
-              role: {
+              roles: {
                 include: {
-                  rolePermissions: { include: { permission: true } },
+                  role: {
+                    include: {
+                      rolePermissions: { include: { permission: true } },
+                    },
+                  },
                 },
               },
             },
@@ -191,9 +208,13 @@ export async function getAccountContext(): Promise<AccountContext | null> {
             where: { deletedAt: null },
             include: {
               account: true,
-              role: {
+              roles: {
                 include: {
-                  rolePermissions: { include: { permission: true } },
+                  role: {
+                    include: {
+                      rolePermissions: { include: { permission: true } },
+                    },
+                  },
                 },
               },
             },
@@ -223,7 +244,15 @@ export async function getAccountContext(): Promise<AccountContext | null> {
       return null;
     }
 
-    const permissions = activeMembership.role.rolePermissions.map((rp) => rp.permission.name);
+    // Union of permissions across every role assigned to this membership,
+    // deduplicated.
+    const permissions = Array.from(
+      new Set(
+        activeMembership.roles.flatMap((mr) => mr.role.rolePermissions.map((rp) => rp.permission.name))
+      )
+    );
+    const roleIds = activeMembership.roles.map((mr) => mr.roleId);
+    const roleNames = activeMembership.roles.map((mr) => mr.role.name);
 
     const platformRoleNames = dbUser.platformRoles.map((pr) => pr.platformRole.name);
     const isPlatformAdmin = platformRoleNames.includes("PLATFORM_ADMIN");
@@ -235,7 +264,7 @@ export async function getAccountContext(): Promise<AccountContext | null> {
         accountName: m.account.name,
         accountSlug: m.account.slug,
         accountType: m.account.type,
-        roleName: m.role.name,
+        roleNames: m.roles.map((mr) => mr.role.name),
       }));
 
     return {
@@ -252,8 +281,8 @@ export async function getAccountContext(): Promise<AccountContext | null> {
       accountType: activeMembership.account.type,
       ownerUserId: activeMembership.account.ownerUserId,
       membershipId: activeMembership.id,
-      roleId: activeMembership.roleId,
-      roleName: activeMembership.role.name,
+      roleIds,
+      roleNames,
       permissions,
       memberships: allMemberships,
       account: activeMembership.account,
@@ -274,7 +303,8 @@ export async function hasPermission(requiredPermission: string): Promise<boolean
   const context = await getAccountContext();
   if (!context) return false;
   if (context.isPlatformAdmin) return true;
-  // Account OWNER has wildcard management access
-  if (context.roleName === "OWNER") return true;
+  // Account OWNER has wildcard management access, if held among the
+  // membership's assigned roles
+  if (context.roleNames.includes("OWNER")) return true;
   return context.permissions.includes(requiredPermission);
 }

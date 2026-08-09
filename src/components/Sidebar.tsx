@@ -26,13 +26,13 @@ interface SidebarProps {
   currentAccountId: string;
   accountName?: string;
   accountType?: string;
-  roleName?: string;
+  roleNames?: string[];
   isPlatformAdmin?: boolean;
   memberships?: Array<{
     accountId: string;
     accountName: string;
     accountType: string;
-    roleName: string;
+    roleNames: string[];
   }>;
 }
 
@@ -40,7 +40,7 @@ export function Sidebar({
   currentAccountId,
   accountName = "Personal Workspace",
   accountType = "INDIVIDUAL",
-  roleName = "OWNER",
+  roleNames = ["OWNER"],
   isPlatformAdmin = false,
   memberships = [],
 }: SidebarProps) {
@@ -80,7 +80,7 @@ export function Sidebar({
           currentAccountId={currentAccountId}
           currentAccountName={accountName}
           currentAccountType={accountType}
-          currentRoleName={roleName}
+          currentRoleNames={roleNames}
           memberships={
             memberships.length > 0
               ? memberships
@@ -89,7 +89,7 @@ export function Sidebar({
                     accountId: currentAccountId,
                     accountName,
                     accountType,
-                    roleName,
+                    roleNames,
                   },
                 ]
           }

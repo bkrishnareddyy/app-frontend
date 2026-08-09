@@ -101,8 +101,10 @@ export default async function InvitationPage({
           data: {
             accountId: invitation.accountId,
             userId: context.userId,
-            roleId: invitation.roleId,
             status: "ACTIVE",
+            roles: {
+              create: { roleId: invitation.roleId },
+            },
           },
         });
       }

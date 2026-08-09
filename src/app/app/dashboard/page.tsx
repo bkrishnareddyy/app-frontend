@@ -39,7 +39,7 @@ export default async function CommandCenterPage() {
   let teamMembers: any[] = [];
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
-    (context.roleName === "ADMIN" || context.roleName === "OWNER");
+    (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
 
   if (isEnterpriseAdmin) {
     const memberships = await db.accountMembership.findMany({
@@ -116,7 +116,7 @@ export default async function CommandCenterPage() {
       teamMembers={teamMembers}
       context={{
         userId: context.userId,
-        roleName: context.roleName,
+        roleNames: context.roleNames,
         accountType: context.accountType,
         accountName: context.accountName,
         firstName: context.firstName,

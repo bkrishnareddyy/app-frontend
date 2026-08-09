@@ -32,7 +32,7 @@ interface CommandCenterClientProps {
   }>;
   context: {
     userId: string;
-    roleName: string;
+    roleNames: string[];
     accountType: string;
     accountName: string;
     firstName?: string | null;
@@ -53,7 +53,7 @@ export function CommandCenterClient({
 
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
-    (context.roleName === "ADMIN" || context.roleName === "OWNER");
+    (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
 
   // Construct full team list containing the logged-in admin themselves
   const fullTeamList = useMemo(() => {

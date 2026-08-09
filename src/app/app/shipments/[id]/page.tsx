@@ -116,7 +116,7 @@ export default async function ShipmentWorkspacePage(props: {
 
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
-    (context.roleName === "ADMIN" || context.roleName === "OWNER");
+    (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
 
   let exceptionItems = await db.exceptionItem.findMany({
     where: { shipmentId: shipment.id, accountId: context.accountId },

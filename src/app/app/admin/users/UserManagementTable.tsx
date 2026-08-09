@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import { Users, UserPlus, UserX, UserCheck, Eye, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
+const SYSTEM_ROLE_NAMES = ["OWNER", "ADMIN", "MEMBER", "VIEWER"] as const;
+
 interface MemberItem {
   membershipId: string;
   userId: string;
@@ -13,16 +15,16 @@ interface MemberItem {
   lastName?: string | null;
   status: string;
   createdAt: string;
-  roleName: string;
+  // A membership can hold multiple roles simultaneously (e.g. Admin + Agent).
+  roleNames: string[];
 }
 
 interface UserManagementTableProps {
   members: MemberItem[];
   currentUserId: string;
-  currentRole: string;
 }
 
-export function UserManagementTable({ members, currentUserId, currentRole }: UserManagementTableProps) {
+export function UserManagementTable({ members, currentUserId }: UserManagementTableProps) {
   const router = useRouter();
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("MEMBER");
@@ -60,7 +62,18 @@ export function UserManagementTable({ members, currentUserId, currentRole }: Use
     }
   };
 
-  const handleRoleChange = async (membershipId: string, newRole: string) => {
+  // Toggles a single role on/off for a membership, sending the resulting
+  // full role set (a membership can hold multiple roles at once).
+  const handleRoleToggle = async (membershipId: string, currentRoleNames: string[], toggledRole: string) => {
+    const nextRoleNames = currentRoleNames.includes(toggledRole)
+      ? currentRoleNames.filter((r) => r !== toggledRole)
+      : [...currentRoleNames, toggledRole];
+
+    if (nextRoleNames.length === 0) {
+      setMessage({ type: "error", text: "A member must have at least one role." });
+      return;
+    }
+
     setLoadingMembershipId(membershipId);
     setMessage(null);
 
@@ -68,15 +81,15 @@ export function UserManagementTable({ members, currentUserId, currentRole }: Use
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ membershipId, roleName: newRole }),
+        body: JSON.stringify({ membershipId, roleNames: nextRoleNames }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        setMessage({ type: "success", text: `Updated user role to ${newRole}. Audit log generated.` });
+        setMessage({ type: "success", text: `Updated roles to ${nextRoleNames.join(", ")}. Audit log generated.` });
         router.refresh();
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to update user role." });
+        setMessage({ type: "error", text: data.error || "Failed to update user roles." });
       }
     } catch (err) {
       console.error(err);
@@ -226,17 +239,27 @@ export function UserManagementTable({ members, currentUserId, currentRole }: Use
                     </td>
 
                     <td className="px-6 py-4">
-                      <select
-                        value={m.roleName}
-                        disabled={loadingMembershipId === m.membershipId || isSelf}
-                        onChange={(e) => handleRoleChange(m.membershipId, e.target.value)}
-                        className="bg-[#F5F5F7] border border-[#E5E5EA] text-xs font-bold rounded-xl px-3 py-1.5 text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] disabled:opacity-50"
-                      >
-                        <option value="OWNER">OWNER</option>
-                        <option value="ADMIN">ADMIN</option>
-                        <option value="MEMBER">MEMBER</option>
-                        <option value="VIEWER">VIEWER</option>
-                      </select>
+                      <div className="flex flex-wrap gap-1.5 max-w-[220px]">
+                        {SYSTEM_ROLE_NAMES.map((role) => {
+                          const isAssigned = m.roleNames.includes(role);
+                          return (
+                            <button
+                              key={role}
+                              type="button"
+                              disabled={loadingMembershipId === m.membershipId || isSelf}
+                              onClick={() => handleRoleToggle(m.membershipId, m.roleNames, role)}
+                              title={isSelf ? "You cannot change your own roles" : `Toggle ${role}`}
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isAssigned
+                                  ? "bg-[#0071E3] text-white border-[#0071E3]"
+                                  : "bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA] hover:border-[#0071E3]/50"
+                              }`}
+                            >
+                              {role}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </td>
 
                     <td className="px-6 py-4">

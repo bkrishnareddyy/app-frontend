@@ -19,7 +19,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     deletedAt: null,
   };
 
-  if (ctx.roleName === "PLANNER") {
+  if (ctx.roleNames.includes("PLANNER")) {
     whereClause.assignedBrokerId = ctx.userId;
   }
 
@@ -53,7 +53,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const isEnterpriseAdmin =
     ctx.accountType === "ENTERPRISE" &&
-    (ctx.roleName === "ADMIN" || ctx.roleName === "OWNER");
+    (ctx.roleNames.includes("ADMIN") || ctx.roleNames.includes("OWNER"));
 
   if (!isEnterpriseAdmin) {
     return NextResponse.json(

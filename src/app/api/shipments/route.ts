@@ -11,7 +11,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
   const whereClause: Prisma.ShipmentWhereInput = { accountId: ctx.accountId, deletedAt: null };
 
   // RLS: Planners can only see shipments assigned to them
-  if (ctx.roleName === "PLANNER") {
+  if (ctx.roleNames.includes("PLANNER")) {
     whereClause.assignedBrokerId = ctx.userId;
   }
 
@@ -85,7 +85,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       readinessScore: 85,
       riskScore: 20,
       ownerName: ctx.firstName || "Stephen",
-      assignedBrokerId: ctx.roleName === "PLANNER" ? ctx.userId : null,
+      assignedBrokerId: ctx.roleNames.includes("PLANNER") ? ctx.userId : null,
       masterShipmentId: masterShipmentId || null,
     },
   });

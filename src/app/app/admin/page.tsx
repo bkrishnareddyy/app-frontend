@@ -37,7 +37,7 @@ export default async function AdminAccountPage() {
           status: context.account.status,
           createdAt: context.account.createdAt.toISOString(),
         }}
-        userRole={context.roleName}
+        userRole={context.roleNames.join(", ")}
       />
     </div>
   );

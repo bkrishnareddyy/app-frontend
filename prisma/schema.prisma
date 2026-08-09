@@ -118,8 +118,7 @@ model AccountMembership {
   account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  roleId    String
-  role      Role      @relation(fields: [roleId], references: [id])
+  roles     AccountMembershipRole[]
   status    String    @default("ACTIVE") // ACTIVE, INACTIVE, DISABLED
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -129,6 +128,21 @@ model AccountMembership {
   @@index([userId])
   @@index([accountId])
   @@index([deletedAt])
+}
+
+// A membership can hold multiple simultaneous roles on the same account
+// (e.g. a broker who is both Admin and Agent), mirroring how PlatformUserRole
+// already lets a user hold multiple platform roles at once.
+model AccountMembershipRole {
+  accountMembershipId String
+  roleId              String
+  createdAt           DateTime @default(now())
+
+  accountMembership AccountMembership @relation(fields: [accountMembershipId], references: [id], onDelete: Cascade)
+  role              Role              @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([accountMembershipId, roleId])
+  @@index([roleId])
 }
 
 model Role {
@@ -141,7 +155,7 @@ model Role {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  memberships     AccountMembership[]
+  membershipRoles AccountMembershipRole[]
   rolePermissions RolePermission[]
   invitations     Invitation[]
 

@@ -12,7 +12,7 @@ export default async function DocumentsPage() {
   let teamMembers: any[] = [];
   const isEnterpriseAdmin =
     ctx.accountType === "ENTERPRISE" &&
-    (ctx.roleName === "ADMIN" || ctx.roleName === "OWNER");
+    (ctx.roleNames.includes("ADMIN") || ctx.roleNames.includes("OWNER"));
 
   if (isEnterpriseAdmin) {
     const memberships = await db.accountMembership.findMany({
@@ -31,7 +31,7 @@ export default async function DocumentsPage() {
     <DocumentsClient
       context={{
         userId: ctx.userId,
-        roleName: ctx.roleName,
+        roleNames: ctx.roleNames,
         accountType: ctx.accountType,
         accountName: ctx.accountName,
         firstName: ctx.firstName,

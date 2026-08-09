@@ -8,12 +8,12 @@ interface AccountSwitcherProps {
   currentAccountId: string;
   currentAccountName: string;
   currentAccountType: string;
-  currentRoleName: string;
+  currentRoleNames: string[];
   memberships: Array<{
     accountId: string;
     accountName: string;
     accountType: string;
-    roleName: string;
+    roleNames: string[];
   }>;
 }
 
@@ -21,7 +21,7 @@ export function AccountSwitcher({
   currentAccountId,
   currentAccountName,
   currentAccountType,
-  currentRoleName,
+  currentRoleNames,
   memberships,
 }: AccountSwitcherProps) {
   const router = useRouter();
@@ -75,7 +75,7 @@ export function AccountSwitcher({
             <div className="flex items-center space-x-1.5 mt-0.5">
               <span className="text-[10px] text-[#86868B] font-mono uppercase">{currentAccountType}</span>
               <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-50 text-[#0071E3] font-semibold border border-blue-100">
-                {currentRoleName}
+                {currentRoleNames.join(", ")}
               </span>
             </div>
           </div>
