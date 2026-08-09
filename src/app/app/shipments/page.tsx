@@ -71,17 +71,6 @@ export default async function ShipmentsConsolePage() {
       status: d.status,
       fileUrl: d.fileUrl,
     })),
-    lineItems: s.lineItems.map((item) => ({
-      ...item,
-      unitPrice: Number(item.unitPrice),
-      totalValue: Number(item.totalValue),
-    })),
-    customsFilings: s.customsFilings.map((filing) => ({
-      ...filing,
-      totalValue: Number(filing.totalValue),
-      totalDuties: Number(filing.totalDuties),
-      totalTaxes: Number(filing.totalTaxes),
-      totalAmount: Number(filing.totalAmount),
     lineItems: s.lineItems.map((li) => ({
       ...li,
       unitPrice: Number(li.unitPrice),

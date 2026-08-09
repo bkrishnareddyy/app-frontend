@@ -84,19 +84,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     }
   }
 
-    const log = await db.screeningLog.create({
-      data: {
-        accountId: ctx.accountId,
-        targetName: name,
-        targetType: targetType || "Shipper",
-        matchStatus,
-        matchScore: maxScore,
-        matchedParty: bestMatch ? bestMatch.entityName : null,
-        listSource: bestMatch ? bestMatch.listSource : null,
-        listVersion: bestMatch ? bestMatch.listVersion : "2026-08-08",
-        publishDate: bestMatch ? bestMatch.publishDate : new Date("2026-08-08T00:00:00Z"),
-      },
-    });
   const matchStatus = maxScore >= 80 ? "BLOCKED" : maxScore >= 50 ? "FLAGGED" : "PASSED";
 
   const log = await db.screeningLog.create({
@@ -108,35 +95,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       matchScore: maxScore,
       matchedParty: bestMatch ? bestMatch.entityName : null,
       listSource: bestMatch ? bestMatch.listSource : null,
+      listVersion: bestMatch ? bestMatch.listVersion : "2026-08-08",
+      publishDate: bestMatch ? bestMatch.publishDate : new Date("2026-08-08T00:00:00Z"),
     },
   });
 
-    return NextResponse.json({
-      screeningResult: {
-        targetName: name,
-        matchStatus,
-        matchScore: maxScore,
-        matchedEntity: bestMatch
-          ? {
-              entityName: bestMatch.entityName,
-              listSource: bestMatch.listSource,
-              program: bestMatch.program,
-              country: bestMatch.country,
-              listVersion: bestMatch.listVersion,
-              publishDate: bestMatch.publishDate,
-            }
-          : null,
-        recommendation: matchStatus === "BLOCKED" ? "DO NOT SHIP / BLOCK TRANSACTION" : matchStatus === "FLAGGED" ? "MANUAL COMPLIANCE REVIEW REQUIRED" : "CLEAR TO SHIP",
-        screenedAt: log.screenedAt,
-        listVersion: log.listVersion,
-        publishDate: log.publishDate,
-      },
-    });
-  } catch (error) {
-    console.error("POST /api/screening/dps error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
-  }
-}
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
@@ -157,10 +120,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
             listSource: bestMatch.listSource,
             program: bestMatch.program,
             country: bestMatch.country,
+            listVersion: bestMatch.listVersion,
+            publishDate: bestMatch.publishDate,
           }
         : null,
       recommendation: matchStatus === "BLOCKED" ? "DO NOT SHIP / BLOCK TRANSACTION" : matchStatus === "FLAGGED" ? "MANUAL COMPLIANCE REVIEW REQUIRED" : "CLEAR TO SHIP",
       screenedAt: log.screenedAt,
+      listVersion: log.listVersion,
+      publishDate: log.publishDate,
     },
   });
 });
