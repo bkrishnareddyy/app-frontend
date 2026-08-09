@@ -83,6 +83,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     success: true,
   });
 
+  // token is destructured off so the raw invitation token never reaches the response body.
   const { token, ...invitationSafe } = result.invitation;
   return NextResponse.json({ success: true, account: result.account, invitation: invitationSafe });
 });

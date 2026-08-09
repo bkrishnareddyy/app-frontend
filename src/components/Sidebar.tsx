@@ -1,11 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ShieldCheck,
   LayoutDashboard,
-  Package as ShipmentIcon,
+  Inbox,
   Scale,
   FileCheck2,
   Globe,
@@ -15,12 +16,34 @@ import {
   Shield,
   FileText,
   Files,
+  Menu,
+  TriangleAlert,
+  X,
+  PanelLeftClose,
+  PanelLeftOpen,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
+import { activeNavHref, visibleNavigation, type NavIcon } from "@/lib/navigation";
 
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { LanguageSwitcher } from "./LanguageSwitcher";
+
+const ICONS: Record<NavIcon, LucideIcon> = {
+  inbox: Inbox,
+  dashboard: LayoutDashboard,
+  shipments: FileText,
+  documents: Files,
+  decisions: Scale,
+  exceptions: TriangleAlert,
+  filing: FileCheck2,
+  regulatory: Globe,
+  account: Building2,
+  users: Users,
+  roles: ShieldCheck,
+  settings: Settings,
+  platform: Shield,
+};
 
 interface SidebarProps {
   currentAccountId: string;
@@ -28,6 +51,7 @@ interface SidebarProps {
   accountType?: string;
   roleNames?: string[];
   isPlatformAdmin?: boolean;
+  permissions?: string[];
   memberships?: Array<{
     accountId: string;
     accountName: string;
@@ -42,152 +66,166 @@ export function Sidebar({
   accountType = "INDIVIDUAL",
   roleNames = ["OWNER"],
   isPlatformAdmin = false,
+  permissions = [],
   memberships = [],
 }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useLanguage();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
-  const mainNavigation = [
-    { name: t.nav.commandCenter, href: "/app/dashboard", icon: LayoutDashboard },
-    { name: t.nav.shipments, href: "/app/shipments", icon: FileText },
-    { name: t.nav.tradeDocuments, href: "/app/documents", icon: Files },
-    { name: t.nav.decisions, href: "/app/decisions", icon: Scale },
-    { name: t.nav.customsFiling, href: "/app/filing", icon: FileCheck2 },
-    { name: t.nav.regulatoryIntel, href: "/app/regulatory", icon: Globe },
-  ];
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
 
-  const adminNavigation = [
-    { name: t.nav.accountProfile, href: "/app/admin", icon: Building2 },
-    { name: t.nav.userManagement, href: "/app/admin/users", icon: Users },
-    { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings },
-  ];
+  const sections = visibleNavigation({ roleNames, permissions, isPlatformAdmin });
+
+  const activeHref = activeNavHref(
+    pathname,
+    sections.flatMap((section) => section.items.map((item) => item.href))
+  );
+
+  const labels = t.nav as Record<string, string>;
 
   return (
-    <aside className="w-64 bg-[#F5F5F7] border-r border-[#E5E5EA] flex flex-col h-screen sticky top-0 z-40">
-      {/* Brand Header */}
-      <div className="h-16 px-6 flex items-center justify-between border-b border-[#E5E5EA]">
-        <Link href="/app/dashboard" className="flex items-center space-x-3 group">
-          <div className="w-9 h-9 rounded-xl bg-[#0071E3] flex items-center justify-center text-white shadow-md shadow-[#0071E3]/20 group-hover:scale-105 transition-transform">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-[#1D1D1F]">Qubere</span>
-        </Link>
-      </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        aria-label="Open navigation"
+        aria-expanded={mobileOpen}
+        aria-controls="primary-navigation"
+        className="lg:hidden fixed top-3 left-3 z-50 w-10 h-10 rounded-xl bg-white border border-[#E5E5EA] shadow-sm flex items-center justify-center text-[#1D1D1F]"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
 
-      {/* Account Switcher Widget */}
-      <div className="px-3 my-4">
-        <AccountSwitcher
-          currentAccountId={currentAccountId}
-          currentAccountName={accountName}
-          currentAccountType={accountType}
-          currentRoleNames={roleNames}
-          memberships={
-            memberships.length > 0
-              ? memberships
-              : [
-                  {
-                    accountId: currentAccountId,
-                    accountName,
-                    accountType,
-                    roleNames,
-                  },
-                ]
-          }
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="lg:hidden fixed inset-0 z-40 bg-black/30"
+          aria-hidden="true"
         />
-      </div>
+      )}
 
-      {/* Main Navigation */}
-      <div className="flex-1 px-3 space-y-6 overflow-y-auto py-2">
-        <div>
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#86868B] mb-2">
-            {t.nav.mainOperations}
-          </p>
-          <nav className="space-y-1">
-            {mainNavigation.map((item) => {
-              const isActive = pathname === item.href || (item.href !== "/app/dashboard" && pathname.startsWith(item.href));
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all",
-                    isActive
-                      ? "bg-white text-[#0071E3] shadow-sm border border-[#E5E5EA] font-semibold"
-                      : "text-[#1D1D1F] hover:text-[#0071E3] hover:bg-white/60"
-                  )}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Icon className={cn("w-4 h-4", isActive ? "text-[#0071E3]" : "text-[#86868B]")} />
-                    <span>{item.name}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </nav>
+      <aside
+        id="primary-navigation"
+        aria-label="Primary"
+        className={cn(
+          "bg-[#F5F5F7] border-r border-[#E5E5EA] flex flex-col h-screen z-40 transition-transform duration-200",
+          "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          collapsed ? "w-20" : "w-64"
+        )}
+      >
+        <div className="h-16 px-4 flex items-center justify-between border-b border-[#E5E5EA]">
+          <Link
+            href="/app/work"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center space-x-3 group min-w-0"
+          >
+            <div className="w-9 h-9 shrink-0 rounded-xl bg-[#0071E3] flex items-center justify-center text-white shadow-md shadow-[#0071E3]/20 group-hover:scale-105 transition-transform">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            {!collapsed && (
+              <span className="text-xl font-bold tracking-tight text-[#1D1D1F] truncate">Qubere</span>
+            )}
+          </Link>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation"
+            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[#86868B] hover:bg-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Administration Section */}
-        <div>
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#86868B] mb-2">
-            Account Admin
-          </p>
-          <nav className="space-y-1">
-            {adminNavigation.map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all",
-                    isActive
-                      ? "bg-white text-[#0071E3] shadow-sm border border-[#E5E5EA] font-semibold"
-                      : "text-[#1D1D1F] hover:text-[#0071E3] hover:bg-white/60"
-                  )}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Icon className={cn("w-4 h-4", isActive ? "text-[#0071E3]" : "text-[#86868B]")} />
-                    <span>{item.name}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Platform Admin Link */}
-        {isPlatformAdmin && (
-          <div>
-            <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-2">
-              Platform Admin
-            </p>
-            <nav className="space-y-1">
-              <Link
-                href="/platform-admin"
-                className={cn(
-                  "flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all",
-                  pathname === "/platform-admin"
-                    ? "bg-amber-500/10 text-amber-700 shadow-sm border border-amber-500/20 font-semibold"
-                    : "text-amber-800 hover:text-amber-900 hover:bg-amber-50/50"
-                )}
-              >
-                <div className="flex items-center space-x-3">
-                  <Shield className="w-4 h-4 text-amber-600" />
-                  <span>Qubere Console</span>
-                </div>
-              </Link>
-            </nav>
+        {!collapsed && (
+          <div className="px-3 my-4">
+            <AccountSwitcher
+              currentAccountId={currentAccountId}
+              currentAccountName={accountName}
+              currentAccountType={accountType}
+              currentRoleNames={roleNames}
+              memberships={
+                memberships.length > 0
+                  ? memberships
+                  : [{ accountId: currentAccountId, accountName, accountType, roleNames }]
+              }
+            />
           </div>
         )}
-      </div>
 
-      {/* Footer Info */}
-      <div className="p-4 border-t border-[#E5E5EA] bg-white/40 text-xs text-[#86868B]">
-        <p className="font-semibold text-[#1D1D1F]">Qubere AI Trade Platform</p>
-        <p className="text-[11px] text-[#86868B]">Production Enterprise Core</p>
-      </div>
-    </aside>
+        <div className="flex-1 px-3 space-y-6 overflow-y-auto py-2">
+          {sections.map((section) => (
+            <div key={section.id}>
+              {!collapsed && (
+                <p
+                  className={cn(
+                    "px-3 text-[11px] font-bold uppercase tracking-wider mb-2",
+                    section.id === "platform" ? "text-amber-600" : "text-[#86868B]"
+                  )}
+                >
+                  {labels[section.labelKey] ?? section.labelKey}
+                </p>
+              )}
+              <nav className="space-y-1">
+                {section.items.map((item) => {
+                  const isActive = activeHref === item.href;
+                  const Icon = ICONS[item.icon];
+                  const label = labels[item.labelKey] ?? item.labelKey;
+                  const isPlatform = section.id === "platform";
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      aria-current={isActive ? "page" : undefined}
+                      title={collapsed ? label : undefined}
+                      className={cn(
+                        "flex items-center px-3 py-2 rounded-xl text-sm font-medium transition-all",
+                        collapsed ? "justify-center" : "space-x-3",
+                        isActive && isPlatform &&
+                          "bg-amber-500/10 text-amber-700 shadow-sm border border-amber-500/20 font-semibold",
+                        isActive && !isPlatform &&
+                          "bg-white text-[#0071E3] shadow-sm border border-[#E5E5EA] font-semibold",
+                        !isActive && isPlatform && "text-amber-800 hover:text-amber-900 hover:bg-amber-50/50",
+                        !isActive && !isPlatform && "text-[#1D1D1F] hover:text-[#0071E3] hover:bg-white/60"
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "w-4 h-4 shrink-0",
+                          isPlatform ? "text-amber-600" : isActive ? "text-[#0071E3]" : "text-[#86868B]"
+                        )}
+                      />
+                      {!collapsed && <span className="truncate">{label}</span>}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-3 border-t border-[#E5E5EA] bg-white/40">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            className="hidden lg:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-[#86868B] hover:text-[#0071E3] hover:bg-white transition-colors"
+          >
+            {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            {!collapsed && <span>Collapse</span>}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

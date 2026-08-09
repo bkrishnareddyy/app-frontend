@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { storeDocumentFile } from "@/lib/storage";
-import { PgQueue } from "@/lib/queue/pgQueue";
+import { PgQueue, toJobState } from "@/lib/queue/pgQueue";
+import {
+  resolveTenantShipmentId,
+  shipmentResolutionStatus,
+  ShipmentResolutionError,
+} from "@/modules/shipments/resolveShipment";
 import {
   DocumentIntakeAgent,
   DocumentType,
   agentEventBus,
 } from "@/modules/intake/documentIntakeAgent";
+import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
 import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
@@ -29,55 +35,44 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // Step 1: Upload file via Dual Storage Engine (Vercel Blob / Local Storage)
   const storageResult = await storeDocumentFile(file, file.name);
 
-  let targetShipmentId = formData.get("shipmentId") as string | null;
+  const shipmentId = formData.get("shipmentId") as string | null;
 
-  if (targetShipmentId) {
-    const existing = await db.shipment.findUnique({
-      where: { id: targetShipmentId },
-      select: { id: true },
-    });
-    if (!existing) {
-      targetShipmentId = null;
+  let targetShipmentId: string;
+  try {
+    targetShipmentId = await resolveTenantShipmentId(accountId, shipmentId);
+  } catch (err) {
+    if (err instanceof ShipmentResolutionError) {
+      if (err.code === "TARGET_NOT_DETERMINED") {
+        const intake = await recordUnassignedIntake(accountId, {
+          source: "document_upload",
+          fileName: file.name,
+          docType: rawDocType,
+        });
+        return NextResponse.json(
+          {
+            error: err.code,
+            message: `${err.message} The file was stored and raised as an exception for someone to assign.`,
+            exceptionId: intake.id,
+            fileUrl: storageResult.url,
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: err.code, message: err.message },
+        { status: shipmentResolutionStatus(err.code) }
+      );
     }
-  }
-
-  if (!targetShipmentId) {
-    const activeShipment = await db.shipment.findFirst({
-      where: { accountId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
-
-    if (activeShipment) {
-      targetShipmentId = activeShipment.id;
-    } else {
-      const count = await db.shipment.count({ where: { accountId } });
-      const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
-      const newShipment = await db.shipment.create({
-        data: {
-          accountId,
-          shipmentNumber,
-          importerName: "Demo Import Account",
-          poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
-          entryType: "Consumption Entry",
-          incoterm: "FOB SHENZHEN",
-          status: "In Progress",
-          readinessScore: 85,
-          riskScore: 20,
-        },
-      });
-      targetShipmentId = newShipment.id;
-    }
+    throw err;
   }
 
   // Resolve user or AI document type
   const { DocumentTypeCatalog } = await import("@/modules/intake/documentTypeCatalog");
-  let resolvedDocType = "Commercial Invoice";
+  let resolvedDocType: string;
   if (rawDocType && rawDocType !== "AUTO_DETECT") {
     resolvedDocType = rawDocType;
   } else {
-    const matched = DocumentTypeCatalog.matchDocumentType(file.name);
-    resolvedDocType = matched.code !== "OTHER_UNVERIFIED_DOCUMENT" ? matched.name : "Commercial Invoice";
+    resolvedDocType = DocumentTypeCatalog.matchDocumentType(file.name).name;
   }
 
   // Persist or find document record in database vault
@@ -97,7 +92,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         docType: resolvedDocType,
         fileUrl: storageResult.url,
         checksum: storageResult.checksum,
-        confidence: 95,
       },
     });
   } else {
@@ -109,7 +103,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         docType: resolvedDocType,
         fileUrl: storageResult.url,
         checksum: storageResult.checksum,
-        confidence: 95,
       },
     });
   }
@@ -144,7 +137,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // Step 4: Execute Document Intake Agent & Document Intelligence Agent for synchronous real-time inspection
   const intakeResult = await DocumentIntakeAgent.execute(agentInput);
 
-  let intelligenceResult: any = null;
+  let intelligenceResult: unknown = null;
   try {
     const { DocumentIntelligenceAgent } = await import("@/modules/agents/documentIntelligenceAgent");
     intelligenceResult = await DocumentIntelligenceAgent.execute({
@@ -157,8 +150,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       mimeType: file.type || "application/pdf",
       docTypeCode: intakeResult.classifications[0]?.docTypeCode,
     });
-  } catch (err: any) {
-    console.warn("DocumentIntelligenceAgent execution on upload error:", err?.message || err);
+  } catch (err: unknown) {
+    console.warn(
+      "DocumentIntelligenceAgent execution on upload error:",
+      err instanceof Error ? err.message : err
+    );
   }
 
   // Step 5: Dispatch Event to PG Queue and trigger background pipeline worker execution
@@ -173,7 +169,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // Immediately trigger background execution so job status advances PENDING -> PROCESSING -> COMPLETED!
   void (async () => {
     try {
-      await PgQueue.dequeueNextJob();
+      await PgQueue.claimJob(job.id);
       const pipelineOut = await AgentOrchestrator.runFullPipeline({
         accountId,
         userId,
@@ -183,16 +179,17 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         fileBuffer,
         mimeType: file.type || "application/pdf",
       });
-      await PgQueue.completeJob(job.id, pipelineOut);
-    } catch (err: any) {
+      await PgQueue.completeJob(job.id, toJobState(pipelineOut));
+    } catch (err: unknown) {
       console.error("[UploadPipeline] Background worker error:", err);
-      await PgQueue.failJob(job.id, err?.message || String(err));
+      await PgQueue.failJob(job.id, err instanceof Error ? err.message : String(err));
     }
   })();
 
   return NextResponse.json({
     success: true,
     jobId: job.id,
+    documentId: docRecord.id,
     shipmentId: targetShipmentId,
     orchestration: "Dispatched to Qubere Autonomous Multi-Agent Pipeline (10 Agents)",
     storage: storageResult,

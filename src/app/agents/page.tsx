@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
 import {
@@ -18,16 +19,10 @@ import {
   ArrowRight,
   Sparkles,
   Bot,
-  Layers,
-  ChevronRight,
   X,
-  Code2,
   Check,
   Copy,
-  ShieldCheck,
   Brain,
-  SlidersHorizontal,
-  ExternalLink,
   Cpu,
   Lock,
   Workflow,
@@ -40,6 +35,19 @@ import {
 import { LandingPageHeader } from "@/components/LandingPageHeader";
 
 // Definition of Qubere's 10 AI Agents
+interface AgentTestResult {
+  error?: string;
+  message?: string;
+  unauthorized?: boolean;
+  [key: string]: unknown;
+}
+
+interface ClassificationEngineResult {
+  error?: string;
+  items?: unknown[];
+  [key: string]: unknown;
+}
+
 interface AgentSpec {
   id: string;
   stepNumber: number;
@@ -428,20 +436,23 @@ export default function AgentsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All Agents");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [activeModalAgent, setActiveModalAgent] = useState<AgentSpec | null>(null);
+  const agentModalRef = useDialogFocus<HTMLDivElement>(activeModalAgent !== null, () =>
+    setActiveModalAgent(null)
+  );
   const [modalTab, setModalTab] = useState<"overview" | "reasoning" | "payloads" | "action">("overview");
 
   const [testInputJson, setTestInputJson] = useState<string>("");
   const [dropFile, setDropFile] = useState<File | null>(null);
   const [inputMode, setInputMode] = useState<"file" | "json">("file");
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [testResult, setTestResult] = useState<any>(null);
+  const [testResult, setTestResult] = useState<AgentTestResult | null>(null);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [copiedJson, setCopiedJson] = useState<string | null>(null);
 
   // Classification Engine Playground State
   const [ceActiveTab, setCeActiveTab] = useState<"hts-search" | "gri-classify" | "cross-verify" | "rate-parse">("hts-search");
   const [ceInput, setCeInput] = useState<string>("");
-  const [ceResult, setCeResult] = useState<any>(null);
+  const [ceResult, setCeResult] = useState<ClassificationEngineResult | null>(null);
   const [ceIsLoading, setCeIsLoading] = useState<boolean>(false);
   const [ceLatency, setCeLatency] = useState<number | null>(null);
 
@@ -453,8 +464,8 @@ export default function AgentsPage() {
 
     try {
       let endpoint = "";
-      let method = "GET";
-      let body: string | undefined = undefined;
+      const method = "GET";
+      const body: string | undefined = undefined;
 
       if (ceActiveTab === "hts-search") {
         const q = encodeURIComponent(ceInput.trim() || "steel valves");
@@ -478,10 +489,10 @@ export default function AgentsPage() {
       const elapsed = Date.now() - startTime;
       setCeLatency(elapsed);
       setCeResult(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       const elapsed = Date.now() - startTime;
       setCeLatency(elapsed);
-      setCeResult({ error: err?.message || "Execution failed" });
+      setCeResult({ error: err instanceof Error ? err.message : "Execution failed" });
     } finally {
       setCeIsLoading(false);
     }
@@ -521,14 +532,18 @@ export default function AgentsPage() {
     const startTime = Date.now();
 
     try {
-      let parsedInput: any = {};
+      let parsedInput: Record<string, unknown> = {};
       try {
         parsedInput = JSON.parse(testInputJson);
-      } catch (err) {
+      } catch {
         parsedInput = { rawInput: testInputJson };
       }
 
-      const demoShipmentId = parsedInput?.shipmentId || `shp_demo_${Date.now().toString().slice(-6)}`;
+      const rawShipmentId = parsedInput.shipmentId;
+      const demoShipmentId =
+        typeof rawShipmentId === "string" && rawShipmentId
+          ? rawShipmentId
+          : `shp_demo_${Date.now().toString().slice(-6)}`;
 
       if (inputMode === "file" && dropFile) {
         const formData = new FormData();
@@ -562,10 +577,10 @@ export default function AgentsPage() {
       const elapsed = Date.now() - startTime;
       setExecutionTime(elapsed);
       setTestResult(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       const elapsed = Date.now() - startTime;
       setExecutionTime(elapsed);
-      setTestResult({ error: err?.message || "Execution failed" });
+      setTestResult({ error: err instanceof Error ? err.message : "Execution failed" });
     } finally {
       setIsExecuting(false);
     }
@@ -1022,7 +1037,14 @@ export default function AgentsPage() {
       {/* AGENT SPEC MODAL */}
       {activeModalAgent && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-[#E5E5EA] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div
+            ref={agentModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="agent-spec-title"
+            tabIndex={-1}
+            className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-[#E5E5EA] overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+          >
             {/* Modal Header */}
             <div className="p-6 border-b border-[#E5E5EA] flex items-start justify-between bg-[#F5F5F7]">
               <div className="flex items-center space-x-3.5">
@@ -1038,7 +1060,7 @@ export default function AgentsPage() {
                       {activeModalAgent.category}
                     </span>
                   </div>
-                  <h2 className="text-xl font-extrabold text-[#1D1D1F] mt-0.5">
+                  <h2 id="agent-spec-title" className="text-xl font-extrabold text-[#1D1D1F] mt-0.5">
                     {activeModalAgent.name}
                   </h2>
                 </div>
@@ -1388,7 +1410,7 @@ export default function AgentsPage() {
                         ) : (
                           <div className="h-full flex flex-col items-center justify-center space-y-2 text-slate-500">
                             <Bot className="w-8 h-8 text-slate-600" />
-                            <p className="text-xs font-sans">Click 'Run Agent in Real-Time' to trigger live execution.</p>
+                            <p className="text-xs font-sans">Click &apos;Run Agent in Real-Time&apos; to trigger live execution.</p>
                           </div>
                         )}
                       </div>

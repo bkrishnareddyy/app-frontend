@@ -39,25 +39,23 @@ export class HtsNodeRepository {
       where.heading = filters.heading;
     }
 
-    try {
-      const [items, total] = await Promise.all([
-        db.htsNode.findMany({
-          where,
-          include: {
-            dutyRates: true,
-            units: true,
-          },
-          take: filters.limit || 20,
-          skip: filters.offset || 0,
-          orderBy: [{ htsNumberNormalized: "asc" }, { sourceRowNumber: "asc" }],
-        }),
-        db.htsNode.count({ where }),
-      ]);
+    // Not wrapped in try/catch: an empty result set and a failed query mean very
+    // different things to a classifier, and returning [] for both hides outages.
+    const [items, total] = await Promise.all([
+      db.htsNode.findMany({
+        where,
+        include: {
+          dutyRates: true,
+          units: true,
+        },
+        take: filters.limit || 20,
+        skip: filters.offset || 0,
+        orderBy: [{ htsNumberNormalized: "asc" }, { sourceRowNumber: "asc" }],
+      }),
+      db.htsNode.count({ where }),
+    ]);
 
-      return { items, total };
-    } catch (err) {
-      return { items: [], total: 0 };
-    }
+    return { items, total };
   }
 
   /**

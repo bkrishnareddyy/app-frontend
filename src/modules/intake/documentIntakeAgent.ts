@@ -1,11 +1,10 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { logAgentError } from "@/modules/agents/agentLogger";
 import { EventEmitter } from "events";
-import { Prisma } from "@prisma/client";
 import {
   DocumentTypeCatalog,
-  DocumentTypeDefinition,
   DocumentType,
   DocumentTypeCode,
 } from "./documentTypeCatalog";
@@ -15,11 +14,23 @@ export type { DocumentType, DocumentTypeCode };
 // Global event bus for multi-agent reactive orchestration
 export const agentEventBus = new EventEmitter();
 
+interface GeminiPage {
+  pageNumber?: number;
+  docTypeCode?: string;
+  docTypeName?: string;
+  confidence?: unknown;
+  isHandwritten?: unknown;
+  hasIllegibleStamps?: unknown;
+  orientationDegrees?: number;
+  headerTextExcerpt?: string;
+}
+
 export interface PageAnalysisResult {
   pageNumber: number;
   docTypeCode: string; // Dynamic code from DocumentTypeCatalog (e.g. "COMMERCIAL_INVOICE", "CBP_FORM_7501", "FDA_PRIOR_NOTICE")
   docTypeName: string; // Human readable title
-  confidence: number; // 0-100
+  /** 0-100, or null when nothing actually read the page. */
+  confidence: number | null;
   isHandwritten: boolean;
   hasIllegibleStamps: boolean;
   orientationDegrees: number;
@@ -31,7 +42,7 @@ export interface DocumentIntakeAgentInput {
   userId: string;
   shipmentId: string;
   fileName: string;
-  fileUrl: string;
+  fileUrl?: string;
   fileBuffer?: Buffer;
   mimeType?: string;
   docTypeOverride?: string;
@@ -44,7 +55,7 @@ export interface DocumentIntakeAgentOutput {
   packetId: string;
   shipmentId: string;
   status: "Completed" | "Review Required" | "Attention";
-  overallConfidence: number;
+  overallConfidence: number | null;
   documentCount: number;
   pageCount: number;
   classifications: PageAnalysisResult[];
@@ -52,12 +63,14 @@ export interface DocumentIntakeAgentOutput {
   missingRequiredDocs: string[];
   humanReviewReason?: string;
   reasoningChain: string;
-  agentDecisionId: string;
-  shipmentDocumentId: string;
+  agentDecisionId: string | null;
+  shipmentDocumentId: string | null;
   aiProviderUsed: string;
   apiKeyActive: boolean;
   /** Populated when the Gemini vision call throws, so failures are visible in the API response. */
   extractionError?: string;
+  /** Populated when the document or decision row could not be written. */
+  persistenceError?: string;
 }
 
 // Flexible JSON schema for Gemini 2.5 Vision Output
@@ -206,9 +219,10 @@ export class DocumentIntakeAgent {
       : "DocumentCatalog Vision Engine (Local Fallback)";
 
     let pages: PageAnalysisResult[] = [];
-    let overallConfidence = 95;
+    let overallConfidence: number | null = null;
     let reasoningChain = "";
     let extractionError: string | undefined = undefined;
+    let persistenceError: string | undefined = undefined;
 
     const aiClient = this.getAiClient();
 
@@ -243,45 +257,49 @@ Target File Name: "${input.fileName}"`;
         const jsonText = response.text || "{}";
         const parsed = JSON.parse(jsonText);
 
-        overallConfidence = parsed.overallConfidence ?? 94;
+        overallConfidence = typeof parsed.overallConfidence === "number" ? parsed.overallConfidence : null;
         reasoningChain = parsed.reasoningChain || "Gemini Vision multi-modal document intake completed successfully.";
-        pages = (parsed.pages || []).map((p: any) => {
+        pages = (parsed.pages || []).map((p: GeminiPage) => {
           const matchedDef = DocumentTypeCatalog.matchDocumentType(p.docTypeCode || p.docTypeName || input.fileName);
           return {
             pageNumber: p.pageNumber || 1,
             docTypeCode: matchedDef.code,
             docTypeName: matchedDef.name,
-            confidence: p.confidence ?? 95,
+            confidence: typeof p.confidence === "number" ? p.confidence : null,
             isHandwritten: Boolean(p.isHandwritten),
             hasIllegibleStamps: Boolean(p.hasIllegibleStamps),
             orientationDegrees: p.orientationDegrees || 0,
             headerTextExcerpt: p.headerTextExcerpt || matchedDef.description,
           };
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn("[DocumentIntakeAgent] Gemini API call exception, using DocumentCatalog Engine fallback:", err);
         aiProvider = "DocumentCatalog Vision Engine (Fallback)";
-        extractionError = err?.message || String(err);
+        extractionError = err instanceof Error ? err.message : String(err);
       }
     }
 
     // Grounded Fallback: if Gemini wasn't available or returned 0 pages
     if (pages.length === 0) {
-      const targetType = input.docTypeOverride || input.fileName || "Commercial Invoice";
+      // Was `|| "Commercial Invoice"`, so a document the catalog could not
+      // identify was filed as an invoice. Unmatched names resolve to
+      // OTHER_UNVERIFIED_DOCUMENT instead.
+      const targetType = input.docTypeOverride || input.fileName || "";
       const matchedDef = DocumentTypeCatalog.matchDocumentType(targetType);
       pages = [
         {
           pageNumber: 1,
           docTypeCode: matchedDef.code,
           docTypeName: matchedDef.name,
-          confidence: input.docTypeOverride ? 90 : 85,
+          // Filename matching is not an OCR read, so it carries no confidence.
+          confidence: null,
           isHandwritten: false,
           hasIllegibleStamps: false,
           orientationDegrees: 0,
           headerTextExcerpt: `Document intake classification: ${matchedDef.name}`,
         },
       ];
-      overallConfidence = input.docTypeOverride ? 90 : 85;
+      overallConfidence = null;
       reasoningChain = `Document Packet ${packetId} ingested and classified as ${matchedDef.name} (${matchedDef.code}).`;
     }
 
@@ -293,7 +311,12 @@ Target File Name: "${input.fileName}"`;
     let status: "Completed" | "Review Required" | "Attention" = "Completed";
     const reviewReasons: string[] = [];
 
-    if (overallConfidence < 90) {
+    if (overallConfidence === null) {
+      status = "Review Required";
+      reviewReasons.push(
+        "No OCR confidence was reported for this packet, so it cannot clear the 90% threshold for automated filing."
+      );
+    } else if (overallConfidence < 90) {
       status = "Review Required";
       reviewReasons.push(
         `OCR confidence score (${overallConfidence}%) is below mandatory 90% threshold for automated filing.`
@@ -310,8 +333,10 @@ Target File Name: "${input.fileName}"`;
 
     const humanReviewReason = reviewReasons.length > 0 ? reviewReasons.join(" ") : undefined;
     const primaryDoc = DocumentTypeCatalog.matchDocumentType(detectedTypes[0] || input.fileName);
-    let shipmentDocId = "doc_fallback_intake";
-    let agentDecisionId = "dec_fallback_intake";
+    // Null rather than "doc_fallback_intake"/"dec_fallback_intake": a failed write
+    // produced no row, and a synthetic id here was persisted into the audit trail.
+    let shipmentDocId: string | null = null;
+    let agentDecisionId: string | null = null;
     try {
       const existingDoc = await db.shipmentDocument.findFirst({
         where: {
@@ -357,7 +382,7 @@ Target File Name: "${input.fileName}"`;
           agentIcon: "FileCheck2",
           status: status === "Completed" ? "Approved" : "Needs Review",
           confidence: overallConfidence,
-          decisionSummary: `Stitched ${pages.length}-page document packet ${packetId}. Primary document identified as ${primaryDoc.name} (${overallConfidence}% confidence).`,
+          decisionSummary: `Stitched ${pages.length}-page document packet ${packetId}. Primary document identified as ${primaryDoc.name} (${overallConfidence === null ? "confidence not reported" : `${overallConfidence}% confidence`}).`,
           purpose: "Ingest unstructured trade document, stitch packet pages, detect illegibility, and index into document store",
           dataSources: ["Google Vision OCR Engine", "CBP Document Catalog Rules", aiProvider],
           regulations: ["19 CFR § 141.86 (Invoice Requirements)", "19 CFR § 141.83"],
@@ -371,28 +396,37 @@ Target File Name: "${input.fileName}"`;
       });
       agentDecisionId = agentDecision.id;
     } catch (err) {
-      // Fallback for DB limits
+      persistenceError = logAgentError(
+        "Document Intake Agent",
+        input.shipmentId,
+        "DB shipmentDocument/agentDecision write",
+        err
+      );
     }
 
     // 5. Emit Audit Log
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "agent.document_intake",
-        entity: "AgentDecision",
-        entityId: agentDecisionId,
-        metadata: {
-          packetId,
-          fileName: input.fileName,
-          status,
-          overallConfidence,
-          docTypeCode: primaryDoc.code,
-          docTypeName: primaryDoc.name,
-          aiProviderUsed: aiProvider,
-        },
-      });
-    } catch (e) {}
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "agent.document_intake",
+          entity: "AgentDecision",
+          entityId: agentDecisionId,
+          metadata: {
+            packetId,
+            fileName: input.fileName,
+            status,
+            overallConfidence,
+            docTypeCode: primaryDoc.code,
+            docTypeName: primaryDoc.name,
+            aiProviderUsed: aiProvider,
+          },
+        });
+      } catch (err) {
+        logAgentError("Document Intake Agent", input.shipmentId, "audit log", err);
+      }
+    }
 
     const agentOutput: DocumentIntakeAgentOutput = {
       packetId,
@@ -411,6 +445,7 @@ Target File Name: "${input.fileName}"`;
       aiProviderUsed: aiProvider,
       apiKeyActive,
       extractionError,
+      persistenceError,
     };
 
     // 6. Reactive Multi-Agent Pipeline Trigger: Emit event to wake up Agent 2

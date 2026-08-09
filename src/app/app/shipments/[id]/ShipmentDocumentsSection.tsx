@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, Plus, Upload, FileText } from "lucide-react";
-import { DocumentUploadModal } from "@/components/DocumentUploadModal";
-import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CheckCircle2, AlertCircle, Plus } from "lucide-react";
+import { DocumentUploadModal } from "@/components/DocumentUploadModal";
+import { AWAITING_PROCESSING } from "@/lib/honest";
 
 interface DocumentItem {
   id: string;
   docType: string;
   fileName: string;
-  pageCount: number;
-  confidence: number;
+  pageCount: number | null;
+  confidence: number | null;
   status: string;
   fileUrl?: string | null;
 }
@@ -38,22 +39,15 @@ export function ShipmentDocumentsSection({
     return () => window.removeEventListener("qubere:open-upload-modal", handleOpen);
   }, []);
 
-  // Map unique documents by ID to prevent key duplication while retaining all uploaded files
-  const uniqueDocs = Array.from(
-    new Map(initialDocs.map((d) => [d.id, d])).values()
-  );
-
-  const [documents, setDocuments] = useState<DocumentItem[]>(uniqueDocs);
-
-  // Sync state when initialDocs props change (e.g. after dynamic file upload refresh)
-  useEffect(() => {
-    setDocuments(Array.from(new Map(initialDocs.map((d) => [d.id, d])).values()));
-  }, [initialDocs]);
+  // Derived from props rather than seeded into state, so a refresh of the
+  // parent is actually reflected here.
+  const documents = Array.from(new Map(initialDocs.map((d) => [d.id, d])).values());
 
   const requiredTypes = ["Commercial Invoice", "Packing List", "Bill of Lading"];
   if (originStatus !== "Not Applicable") {
     requiredTypes.push("Certificate of Origin");
   }
+
 
   const isDocReceived = (d: DocumentItem) =>
     d.status !== "Missing" &&
@@ -95,7 +89,7 @@ export function ShipmentDocumentsSection({
           </h3>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-3 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1 shrink-0 whitespace-nowrap cursor-pointer"
+            className="px-3 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1 shrink-0 whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Document</span>
@@ -108,55 +102,76 @@ export function ShipmentDocumentsSection({
             const isSelected = activeDocId === doc.id;
             
             return (
-              <Link
+              <div
                 key={doc.id}
-                href={`?docId=${doc.id}`}
-                className={`p-3 rounded-xl block border flex items-center justify-between text-xs transition-colors hover:border-[#0071E3] ${
-                  isSelected 
-                    ? "bg-blue-50/50 border-[#0071E3] shadow-2xs" 
+                className={`p-3 rounded-xl border text-sm transition-colors hover:border-[#0071E3] space-y-2 ${
+                  isSelected
+                    ? "bg-blue-50/50 border-[#0071E3] shadow-2xs"
                     : "bg-[#F5F5F7] border-[#E5E5EA]"
                 }`}
               >
-                <div className="flex items-center space-x-2.5 min-w-0 pr-2">
-                  {received ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="font-bold text-[#1D1D1F] truncate">{doc.docType}</p>
-                    <p className="text-[10px] text-[#86868B] truncate">
-                      {doc.fileName} ({doc.pageCount || 1} pages)
-                    </p>
+                <Link
+                  href={`?docId=${doc.id}`}
+                  aria-current={isSelected ? "true" : undefined}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                    {received ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-bold text-[#1D1D1F] truncate">
+                        {doc.docType === "AUTO_DETECT" ? "Type not detected" : doc.docType}
+                      </p>
+                      <p className="text-sm text-[#86868B] truncate">
+                        {doc.fileName}
+                        {doc.pageCount !== null && ` (${doc.pageCount} pages)`}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                {received ? (
-                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                    {doc.confidence || 95}% Parsed
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 shrink-0">
-                    Missing
-                  </span>
+                  {received ? (
+                    <span
+                      className="text-sm font-bold text-[#1D1D1F] bg-white px-2.5 py-0.5 rounded-full border border-[#E5E5EA] shrink-0"
+                      title="Model confidence, not legal certainty"
+                    >
+                      {doc.confidence === null
+                        ? AWAITING_PROCESSING
+                        : `Model ${doc.confidence}%`}
+                    </span>
+                  ) : (
+                    <span className="text-sm font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 shrink-0">
+                      Missing
+                    </span>
+                  )}
+                </Link>
+                {received && (
+                  <Link
+                    href={`/app/documents/${doc.id}/review`}
+                    className="inline-block text-sm font-semibold text-[#0071E3] hover:underline"
+                  >
+                    Review extracted fields
+                  </Link>
                 )}
-              </Link>
+              </div>
             );
           })}
         </div>
 
 
-        <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-800 space-y-1">
-          <p className="font-bold">Document Set Summary</p>
-          <p className="text-[11px] text-blue-600">
-            Authoritative required documents received: {receivedCount}/{totalRequired}
+        <div className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] text-sm text-[#1D1D1F] space-y-1">
+          <p className="font-bold">Document set</p>
+          <p className="text-sm text-[#6E6E73]">
+            {receivedCount} of {totalRequired} required document types have a stored file.
           </p>
           {missingCount > 0 ? (
-            <p className="text-[11px] text-red-600 font-semibold">
+            <p className="text-sm text-red-700 font-semibold">
               Missing required: {missingTypes.join(", ")}
             </p>
           ) : (
-            <p className="text-[11px] text-emerald-600 font-semibold">
-              ✓ All required trade documents received
+            <p className="text-sm text-emerald-700 font-semibold">
+              All required trade documents received
             </p>
           )}
         </div>

@@ -20,6 +20,24 @@ export interface ClassificationResultItem {
   legalRationale: string;
 }
 
+/** The HTS reference row fields this agent reads. */
+interface HtsCandidate {
+  htsCode10?: string | null;
+  htsNumberDisplay?: string | null;
+  description?: string | null;
+}
+
+interface HtsModelResult {
+  htsCode: string;
+  htsDescription: string;
+  dutyRate: string;
+  griCitations: string[];
+  crossRulings: string[];
+  confidence: number;
+  legalRationale: string;
+  evaluatorScore?: number | null;
+}
+
 export interface HTSClassificationInput {
   accountId: string;
   userId: string;
@@ -38,7 +56,7 @@ export interface HTSClassificationOutput {
   classifications: ClassificationResultItem[];
   overallConfidence: number;
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
@@ -136,7 +154,8 @@ export class HTSClassificationAgent {
       const reasoningChain =
         "HTS Classification Gating STOPPED: Product description is missing or invalid. HTS codes will NOT be assigned to unknown goods per 19 CFR Part 152.";
 
-      let agentDecisionId = "dec_fallback_hts";
+      // Null, not a synthetic id: a failed write produced no AgentDecision row.
+      let agentDecisionId: string | null = null;
       try {
         const agentDecision = await db.agentDecision.create({
           data: {
@@ -182,16 +201,13 @@ export class HTSClassificationAgent {
     for (const item of input.productProfiles) {
       // Seed DB candidates: query on first meaningful word of description for context
       const keyword = (item.rawDescription || "").split(" ").find((w) => w.length > 3) || "";
-      let htsCandidates: any[] = [];
+      let htsCandidates: HtsCandidate[] = [];
       try {
         if (keyword) {
           htsCandidates = await db.hTSCode.findMany({
             where: { description: { contains: keyword, mode: "insensitive" } },
             take: 3,
           });
-        }
-        if (htsCandidates.length === 0) {
-          htsCandidates = await db.hTSCode.findMany({ take: 3 });
         }
       } catch (err) {
         debugError = logAgentError(
@@ -205,20 +221,12 @@ export class HTSClassificationAgent {
       const candidateContext =
         htsCandidates.length > 0
           ? htsCandidates
-              .map((c: any) => `${c.htsCode10}: ${c.description}`)
+              .map((c) => `${c.htsCode10}: ${c.description}`)
               .join("\n")
           : "No DB candidates found.";
 
       // Try real Gemini call
-      let htsResult: {
-        htsCode: string;
-        htsDescription: string;
-        dutyRate: string;
-        griCitations: string[];
-        crossRulings: string[];
-        confidence: number;
-        legalRationale: string;
-      } | null = null;
+      let htsResult: HtsModelResult | null = null;
 
       if (process.env.GEMINI_API_KEY) {
         try {
@@ -246,7 +254,7 @@ ${candidateContext}`;
             htsResult = parsed;
             aiProvider = "Gemini 2.5 Flash HTS Classification Engine";
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           debugError = logAgentError(
             "HTS Classification Agent",
             input.shipmentId,
@@ -274,7 +282,7 @@ ${candidateContext}`;
           crossRulings: [], // Never fabricate a citation
           confidence: lowConfidence,
           legalRationale: `${rationaleReason}DB candidate used as unverified low-confidence suggestion (${lowConfidence}% confidence). Requires human broker classification review before filing.`,
-        } as any;
+        };
         
         if (!process.env.GEMINI_API_KEY) {
           aiProvider = "Deterministic HTS DB Lookup (No API Key)";
@@ -291,8 +299,10 @@ ${candidateContext}`;
           griCitations: htsResult.griCitations,
           crossRulings: htsResult.crossRulings,
           confidence: htsResult.confidence,
-          evaluatorScore: (htsResult as any).evaluatorScore ?? null,
-          evaluatorCritique: (htsResult as any).evaluatorScore ? "Evaluator-Optimizer Turn 2 confirmed." : "Single-pass classification. Evaluator refinement loop pending.",
+          evaluatorScore: htsResult.evaluatorScore ?? null,
+          evaluatorCritique: htsResult.evaluatorScore
+            ? "Evaluator-Optimizer Turn 2 confirmed."
+            : "Single-pass classification. Evaluator refinement loop pending.",
           refinementTurns: 1,
           legalRationale: htsResult.legalRationale,
         });
@@ -307,7 +317,7 @@ ${candidateContext}`;
 
     const reasoningChain = `Classified ${results.length} line item(s). Overall confidence: ${overallConfidence}%. AI provider: ${aiProvider}.${debugError ? " Note: fallback used due to extraction error." : ""}`;
 
-    let agentDecisionId = "dec_fallback_hts";
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -321,7 +331,8 @@ ${candidateContext}`;
           purpose: "10-Digit HTS code resolution via Gemini legal reasoning and CBP CROSS ruling lookup",
           dataSources: ["HTSUS 2026 Rev 1", "CBP CROSS Rulings Database", aiProvider],
           regulations: ["19 U.S.C. § 1202", "GRI 1-6"],
-          currentHtsCode: "0000.00.0000",
+          // No existing classification is read here, so there is no current code.
+          currentHtsCode: null,
           proposedHtsCode: results[0]?.htsCode,
           proposedDescription: results[0]?.htsDescription,
           rulesApplied: ["GRI 1-6 Legal Verification", "HTSUS Chapter/Section Note Analysis"],
@@ -338,22 +349,24 @@ ${candidateContext}`;
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: { agentName: "HTS Classification Agent", classificationsCount: results.length, overallConfidence },
-      });
-    } catch (err) {
-      debugError = logAgentError(
-        "HTS Classification Agent",
-        input.shipmentId,
-        "createAuditLog",
-        err
-      );
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: { agentName: "HTS Classification Agent", classificationsCount: results.length, overallConfidence },
+        });
+      } catch (err) {
+        debugError = logAgentError(
+          "HTS Classification Agent",
+          input.shipmentId,
+          "createAuditLog",
+          err
+        );
+      }
     }
 
     const output: HTSClassificationOutput = {

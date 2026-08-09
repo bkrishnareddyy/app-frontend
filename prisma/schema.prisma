@@ -8,11 +8,21 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// Controls whether a workspace holds real operational data or clearly-labelled
+/// demonstration data. Demo/sandbox content must never appear in a PRODUCTION
+/// workspace.
+enum DataMode {
+  PRODUCTION
+  DEMO
+  SANDBOX
+}
+
 model Account {
   id          String    @id @default(cuid())
   name        String
   slug        String    @unique
   type        String    @default("INDIVIDUAL") // ENTERPRISE or INDIVIDUAL
+  dataMode    DataMode  @default(PRODUCTION)
   status      String    @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
   ownerUserId String?
   ownerUser   User?     @relation("AccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
@@ -25,6 +35,7 @@ model Account {
   invitations           Invitation[]
   auditLogs             AuditLog[]
   idempotencyRecords    IdempotencyRecord[]
+  shipmentSequences     ShipmentSequence[]
   shipments             Shipment[]
   shipmentDocuments     ShipmentDocument[]
   shipmentLineItems     ShipmentLineItem[]
@@ -242,6 +253,19 @@ model IdempotencyRecord {
   @@index([expiresAt])
 }
 
+/// Concurrency-safe allocator for per-account, per-year shipment numbers.
+/// Replaces count()+1 numbering, which races under concurrent creates.
+model ShipmentSequence {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  year      Int
+  lastValue Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, year])
+}
+
 // -----------------------------------------------------------------------------
 // CORE ENTERPRISE TRADE COMPLIANCE DOMAIN MODELS
 // -----------------------------------------------------------------------------
@@ -257,17 +281,17 @@ model Shipment {
   assignedBrokerId   String?
   assignedBroker     User?             @relation("ShipmentBroker", fields: [assignedBrokerId], references: [id], onDelete: SetNull)
   poReference        String?           // e.g. PO-778899
-  entryType          String            @default("Consumption Entry")
-  incoterm           String            @default("CIF Los Angeles")
-  portOfEntry        String?           @default("Port of Los Angeles (2704)")
-  carrierName        String?           @default("Maersk Line")
-  countryOfExport    String?           @default("Germany")
+  entryType          String?
+  incoterm           String?
+  portOfEntry        String?
+  carrierName        String?
+  countryOfExport    String?
   estimatedArrival   DateTime?
-  status             String            @default("In Progress") // In Progress, Ready to File, On Hold, Submitted, Completed
-  healthStatus       String            @default("Healthy") // Healthy, At Risk, Critical
-  readinessScore     Int               @default(87) // 0 - 100 percentage
-  riskScore          Int               @default(28) // 0 - 100 risk score
-  ownerName          String            @default("Stephen")
+  status             String            @default("Draft") // Draft, In Progress, Ready to File, On Hold, Submitted, Completed
+  healthStatus       String?           // Healthy, At Risk, Critical — derived, null until evaluated
+  readinessScore     Int?              // 0 - 100 percentage, null until calculated
+  riskScore          Int?              // 0 - 100 risk score, null until calculated
+  ownerName          String?
   version            Int               @default(1)
   deletedAt          DateTime?
   createdAt          DateTime          @default(now())
@@ -302,11 +326,11 @@ model ShipmentDocument {
   account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   docType    String   // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin
   fileName   String   // e.g. INV-45678.pdf
-  pageCount  Int      @default(2)
+  pageCount  Int?     // null until the document has been parsed
   fileUrl    String?
   checksum   String?  // SHA-256 hash for duplicate detection
   version    String   @default("1.0")
-  confidence Int      @default(95)
+  confidence Int?     // extraction confidence, null until extraction runs
   status        String   @default("Received") // Received, Missing, Review Required
   required      Boolean  @default(true)
   extractedJson String?  @db.Text
@@ -334,9 +358,9 @@ model ShipmentLineItem {
   totalValue      Decimal
   countryOfOrigin String   // e.g. Germany, China
   htsCode         String   // e.g. 8481.80.5090
-  htsConfidence   Int      @default(97)
-  eccnCode        String?  @default("EAR99")
-  status          String   @default("Valid") // Valid, Review Required, Issue
+  htsConfidence   Int?     // model confidence, null until classified
+  eccnCode        String?
+  status          String   @default("Unreviewed") // Unreviewed, Valid, Review Required, Issue
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -357,12 +381,12 @@ model AgentDecision {
   agentName           String    // Document Intake Agent, Document Intelligence Agent, Product Intelligence Agent, Classification Agent, Origin Agent, Valuation Agent, Compliance Agent, Filing Readiness Agent, Customs Filing Agent, Response Management Agent
   agentIcon           String?
   status              String    @default("Review Required") // Completed, Review Required, Attention, In Progress, Pending, Approved
-  confidence          Int       @default(76)
+  confidence          Int?      // model confidence, null until the model reports one
   decisionSummary     String    // e.g. 2 line items need review
   purpose             String?   // e.g. Determine correct HS/HTS classification for all line items
   dataSources         String[]  // e.g. Documents, Product Master, Historical Shipments, Tariff Rulings
   regulations         String[]  // e.g. US HTS 2025, General Rules of Interpretation (GRI 1 & 6)
-  modelVersion        String?   @default("Qubere-Taxo-v2.3")
+  modelVersion        String?
   currentHtsCode      String?   // e.g. 8481.80.5090
   proposedHtsCode     String?   // e.g. 8537.10.2030
   proposedDescription String?  // e.g. Electronic Boards & Controllers
@@ -395,15 +419,15 @@ model CustomsFiling {
   authority          String            @default("US Customs (CBP)")
   entryType          String            @default("Consumption Entry")
   filingType         String            @default("ABI - Automated")
-  filingStatus       String            @default("Filed") // Draft, Filed, Accepted, Released, Closed
-  paymentStatus      String            @default("Paid") // Pending, Paid, Deferred
-  totalValue         Decimal             @default(17750.00)
-  totalDuties        Decimal             @default(2850.00)
-  totalTaxes         Decimal             @default(13100.00)
-  totalAmount        Decimal             @default(16250.00)
+  filingStatus       String            @default("Draft") // Draft, Preparing, ValidationFailed, ReadyForBrokerReview, BrokerApproved, TransmissionPending, Transmitted, Accepted, Rejected, DocumentsRequested, CustomsHold, Released, Cancelled, Closed, Simulation
+  paymentStatus      String            @default("Pending") // Pending, Paid, Deferred
+  totalValue         Decimal?          // null until calculated from line items
+  totalDuties        Decimal?          // null until calculated
+  totalTaxes         Decimal?          // null until calculated
+  totalAmount        Decimal?          // null until calculated
   dutyBreakdown      Json?             // Array of itemized duty fee objects
   version            Int               @default(1)
-  submittedAt        DateTime          @default(now())
+  submittedAt        DateTime?         // null until actually transmitted
   releasedAt         DateTime?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
@@ -432,7 +456,7 @@ model CustomsResponse {
   code        String        // ACK, RFRA, AOC, RELE
   title       String        // e.g. ACK - Acceptance, RFRA - Additional Info Request
   description String        // e.g. Customs has accepted your entry
-  status      String        @default("Accepted") // Accepted, Responded, In Process, Released
+  status      String        // Accepted, Responded, In Process, Released
   receivedAt  DateTime      @default(now())
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -449,8 +473,8 @@ model RegulatoryUpdate {
   category               String   // Tariffs & Duties, Product Regulations, Trade Policy, Compliance & Reporting, Sanctions & Restrictions
   impactLevel            String   @default("High") // High, Medium, Low
   effectiveDate          DateTime
-  affectedShipmentsCount Int      @default(27)
-  publishedText          String   @default("2h ago")
+  affectedShipmentsCount Int?     // null until impact analysis runs
+  publishedText          String?
   status                 String   @default("Immediate Action Required")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
@@ -817,8 +841,8 @@ model ExtractionField {
   document   ShipmentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
   fieldName  String           // e.g. invoiceNumber, invoiceDate, totalValue, htsCandidate
   value      String
-  confidence Int              @default(95)
-  pageNumber Int              @default(1)
+  confidence Int?             // null until the extractor reports one
+  pageNumber Int?
   bbox       Json?            // { x: 120, y: 340, width: 200, height: 24 }
   source     String           @default("OCR_AI_AGENT")
   createdAt  DateTime         @default(now())
@@ -1004,7 +1028,7 @@ model ScreeningLog {
   account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   targetName   String
   targetType   String    // Shipper | Consignee | Broker | Carrier | Manufacturer
-  matchStatus  String    // PASSED | FLAGGED | BLOCKED
+  matchStatus  String    // PASSED | FLAGGED | BLOCKED | INDETERMINATE (no list loaded)
   matchScore   Int       @default(0) // 0-100 fuzzy match score
   matchedParty String?
   listSource   String?

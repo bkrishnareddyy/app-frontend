@@ -1,5 +1,14 @@
 import { db } from "@/lib/db";
+import { createAuditLog } from "@/lib/audit";
 import { ProviderMetadata } from "@/lib/providers";
+import {
+  EXCEPTION_STATES,
+  isTerminalExceptionState,
+  normalizeExceptionStatus,
+  requiresResolutionReason,
+  statusVariants,
+  type ExceptionState,
+} from "./exceptionState";
 
 export interface ExceptionListQuery {
   status?: string;
@@ -10,28 +19,23 @@ export interface ExceptionListQuery {
 export interface ExceptionUpdateInput {
   status?: string;
   assignedToUserId?: string;
+  /** Null detaches the exception; a string must name a shipment in the same account. */
+  shipmentId?: string | null;
   resolutionReason?: string;
   resolutionEvidence?: string;
   expectedVersion: number;
 }
 
-export const VALID_EXCEPTION_STATES = [
-  "OPEN",
-  "IN_PROGRESS",
-  "WAITING_FOR_IMPORTER",
-  "WAITING_FOR_DOCUMENT",
-  "READY_FOR_REVIEW",
-  "RESOLVED",
-  "WAIVED",
-  "CANCELLED",
-];
+export const VALID_EXCEPTION_STATES: readonly string[] = EXCEPTION_STATES;
 
 export class ExceptionService {
   static async listExceptions(accountId: string, userId: string, query: ExceptionListQuery) {
     const where: import("@prisma/client").Prisma.ExceptionItemWhereInput = { accountId };
 
     if (query.status && query.status !== "all") {
-      where.status = { equals: query.status, mode: "insensitive" };
+      const normalized = normalizeExceptionStatus(query.status);
+      // An unrecognised status must not widen the result to everything.
+      where.status = normalized ? { in: statusVariants(normalized) } : { in: [] };
     }
     if (query.severity) {
       where.severity = { equals: query.severity, mode: "insensitive" };
@@ -61,7 +65,12 @@ export class ExceptionService {
     };
   }
 
-  static async updateException(accountId: string, exceptionId: string, input: ExceptionUpdateInput) {
+  static async updateException(
+    accountId: string,
+    exceptionId: string,
+    input: ExceptionUpdateInput,
+    userId?: string | null
+  ) {
     const existing = await db.exceptionItem.findFirst({
       where: { id: exceptionId, accountId },
     });
@@ -74,22 +83,55 @@ export class ExceptionService {
       throw new Error("STALE_VERSION");
     }
 
+    let nextStatus: ExceptionState | undefined;
     if (input.status) {
-      const normalizedStatus = input.status.toUpperCase();
-      if (!VALID_EXCEPTION_STATES.includes(normalizedStatus)) {
+      const normalized = normalizeExceptionStatus(input.status);
+      if (!normalized) {
         throw new Error(`Invalid exception status state: ${input.status}`);
       }
-      if (normalizedStatus === "RESOLVED" && !input.resolutionReason) {
-        throw new Error("Resolution reason is required when resolving an exception");
+      if (requiresResolutionReason(normalized) && !input.resolutionReason?.trim()) {
+        throw new Error(`A stated reason is required to move this exception to ${normalized}`);
       }
+      nextStatus = normalized;
+    }
+
+    if (input.shipmentId) {
+      const owned = await db.shipment.findFirst({
+        where: { id: input.shipmentId, accountId },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new Error("SHIPMENT_NOT_FOUND");
+      }
+    }
+
+    // There is no column for the reason, so the audit entry is the only durable
+    // record of it. Write it before the status moves and fail closed: a closed
+    // exception with no stated reason is the outcome this guard exists to prevent.
+    if (nextStatus && requiresResolutionReason(nextStatus)) {
+      await createAuditLog({
+        accountId,
+        userId: userId ?? null,
+        action: "exception.resolve",
+        entity: "ExceptionItem",
+        entityId: exceptionId,
+        metadata: {
+          fromStatus: existing.status,
+          toStatus: nextStatus,
+          resolutionReason: input.resolutionReason,
+          resolutionEvidence: input.resolutionEvidence ?? null,
+        },
+        failClosed: true,
+      });
     }
 
     const updated = await db.exceptionItem.update({
       where: { id: exceptionId },
       data: {
-        status: input.status ? input.status : undefined,
+        status: nextStatus,
         assignedToUserId: input.assignedToUserId !== undefined ? input.assignedToUserId : undefined,
-        resolvedAt: input.status?.toUpperCase() === "RESOLVED" ? new Date() : undefined,
+        shipmentId: input.shipmentId !== undefined ? input.shipmentId : undefined,
+        resolvedAt: nextStatus && isTerminalExceptionState(nextStatus) ? new Date() : undefined,
         version: { increment: 1 },
       },
       include: {

@@ -1,256 +1,361 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// =============================================================================
-// API CONTRACT TEST SUITE FOR ALL READY QUBERE REST APIS
-// =============================================================================
+// This suite previously declared a `MockQubereApiServer` in this same file,
+// seeded it, and asserted its own seed values. It imported no route handler, so
+// none of the REST contracts it claimed to cover were exercised.
 
-interface ShipmentPayload {
-  id: string;
-  accountId: string;
-  shipmentNumber: string;
-  importerName: string;
-  poReference: string;
-  entryType: string;
-  incoterm: string;
-  readinessScore: number;
-  riskScore: number;
-  status: string;
+const ctxMock = vi.fn();
+const auditMock = vi.fn();
+
+const dbMock = {
+  shipment: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), count: vi.fn() },
+  agentDecision: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+  regulatoryUpdate: { findMany: vi.fn() },
+  user: { findUnique: vi.fn() },
+};
+
+vi.mock("@/lib/db", () => ({ db: dbMock }));
+vi.mock("@/lib/auth", () => ({
+  getAccountContext: () => ctxMock(),
+  hasPermission: vi.fn(async () => true),
+}));
+vi.mock("@/lib/audit", () => ({ createAuditLog: (p: unknown) => auditMock(p) }));
+vi.mock("@/modules/shipments/shipmentNumber", () => ({
+  generateShipmentNumber: async () => "SHP-2026-000002",
+}));
+
+const shipments = await import("@/app/api/shipments/route");
+const decisions = await import("@/app/api/decisions/route");
+const regulatory = await import("@/app/api/regulatory/route");
+
+const ACCOUNT = "acc_1";
+
+function context(overrides: Record<string, unknown> = {}) {
+  return {
+    userId: "u_1",
+    accountId: ACCOUNT,
+    firstName: "Jane",
+    lastName: "Broker",
+    roleNames: ["ADMIN"],
+    permissions: [
+      "decisions.approve",
+      "decisions.reject",
+      "decisions.reevaluate",
+      "decisions.override",
+    ],
+    ...overrides,
+  };
 }
 
-interface AgentDecisionPayload {
-  id: string;
-  accountId: string;
-  agentName: string;
-  status: "Review Required" | "Approved" | "Rejected" | "In Progress";
-  confidence: number;
-  currentHtsCode: string;
-  proposedHtsCode: string;
-  humanNotes?: string;
+function post(url: string, body: unknown) {
+  return new Request(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
-interface CustomsFilingPayload {
-  id: string;
-  accountId: string;
-  entryNumber: string;
-  filingStatus: string;
-  totalDuties: number;
-  totalTaxes: number;
-  totalAmount: number;
-  dutyBreakdown: Array<{ feeName: string; amount: number; rate: string }>;
-}
+beforeEach(() => {
+  vi.clearAllMocks();
+  ctxMock.mockResolvedValue(context());
+  dbMock.shipment.findMany.mockResolvedValue([]);
+  dbMock.shipment.count.mockResolvedValue(0);
+  dbMock.regulatoryUpdate.findMany.mockResolvedValue([]);
+  dbMock.user.findUnique.mockResolvedValue({
+    firstName: "Jane",
+    lastName: "Broker",
+    email: "jane@example.com",
+    brokerLicenseNumber: null,
+  });
+});
 
-interface RegulatoryUpdatePayload {
-  id: string;
-  title: string;
-  jurisdiction: string;
-  impactLevel: "High" | "Medium" | "Low";
-  affectedShipmentsCount: number;
-}
+describe("GET /api/shipments", () => {
+  const listUrl = (query = "") => new Request(`http://t/api/shipments${query}`);
 
-class MockQubereApiServer {
-  shipments: ShipmentPayload[] = [];
-  decisions: AgentDecisionPayload[] = [];
-  filings: CustomsFilingPayload[] = [];
-  regulatoryUpdates: RegulatoryUpdatePayload[] = [];
-  activeAccountId: string = "acc_qubere_enterprise";
+  it("rejects an unauthenticated caller without querying the database", async () => {
+    ctxMock.mockResolvedValue(null);
 
-  constructor() {
-    this.seed();
-  }
+    const res = await shipments.GET(listUrl());
 
-  seed() {
-    this.shipments = [
-      {
-        id: "shp_001",
-        accountId: "acc_qubere_enterprise",
-        shipmentNumber: "SHP-2026-000001",
-        importerName: "ABC Manufacturing India Pvt Ltd",
-        poReference: "PO-889900",
-        entryType: "Consumption Entry",
-        incoterm: "CIF Los Angeles",
-        readinessScore: 87,
-        riskScore: 28,
-        status: "In Progress",
-      },
-    ];
-
-    this.decisions = [
-      {
-        id: "dec_001",
-        accountId: "acc_qubere_enterprise",
-        agentName: "Classification Agent",
-        status: "Review Required",
-        confidence: 76,
-        currentHtsCode: "8481.80.5090",
-        proposedHtsCode: "8537.10.2030",
-        humanNotes: "Reviewing voltage specs with engineering",
-      },
-    ];
-
-    this.filings = [
-      {
-        id: "fil_001",
-        accountId: "acc_qubere_enterprise",
-        entryNumber: "5901-26-004872",
-        filingStatus: "Filed",
-        totalDuties: 2850.0,
-        totalTaxes: 13100.0,
-        totalAmount: 16250.0,
-        dutyBreakdown: [
-          { feeName: "Basic Customs Duty (2.5%)", amount: 335.0, rate: "2.5%" },
-          { feeName: "Section 301 China Duty (7.5%)", amount: 630.0, rate: "7.5%" },
-        ],
-      },
-    ];
-
-    this.regulatoryUpdates = [
-      {
-        id: "reg_001",
-        title: "U.S. CBP Updates Section 301 Tariff Exclusions",
-        jurisdiction: "United States",
-        impactLevel: "High",
-        affectedShipmentsCount: 27,
-      },
-    ];
-  }
-
-  // GET /api/shipments
-  getShipments(accountId: string) {
-    if (!accountId) return { status: 401, error: "Unauthorized" };
-    return { status: 200, shipments: this.shipments.filter((s) => s.accountId === accountId) };
-  }
-
-  // POST /api/shipments
-  createShipment(accountId: string, data: Partial<ShipmentPayload>) {
-    if (!accountId) return { status: 401, error: "Unauthorized" };
-    const seq = this.shipments.length + 1;
-    const shipment: ShipmentPayload = {
-      id: `shp_${Date.now()}`,
-      accountId,
-      shipmentNumber: `SHP-2026-${String(seq).padStart(6, "0")}`,
-      importerName: data.importerName || "ABC Manufacturing India Pvt Ltd",
-      poReference: data.poReference || "PO-990011",
-      entryType: data.entryType || "Consumption Entry",
-      incoterm: data.incoterm || "CIF Los Angeles",
-      readinessScore: 85,
-      riskScore: 20,
-      status: "In Progress",
-    };
-    this.shipments.push(shipment);
-    return { status: 201, shipment };
-  }
-
-  // GET /api/shipments/[id]
-  getShipmentById(accountId: string, id: string) {
-    const shipment = this.shipments.find((s) => s.accountId === accountId && (s.id === id || s.shipmentNumber === id));
-    if (!shipment) return { status: 404, error: "Shipment not found" };
-    return { status: 200, shipment };
-  }
-
-  // POST /api/documents/upload
-  uploadDocument(accountId: string, fileName: string, docType: string) {
-    if (!accountId) return { status: 401, error: "Unauthorized" };
-    if (!fileName) return { status: 400, error: "No file provided" };
-    return {
-      status: 200,
-      document: {
-        id: `doc_${Date.now()}`,
-        accountId,
-        docType,
-        fileName,
-        fileUrl: `/uploads/${fileName}`,
-        confidence: 95,
-        status: "Received",
-      },
-    };
-  }
-
-  // POST /api/decisions
-  processDecision(accountId: string, decisionId: string, action: "APPROVE" | "REJECT" | "RE_EVALUATE", notes?: string) {
-    const dec = this.decisions.find((d) => d.id === decisionId && d.accountId === accountId);
-    if (!dec) return { status: 404, error: "Decision not found" };
-    dec.status = action === "APPROVE" ? "Approved" : action === "REJECT" ? "Rejected" : "In Progress";
-    if (notes) dec.humanNotes = notes;
-    return { status: 200, decision: dec };
-  }
-
-  // POST /api/filing
-  submitCustomsFiling(accountId: string, shipmentId: string) {
-    const shipment = this.shipments.find((s) => s.id === shipmentId && s.accountId === accountId);
-    if (!shipment) return { status: 404, error: "Shipment not found" };
-    const filing: CustomsFilingPayload = {
-      id: `fil_${Date.now()}`,
-      accountId,
-      entryNumber: `5901-26-${shipment.shipmentNumber.split("-")[2]}`,
-      filingStatus: "Filed",
-      totalDuties: 2850.0,
-      totalTaxes: 13100.0,
-      totalAmount: 16250.0,
-      dutyBreakdown: [{ feeName: "Basic Customs Duty (2.5%)", amount: 335.0, rate: "2.5%" }],
-    };
-    this.filings.push(filing);
-    return { status: 201, filing };
-  }
-
-  // GET /api/regulatory
-  getRegulatoryUpdates() {
-    return { status: 200, updates: this.regulatoryUpdates };
-  }
-}
-
-describe("Qubere Enterprise REST API Contract Suite", () => {
-  let server: MockQubereApiServer;
-  const accountId = "acc_qubere_enterprise";
-
-  beforeEach(() => {
-    server = new MockQubereApiServer();
+    expect(res.status).toBe(401);
+    expect(dbMock.shipment.findMany).not.toHaveBeenCalled();
   });
 
-  it("1. GET /api/shipments returns authenticated tenant shipments list", () => {
-    const res = server.getShipments(accountId);
-    expect(res.status).toBe(200);
-    expect(res.shipments).toHaveLength(1);
-    expect(res.shipments[0].shipmentNumber).toEqual("SHP-2026-000001");
+  it("scopes the query to the caller's account and excludes soft-deleted rows", async () => {
+    await shipments.GET(listUrl());
+
+    expect(dbMock.shipment.findMany.mock.calls[0][0].where).toEqual({
+      accountId: ACCOUNT,
+      deletedAt: null,
+    });
   });
 
-  it("2. POST /api/shipments dynamically auto-increments shipment numbers", () => {
-    const res = server.createShipment(accountId, { importerName: "Global Logistics" });
+  it("restricts a PLANNER to shipments assigned to them", async () => {
+    ctxMock.mockResolvedValue(context({ roleNames: ["PLANNER"] }));
+
+    await shipments.GET(listUrl());
+
+    expect(dbMock.shipment.findMany.mock.calls[0][0].where.assignedBrokerId).toBe("u_1");
+  });
+
+  it("bounds the page even when the caller asks for no limit", async () => {
+    // The list had no take at all, so its cost grew with the account.
+    await shipments.GET(listUrl());
+
+    expect(dbMock.shipment.findMany.mock.calls[0][0].take).toBe(50);
+    expect(dbMock.shipment.findMany.mock.calls[0][0].skip).toBe(0);
+  });
+
+  it("caps a page size larger than the maximum instead of honouring it", async () => {
+    await shipments.GET(listUrl("?pageSize=100000"));
+
+    expect(dbMock.shipment.findMany.mock.calls[0][0].take).toBe(100);
+  });
+
+  it("falls back to the first page when the page number is not a positive integer", async () => {
+    await shipments.GET(listUrl("?page=0"));
+
+    expect(dbMock.shipment.findMany.mock.calls[0][0].skip).toBe(0);
+  });
+
+  it("reports the count of everything matching, not of what it returned", async () => {
+    // The list response now carries a computed readinessScore, so a row has to
+    // carry the relations that computation reads.
+    dbMock.shipment.findMany.mockResolvedValueOnce([
+      { id: "s1", documents: [], lineItems: [], exceptionItems: [] },
+    ]);
+    dbMock.shipment.count.mockResolvedValueOnce(412);
+
+    const body = await (await shipments.GET(listUrl())).json();
+
+    expect(body.shipments).toHaveLength(1);
+    expect(body.total).toBe(412);
+    expect(dbMock.shipment.count.mock.calls[0][0].where).toEqual(
+      dbMock.shipment.findMany.mock.calls[0][0].where
+    );
+  });
+
+  it("searches shipment number and importer within the caller's account", async () => {
+    await shipments.GET(listUrl("?q=SHP-2026"));
+
+    const where = dbMock.shipment.findMany.mock.calls[0][0].where;
+    expect(where.accountId).toBe(ACCOUNT);
+    expect(where.OR).toEqual([
+      { shipmentNumber: { contains: "SHP-2026", mode: "insensitive" } },
+      { importerName: { contains: "SHP-2026", mode: "insensitive" } },
+    ]);
+  });
+
+  it("returns only picker fields for the summary view rather than every relation", async () => {
+    await shipments.GET(listUrl("?view=summary"));
+
+    const args = dbMock.shipment.findMany.mock.calls[0][0];
+    expect(args.select).toEqual({
+      id: true,
+      shipmentNumber: true,
+      importerName: true,
+      status: true,
+    });
+    expect(args.include).toBeUndefined();
+  });
+});
+
+describe("POST /api/shipments", () => {
+  it("rejects a payload with no importer name", async () => {
+    const res = await shipments.POST(post("http://t/api/shipments", { poReference: "PO-1" }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).fieldErrors.importerName).toBeDefined();
+    expect(dbMock.shipment.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an importer name that is only whitespace", async () => {
+    const res = await shipments.POST(post("http://t/api/shipments", { importerName: "   " }));
+
+    expect(res.status).toBe(400);
+    expect(dbMock.shipment.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a Draft shipment with a generated number and audits it", async () => {
+    dbMock.shipment.create.mockResolvedValue({ id: "shp_2", shipmentNumber: "SHP-2026-000002" });
+
+    const res = await shipments.POST(
+      post("http://t/api/shipments", { importerName: "Global Logistics", poReference: "PO-990011" })
+    );
+
     expect(res.status).toBe(201);
-    expect(res.shipment.shipmentNumber).toEqual("SHP-2026-000002");
-    expect(res.shipment.importerName).toEqual("Global Logistics");
+    const data = dbMock.shipment.create.mock.calls[0][0].data;
+    expect(data.accountId).toBe(ACCOUNT);
+    expect(data.shipmentNumber).toBe("SHP-2026-000002");
+    expect(data.status).toBe("Draft");
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "shipment.create" }));
   });
 
-  it("3. GET /api/shipments/[id] retrieves detailed shipment record", () => {
-    const res = server.getShipmentById(accountId, "SHP-2026-000001");
+  it("does not let the caller choose the account the shipment lands in", async () => {
+    dbMock.shipment.create.mockResolvedValue({ id: "shp_2" });
+
+    await shipments.POST(
+      post("http://t/api/shipments", { importerName: "Acme", accountId: "acc_someone_else" })
+    );
+
+    expect(dbMock.shipment.create.mock.calls[0][0].data.accountId).toBe(ACCOUNT);
+  });
+});
+
+describe("POST /api/decisions", () => {
+  const decision = {
+    id: "dec_1",
+    accountId: ACCOUNT,
+    humanNotes: null,
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  };
+
+  it("rejects an unrecognised action without touching the record", async () => {
+    // This used to fall through to "In Progress", write the update, then throw
+    // on action.toLowerCase() — so the decision changed and nothing was audited.
+    dbMock.agentDecision.findFirst.mockResolvedValue(decision);
+
+    const res = await decisions.POST(
+      post("http://t/api/decisions", { decisionId: "dec_1", action: "ESCALATE" })
+    );
+
+    expect(res.status).toBe(400);
+    expect(dbMock.agentDecision.updateMany).not.toHaveBeenCalled();
+    expect(auditMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a request with no action at all", async () => {
+    const res = await decisions.POST(post("http://t/api/decisions", { decisionId: "dec_1" }));
+
+    expect(res.status).toBe(400);
+    expect(dbMock.agentDecision.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing decisionId instead of matching an arbitrary decision", async () => {
+    // Prisma drops undefined filters, so `where: { id: undefined }` would have
+    // matched the first decision in the account.
+    const res = await decisions.POST(post("http://t/api/decisions", { action: "APPROVE" }));
+
+    expect(res.status).toBe(400);
+    expect(dbMock.agentDecision.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("approves a decision and records the reviewer", async () => {
+    dbMock.agentDecision.findFirst.mockResolvedValue(decision);
+    dbMock.agentDecision.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await decisions.POST(
+      post("http://t/api/decisions", {
+        decisionId: "dec_1",
+        action: "APPROVE",
+        humanNotes: "Verified voltage specs",
+      })
+    );
+
     expect(res.status).toBe(200);
-    expect(res.shipment.poReference).toEqual("PO-889900");
+    const data = dbMock.agentDecision.updateMany.mock.calls[0][0].data;
+    expect(data.status).toBe("Approved");
+    expect(data.humanNotes).toBe("Verified voltage specs");
+    expect(data.reviewedByUserId).toBe("u_1");
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "decision.approve" }));
   });
 
-  it("4. POST /api/documents/upload persists trade files and returns storage payload", () => {
-    const res = server.uploadDocument(accountId, "INV-9988.pdf", "Commercial Invoice");
+  it("claims the row on the revision the reviewer read", async () => {
+    dbMock.agentDecision.findFirst.mockResolvedValue(decision);
+    dbMock.agentDecision.updateMany.mockResolvedValue({ count: 1 });
+
+    await decisions.POST(
+      post("http://t/api/decisions", {
+        decisionId: "dec_1",
+        action: "APPROVE",
+        expectedVersion: "2026-01-01T00:00:00.000Z",
+      })
+    );
+
+    const where = dbMock.agentDecision.updateMany.mock.calls[0][0].where;
+    expect(where.id).toBe("dec_1");
+    expect(where.accountId).toBe(ACCOUNT);
+    expect(where.updatedAt).toEqual(new Date("2026-01-01T00:00:00.000Z"));
+  });
+
+  it("refuses a decision that changed since it was opened", async () => {
+    // Both reviewers used to win; the second silently overwrote the first.
+    dbMock.agentDecision.findFirst.mockResolvedValue(decision);
+    dbMock.agentDecision.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await decisions.POST(
+      post("http://t/api/decisions", {
+        decisionId: "dec_1",
+        action: "APPROVE",
+        expectedVersion: "2025-06-01T00:00:00.000Z",
+      })
+    );
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("STALE_DECISION");
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+  });
+
+  it("requires a reason to reject", async () => {
+    dbMock.agentDecision.findFirst.mockResolvedValue(decision);
+
+    const res = await decisions.POST(
+      post("http://t/api/decisions", { decisionId: "dec_1", action: "REJECT", humanNotes: "   " })
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("RATIONALE_REQUIRED");
+    expect(dbMock.agentDecision.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("maps RE_EVALUATE back to In Progress", async () => {
+    dbMock.agentDecision.findFirst.mockResolvedValue(decision);
+    dbMock.agentDecision.updateMany.mockResolvedValue({ count: 1 });
+
+    await decisions.POST(post("http://t/api/decisions", { decisionId: "dec_1", action: "RE_EVALUATE" }));
+
+    expect(dbMock.agentDecision.updateMany.mock.calls[0][0].data.status).toBe("In Progress");
+  });
+
+  it("does not act on another account's decision", async () => {
+    dbMock.agentDecision.findFirst.mockResolvedValue(null);
+
+    const res = await decisions.POST(
+      post("http://t/api/decisions", { decisionId: "dec_other", action: "APPROVE" })
+    );
+
+    expect(res.status).toBe(404);
+    expect(dbMock.agentDecision.findFirst.mock.calls[0][0].where.accountId).toBe(ACCOUNT);
+    expect(dbMock.agentDecision.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/decisions", () => {
+  it("scopes the list to the caller's account", async () => {
+    dbMock.agentDecision.findMany.mockResolvedValue([]);
+
+    await decisions.GET(new Request("http://localhost/api/decisions"));
+
+    expect(dbMock.agentDecision.findMany.mock.calls[0][0].where).toEqual({ accountId: ACCOUNT });
+  });
+});
+
+describe("GET /api/regulatory", () => {
+  const regulatoryReq = () => new Request("http://localhost/api/regulatory");
+
+  it("requires authentication", async () => {
+    ctxMock.mockResolvedValue(null);
+
+    const res = await regulatory.GET(regulatoryReq());
+
+    expect(res.status).toBe(401);
+    expect(dbMock.regulatoryUpdate.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns the stored updates without inventing any", async () => {
+    const res = await regulatory.GET(regulatoryReq());
+
     expect(res.status).toBe(200);
-    expect(res.document.fileName).toEqual("INV-9988.pdf");
-    expect(res.document.fileUrl).toContain("/uploads/");
-  });
-
-  it("5. POST /api/decisions updates decision status on human approval", () => {
-    const res = server.processDecision(accountId, "dec_001", "APPROVE", "Verified voltage specs with engineering");
-    expect(res.status).toBe(200);
-    expect(res.decision.status).toEqual("Approved");
-    expect(res.decision.humanNotes).toEqual("Verified voltage specs with engineering");
-  });
-
-  it("6. POST /api/filing creates ABI customs filing entry summary", () => {
-    const res = server.submitCustomsFiling(accountId, "shp_001");
-    expect(res.status).toBe(201);
-    expect(res.filing.filingStatus).toEqual("Filed");
-    expect(res.filing.entryNumber).toEqual("5901-26-000001");
-  });
-
-  it("7. GET /api/regulatory returns live global trade regulatory updates", () => {
-    const res = server.getRegulatoryUpdates();
-    expect(res.status).toBe(200);
-    expect(res.updates).toHaveLength(1);
-    expect(res.updates[0].jurisdiction).toEqual("United States");
+    expect((await res.json()).updates).toEqual([]);
   });
 });

@@ -1,5 +1,33 @@
 import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
 
+/** A candidate heading the GRI engine can reason over. */
+export interface HtsCandidate {
+  id: string;
+  chapter: string;
+  heading: string;
+  htsNumberDisplay: string;
+  description: string;
+}
+
+/**
+ * Lookup port for candidate headings. Injected so the rules engine can be
+ * exercised deterministically without a live HTS database.
+ */
+export interface HtsCandidateLookup {
+  search(description: string, releaseId?: string): Promise<HtsCandidate[]>;
+}
+
+export const databaseHtsCandidateLookup: HtsCandidateLookup = {
+  async search(description) {
+    const result = await HtsNodeRepository.searchNodes({
+      q: description,
+      level: 10,
+      limit: 5,
+    });
+    return result.items as unknown as HtsCandidate[];
+  },
+};
+
 export interface SubjectInput {
   rawDescription: string;
   materialComposition?: string | null;
@@ -9,13 +37,16 @@ export interface SubjectInput {
   countryOfOrigin?: string | null;
 }
 
+/** JSON-serialisable record of the deterministic checks behind a GRI step. */
+export type DeterministicChecks = Record<string, string | number | boolean | null>;
+
 export interface GriStepResult {
   sequence: number;
   griRule: "GRI 1" | "GRI 2a" | "GRI 2b" | "GRI 3a" | "GRI 3b" | "GRI 3c" | "GRI 4" | "GRI 5a" | "GRI 5b" | "GRI 6";
   question: string;
   conclusion: string;
   outcome: "APPLIED" | "NOT_APPLICABLE" | "PASSED_TO_NEXT";
-  deterministicChecksJson?: Record<string, any>;
+  deterministicChecksJson?: DeterministicChecks;
 }
 
 export interface GriEvaluationOutput {
@@ -33,7 +64,11 @@ export class GriRulesEngine {
   /**
    * Evaluates GRI 1 through GRI 6 over product attributes and candidate HTS nodes.
    */
-  static async evaluate(subject: SubjectInput, releaseId?: string): Promise<GriEvaluationOutput> {
+  static async evaluate(
+    subject: SubjectInput,
+    releaseId?: string,
+    lookup: HtsCandidateLookup = databaseHtsCandidateLookup
+  ): Promise<GriEvaluationOutput> {
     const missingFacts: string[] = [];
 
     if (!subject.rawDescription || subject.rawDescription.trim().length < 3) {
@@ -66,20 +101,30 @@ export class GriRulesEngine {
       };
     }
 
-    // Search candidate headings via HTS Repository
-    const searchRes = await HtsNodeRepository.searchNodes({
-      q: subject.rawDescription,
-      level: 10,
-      limit: 5,
-    });
+    // Search candidate headings via the injected HTS lookup
+    const candidates = await lookup.search(subject.rawDescription, releaseId);
 
-    const candidateNode = searchRes.items[0] || {
-      id: "hts_node_synthetic_fallback",
-      chapter: "84",
-      heading: "8481",
-      htsNumberDisplay: "8481.80.5090",
-      description: "Valves for oleohydraulic transmissions",
-    };
+    const candidateNode = candidates[0];
+    if (!candidateNode) {
+      // No candidate heading available: abstain rather than invent a code.
+      return {
+        recommendationStatus: "NEEDS_INFORMATION",
+        calibratedConfidence: 0.1,
+        confidenceBand: "LOW",
+        summary:
+          "Classification ABSTAINED: no candidate HTS heading could be retrieved for this description.",
+        missingFacts: [...missingFacts, "candidate_hts_heading"],
+        griSteps: [
+          {
+            sequence: 1,
+            griRule: "GRI 1",
+            question: "Can a candidate heading be identified from the product description?",
+            conclusion: "No candidate heading was returned by the tariff repository.",
+            outcome: "NOT_APPLICABLE",
+          },
+        ],
+      };
+    }
 
     const griSteps: GriStepResult[] = [];
 

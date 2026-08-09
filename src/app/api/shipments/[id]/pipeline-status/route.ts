@@ -22,41 +22,22 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     return NextResponse.json({ error: "No pipeline job found" }, { status: 404 });
   }
 
-  // Auto-heal stuck PENDING / PROCESSING jobs from previous unhandled queues
-  const isStuck =
-    (job.status === "PENDING" || job.status === "PROCESSING") &&
-    Date.now() - new Date(job.createdAt).getTime() > 6000;
-
-  if (isStuck) {
-    try {
-      const { AgentOrchestrator } = await import("@/modules/agents/agentOrchestrator");
-      const { PgQueue } = await import("@/lib/queue/pgQueue");
-      const pipelineOut = await AgentOrchestrator.runFullPipeline({
-        accountId: ctx.accountId,
-        userId: ctx.userId,
-        shipmentId: id,
-      });
-      await PgQueue.completeJob(job.id, pipelineOut);
-      await db.pipelineJob.update({
-        where: { id: job.id },
-        data: { status: "COMPLETED", currentStep: 10 },
-      });
-      job.status = "COMPLETED";
-      job.currentStep = 10;
-    } catch (err: any) {
-      console.warn("Auto-heal pipeline execution error:", err);
-      await db.pipelineJob.update({
-        where: { id: job.id },
-        data: { status: "FAILED", errorMessage: err.message },
-      });
-    }
-  }
+  // A status poll is a read. It must not run the pipeline: this endpoint is polled
+  // every few seconds by the UI, so "auto-healing" here launched a full ten-agent run
+  // on every poll of a job that had merely not finished yet. Stalled jobs are reclaimed
+  // by the queue worker; we only report the condition.
+  const STALL_THRESHOLD_MS = 5 * 60 * 1000;
+  const isStalled =
+    job.status === "PROCESSING" &&
+    job.lockedAt !== null &&
+    Date.now() - new Date(job.lockedAt).getTime() > STALL_THRESHOLD_MS;
 
   return NextResponse.json({
     jobId: job.id,
     status: job.status,
-    currentStep: job.currentStep || 10,
-    totalSteps: job.totalSteps || 10,
+    stalled: isStalled,
+    currentStep: job.currentStep,
+    totalSteps: job.totalSteps,
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     errorMessage: job.errorMessage,

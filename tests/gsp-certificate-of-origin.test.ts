@@ -13,10 +13,16 @@ vi.mock("@/lib/db", () => ({
       upsert: vi.fn().mockResolvedValue({ id: "shp_test_gsp" }),
     },
     shipmentDocument: {
-      create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: `doc_${Date.now()}`, ...data })),
+      create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: `doc_${Date.now()}`,
+        ...data,
+      })),
     },
     agentDecision: {
-      create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: `dec_${Date.now()}`, ...data })),
+      create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: `dec_${Date.now()}`,
+        ...data,
+      })),
     },
     hTSCode: {
       findMany: vi.fn().mockResolvedValue([
@@ -24,7 +30,10 @@ vi.mock("@/lib/db", () => ({
       ]),
     },
     customsFiling: {
-      create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: `filing_${Date.now()}`, ...data })),
+      create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: `filing_${Date.now()}`,
+        ...data,
+      })),
     },
   },
 }));
@@ -37,6 +46,12 @@ import { DocumentTypeCatalog } from "@/modules/intake/documentTypeCatalog";
 import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
 import { OriginRulesAgent } from "@/modules/agents/originRulesAgent";
 import { ComplianceAuditAgent } from "@/modules/agents/complianceAuditAgent";
+
+/** Agent outputs are optional now that a halted run reports what it never ran. */
+function required<T>(value: T | null | undefined, name: string): T {
+  if (value == null) throw new Error(`${name} missing from pipeline output`);
+  return value;
+}
 
 describe("GSP Form A Certificate of Origin Zero-Hallucination Pipeline", () => {
   const accountId = "acc_test_gsp";
@@ -55,21 +70,26 @@ describe("GSP Form A Certificate of Origin Zero-Hallucination Pipeline", () => {
       userId,
       shipmentId,
       fileName: "Form_A_GSP_Certificate_of_Origin.pdf",
+      fileUrl: "https://example.blob.core.windows.net/docs/form-a-gsp.pdf",
       docTypeOverride: "GENERAL_CERTIFICATE_OF_ORIGIN",
     });
 
-    const agent1 = output.agentResults.agent1_intake;
-    const agent2 = output.agentResults.agent2_intelligence;
-    const agent6 = output.agentResults.agent6_valuation;
-    const agent8 = output.agentResults.agent8_readiness;
-    const agent9 = output.agentResults.agent9_filing;
-    const agent10 = output.agentResults.agent10_response;
+    // Blocked is not halted: every agent ran here and reported its own block.
+    expect(output.haltedAgents).toEqual([]);
+
+    const agent1 = required(output.agentResults.agent1_intake, "agent1_intake");
+    const agent2 = required(output.agentResults.agent2_intelligence, "agent2_intelligence");
+    const agent6 = required(output.agentResults.agent6_valuation, "agent6_valuation");
+    const agent8 = required(output.agentResults.agent8_readiness, "agent8_readiness");
+    const agent9 = required(output.agentResults.agent9_filing, "agent9_filing");
+    const agent10 = required(output.agentResults.agent10_response, "agent10_response");
+    const canonical = required(output.canonicalShipmentState, "canonicalShipmentState");
+    const readiness = required(output.readiness, "readiness");
 
     // Canonical Shipment State
-    expect(output.canonicalShipmentState).toBeDefined();
-    expect(output.canonicalShipmentState.lifecycleStatus).toBe("BLOCKED");
-    expect(output.canonicalShipmentState.userActionStatus).toBe("ACTION_REQUIRED");
-    expect(output.canonicalShipmentState.completeness.score).toBe(20);
+    expect(canonical.lifecycleStatus).toBe("BLOCKED");
+    expect(canonical.userActionStatus).toBe("ACTION_REQUIRED");
+    expect(canonical.completeness.score).toBe(20);
 
     // Summary Math Identity: completed + blocked + skipped === 10
     const { completed, blocked, skipped, total } = output.agentsSummary;
@@ -77,8 +97,8 @@ describe("GSP Form A Certificate of Origin Zero-Hallucination Pipeline", () => {
     expect(completed + blocked + skipped).toBe(10);
 
     // Blocker Ownership vs Dependency Mapping
-    expect(output.readiness.blockers.length).toBeGreaterThan(0);
-    const invoiceBlocker = output.readiness.blockers.find((b) => b.code === "MISSING_COMMERCIAL_INVOICE");
+    expect(readiness.blockers.length).toBeGreaterThan(0);
+    const invoiceBlocker = readiness.blockers.find((b) => b.code === "MISSING_COMMERCIAL_INVOICE");
     expect(invoiceBlocker).toBeDefined();
     expect(invoiceBlocker?.ownerAgent).toBe("Document Intelligence Agent");
     expect(invoiceBlocker?.causedBy).toContain("Commercial Invoice document missing from packet");

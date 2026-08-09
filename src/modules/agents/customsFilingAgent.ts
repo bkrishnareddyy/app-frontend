@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
+import { requireEntryTypeCode } from "@/modules/filing/entryType";
 
 export interface ACEResponsePayload {
   status: "ACCEPTED" | "REJECTED" | "DOCS_REQUIRED" | "BLOCKED";
@@ -8,7 +9,8 @@ export interface ACEResponsePayload {
   cbpActionCode: string;
   transmittedAt: string;
   filerCode: string;
-  portCode: string;
+  /** Null when the caller did not supply one; was defaulted to 3501 (Chicago). */
+  portCode: string | null;
   rejectionReason?: string;
 }
 
@@ -30,7 +32,7 @@ export interface CustomsFilingOutput {
   aceResponse: ACEResponsePayload;
   confidence: number;
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
@@ -54,7 +56,7 @@ export class CustomsFilingAgent {
         cbpActionCode: "BLOCKED - INCOMPLETE ENTRY PACKET (19 CFR § 141.86)",
         transmittedAt: timestamp,
         filerCode: "QBR",
-        portCode: input.portCode || "3501",
+        portCode: input.portCode ?? null,
         rejectionReason:
           "Transmission blocked: Missing mandatory Commercial Invoice and transaction valuation data.",
       };
@@ -62,7 +64,8 @@ export class CustomsFilingAgent {
       const reasoningChain =
         "ACE ABI EDI transmission BLOCKED: Mandatory customs entry documents (Commercial Invoice) missing. Filer code QBR prevented from submitting incomplete entry to CBP per 19 CFR § 141.86.";
 
-      let agentDecisionId = "dec_fallback_filing";
+      // Null, not a synthetic id: a failed write produced no AgentDecision row.
+      let agentDecisionId: string | null = null;
       try {
         const agentDecision = await db.agentDecision.create({
           data: {
@@ -113,25 +116,26 @@ export class CustomsFilingAgent {
       cbpActionCode: "1C - CARGO RELEASED",
       transmittedAt: timestamp,
       filerCode: "QBR",
-      portCode: input.portCode || "3501",
+      portCode: input.portCode ?? null,
     };
 
     const reasoningChain = `[DEMO MODE] Simulated ABI EDIFACT payload for Entry Summary #${cbpEntryNumber}. ACE simulation response: '1C - CARGO RELEASED'. Note: no real CBP transmission occurred in this environment.`;
 
     let customsFilingId: string | null = null;
-    let agentDecisionId = "dec_fallback_filing";
+    let agentDecisionId: string | null = null;
     try {
       const customsFiling = await db.customsFiling.create({
         data: {
           shipmentId: input.shipmentId,
           accountId: input.accountId,
           entryNumber: cbpEntryNumber,
-          entryType: input.entryType || "01",
-          filingStatus: "Accepted",
+          entryType: requireEntryTypeCode(input.entryType),
+          // Simulated run: must not be stored as a real accepted CBP entry.
+          filingStatus: "Simulation",
           submittedAt: new Date(),
-          releasedAt: new Date(),
           totalValue: input.enteredValue as number,
-          totalDuties: input.dutyDue || 0,
+          // The column is nullable: an uncalculated duty is unknown, not $0.00.
+          totalDuties: input.dutyDue ?? null,
         },
       });
       customsFilingId = customsFiling.id;
@@ -161,27 +165,29 @@ export class CustomsFilingAgent {
       debugError = logAgentError(
         "Customs Filing Agent",
         input.shipmentId,
-        "DB customsFiling or agentDecision create",
+        "entry type resolution, or DB customsFiling or agentDecision create",
         err
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: { agentName: "Customs Filing Agent", cbpEntryNumber, demo: true },
-      });
-    } catch (err) {
-      debugError = logAgentError(
-        "Customs Filing Agent",
-        input.shipmentId,
-        "createAuditLog",
-        err
-      );
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: { agentName: "Customs Filing Agent", cbpEntryNumber, demo: true },
+        });
+      } catch (err) {
+        debugError = logAgentError(
+          "Customs Filing Agent",
+          input.shipmentId,
+          "createAuditLog",
+          err
+        );
+      }
     }
 
     return {

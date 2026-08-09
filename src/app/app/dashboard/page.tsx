@@ -13,8 +13,6 @@ export default async function CommandCenterPage() {
   const shipments = await db.shipment.findMany({
     where: { accountId, deletedAt: null },
     include: {
-      agentDecisions: true,
-      customsFilings: true,
       assignedBroker: true,
       documents: true,
       lineItems: true,
@@ -23,20 +21,29 @@ export default async function CommandCenterPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  // Fetch all decisions for active tenant account
+  // Fetch all decisions for active tenant account. Broker assignment comes from
+  // the parent shipment so the client can scope KPIs to selected team members.
   const decisions = await db.agentDecision.findMany({
     where: { accountId },
-    include: {
-      shipment: {
-        select: {
-          assignedBrokerId: true,
-        },
-      },
+    select: {
+      id: true,
+      agentName: true,
+      status: true,
+      confidence: true,
+      decisionSummary: true,
+      shipmentId: true,
+      shipment: { select: { assignedBrokerId: true } },
     },
+    orderBy: { createdAt: "desc" },
   });
 
   // Fetch active team members if user is an enterprise admin
-  let teamMembers: any[] = [];
+  let teamMembers: Array<{
+    userId: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+  }> = [];
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
     (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
@@ -54,12 +61,6 @@ export default async function CommandCenterPage() {
     }));
   }
 
-  // Dynamic Regulatory Intelligence Updates
-  const regUpdates = await db.regulatoryUpdate.findMany({
-    take: 3,
-    orderBy: { effectiveDate: "desc" },
-  });
-
   // Serialize models safely for client component props
   const formattedShipments = shipments.map((s) => {
     // readinessScore is a static column default, never updated as
@@ -67,18 +68,22 @@ export default async function CommandCenterPage() {
     const readinessScore = computeReadinessScore(s);
     // Primary HTS code and entered value were previously a hardcoded literal
     // and (readinessScore * 500) respectively -- neither reflected the
-    // shipment's actual line items. Derive both from real data instead.
+    // shipment's actual line items. Both are derived from real line items and
+    // stay null when there are none, so the UI can render a missing state.
     const primaryLineItem = [...s.lineItems].sort(
       (a, b) => Number(b.totalValue) - Number(a.totalValue)
     )[0];
-    const totalValue = s.lineItems.reduce((sum, li) => sum + Number(li.totalValue), 0);
     return {
       id: s.id,
       shipmentNumber: s.shipmentNumber,
       referenceNumber: s.poReference,
-      exporterName: s.importerName, // matches previous fallback naming
-      primaryHtsCode: primaryLineItem?.htsCode ?? "Not Yet Classified",
-      totalValue,
+      importerName: s.importerName,
+      countryOfExport: s.countryOfExport,
+      primaryHtsCode: primaryLineItem?.htsCode ?? null,
+      totalValue:
+        s.lineItems.length === 0
+          ? null
+          : s.lineItems.reduce((sum, li) => sum + Number(li.totalValue), 0),
       readinessScore,
       status: s.status,
       healthStatus: s.healthStatus,
@@ -96,15 +101,12 @@ export default async function CommandCenterPage() {
 
   const formattedDecisions = decisions.map((d) => ({
     id: d.id,
+    agentName: d.agentName,
     status: d.status,
-    assignedBrokerId: d.shipment?.assignedBrokerId || null,
-  }));
-
-  const formattedRegUpdates = regUpdates.map((ru) => ({
-    id: ru.id,
-    title: ru.title,
-    summary: ru.description,
-    effectiveDate: ru.effectiveDate.toISOString(),
+    confidence: d.confidence,
+    decisionSummary: d.decisionSummary,
+    shipmentId: d.shipmentId,
+    assignedBrokerId: d.shipment?.assignedBrokerId ?? null,
   }));
 
   return (
@@ -112,7 +114,6 @@ export default async function CommandCenterPage() {
       accountName={context.accountName}
       initialShipments={formattedShipments}
       initialDecisions={formattedDecisions}
-      regUpdates={formattedRegUpdates}
       teamMembers={teamMembers}
       context={{
         userId: context.userId,

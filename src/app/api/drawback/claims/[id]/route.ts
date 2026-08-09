@@ -72,4 +72,4 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   });
 
   return NextResponse.json({ drawbackClaim: updatedClaim });
-});
+}, { write: true });

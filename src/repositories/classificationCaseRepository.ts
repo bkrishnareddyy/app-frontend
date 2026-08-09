@@ -7,7 +7,7 @@ export interface CreateCaseParams {
   externalReference?: string;
   priority?: string;
   rawDescription: string;
-  structuredAttributesJson?: Record<string, any>;
+  structuredAttributesJson?: Prisma.InputJsonObject;
   countryOfOrigin?: string;
   intendedUse?: string;
 }

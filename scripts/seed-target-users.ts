@@ -167,8 +167,8 @@ async function main() {
         });
         console.log(`- Created new membership to role: ${tu.roleName}`);
       }
-    } catch (err: any) {
-      console.error(`❌ Failed to process ${tu.email}:`, err?.message || err);
+    } catch (err) {
+      console.error(`❌ Failed to process ${tu.email}:`, err instanceof Error ? err.message : err);
     }
   }
 

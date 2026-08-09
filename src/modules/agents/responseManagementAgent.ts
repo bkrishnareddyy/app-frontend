@@ -22,7 +22,8 @@ export interface ResponseManagementOutput {
   shipmentId: string;
   status: "Completed" | "Review Required" | "COMPLETED_NO_ACTION";
   refundOpportunities: PostEntryRefundOpportunity[];
-  totalPotentialRefund: number;
+  /** Null because no scan has run; 0 would claim one ran and found nothing. */
+  totalPotentialRefund: number | null;
   legalResponseDrafted: boolean;
   evaluatorScore: number | null;
   evaluatorCritique: string;
@@ -34,7 +35,7 @@ export interface ResponseManagementOutput {
     blockedByAgents: string[];
   };
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
@@ -52,13 +53,16 @@ export class ResponseManagementAgent {
     //
     // Without those inputs, we cannot claim any refund amount.
     // Status is always COMPLETED_NO_ACTION until real integration is wired up.
-    const isTestEntry = (input.entryNumber || "").startsWith("QBR-") || input.entryNumber === "QBR-2026-8849102";
-    const status = isTestEntry ? "Completed" : "COMPLETED_NO_ACTION";
-    const totalPotentialRefund = isTestEntry ? 2902.4 : 0;
-    const refundOpportunities: PostEntryRefundOpportunity[] = isTestEntry
-      ? [{ opportunityId: "opp_301_01", type: "SECTION_301_EXCLUSION", potentialRefundAmount: 2902.4, cfrCitation: "19 CFR § 173", description: "Section 301 Exclusion Refund" }]
-      : [];
-    const evaluatorScore = isTestEntry ? 97 : null;
+    //
+    // An `isTestEntry` flag used to unlock a $2,902.40 SECTION_301_EXCLUSION
+    // opportunity, an evaluator score of 97 and legalResponseDrafted. Its
+    // condition was entryNumber.startsWith("QBR-"), and QBR is this system's
+    // own filer code, so it matched every entry the Customs Filing Agent has
+    // ever produced.
+    const status = "COMPLETED_NO_ACTION" as const;
+    const totalPotentialRefund = null;
+    const refundOpportunities: PostEntryRefundOpportunity[] = [];
+    const evaluatorScore = null;
 
     const reasoningChain = input.entryNumber
       ? `Post-Entry Scanner: Entry ${input.entryNumber} recorded. Section 301 exclusion and duty drawback scan requires live USTR/CBP API integration — not available in current environment. No refund amounts claimed. Manual review recommended post-filing.`
@@ -67,7 +71,8 @@ export class ResponseManagementAgent {
     const evaluatorCritique =
       "No refund amounts claimed — real Section 301 exclusion matching requires live USTR database integration with the filed HTS code and paid duty amount.";
 
-    let agentDecisionId = "dec_fallback_response";
+    // Null, not a synthetic id: a failed write produced no AgentDecision row.
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -98,21 +103,23 @@ export class ResponseManagementAgent {
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: {
-          agentName: "Response Agent",
-          hasEntryNumber: Boolean(input.entryNumber),
-          refundAmount: totalPotentialRefund,
-        },
-      });
-    } catch (err) {
-      debugError = logAgentError("Response Agent", input.shipmentId, "createAuditLog", err);
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: {
+            agentName: "Response Agent",
+            hasEntryNumber: Boolean(input.entryNumber),
+            refundAmount: totalPotentialRefund,
+          },
+        });
+      } catch (err) {
+        debugError = logAgentError("Response Agent", input.shipmentId, "createAuditLog", err);
+      }
     }
 
     return {
@@ -120,7 +127,7 @@ export class ResponseManagementAgent {
       status,
       refundOpportunities,
       totalPotentialRefund,
-      legalResponseDrafted: isTestEntry,
+      legalResponseDrafted: false,
       evaluatorScore,
       evaluatorCritique,
       confidence: 100,

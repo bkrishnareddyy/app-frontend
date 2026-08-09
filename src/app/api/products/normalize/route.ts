@@ -17,13 +17,26 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     .trim();
   const canonicalName = cleanedName.length > 5 ? cleanedName : rawDescription;
 
-  let canonicalProduct = await db.canonicalProduct.findFirst({
+  // Matching on `contains: canonicalName.split(" ")[0]` merged unrelated products —
+  // every description starting "Steel" collapsed into one canonical record, and the
+  // caller then inherited that record's HTS code and country of origin.
+  const existingAlias = await db.productAlias.findFirst({
     where: {
-      accountId: ctx.accountId,
-      canonicalName: { contains: canonicalName.split(" ")[0], mode: "insensitive" },
+      aliasName: rawDescription,
+      canonicalProduct: { accountId: ctx.accountId },
     },
-    include: { aliases: true },
+    include: { canonicalProduct: { include: { aliases: true } } },
   });
+
+  let canonicalProduct =
+    existingAlias?.canonicalProduct ??
+    (await db.canonicalProduct.findFirst({
+      where: {
+        accountId: ctx.accountId,
+        canonicalName: { equals: canonicalName, mode: "insensitive" },
+      },
+      include: { aliases: true },
+    }));
 
   if (!canonicalProduct) {
     canonicalProduct = await db.canonicalProduct.create({
@@ -46,7 +59,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       },
       include: { aliases: true },
     });
-  } else {
+  } else if (!existingAlias) {
     // Attach alias if new
     await db.productAlias.create({
       data: {
@@ -81,7 +94,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       htsCode: canonicalProduct.htsCode,
       dutyRate: canonicalProduct.dutyRate,
       matchedConfidence: 0,
-      aliasesCount: (canonicalProduct.aliases?.length || 0) + 1,
+      aliasesCount: await db.productAlias.count({
+        where: { canonicalProductId: canonicalProduct.id },
+      }),
     },
   });
-});
+}, { write: true });

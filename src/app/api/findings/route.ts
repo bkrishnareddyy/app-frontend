@@ -16,40 +16,10 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     where.severity = { equals: severity, mode: "insensitive" };
   }
 
-  // Seed default compliance findings if empty
-  const count = await db.complianceFinding.count({ where: { accountId: ctx.accountId } });
-  if (count === 0) {
-    const filing = await db.customsFiling.findFirst({ where: { accountId: ctx.accountId } });
-    if (filing) {
-      await db.complianceFinding.createMany({
-        data: [
-          {
-            accountId: ctx.accountId,
-            filingId: filing.id,
-            rule: "Valuation Variance Analysis",
-            severity: "High",
-            description: "Declared unit price for part PN-9901 is 24% lower than 6-month historical import average.",
-            recommendation: "Request vendor transfer pricing documentation or proof of non-related party transaction.",
-            status: "Open",
-            confidence: 94,
-            assignedToUserId: ctx.userId,
-          },
-          {
-            accountId: ctx.accountId,
-            filingId: filing.id,
-            rule: "Potential Undeclared Assist Detection",
-            severity: "Warning",
-            description: "Commercial Invoice references customer-supplied tooling die #T-405 without declared assist value.",
-            recommendation: "Verify tooling assist cost allocation under 19 CFR 152.103 and add to entered value.",
-            status: "Investigating",
-            confidence: 88,
-            assignedToUserId: ctx.userId,
-          },
-        ],
-      });
-    }
-  }
-
+  // This GET used to attach two invented findings to a real customs filing --
+  // a 24% valuation variance and an undeclared tooling assist, with confidences
+  // of 94 and 88 -- and assign them to the caller. They were allegations against
+  // an entry that no rule had ever evaluated.
   const findings = await db.complianceFinding.findMany({
     where,
     include: {

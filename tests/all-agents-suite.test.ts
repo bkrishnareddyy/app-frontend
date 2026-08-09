@@ -3,6 +3,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock DB and audit calls
 vi.mock("../src/lib/db", () => ({
   db: {
+    account: {
+      upsert: vi.fn(),
+    },
+    agentExecutionLog: {
+      create: vi.fn().mockResolvedValue({ id: "log_1" }),
+    },
+    shipmentStateRecord: {
+      upsert: vi.fn().mockResolvedValue({ id: "state_1" }),
+    },
     shipmentDocument: {
       create: vi.fn().mockImplementation(async ({ data }) => ({ id: `doc_${Date.now()}`, ...data })),
     },
@@ -35,6 +44,9 @@ import { FilingReadinessAgent } from "../src/modules/agents/filingReadinessAgent
 import { CustomsFilingAgent } from "../src/modules/agents/customsFilingAgent";
 import { ResponseManagementAgent } from "../src/modules/agents/responseManagementAgent";
 import { AgentOrchestrator } from "../src/modules/agents/agentOrchestrator";
+import { AgentState } from "../src/modules/agents/agentState";
+import { db } from "../src/lib/db";
+import { createAuditLog } from "../src/lib/audit";
 
 describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Suite", () => {
   beforeEach(() => {
@@ -50,7 +62,10 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
       fileUrl: "https://storage.qubere.ai/docs/inv99.pdf",
       docTypeOverride: "COMMERCIAL_INVOICE",
     });
-    expect(res.status).toBe("Completed");
+    // Filename-only classification reports no OCR confidence, so the packet is held
+    // for review rather than cleared for automated filing.
+    expect(res.status).toBe("Review Required");
+    expect(res.overallConfidence).toBeNull();
     expect(res.packetId).toBeDefined();
     expect(res.agentDecisionId).toBeDefined();
   });
@@ -90,6 +105,23 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     expect(res.agentDecisionId).toBeDefined();
   });
 
+  it("Agent 4 (HTS Classification): abstains rather than suggesting an unrelated code when nothing matches", async () => {
+    const { db } = await import("../src/lib/db");
+    const findMany = db.hTSCode.findMany as unknown as ReturnType<typeof vi.fn>;
+    findMany.mockResolvedValueOnce([]);
+
+    const res = await HTSClassificationAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      productProfiles: [{ lineNumber: 1, rawDescription: "Zzzz nonexistent widget" }],
+    });
+
+    expect(res.classifications[0].htsCode).toBe("UNCLASSIFIABLE");
+    expect(res.classifications[0].confidence).toBe(0);
+    expect(res.classifications[0].crossRulings).toEqual([]);
+  });
+
   it("Agent 5 (Origin Rules): should evaluate USMCA tariff shift CTH and preference criterion B", async () => {
     const res = await OriginRulesAgent.execute({
       accountId: "acc_1",
@@ -99,8 +131,27 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     });
     expect(res.qualifications[0].ftaProgram).toBe("USMCA");
     expect(res.qualifications[0].spiCode).toBe("S");
-    expect(res.qualifications[0].estimatedSavings).toBe(3007.0);
+    // Entered value and the HTS-specific rate are not available to this agent,
+    // so no saving can be computed. It used to report a flat $3,007 per line.
+    expect(res.qualifications[0].estimatedSavings).toBeNull();
     expect(res.agentDecisionId).toBeDefined();
+  });
+
+  it("Agent 5 (Origin Rules): reports an undeclared manufacturing country as unknown, not as China", async () => {
+    // The prerequisite gate only inspects line 1, so a later line with no declared
+    // country used to fall through to a "CN" default and be reported as Chinese.
+    const res = await OriginRulesAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [
+        { lineNumber: 1, htsCode: "7318.15.2065", manufacturingCountry: "MX" },
+        { lineNumber: 2, htsCode: "8481.80.1050" },
+      ],
+    });
+    expect(res.qualifications[1].countryOfOrigin).toBeNull();
+    expect(res.qualifications[1].ftaProgram).toBe("UNDETERMINED");
+    expect(res.qualifications[1].tariffShiftMet).toBeNull();
   });
 
   it("Agent 6 (Valuation & Assists): should calculate Transaction Value 1401a and ocean freight deductions", async () => {
@@ -109,7 +160,7 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
       userId: "usr_1",
       shipmentId: "shp_1",
       invoiceSubtotal: 48500.0,
-      oceanFreightIncluded: 3200.0,
+      oceanFreight: 3200.0,
       buyerAssists: 1500.0,
     });
     expect(res.enteredCustomsValue).toBe(46800.0);
@@ -146,6 +197,20 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     expect(res.agentDecisionId).toBeDefined();
   });
 
+  it("Agent 8 (Filing Readiness): blocks the entry when duty was never calculated", async () => {
+    const res = await FilingReadinessAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      enteredValue: 46800.0,
+      lineItemCount: 1,
+    });
+    expect(res.readyForTransmission).toBe(false);
+    expect(res.missingRequirements.join(" ")).toContain("duty");
+    // An uncalculated duty must never surface on Form 7501 as $0.00.
+    expect(res.form7501Preview.totalDutyDue).toBeNull();
+  });
+
   it("Agent 9 (Customs Filing): should generate ABI payload and receive 1C Cargo Released status", async () => {
     const res = await CustomsFilingAgent.execute({
       accountId: "acc_1",
@@ -160,16 +225,20 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     expect(res.agentDecisionId).toBeDefined();
   });
 
-  it("Agent 10 (Response Management): should execute Anthropic Evaluator-Optimizer loop for PSC refund claims", async () => {
+  it("Agent 10 (Response Management): claims no refund without a live USTR/CBP scan", async () => {
     const res = await ResponseManagementAgent.execute({
       accountId: "acc_1",
       userId: "usr_1",
       shipmentId: "shp_1",
       entryNumber: "QBR-2026-8849102",
     });
-    expect(res.totalPotentialRefund).toBe(2902.4);
-    expect(res.evaluatorScore).toBe(97);
-    expect(res.legalResponseDrafted).toBe(true);
+    // "QBR-" is this system's own filer code, so the old isTestEntry flag
+    // unlocked a fabricated $2,902.40 Section 301 refund on every real entry.
+    expect(res.totalPotentialRefund).toBeNull();
+    expect(res.refundOpportunities).toEqual([]);
+    expect(res.evaluatorScore).toBeNull();
+    expect(res.legalResponseDrafted).toBe(false);
+    expect(res.status).toBe("COMPLETED_NO_ACTION");
     expect(res.agentDecisionId).toBeDefined();
   });
 
@@ -179,11 +248,59 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
       userId: "usr_1",
       shipmentId: "shp_1",
       fileName: "Commercial_Invoice_INV-88421.pdf",
+      fileUrl: "https://example.blob.core.windows.net/docs/inv-88421.pdf",
       docTypeOverride: "COMMERCIAL_INVOICE",
     });
 
     expect(pipeline.totalAgentsExecuted).toBeGreaterThanOrEqual(1);
     expect(pipeline.stateHistoryCount).toBeGreaterThanOrEqual(1);
-    expect(pipeline.agentResults.agent1_intake.packetId).toBeDefined();
+    expect(pipeline.haltedAgents).toEqual([]);
+    expect(pipeline.agentResults.agent1_intake?.packetId).toBeDefined();
+  });
+
+  it("Master Agent Orchestrator: refuses to run without a file instead of inventing one", async () => {
+    await expect(
+      AgentOrchestrator.runFullPipeline({
+        accountId: "acc_1",
+        userId: "usr_1",
+        shipmentId: "shp_1",
+      })
+    ).rejects.toThrow(/requires a fileName/);
+
+    expect(db.shipmentDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("Agents return a null decision id when the AgentDecision write fails", async () => {
+    vi.mocked(db.agentDecision.create).mockRejectedValueOnce(new Error("db down"));
+
+    const res = await OriginRulesAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [{ lineNumber: 1, htsCode: "7318.15.2065", manufacturingCountry: "MX" }],
+    });
+
+    expect(res.agentDecisionId).toBeNull();
+    // The audit trail must not reference a decision that was never written.
+    expect(createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("AgentState persistence never manufactures the tenant it is writing against", async () => {
+    const state = new AgentState("acc_does_not_exist", "usr_1", "shp_1");
+    state.recordAgentExecution({
+      agentName: "Origin Agent",
+      stepNumber: 5,
+      timestamp: new Date().toISOString(),
+      status: "Completed",
+      summary: "Evaluated origin rules.",
+      confidence: null,
+      aiProviderUsed: "Deterministic Origin Rules Engine (19 CFR Part 102)",
+      decisionId: null,
+    });
+
+    await state.persistToDatabase();
+
+    expect(db.account.upsert).not.toHaveBeenCalled();
+    expect(db.agentExecutionLog.create).toHaveBeenCalledTimes(1);
   });
 });

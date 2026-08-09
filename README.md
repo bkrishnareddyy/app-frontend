@@ -8,7 +8,8 @@ This repository contains the **Phase 1 Multi-Tenant SaaS Application Foundation*
 
 ## 🛠 Technology Stack
 
-- **Framework**: Next.js 15 (App Router, Server Components, Turbopack)
+- **Framework**: Next.js 16 (App Router, Server Components, Turbopack)
+- **UI**: React 19
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS & Apple Light Design System (`#F5F5F7`, `#1D1D1F`, `#0071E3`)
 - **Authentication**: Clerk Authentication (`@clerk/nextjs`, `@clerk/backend`)
@@ -21,32 +22,41 @@ This repository contains the **Phase 1 Multi-Tenant SaaS Application Foundation*
 ## 🏗 Architecture & Key Concepts
 
 ### 1. Account-Based Tenancy Boundary
+
 The `Account` table is the primary source of truth for tenant data isolation. An account represents an isolated customer environment and can be either:
+
 - **`ENTERPRISE`**: A customer company environment (e.g. *Acme Corporation*). Created exclusively by Qubere internal administrators via the Platform Admin Console.
 - **`INDIVIDUAL`**: A personal workspace (e.g. *Rachit's Workspace*). Created via self-service user signup.
 
 Users can belong to multiple accounts and switch between active account contexts using the top-left **Account Switcher**.
 
 ### 2. Authentication vs Authorization
+
 - **Authentication (Identity)**: Managed strictly by **Clerk** (sign in, MFA, sessions, email/password verification).
 - **Authorization**: Managed inside PostgreSQL (`User`, `AccountMembership`, `Role`, `Permission`, `PlatformUserRole`).
 
 ### 3. Separated Platform & Customer RBAC
+
 - **Platform Roles (`PlatformRole` & `PlatformUserRole`)**: Platform-level roles (`PLATFORM_ADMIN`, `CUSTOMER_SUPPORT`, `BILLING_ADMIN`, `SECURITY_ADMIN`) for Qubere internal operations.
 - **Customer Account Roles (`Role`)**: Built-in system roles (`OWNER`, `ADMIN`, `MEMBER`, `VIEWER` where `isSystem = true`) and custom customer-defined roles (`isSystem = false`, `accountId = specific account`).
 
 ### 4. Secure Token-Based Invitations
+
 Invitations are generated with secure, unique tokens (`/invite/<token>`) supporting `PENDING`, `ACCEPTED`, `EXPIRED`, and `REVOKED` statuses.
 
 ### 5. SOC2-Ready Enterprise Audit Logging
+
 Every administrative action (role change, status toggle, account modification, user invitation) generates an immutable `AuditLog` entry in PostgreSQL capturing:
+
 - `accountId` & `userId`
 - `action`, `entity`, `entityId`, `metadata`
 - `ipAddress`, `userAgent`, `requestId`
 - `success` outcome status (`true` / `false`)
 
 ### 6. Row-Level Security & Capability Gating
+
 To ensure data privacy within multi-tenant accounts:
+
 - **Row-Level Security (Data Segregation)**: Planners can only access their own assigned records (e.g., shipments), while Admins can view all data within the account.
 - **Capability Gating**: API routes strictly enforce capabilities via `hasPermission()` checks (e.g., `documents.create`, `filings.submit`, `intel.read`), returning `403 Forbidden` if a user lacks the necessary privilege.
 
@@ -54,7 +64,7 @@ To ensure data privacy within multi-tenant accounts:
 
 ## 📁 Repository Structure
 
-```
+```text
 ├── prisma/
 │   ├── schema.prisma        # Prisma data models & database relationships
 │   └── seed.ts              # Database seed script for test accounts & RBAC
@@ -82,11 +92,13 @@ To ensure data privacy within multi-tenant accounts:
 ## ⚡ Getting Started Locally
 
 ### 1. Prerequisites
-- Node.js 18+ & npm
+
+- Node.js 20.9+ & npm (required by Next.js 16)
 - Clerk account credentials
 - Supabase PostgreSQL database URL
 
 ### 2. Environment Setup
+
 Create a `.env` file in the root directory:
 
 ```env
@@ -108,11 +120,13 @@ DIRECT_URL="postgresql://postgres.cqrhojmrdbrfrgtkurzj:[PASSWORD]@aws-1-us-west-
 ```
 
 ### 3. Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 4. Database Setup & Seeding
+
 Generate the Prisma Client, push schema to PostgreSQL, and seed the test environment:
 
 ```bash
@@ -122,14 +136,17 @@ npx prisma db seed
 ```
 
 To provision all 10 test users into your Clerk instance via the Clerk API:
+
 ```bash
 npx tsx scripts/seed-clerk-users.ts
 ```
 
 ### 5. Run Development Server
+
 ```bash
 npm run dev
 ```
+
 Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
@@ -137,11 +154,13 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 ## 🧪 Testing & Build Verification
 
 ### Run Unit Tests
+
 ```bash
 npm test
 ```
 
 ### Production Build Verification
+
 ```bash
 npm run build
 ```
@@ -170,4 +189,5 @@ Default password for all seeded test users: **`QuberePass2026!`**
 ---
 
 ## 📄 License
+
 © 2026 Qubere Inc. All rights reserved. Trade Compliance AI Platform.

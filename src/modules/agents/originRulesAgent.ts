@@ -4,11 +4,13 @@ import { logAgentError } from "./agentLogger";
 
 export interface OriginQualificationResult {
   lineNumber: number;
-  countryOfOrigin: string;
+  /** Null when the line item declares no manufacturing country. */
+  countryOfOrigin: string | null;
   ftaProgram: string;
   spiCode: string;
   preferenceCriterion: string;
-  tariffShiftMet: boolean;
+  /** Null when origin is unknown, so no tariff shift test could be run. */
+  tariffShiftMet: boolean | null;
   /** "Rate not computed — HTS code required" when HTS/rate not provided by caller. */
   standardDutyRate: string;
   ftaDutyRate: string;
@@ -37,7 +39,7 @@ export interface OriginRulesOutput {
   blockingReasons?: string[];
   confidence: number;
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
@@ -65,7 +67,8 @@ export class OriginRulesAgent {
       const reasoningChain =
         "Origin Rules Agent Gating STOPPED: Cannot evaluate substantial transformation or FTA qualification because country of origin / HTS input is missing. 0 rules evaluated.";
 
-      let agentDecisionId = "dec_fallback_origin";
+      // Null, not a synthetic id: a failed write produced no AgentDecision row.
+      let agentDecisionId: string | null = null;
       try {
         const agentDecision = await db.agentDecision.create({
           data: {
@@ -110,10 +113,10 @@ export class OriginRulesAgent {
     const qualifications: OriginQualificationResult[] = [];
 
     for (const item of input.lineItems) {
-      const co = (item.manufacturingCountry || "CN").toUpperCase();
-      const isMexicoOrigin = co === "MX";
-      const isCanadaOrigin = co === "CA";
-      const isUsmca = isMexicoOrigin || isCanadaOrigin;
+      // An unknown manufacturing country used to default to "CN", so every
+      // unidentified line was reported to the operator as Chinese origin.
+      const co = item.manufacturingCountry ? item.manufacturingCountry.toUpperCase() : null;
+      const isUsmca = co === "MX" || co === "CA";
 
       // Only claim a specific duty rate when the caller provides one from the HTS DB.
       // Never fabricate "6.2%" — that is the HTS Classification Agent's job.
@@ -123,31 +126,34 @@ export class OriginRulesAgent {
         : "Rate not computed — HTS code lookup required";
       const ftaDutyRate = isUsmca ? "0.0% (USMCA Preference)" : standardDutyRate;
 
-      // Savings calculation for USMCA preference.
-      const estimatedSavings = isUsmca ? 3007.0 : null;
+      // Was a flat $3,007 on every USMCA line. Entered value and the HTS-specific
+      // rate are not available here, so no saving can be computed.
+      const estimatedSavings = null;
 
       qualifications.push({
         lineNumber: item.lineNumber,
         countryOfOrigin: co,
-        ftaProgram: isUsmca ? "USMCA" : "NONE",
+        ftaProgram: co === null ? "UNDETERMINED" : isUsmca ? "USMCA" : "NONE",
         spiCode: isUsmca ? "S" : "",
-        preferenceCriterion: isUsmca ? "B" : "N/A",
-        tariffShiftMet: isUsmca,
+        preferenceCriterion: isUsmca ? "B" : co === null ? "Not evaluated" : "N/A",
+        tariffShiftMet: co === null ? null : isUsmca,
         standardDutyRate,
         ftaDutyRate,
         estimatedSavings,
       });
     }
 
-    const primaryCo = qualifications[0]?.countryOfOrigin || "CN";
-    const primaryFta = qualifications[0]?.ftaProgram || "MFN";
-    const reasoningChain = `Evaluated origin rules for ${primaryCo}. ${
-      primaryFta !== "NONE"
+    const primaryCo = qualifications[0]?.countryOfOrigin ?? null;
+    const primaryFta = qualifications[0]?.ftaProgram ?? "UNDETERMINED";
+    const reasoningChain = `Evaluated origin rules for ${primaryCo ?? "an undeclared country of origin"}. ${
+      primaryCo === null
+        ? "No FTA qualification could be assessed because no line item declares a manufacturing country."
+        : primaryFta !== "NONE"
         ? `FTA preference '${primaryFta}' may apply under Criterion B — tariff shift verification pending HTS confirmation.`
         : "Standard MFN tariff applicable — no qualifying FTA program detected for this origin."
     } Duty savings not computed: entered value and HTS-specific rate not available at this stage.`;
 
-    let agentDecisionId = "dec_fallback_origin";
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -157,12 +163,12 @@ export class OriginRulesAgent {
           agentIcon: "Globe2",
           status: "Approved",
           confidence: 80,
-          decisionSummary: `Origin rules evaluated for ${qualifications.length} line(s): ${primaryFta} qualification assessed for ${primaryCo}.`,
+          decisionSummary: `Origin rules evaluated for ${qualifications.length} line(s): ${primaryFta} qualification assessed for ${primaryCo ?? "an undeclared country of origin"}.`,
           purpose:
             "Country of origin rules evaluation, tariff shift (CTH/CTSH) testing, and USMCA FTA qualification",
           dataSources: ["USMCA Annex 4-B Rules Engine", "19 CFR Part 102", aiProvider],
           regulations: ["19 CFR Part 102", "19 CFR Part 181 (USMCA)"],
-          proposedDescription: `Origin ${primaryCo} (${primaryFta})`,
+          proposedDescription: `Origin ${primaryCo ?? "undeclared"} (${primaryFta})`,
           rulesApplied: [
             "USMCA Preference Criterion B Evaluation",
             "19 CFR Part 102 Substantial Transformation",
@@ -180,17 +186,19 @@ export class OriginRulesAgent {
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: { agentName: "Origin Agent", primaryCountry: primaryCo, ftaProgram: primaryFta },
-      });
-    } catch (err) {
-      debugError = logAgentError("Origin Agent", input.shipmentId, "createAuditLog", err);
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: { agentName: "Origin Agent", primaryCountry: primaryCo, ftaProgram: primaryFta },
+        });
+      } catch (err) {
+        debugError = logAgentError("Origin Agent", input.shipmentId, "createAuditLog", err);
+      }
     }
 
     return {

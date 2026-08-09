@@ -62,4 +62,4 @@ export const POST = withAuthenticatedRoute(async ({ ctx }) => {
     opportunitiesCreatedCount: opportunitiesCreated.length,
     opportunities: opportunitiesCreated,
   });
-});
+}, { write: true });

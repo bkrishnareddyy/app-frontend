@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withPublicRoute } from "@/lib/api/auth-guards";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 
@@ -14,7 +15,7 @@ export const GET = withPublicRoute<{ code: string }>(async ({ req, params }) => 
     }
 
     return NextResponse.json({ htsCode: node.htsNumberDisplay, dutyRates: node.dutyRates });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch HTS rates" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

@@ -97,7 +97,6 @@ async function main() {
     console.log(`✅ Created User: ${u.firstName} (${roleName})`);
   }
 
-  const joe = dbUsers.find((u) => u.firstName === "Joe")!;
   const sarah = dbUsers.find((u) => u.firstName === "Sarah")!;
   const romeo = dbUsers.find((u) => u.firstName === "Romeo")!;
 

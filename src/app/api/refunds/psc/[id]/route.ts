@@ -75,4 +75,4 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   });
 
   return NextResponse.json({ psc: updatedPsc });
-});
+}, { write: true });

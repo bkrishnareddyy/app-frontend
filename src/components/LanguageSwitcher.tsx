@@ -13,7 +13,7 @@ export function LanguageSwitcher() {
       </div>
       <button
         onClick={() => setLocale("en")}
-        className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+        className={`px-2.5 py-1 rounded-full text-sm font-bold transition-all cursor-pointer ${
           locale === "en"
             ? "bg-white text-[#1D1D1F] shadow-xs border border-[#E5E5EA]"
             : "text-[#86868B] hover:text-[#1D1D1F]"
@@ -23,7 +23,7 @@ export function LanguageSwitcher() {
       </button>
       <button
         onClick={() => setLocale("es")}
-        className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+        className={`px-2.5 py-1 rounded-full text-sm font-bold transition-all cursor-pointer ${
           locale === "es"
             ? "bg-[#0071E3] text-white shadow-xs"
             : "text-[#86868B] hover:text-[#1D1D1F]"

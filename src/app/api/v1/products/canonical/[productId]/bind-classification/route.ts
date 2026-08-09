@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { ProductMasterService } from "@/modules/product/productMasterService";
@@ -10,6 +11,7 @@ export const POST = withAuthenticatedRoute<{ productId: string }>(async ({ req, 
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { productId } = paramsVal.data;
+
 
   try {
     const body = await req.json();
@@ -27,7 +29,7 @@ export const POST = withAuthenticatedRoute<{ productId: string }>(async ({ req, 
     });
 
     return NextResponse.json({ product });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to bind classification decision" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
-});
+}, { write: true });

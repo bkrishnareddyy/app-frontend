@@ -35,7 +35,7 @@ export interface ProductIntelligenceOutput {
   profiles: EnrichedProductProfile[];
   confidence: number;
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
@@ -133,7 +133,8 @@ export class ProductIntelligenceAgent {
       const reasoningChain =
         "Product Intelligence Gating STOPPED: No valid product description present. Status set to WAITING_FOR_EXTRACTION.";
 
-      let agentDecisionId = "dec_fallback_product";
+      // Null, not a synthetic id: a failed write produced no AgentDecision row.
+      let agentDecisionId: string | null = null;
       try {
         const agentDecision = await db.agentDecision.create({
           data: {
@@ -201,7 +202,7 @@ Raw Description: "${desc}"`;
             enriched = parsed;
             aiProvider = "Gemini 2.5 Flash Product Intelligence Engine";
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           debugError = logAgentError(
             "Product Intelligence Agent",
             input.shipmentId,
@@ -249,7 +250,7 @@ Raw Description: "${desc}"`;
 
     const reasoningChain = `Enriched ${profiles.length} product profile(s) using ${aiProvider}. Overall confidence: ${overallConfidence}%.${debugError ? " Note: Gemini enrichment failed; raw descriptions used." : ""}`;
 
-    let agentDecisionId = "dec_fallback_product";
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -278,22 +279,24 @@ Raw Description: "${desc}"`;
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: { agentName: "Product Intelligence Agent", profilesCount: profiles.length, overallConfidence },
-      });
-    } catch (err) {
-      debugError = logAgentError(
-        "Product Intelligence Agent",
-        input.shipmentId,
-        "createAuditLog",
-        err
-      );
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: { agentName: "Product Intelligence Agent", profilesCount: profiles.length, overallConfidence },
+        });
+      } catch (err) {
+        debugError = logAgentError(
+          "Product Intelligence Agent",
+          input.shipmentId,
+          "createAuditLog",
+          err
+        );
+      }
     }
 
     const output: ProductIntelligenceOutput = {

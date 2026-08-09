@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { getAccountContext } from "@/lib/auth";
+import { canAccessHref } from "@/lib/navigation";
 import { AccountAdminForm } from "./AccountAdminForm";
 import { Building2, Info } from "lucide-react";
 
@@ -6,7 +8,11 @@ export default async function AdminAccountPage() {
   const context = await getAccountContext();
 
   if (!context) {
-    return null;
+    redirect("/sign-in");
+  }
+
+  if (!canAccessHref(context, "/app/admin")) {
+    redirect("/app/work");
   }
 
   return (
@@ -37,7 +43,6 @@ export default async function AdminAccountPage() {
           status: context.account.status,
           createdAt: context.account.createdAt.toISOString(),
         }}
-        userRole={context.roleNames.join(", ")}
       />
     </div>
   );

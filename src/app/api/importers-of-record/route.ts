@@ -46,4 +46,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   return NextResponse.json({ importerOfRecord: importer }, { status: 201 });
-});
+}, { write: true });

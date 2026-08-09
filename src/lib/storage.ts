@@ -19,6 +19,54 @@ const ALLOWED_MIME_TYPES = new Set([
 // QPR-004: Configurable file size limit (default 50 MB).
 const MAX_UPLOAD_BYTES = parseInt(process.env.MAX_UPLOAD_BYTES ?? "", 10) || 50 * 1024 * 1024;
 
+/**
+ * Hostnames whose objects may be fetched server-side with storage credentials.
+ * Matched on the parsed hostname, never on raw substrings of the URL.
+ */
+const ALLOWED_STORAGE_HOSTS = [
+  "blob.vercel-storage.com",
+  "public.blob.vercel-storage.com",
+];
+
+export type RemoteStorageOrigin = "vercel-blob";
+
+/**
+ * Resolves a stored file URL to a trusted remote storage origin.
+ *
+ * Returns `null` for values that are not remote allowlisted objects (for example
+ * local `/uploads/...` paths), and throws for anything that looks remote but is
+ * not allowlisted. Credentials must only ever be attached when this returns a
+ * non-null origin.
+ */
+export function resolveStorageOrigin(fileUrl: string): RemoteStorageOrigin | null {
+  if (fileUrl.startsWith("/")) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(fileUrl);
+  } catch {
+    throw new StorageValidationError("UNTRUSTED_STORAGE_ORIGIN", `Malformed storage URL.`);
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new StorageValidationError("UNTRUSTED_STORAGE_ORIGIN", `Storage URL must use https.`);
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const isAllowed = ALLOWED_STORAGE_HOSTS.some(
+    (allowed) => host === allowed || host.endsWith(`.${allowed}`)
+  );
+
+  if (!isAllowed) {
+    throw new StorageValidationError(
+      "UNTRUSTED_STORAGE_ORIGIN",
+      `Storage host "${host}" is not an allowlisted storage origin.`
+    );
+  }
+
+  return "vercel-blob";
+}
+
 export interface StorageUploadResult {
   url: string;
   filename: string;
@@ -30,7 +78,10 @@ export interface StorageUploadResult {
 
 export class StorageValidationError extends Error {
   constructor(
-    public readonly code: "MIME_TYPE_NOT_ALLOWED" | "FILE_TOO_LARGE",
+    public readonly code:
+      | "MIME_TYPE_NOT_ALLOWED"
+      | "FILE_TOO_LARGE"
+      | "UNTRUSTED_STORAGE_ORIGIN",
     message: string
   ) {
     super(message);
@@ -89,12 +140,13 @@ export async function storeDocumentFile(
         checksum,
         provider: "vercel-blob",
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[Storage] Vercel Blob upload failed:", err);
       // In serverless environments, local filesystem is read-only.
       // Do not fall through silently; surface the Vercel Blob error directly.
       if (isServerless) {
-        throw new Error(`[Storage] Vercel Blob upload failed: ${err?.message || String(err)}`);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`[Storage] Vercel Blob upload failed: ${message}`);
       }
     }
   } else if (isServerless) {
@@ -102,8 +154,7 @@ export async function storeDocumentFile(
   }
 
   // Provider 2: Local Filesystem Storage (For local development ONLY)
-  let uploadDir = path.join(process.cwd(), "public", "uploads");
-
+  const uploadDir = path.join(process.cwd(), "public", "uploads");
   try {
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -121,7 +172,7 @@ export async function storeDocumentFile(
       checksum,
       provider: "local-fs",
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     try {
       const tmpDir = path.join(os.tmpdir(), "uploads");
       if (!fs.existsSync(tmpDir)) {
@@ -139,7 +190,8 @@ export async function storeDocumentFile(
       };
     } catch (tmpErr) {
       console.error("[Storage] Filesystem write error:", err, tmpErr);
-      throw new Error(`[Storage] Failed to persist file "${filename}" to local storage. ${err?.message || err}`);
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`[Storage] Failed to persist file "${filename}" to local storage. ${message}`);
     }
   }
 }

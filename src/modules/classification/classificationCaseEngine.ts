@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
+import { DomainError } from "@/lib/api/error";
 import { ClassificationCaseRepository } from "@/repositories/classificationCaseRepository";
 import { GriRulesEngine } from "./griRulesEngine";
 import { RulingService } from "./rulingService";
@@ -11,7 +13,7 @@ export interface CreateCaseRequest {
   rawDescription: string;
   externalReference?: string;
   priority?: string;
-  structuredAttributesJson?: Record<string, any>;
+  structuredAttributesJson?: Prisma.InputJsonObject;
   countryOfOrigin?: string;
   intendedUse?: string;
 }
@@ -69,7 +71,11 @@ export class ClassificationCaseEngine {
   static async processCase(accountId: string, userId: string, caseId: string) {
     const caseRecord = await ClassificationCaseRepository.getById(accountId, caseId);
     if (!caseRecord) {
-      throw new Error(`ClassificationCase '${caseId}' not found for account '${accountId}'.`);
+      throw new DomainError(
+        `ClassificationCase '${caseId}' not found for account '${accountId}'.`,
+        "CASE_NOT_FOUND",
+        404
+      );
     }
 
     // Update status to PROCESSING
@@ -80,8 +86,10 @@ export class ClassificationCaseEngine {
 
     const subject = caseRecord.subjects[0];
     const rawDescription = subject?.rawDescription || "";
-    const materialComposition = (subject?.structuredAttributesJson as any)?.materialComposition;
-    const functionUsage = (subject?.structuredAttributesJson as any)?.functionUsage;
+    const attributes = subject?.structuredAttributesJson as Record<string, unknown> | null | undefined;
+    const materialComposition =
+      typeof attributes?.materialComposition === "string" ? attributes.materialComposition : undefined;
+    const functionUsage = typeof attributes?.functionUsage === "string" ? attributes.functionUsage : undefined;
 
     // Run GRI Rules Engine
     const evalOutput = await GriRulesEngine.evaluate({
@@ -171,7 +179,7 @@ export class ClassificationCaseEngine {
   static async recordDecision(req: RecordDecisionRequest) {
     const caseRecord = await ClassificationCaseRepository.getById(req.accountId, req.caseId);
     if (!caseRecord) {
-      throw new Error(`ClassificationCase '${req.caseId}' not found.`);
+      throw new DomainError(`ClassificationCase '${req.caseId}' not found.`, "CASE_NOT_FOUND", 404);
     }
 
     const decision = await db.classificationDecision.create({

@@ -9,6 +9,10 @@ import { ACTIVE_ACCOUNT_COOKIE } from "@/lib/auth";
 // only requires proof of a Clerk session plus membership in the target
 // account, not a fully resolved AccountContext for the (about to change)
 // currently-active account.
+//
+// Deliberately exempt from the read-only role gate: switching the active
+// account writes only the caller's own session cookie, and blocking it would
+// strand a VIEWER who belongs to more than one account.
 export const POST = withPublicRoute(async ({ req }) => {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) {

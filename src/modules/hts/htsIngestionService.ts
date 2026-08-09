@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { DomainError } from "@/lib/api/error";
 import { RateParser } from "./rateParser";
 import crypto from "crypto";
 
@@ -44,7 +45,11 @@ export class HtsIngestionService {
     });
 
     if (existing && existing.publicationStatus === "PUBLISHED") {
-      throw new Error(`Release checksum '${sha256}' has already been published as release '${existing.id}'. Duplicate ingestion rejected.`);
+      throw new DomainError(
+        `Release checksum '${sha256}' has already been published as release '${existing.id}'. Duplicate ingestion rejected.`,
+        "DUPLICATE_RELEASE",
+        409
+      );
     }
 
     const effectiveFrom = new Date(Date.UTC(input.editionYear, 0, 1));
@@ -104,57 +109,28 @@ export class HtsIngestionService {
         },
       });
 
-      // Parse duty rates
-      if (item.general) {
-        const parsedGeneral = RateParser.parse(item.general, "General");
-        await db.htsDutyRate.create({
-          data: {
-            htsNodeId: node.id,
-            rateColumn: "General",
-            rawRateText: parsedGeneral.rawRateText,
-            rateType: parsedGeneral.rateType,
-            adValoremPercent: parsedGeneral.adValoremPercent,
-            specificAmount: parsedGeneral.specificAmount,
-            specificUnit: parsedGeneral.specificUnit,
-            currency: parsedGeneral.currency,
-            isFree: parsedGeneral.isFree,
-            parseStatus: parsedGeneral.parseStatus,
-          },
-        });
-      }
+      // Parse duty rates. A column the source left blank gets no row at all, so readers
+      // see "no rate recorded" rather than a fabricated Free rate.
+      for (const [rateColumn, rawRate] of [
+        ["General", item.general],
+        ["Special", item.special],
+        ["Column 2", item.other],
+      ] as const) {
+        const parsed = RateParser.parse(rawRate ?? "");
+        if (parsed.rateType === "Missing") continue;
 
-      if (item.special) {
-        const parsedSpecial = RateParser.parse(item.special, "Special");
         await db.htsDutyRate.create({
           data: {
             htsNodeId: node.id,
-            rateColumn: "Special",
-            rawRateText: parsedSpecial.rawRateText,
-            rateType: parsedSpecial.rateType,
-            adValoremPercent: parsedSpecial.adValoremPercent,
-            specificAmount: parsedSpecial.specificAmount,
-            specificUnit: parsedSpecial.specificUnit,
-            currency: parsedSpecial.currency,
-            isFree: parsedSpecial.isFree,
-            parseStatus: parsedSpecial.parseStatus,
-          },
-        });
-      }
-
-      if (item.other) {
-        const parsedColumn2 = RateParser.parse(item.other, "Column 2");
-        await db.htsDutyRate.create({
-          data: {
-            htsNodeId: node.id,
-            rateColumn: "Column 2",
-            rawRateText: parsedColumn2.rawRateText,
-            rateType: parsedColumn2.rateType,
-            adValoremPercent: parsedColumn2.adValoremPercent,
-            specificAmount: parsedColumn2.specificAmount,
-            specificUnit: parsedColumn2.specificUnit,
-            currency: parsedColumn2.currency,
-            isFree: parsedColumn2.isFree,
-            parseStatus: parsedColumn2.parseStatus,
+            rateColumn,
+            rawRateText: parsed.rawRateText,
+            rateType: parsed.rateType,
+            adValoremPercent: parsed.adValoremPercent,
+            specificAmount: parsed.specificAmount,
+            specificUnit: parsed.specificUnit,
+            currency: parsed.currency,
+            isFree: parsed.isFree,
+            parseStatus: parsed.parseStatus,
           },
         });
       }
@@ -188,7 +164,7 @@ export class HtsIngestionService {
     });
 
     if (!candidate) {
-      throw new Error(`Release '${releaseId}' not found.`);
+      throw new DomainError(`Release '${releaseId}' not found.`, "RELEASE_NOT_FOUND", 404);
     }
 
     if (candidate.publicationStatus === "PUBLISHED") {
@@ -229,7 +205,7 @@ export class HtsIngestionService {
     });
 
     if (!release) {
-      throw new Error(`Release '${releaseId}' not found.`);
+      throw new DomainError(`Release '${releaseId}' not found.`, "RELEASE_NOT_FOUND", 404);
     }
 
     return db.$transaction(async (tx) => {

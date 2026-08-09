@@ -3,55 +3,49 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 
-async function ensureEmbargoesSeeded() {
-  const count = await db.embargoRule.count();
-  if (count === 0) {
-    await db.embargoRule.createMany({
-      data: [
-        {
-          countryCode: "CU",
-          countryName: "Cuba",
-          regime: "Comprehensive Sanctions",
-          restriction: "Total trade embargo under 31 CFR Part 515 (CACR)",
-        },
-        {
-          countryCode: "IR",
-          countryName: "Iran",
-          regime: "Comprehensive Sanctions",
-          restriction: "Total trade embargo under 31 CFR Part 560 (ITSR)",
-        },
-        {
-          countryCode: "KP",
-          countryName: "North Korea",
-          regime: "Comprehensive Sanctions",
-          restriction: "Total trade embargo under 31 CFR Part 510 (NKSR)",
-        },
-        {
-          countryCode: "UFLPA_XINJIANG",
-          countryName: "China (Xinjiang Region)",
-          regime: "UFLPA Forced Labor Presumption",
-          restriction: "Rebuttable presumption of forced labor under Uyghur Forced Labor Prevention Act (UFLPA)",
-        },
-      ],
-      skipDuplicates: true,
-    });
-  }
+/** True when the supplied text names the rule's country or carries its ISO code. */
+function matchesRule(value: string | undefined, rule: { countryCode: string; countryName: string }): boolean {
+  if (!value) return false;
+  const text = value.trim().toLowerCase();
+  if (!text) return false;
+  if (text.includes(rule.countryName.toLowerCase())) return true;
+  // countryCode was stored but never compared, so "CU" cleared Cuba.
+  const code = rule.countryCode.toLowerCase();
+  if (text === code) return true;
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`).test(text);
 }
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
-  await ensureEmbargoesSeeded();
-
   const body = await req.json();
   const { countryOfOrigin, transshipmentPort, manufacturerLocation } = body;
 
   const rules = await db.embargoRule.findMany();
+
+  // No rules loaded means nothing was checked. "CLEARED" would be a false all-clear.
+  if (rules.length === 0) {
+    return NextResponse.json(
+      {
+        embargoResult: {
+          countryOfOrigin,
+          isEmbargoed: null,
+          status: "NOT_SCREENED",
+          matchedRules: [],
+          actionRequired:
+            "No embargo rules are loaded, so this shipment has not been screened against OFAC country sanctions or UFLPA.",
+        },
+      },
+      { status: 503 }
+    );
+  }
+
   const matchedRules = [];
 
   for (const rule of rules) {
     if (
-      (countryOfOrigin && countryOfOrigin.toLowerCase().includes(rule.countryName.toLowerCase())) ||
-      (transshipmentPort && transshipmentPort.toLowerCase().includes(rule.countryName.toLowerCase())) ||
-      (manufacturerLocation && manufacturerLocation.toLowerCase().includes(rule.countryName.toLowerCase()))
+      matchesRule(countryOfOrigin, rule) ||
+      matchesRule(transshipmentPort, rule) ||
+      matchesRule(manufacturerLocation, rule)
     ) {
       matchedRules.push(rule);
     }
@@ -77,4 +71,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       actionRequired: isEmbargoed ? "Obtain specific OFAC/CBP authorization license before entry filing." : "None",
     },
   });
-});
+}, { write: true });

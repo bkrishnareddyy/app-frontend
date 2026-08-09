@@ -13,29 +13,29 @@ export function Header({ tenantName = "Acme Corporation", userName = "User" }: H
   const router = useRouter();
 
   return (
-    <header className="h-16 border-b border-[#E5E5EA] bg-[#F5F5F7]/80 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-30">
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center space-x-2 text-[#86868B] text-sm font-medium">
-          <Building2 className="w-4 h-4 text-[#0071E3]" />
-          <span className="text-[#1D1D1F] font-semibold">{tenantName}</span>
-          <span className="text-[#86868B]">/</span>
-          <span className="text-[#86868B] text-xs px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] font-medium shadow-2xs">
+    <header className="h-16 shrink-0 border-b border-[#E5E5EA] bg-[#F5F5F7]/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4 z-30">
+      <div className="flex items-center min-w-0">
+        <div className="flex items-center space-x-2 text-[#86868B] text-sm font-medium min-w-0">
+          <Building2 className="w-4 h-4 shrink-0 text-[#0071E3]" />
+          <span className="text-[#1D1D1F] font-semibold truncate">{tenantName}</span>
+          <span className="text-[#86868B] shrink-0">/</span>
+          <span className="text-[#86868B] text-xs px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] font-medium shadow-2xs shrink-0 whitespace-nowrap">
             Account Isolated
           </span>
         </div>
       </div>
 
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-4 shrink-0">
         <button
           onClick={() => router.push("/app/admin")}
           className="text-right hidden sm:block hover:opacity-80 transition-opacity cursor-pointer group"
           title="Click to view Account Profile & Language settings"
         >
-          <p className="text-xs font-semibold text-[#1D1D1F] group-hover:text-[#0071E3] flex items-center justify-end space-x-1">
-            <span>{userName}</span>
-            <Globe className="w-3 h-3 text-[#0071E3] inline-block" />
+          <p className="text-sm font-semibold text-[#1D1D1F] group-hover:text-[#0071E3] flex items-center justify-end space-x-1">
+            <span className="truncate">{userName}</span>
+            <Globe className="w-3 h-3 shrink-0 text-[#0071E3] inline-block" />
           </p>
-          <p className="text-[10px] text-[#86868B]">Account Profile & Language</p>
+          <p className="text-xs text-[#86868B] whitespace-nowrap">Account Profile &amp; Language</p>
         </button>
 
         <UserButton

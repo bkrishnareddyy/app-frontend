@@ -1,12 +1,12 @@
 export interface ParsedDutyRate {
   rawRateText: string;
-  rateType: "Free" | "AdValorem" | "Specific" | "Compound" | "Unparsed";
+  rateType: "Free" | "AdValorem" | "Specific" | "Compound" | "Unparsed" | "Missing";
   adValoremPercent: number | null;
   specificAmount: number | null;
   specificUnit: string | null;
   currency: string;
   isFree: boolean;
-  parseStatus: "PARSED" | "UNPARSED_FALLBACK";
+  parseStatus: "PARSED" | "UNPARSED_FALLBACK" | "MISSING_IN_SOURCE";
   programCode?: string | null;
 }
 
@@ -14,12 +14,28 @@ export class RateParser {
   /**
    * Parse a raw HTS duty rate string (e.g. "Free", "2.8%", "1.5¢/kg", "2.8% + 15¢/kg") into a structured duty rate object.
    */
-  static parse(rawRateText: string, rateColumn: string = "General", programCode?: string | null): ParsedDutyRate {
+  static parse(rawRateText: string, programCode?: string | null): ParsedDutyRate {
     const trimmed = (rawRateText || "").trim();
 
-    if (!trimmed || trimmed.toLowerCase() === "free" || trimmed.toLowerCase().startsWith("free ")) {
+    // An absent rate is not a duty-free rate. Claiming Free here would compute $0 duty
+    // on a line the source never rated.
+    if (!trimmed) {
       return {
-        rawRateText: trimmed || "Free",
+        rawRateText: "",
+        rateType: "Missing",
+        adValoremPercent: null,
+        specificAmount: null,
+        specificUnit: null,
+        currency: "USD",
+        isFree: false,
+        parseStatus: "MISSING_IN_SOURCE",
+        programCode: programCode || null,
+      };
+    }
+
+    if (trimmed.toLowerCase() === "free" || trimmed.toLowerCase().startsWith("free ")) {
+      return {
+        rawRateText: trimmed,
         rateType: "Free",
         adValoremPercent: 0,
         specificAmount: 0,

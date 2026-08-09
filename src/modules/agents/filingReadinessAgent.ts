@@ -4,7 +4,8 @@ import { logAgentError } from "./agentLogger";
 
 export interface Form7501Preview {
   importerNumber: string | null;
-  entryType: string;
+  /** Block 2. Null when the caller declared none; was hardcoded to "01". */
+  entryType: string | null;
   totalEnteredValue: number | null;
   totalDutyDue: number | null;
   totalLineItems: number;
@@ -28,6 +29,7 @@ export interface FilingReadinessInput {
   isOriginBlocked?: boolean;
   isComplianceBlocked?: boolean;
   importerNumber?: string;
+  entryType?: string;
 }
 
 export interface FilingReadinessOutput {
@@ -47,10 +49,13 @@ export interface FilingReadinessOutput {
     blockedByAgents: string[];
   };
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
+
+/** Invoice, valuation, HTS, origin, compliance audit, duty. */
+const PREREQUISITE_CHECK_COUNT = 6;
 
 export class FilingReadinessAgent {
   static async execute(input: FilingReadinessInput): Promise<FilingReadinessOutput> {
@@ -110,26 +115,38 @@ export class FilingReadinessAgent {
       });
     }
 
+    if (typeof input.dutyDue !== "number") {
+      missingRequirements.push("Estimated duty calculation (19 CFR § 141.101)");
+      missingRequirementsDetails.push({
+        field: "totalDutyDue",
+        status: "missing",
+        reason: "Duty due is a required Form 7501 field and has not been calculated for this entry",
+      });
+    }
+
     const readyForTransmission = missingRequirements.length === 0;
-    // Score is computed: 100% if all checks pass, 0% if any blocker exists.
-    // (A graduated partial-readiness score would require weighted rules — not implemented yet.)
-    const readinessScore = readyForTransmission ? 98.8 : 0.0;
+    // Binary by design: every prerequisite passed, or it did not. A graduated
+    // score would need weighted rules that do not exist yet.
+    const readinessScore = readyForTransmission ? 100 : 0;
     const brokerSignoffRequired = !readyForTransmission;
 
     const form7501Preview: Form7501Preview = {
       // Never fabricate an importer number — use null when not provided.
       importerNumber: input.importerNumber || null,
-      entryType: "01 - CONSUMPTION ENTRY",
+      entryType: input.entryType || null,
       totalEnteredValue: readyForTransmission ? input.enteredValue ?? null : null,
-      totalDutyDue: readyForTransmission ? input.dutyDue ?? 0.0 : null,
+      // Was `?? 0.0`, which declared $0.00 duty owed on entries where duty was
+      // never calculated.
+      totalDutyDue: readyForTransmission ? input.dutyDue ?? null : null,
       totalLineItems: input.lineItemCount,
     };
 
     const reasoningChain = readyForTransmission
-      ? `Filing Readiness Validator: All ${4 - missingRequirements.length} prerequisite checks passed. Readiness Score: 98.8%. Entry is READY for ACE Transmission pending licensed broker signoff.`
-      : `Filing Readiness Validator: Blocked — ${missingRequirements.length} missing filing element(s): ${missingRequirements.join("; ")}. Readiness Score: 0.0%. Transmission to ACE prohibited.`;
+      ? `Filing Readiness Validator: All ${PREREQUISITE_CHECK_COUNT} prerequisite checks passed. Readiness Score: 100%. Entry is READY for ACE Transmission pending licensed broker signoff.`
+      : `Filing Readiness Validator: Blocked — ${missingRequirements.length} missing filing element(s): ${missingRequirements.join("; ")}. Readiness Score: 0%. Transmission to ACE prohibited.`;
 
-    let agentDecisionId = "dec_fallback_readiness";
+    // Null, not a synthetic id: a failed write produced no AgentDecision row.
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -164,26 +181,28 @@ export class FilingReadinessAgent {
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: {
-          agentName: "Filing Readiness Agent",
-          readyForTransmission,
-          missingRequirementsCount: missingRequirements.length,
-        },
-      });
-    } catch (err) {
-      debugError = logAgentError(
-        "Filing Readiness Agent",
-        input.shipmentId,
-        "createAuditLog",
-        err
-      );
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: {
+            agentName: "Filing Readiness Agent",
+            readyForTransmission,
+            missingRequirementsCount: missingRequirements.length,
+          },
+        });
+      } catch (err) {
+        debugError = logAgentError(
+          "Filing Readiness Agent",
+          input.shipmentId,
+          "createAuditLog",
+          err
+        );
+      }
     }
 
     const blockedByAgents: string[] = [];
