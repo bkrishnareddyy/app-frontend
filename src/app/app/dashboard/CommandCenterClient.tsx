@@ -67,6 +67,8 @@ export interface DashboardShipment {
   status: string | null;
   healthStatus: string | null;
   riskScore: number | null;
+  clientId: string | null;
+  client: { id: string; name: string } | null;
   assignedBrokerId: string | null;
 }
 
@@ -90,6 +92,7 @@ interface CommandCenterClientProps {
     firstName: string | null;
     lastName: string | null;
   }>;
+  clients: Array<{ id: string; name: string }>;
   context: {
     userId: string;
     roleNames: string[];
@@ -106,6 +109,7 @@ export function CommandCenterClient({
   initialShipments,
   initialDecisions,
   teamMembers,
+  clients,
   context,
 }: CommandCenterClientProps) {
   const { t } = useLanguage();
@@ -134,6 +138,7 @@ export function CommandCenterClient({
     isEnterpriseAdmin ? [context.userId] : []
   );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState("ALL");
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
@@ -141,7 +146,7 @@ export function CommandCenterClient({
     );
   };
 
-  // Filter shipments dynamically based on checked team members
+  // Filter shipments dynamically based on checked team members and selected client
   const filteredShipments = useMemo(() => {
     return initialShipments.filter((shp) => {
       if (isEnterpriseAdmin) {
@@ -151,9 +156,16 @@ export function CommandCenterClient({
           }
         }
       }
+      if (selectedClientId !== "ALL") {
+        if (selectedClientId === "UNASSIGNED") {
+          if (shp.clientId) return false;
+        } else if (shp.clientId !== selectedClientId) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [initialShipments, selectedUserIds, isEnterpriseAdmin]);
+  }, [initialShipments, selectedUserIds, selectedClientId, isEnterpriseAdmin]);
 
   // Filter decisions dynamically based on checked team members
   const filteredDecisions = useMemo(() => {
@@ -331,6 +343,31 @@ export function CommandCenterClient({
         </div>
       )}
 
+      {/* Client Scope Filter -- visible to all users, not just enterprise admins */}
+      {clients.length > 0 && (
+        <div className="bg-white p-4 rounded-2xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center space-x-2.5">
+            <Users className="w-4 h-4 text-[#0071E3]" />
+            <span className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider">
+              Client Scope
+            </span>
+          </div>
+          <select
+            value={selectedClientId}
+            onChange={(e) => setSelectedClientId(e.target.value)}
+            className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-semibold"
+          >
+            <option value="ALL">All Clients</option>
+            <option value="UNASSIGNED">No Client</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Top KPI Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4">
         {/* 1. Overall Readiness Gauge */}
@@ -493,12 +530,13 @@ export function CommandCenterClient({
                     <th className="py-3 px-4 whitespace-nowrap">{t.dashboard.colValue}</th>
                     <th className="py-3 px-4 whitespace-nowrap">{t.dashboard.colReadiness}</th>
                     <th className="py-3 px-4 whitespace-nowrap">{t.dashboard.colStatus}</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Client</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5E5EA]">
                   {filteredShipments.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-[#86868B]">
+                      <td colSpan={7} className="py-8 text-center text-[#86868B]">
                         No active tasks found in this scope.
                       </td>
                     </tr>
@@ -530,6 +568,15 @@ export function CommandCenterClient({
                           >
                             {displayText(shp.status, "Unknown")}
                           </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {shp.client ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                              {shp.client.name}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-[#86868B]">—</span>
+                          )}
                         </td>
                       </tr>
                     ))

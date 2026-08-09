@@ -67,6 +67,7 @@ model Account {
   pipelineJobs           PipelineJob[]
   classificationCases    ClassificationCase[]
   caseDocuments          CaseDocument[]
+  clients                Client[]
 
   @@index([type])
   @@index([slug])
@@ -278,6 +279,8 @@ model Shipment {
   importerName       String            // e.g. ABC Manufacturing India Pvt Ltd
   importerOfRecordId String?
   importerOfRecord   ImporterOfRecord? @relation(fields: [importerOfRecordId], references: [id], onDelete: SetNull)
+  clientId           String?
+  client             Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
   assignedBrokerId   String?
   assignedBroker     User?             @relation("ShipmentBroker", fields: [assignedBrokerId], references: [id], onDelete: SetNull)
   poReference        String?           // e.g. PO-778899
@@ -752,6 +755,10 @@ model ImporterOfRecord {
   address           Json
   bondId            String?
   bond              Bond?    @relation(fields: [bondId], references: [id], onDelete: SetNull)
+  // A Client (forwarder's customer) can have multiple legal importer
+  // entities on file -- e.g. separate CBP importer numbers per subsidiary.
+  clientId          String?
+  client            Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -760,6 +767,29 @@ model ImporterOfRecord {
   powersOfAttorney PowerOfAttorney[]
 
   @@index([accountId])
+  @@index([clientId])
+}
+
+// A forwarder's customer. One forwarder Account can have many Clients;
+// shipments are tagged with a Client rather than each customer being its
+// own separate tenant Account.
+model Client {
+  id           String   @id @default(cuid())
+  accountId    String
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name         String
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  status       String   @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shipments        Shipment[]
+  importersOfRecord ImporterOfRecord[]
+
+  @@index([accountId])
+  @@index([accountId, status])
 }
 
 model Bond {

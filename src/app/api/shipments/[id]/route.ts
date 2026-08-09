@@ -55,15 +55,36 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     ctx.accountType === "ENTERPRISE" &&
     (ctx.roleNames.includes("ADMIN") || ctx.roleNames.includes("OWNER"));
 
-  if (!isEnterpriseAdmin) {
+  const body = await req.json();
+  const { assignedBrokerId, shipmentNumber, lineItems, clientId } = body;
+
+  // Fetch the current shipment to ensure it belongs to the active account
+  const shipment = await db.shipment.findFirst({
+    where: { id, accountId: ctx.accountId, deletedAt: null },
+  });
+
+  if (!shipment) {
+    return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+  }
+
+  // Planners may tag the Client on shipments assigned to them (e.g. correcting
+  // a blank/wrong customer tag) without full Enterprise Admin rights; every
+  // other field stays Admin/Owner-only.
+  const isAssignedPlanner =
+    ctx.roleNames.includes("PLANNER") && shipment.assignedBrokerId === ctx.userId;
+
+  const onlyEditingClient =
+    clientId !== undefined &&
+    assignedBrokerId === undefined &&
+    shipmentNumber === undefined &&
+    lineItems === undefined;
+
+  if (!isEnterpriseAdmin && !(onlyEditingClient && isAssignedPlanner)) {
     return NextResponse.json(
       { error: "Forbidden: Only Enterprise Admins can edit shipments" },
       { status: 403 }
     );
   }
-
-  const body = await req.json();
-  const { assignedBrokerId, shipmentNumber, lineItems } = body;
 
   // Check if new broker exists in this account (if specified)
   if (assignedBrokerId) {
@@ -78,13 +99,14 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     }
   }
 
-  // Fetch the current shipment to ensure it belongs to the active account
-  const shipment = await db.shipment.findFirst({
-    where: { id, accountId: ctx.accountId, deletedAt: null },
-  });
-
-  if (!shipment) {
-    return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+  // Check if the client exists in this account (if specified)
+  if (clientId) {
+    const client = await db.client.findFirst({
+      where: { id: clientId, accountId: ctx.accountId },
+    });
+    if (!client) {
+      return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
+    }
   }
 
   // Validate uniqueness of shipmentNumber if changing it
@@ -117,6 +139,9 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   }
   if (shipmentNumber !== undefined) {
     updateData.shipmentNumber = shipmentNumber.trim();
+  }
+  if (clientId !== undefined) {
+    updateData.clientId = clientId || null;
   }
 
   // Update shipment
@@ -226,6 +251,23 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
         shipmentNumber: updatedShipment.shipmentNumber,
         previousBrokerId: shipment.assignedBrokerId,
         newBrokerId: assignedBrokerId || "Unassigned",
+      },
+      success: true,
+    });
+  }
+
+  // Log client tag event if client changed
+  if (clientId !== undefined && clientId !== shipment.clientId) {
+    await createAuditLog({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      action: "shipment.setClient",
+      entity: "Shipment",
+      entityId: id,
+      metadata: {
+        shipmentNumber: updatedShipment.shipmentNumber,
+        previousClientId: shipment.clientId,
+        newClientId: clientId || "None",
       },
       success: true,
     });

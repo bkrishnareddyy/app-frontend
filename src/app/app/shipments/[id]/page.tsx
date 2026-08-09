@@ -12,6 +12,7 @@ import { ShipmentExceptionsSection } from "./ShipmentExceptionsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
 import { DocumentViewerControls } from "./DocumentViewerControls";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
+import { ShipmentClientEditor } from "./ShipmentClientEditor";
 import { documentViewUrl } from "@/lib/documentUrl";
 import { openStatusVariants } from "@/modules/exceptions/exceptionState";
 import { evaluateFilingReadiness } from "@/modules/filing/filingReadiness";
@@ -66,6 +67,7 @@ export default async function ShipmentWorkspacePage(props: {
         where: { status: "Open" },
         orderBy: { createdAt: "desc" },
       },
+      client: true,
     },
   });
 
@@ -141,6 +143,19 @@ export default async function ShipmentWorkspacePage(props: {
     context.accountType === "ENTERPRISE" &&
     (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
 
+  // Planners may tag the Client on shipments assigned to them; every other
+  // field on this page stays Enterprise Admin-only.
+  const canEditClient =
+    isEnterpriseAdmin ||
+    (context.roleNames.includes("PLANNER") && shipment.assignedBrokerId === context.userId);
+
+  const clients = canEditClient
+    ? await db.client.findMany({
+        where: { accountId: context.accountId },
+        orderBy: { name: "asc" },
+      })
+    : [];
+
   const SECTIONS = [
     { id: "overview", label: "Overview" },
     { id: "documents", label: "Documents" },
@@ -173,6 +188,13 @@ export default async function ShipmentWorkspacePage(props: {
             <span className="px-2.5 py-0.5 rounded-full text-sm font-semibold bg-[#F5F5F7] text-[#1D1D1F] border border-[#E5E5EA]">
               {shipment.status}
             </span>
+            <ShipmentClientEditor
+              shipmentId={shipment.id}
+              initialClientId={shipment.clientId}
+              initialClientName={shipment.client?.name ?? null}
+              clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+              canEdit={canEditClient}
+            />
             {blockingCount > 0 && (
               <Link
                 href="#exceptions"

@@ -18,6 +18,7 @@ const createShipmentSchema = z.object({
   countryOfExport: z.string().trim().max(100).optional(),
   estimatedArrival: z.coerce.date().optional(),
   masterShipmentId: z.string().trim().min(1).optional(),
+  clientId: z.string().trim().min(1).optional(),
 });
 
 const LIST_PAGE_SIZE_DEFAULT = 50;
@@ -91,6 +92,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
       masterShipment: true,
       houseShipments: true,
       exceptionItems: true,
+      client: true,
     },
   });
 
@@ -150,6 +152,16 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     }
   }
 
+  // Verify client exists and belongs to the same account if specified
+  if (input.clientId) {
+    const client = await db.client.findFirst({
+      where: { id: input.clientId, accountId: ctx.accountId },
+    });
+    if (!client) {
+      return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
+    }
+  }
+
   const shipmentNumber = await generateShipmentNumber(db, ctx.accountId);
 
   const shipment = await db.shipment.create({
@@ -168,6 +180,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       ownerName: [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || null,
       assignedBrokerId: ctx.roleNames.includes("PLANNER") ? ctx.userId : null,
       masterShipmentId: input.masterShipmentId || null,
+      clientId: input.clientId || null,
     },
   });
 

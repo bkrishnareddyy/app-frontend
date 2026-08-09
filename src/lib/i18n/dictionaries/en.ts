@@ -4,6 +4,7 @@ export const en = {
     myWork: "My Work",
     commandCenter: "Command Center",
     shipments: "Shipments",
+    clients: "Clients",
     tradeDocuments: "Trade Documents",
     decisions: "Decisions",
     exceptions: "Exceptions",

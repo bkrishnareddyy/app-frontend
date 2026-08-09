@@ -144,7 +144,8 @@ export default async function AdminUsersPage(props: {
         </div>
         <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">User Management</h1>
         <p className="text-[#86868B] text-sm mt-1">
-          Manage account members, assign roles, and send invitations for {context.accountName}.{" "}
+          Manage account members, assign roles, and send invitations for {context.accountName}.
+          Members can hold multiple roles at once.{" "}
           <Link href="/app/admin/roles" className="font-semibold text-[#0071E3] hover:underline">
             What each role is allowed to do
           </Link>

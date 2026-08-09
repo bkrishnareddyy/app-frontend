@@ -6,13 +6,14 @@ import { createAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
-const SYSTEM_ROLE_NAMES = ["OWNER", "ADMIN", "MEMBER", "VIEWER"] as const;
-
 const updateUserSchema = z.object({
   email: z.string().email("Valid email required"),
   // An invitation grants a single initial role; additional roles can be
-  // assigned afterward via PATCH once the invite is accepted.
-  roleName: z.enum(SYSTEM_ROLE_NAMES).default("MEMBER"),
+  // assigned afterward via PATCH once the invite is accepted. Roles are
+  // per-account (custom roles like PLANNER) plus system-wide ones (OWNER),
+  // not a fixed set, so this is validated against the database below rather
+  // than a hardcoded enum.
+  roleName: z.string().min(1, "roleName is required"),
 });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
@@ -69,8 +70,9 @@ const patchUserSchema = z
   .object({
     membershipId: z.string().min(1),
     // Full replacement set of roles for this membership -- a membership can
-    // hold multiple roles simultaneously (e.g. Admin + Agent).
-    roleNames: z.array(z.enum(SYSTEM_ROLE_NAMES)).min(1).optional(),
+    // hold multiple roles simultaneously (e.g. Admin + Agent). Validated
+    // against the database below, not a hardcoded enum.
+    roleNames: z.array(z.string().min(1)).min(1).optional(),
     status: z.enum(["ACTIVE", "DISABLED"]).optional(),
   })
   .refine((d) => d.roleNames || d.status, {

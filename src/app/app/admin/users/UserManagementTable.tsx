@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import { Users, UserPlus, UserX, UserCheck, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
-const SYSTEM_ROLE_NAMES = ["OWNER", "ADMIN", "MEMBER", "VIEWER"] as const;
-
 interface MemberItem {
   membershipId: string;
   userId: string;
@@ -26,6 +24,9 @@ interface UserManagementTableProps {
   rangeStart: number;
   rangeEnd: number;
   filtered: boolean;
+  // Roles assignable on this account: system-wide (OWNER) plus this account's
+  // own custom roles (e.g. PLANNER) -- not a fixed set, so this is queried by
+  // the server rather than hardcoded here.
   roleOptions: string[];
   sortHeaders: React.ReactNode;
 }
@@ -42,7 +43,9 @@ export function UserManagementTable({
 }: UserManagementTableProps) {
   const router = useRouter();
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("MEMBER");
+  const [inviteRole, setInviteRole] = useState(
+    roleOptions.find((r) => r !== "OWNER") ?? roleOptions[0] ?? ""
+  );
   const [inviteLoading, setInviteLoading] = useState(false);
 
   const [loadingMembershipId, setLoadingMembershipId] = useState<string | null>(null);
@@ -273,28 +276,26 @@ export function UserManagementTable({
                       <div className="flex flex-wrap gap-1.5 max-w-[220px]">
                         {/* A role the member already holds must appear even if it is
                             a custom role the account added. */}
-                        {[...new Set([...SYSTEM_ROLE_NAMES, ...roleOptions, ...m.roleNames])].map(
-                          (role) => {
-                            const isAssigned = m.roleNames.includes(role);
-                            return (
-                              <button
-                                key={role}
-                                type="button"
-                                aria-pressed={isAssigned}
-                                disabled={loadingMembershipId === m.membershipId || isSelf}
-                                onClick={() => handleRoleToggle(m.membershipId, m.roleNames, role)}
-                                title={isSelf ? "You cannot change your own roles" : `Toggle ${role}`}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                  isAssigned
-                                    ? "bg-[#0071E3] text-white border-[#0071E3]"
-                                    : "bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA] hover:border-[#0071E3]/50"
-                                }`}
-                              >
-                                {role}
-                              </button>
-                            );
-                          }
-                        )}
+                        {[...new Set([...roleOptions, ...m.roleNames])].map((role) => {
+                          const isAssigned = m.roleNames.includes(role);
+                          return (
+                            <button
+                              key={role}
+                              type="button"
+                              aria-pressed={isAssigned}
+                              disabled={loadingMembershipId === m.membershipId || isSelf}
+                              onClick={() => handleRoleToggle(m.membershipId, m.roleNames, role)}
+                              title={isSelf ? "You cannot change your own roles" : `Toggle ${role}`}
+                              className={`px-2.5 py-1 text-xs font-bold rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isAssigned
+                                  ? "bg-[#0071E3] text-white border-[#0071E3]"
+                                  : "bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA] hover:border-[#0071E3]/50"
+                              }`}
+                            >
+                              {role}
+                            </button>
+                          );
+                        })}
                       </div>
                     </td>
 

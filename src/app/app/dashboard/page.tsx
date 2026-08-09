@@ -17,8 +17,14 @@ export default async function CommandCenterPage() {
       documents: true,
       lineItems: true,
       exceptionItems: true,
+      client: true,
     },
     orderBy: { createdAt: "desc" },
+  });
+
+  const clients = await db.client.findMany({
+    where: { accountId },
+    orderBy: { name: "asc" },
   });
 
   // Fetch all decisions for active tenant account. Broker assignment comes from
@@ -88,6 +94,8 @@ export default async function CommandCenterPage() {
       status: s.status,
       healthStatus: s.healthStatus,
       riskScore: s.riskScore,
+      clientId: s.clientId,
+      client: s.client ? { id: s.client.id, name: s.client.name } : null,
       assignedBrokerId: s.assignedBrokerId,
       assignedBroker: s.assignedBroker
         ? {
@@ -115,6 +123,7 @@ export default async function CommandCenterPage() {
       initialShipments={formattedShipments}
       initialDecisions={formattedDecisions}
       teamMembers={teamMembers}
+      clients={clients.map((c) => ({ id: c.id, name: c.name }))}
       context={{
         userId: context.userId,
         roleNames: context.roleNames,

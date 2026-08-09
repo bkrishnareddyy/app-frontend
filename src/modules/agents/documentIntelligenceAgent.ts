@@ -176,6 +176,7 @@ export interface LineItemExtraction {
   totalAmount: number | null;
   unitOfMeasure?: string | null;
   countryOfOrigin?: string | null;
+  htsCode?: string | null;
 }
 
 export interface DocumentIntelligenceInput {
@@ -432,6 +433,7 @@ const intelligenceSchema: Schema = {
           totalAmount: { type: Type.NUMBER, nullable: true },
           unitOfMeasure: { type: Type.STRING, nullable: true },
           countryOfOrigin: { type: Type.STRING, nullable: true },
+          htsCode: { type: Type.STRING, nullable: true },
         },
         required: ["lineNumber", "description"],
       },
