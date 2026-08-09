@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import { Users, UserPlus, UserX, UserCheck, Eye, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
-const SYSTEM_ROLE_NAMES = ["OWNER", "ADMIN", "MEMBER", "VIEWER"] as const;
-
 interface MemberItem {
   membershipId: string;
   userId: string;
@@ -22,12 +20,16 @@ interface MemberItem {
 interface UserManagementTableProps {
   members: MemberItem[];
   currentUserId: string;
+  // Roles assignable on this account: system-wide (OWNER) plus this
+  // account's own custom roles (e.g. PLANNER) -- not a fixed set, so this
+  // is queried by the server rather than hardcoded here.
+  availableRoles: string[];
 }
 
-export function UserManagementTable({ members, currentUserId }: UserManagementTableProps) {
+export function UserManagementTable({ members, currentUserId, availableRoles }: UserManagementTableProps) {
   const router = useRouter();
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("MEMBER");
+  const [inviteRole, setInviteRole] = useState(availableRoles.find((r) => r !== "OWNER") ?? availableRoles[0] ?? "");
   const [inviteLoading, setInviteLoading] = useState(false);
 
   const [loadingMembershipId, setLoadingMembershipId] = useState<string | null>(null);
@@ -172,9 +174,13 @@ export function UserManagementTable({ members, currentUserId }: UserManagementTa
               onChange={(e) => setInviteRole(e.target.value)}
               className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-xs focus:outline-none focus:border-[#0071E3] font-semibold"
             >
-              <option value="ADMIN">ADMIN</option>
-              <option value="MEMBER">MEMBER</option>
-              <option value="VIEWER">VIEWER</option>
+              {availableRoles
+                .filter((r) => r !== "OWNER")
+                .map((role) => (
+                  <option key={role} value={role}>
+                    {role}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -240,7 +246,7 @@ export function UserManagementTable({ members, currentUserId }: UserManagementTa
 
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5 max-w-[220px]">
-                        {SYSTEM_ROLE_NAMES.map((role) => {
+                        {availableRoles.map((role) => {
                           const isAssigned = m.roleNames.includes(role);
                           return (
                             <button

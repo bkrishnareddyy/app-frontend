@@ -16,6 +16,14 @@ export default async function AdminUsersPage() {
     orderBy: { createdAt: "desc" },
   });
 
+  // Roles are per-account (custom roles like PLANNER) plus system-wide ones
+  // (OWNER) -- not a fixed OWNER/ADMIN/MEMBER/VIEWER set, so the assignable
+  // list must be queried rather than hardcoded.
+  const availableRoles = await db.role.findMany({
+    where: { OR: [{ accountId: context.accountId }, { accountId: null }] },
+    orderBy: { name: "asc" },
+  });
+
   const formattedMembers = memberships.map((m) => ({
     membershipId: m.id,
     userId: m.user.id,
@@ -36,13 +44,14 @@ export default async function AdminUsersPage() {
         </div>
         <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">User Management</h1>
         <p className="text-[#86868B] text-sm mt-1">
-          Manage account members, assign roles (`OWNER`, `ADMIN`, `MEMBER`, `VIEWER`), and send invitations for {context.accountName}.
+          Manage account members, assign roles, and send invitations for {context.accountName}. Members can hold multiple roles at once.
         </p>
       </div>
 
       <UserManagementTable
         members={formattedMembers}
         currentUserId={context.userId}
+        availableRoles={availableRoles.map((r) => r.name)}
       />
     </div>
   );
