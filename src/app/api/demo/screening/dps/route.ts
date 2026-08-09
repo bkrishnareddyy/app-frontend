@@ -16,6 +16,8 @@ async function ensureWatchlistSeeded() {
           country: "China",
           program: "SDNTK",
           addresses: { city: "Shenzhen", country: "China" },
+          listVersion: "2026-08-08",
+          publishDate: new Date("2026-08-08T00:00:00Z"),
         },
         {
           listSource: "BIS_ENTITY_LIST",
@@ -24,6 +26,8 @@ async function ensureWatchlistSeeded() {
           country: "Russia",
           program: "RUSSIA-EO14024",
           addresses: { city: "Moscow", country: "Russia" },
+          listVersion: "2026-08-08",
+          publishDate: new Date("2026-08-08T00:00:00Z"),
         },
         {
           listSource: "OFAC_SDN",
@@ -32,6 +36,8 @@ async function ensureWatchlistSeeded() {
           country: "Belarus",
           program: "COUNTER-NARCOTICS",
           addresses: { city: "Minsk", country: "Belarus" },
+          listVersion: "2026-08-08",
+          publishDate: new Date("2026-08-08T00:00:00Z"),
         },
       ],
       skipDuplicates: true,
@@ -89,6 +95,8 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       matchScore: maxScore,
       matchedParty: bestMatch ? bestMatch.entityName : null,
       listSource: bestMatch ? bestMatch.listSource : null,
+      listVersion: bestMatch ? bestMatch.listVersion : "2026-08-08",
+      publishDate: bestMatch ? bestMatch.publishDate : new Date("2026-08-08T00:00:00Z"),
     },
   });
 
@@ -112,10 +120,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
             listSource: bestMatch.listSource,
             program: bestMatch.program,
             country: bestMatch.country,
+            listVersion: bestMatch.listVersion,
+            publishDate: bestMatch.publishDate,
           }
         : null,
       recommendation: matchStatus === "BLOCKED" ? "DO NOT SHIP / BLOCK TRANSACTION" : matchStatus === "FLAGGED" ? "MANUAL COMPLIANCE REVIEW REQUIRED" : "CLEAR TO SHIP",
       screenedAt: log.screenedAt,
+      listVersion: log.listVersion,
+      publishDate: log.publishDate,
     },
   });
 });

@@ -19,6 +19,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
       accountId: ctx.accountId,
     },
     include: {
+      snapshot: true,
       shipment: {
         include: {
           documents: true,
@@ -74,8 +75,12 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     take: 10,
   });
 
-  const lineItems = filing.shipment.lineItems || [];
-  const primaryCOO = lineItems[0]?.countryOfOrigin || filing.shipment.countryOfExport || "USA";
+  // Prefer the immutable filing snapshot (frozen at submission time) over
+  // live shipment data when one exists, so this endpoint reflects what was
+  // actually filed even if the underlying shipment record changes later.
+  const snapshot = filing.snapshot ? (filing.snapshot.snapshotData as any) : null;
+  const lineItems = snapshot ? (snapshot.lineItems || []) : (filing.shipment.lineItems || []);
+  const primaryCOO = snapshot ? (snapshot.shipment.countryOfOrigin || snapshot.shipment.countryOfExport || "USA") : (lineItems[0]?.countryOfOrigin || filing.shipment.countryOfExport || "USA");
   const primaryHTS = lineItems[0]?.htsCode || "8481.80.5090";
 
   // Standardized Duty Breakdown computed via Tariff Engine
@@ -134,25 +139,25 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     authority: filing.authority,
 
     // Summary
-    importerOfRecord: filing.shipment.importerName,
+    importerOfRecord: snapshot ? snapshot.shipment.importerName : filing.shipment.importerName,
     customsBroker: "Qubere Automated Compliance Services",
-    portOfEntry: filing.shipment.portOfEntry || "Port of Los Angeles (2704)",
-    modeOfTransport: filing.shipment.incoterm?.includes("Air") ? "Air" : "Ocean",
-    carrier: filing.shipment.carrierName || "Maersk Line",
+    portOfEntry: snapshot ? (snapshot.shipment.portOfEntry || "Port of Los Angeles (2704)") : (filing.shipment.portOfEntry || "Port of Los Angeles (2704)"),
+    modeOfTransport: snapshot ? (snapshot.shipment.incoterm?.includes("Air") ? "Air" : "Ocean") : (filing.shipment.incoterm?.includes("Air") ? "Air" : "Ocean"),
+    carrier: snapshot ? (snapshot.shipment.carrierName || "Maersk Line") : (filing.shipment.carrierName || "Maersk Line"),
     billOfLading: `BOL-${filing.entryNumber.replace(/[^0-9]/g, "").slice(-8)}`,
     houseBill: `HBOL-${filing.entryNumber.replace(/[^0-9]/g, "").slice(-6)}`,
     containerCount: Math.max(1, lineItems.length),
     countryOfOrigin: primaryCOO,
     supplier: lineItems[0]?.partNumber ? `Supplier Corp (${lineItems[0].partNumber.slice(0, 4)})` : "Global Trade Supplier Ltd",
-    shipmentReference: filing.shipment.shipmentNumber,
+    shipmentReference: snapshot ? snapshot.shipment.shipmentNumber : filing.shipment.shipmentNumber,
 
     // Financial Breakdown
-    totalCustomsValue: Number(filing.totalValue),
+    totalCustomsValue: snapshot ? Number(snapshot.filingHeader.totalValue) : Number(filing.totalValue),
     currency: "USD",
-    totalDuty: filing.totalDuties,
-    totalTaxes: filing.totalTaxes,
-    totalFees: Math.round((Number(filing.totalDuties) * 0.1) * 100) / 100,
-    totalAmount: Number(filing.totalAmount),
+    totalDuty: snapshot ? Number(snapshot.filingHeader.totalDuties) : Number(filing.totalDuties),
+    totalTaxes: snapshot ? Number(snapshot.filingHeader.totalTaxes) : Number(filing.totalTaxes),
+    totalFees: Math.round((Number(snapshot ? snapshot.filingHeader.totalDuties : filing.totalDuties) * 0.1) * 100) / 100,
+    totalAmount: snapshot ? Number(snapshot.filingHeader.totalAmount) : Number(filing.totalAmount),
     dutyBreakdown,
 
     // Associated Entities

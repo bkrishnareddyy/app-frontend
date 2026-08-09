@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Code, ExternalLink } from "lucide-react";
 import { RawExtractionModal } from "@/components/RawExtractionModal";
 
 interface DocumentViewerControlsProps {
@@ -10,6 +9,7 @@ interface DocumentViewerControlsProps {
   fileUrl?: string | null;
   proxyUrl: string;
   shipmentNumber?: string;
+  children: React.ReactNode;
 }
 
 export function DocumentViewerControls({
@@ -18,31 +18,18 @@ export function DocumentViewerControls({
   fileUrl,
   proxyUrl,
   shipmentNumber,
+  children,
 }: DocumentViewerControlsProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
     <>
-      <div className="flex items-center space-x-2 shrink-0">
-        {fileUrl && (
-          <a
-            href={proxyUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-1 rounded-lg bg-[#0071E3] hover:bg-[#0077ED] text-white font-bold text-xs inline-flex items-center space-x-1 transition-colors"
-          >
-            <span>Open PDF in Tab</span>
-          </a>
-        )}
-
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="px-3 py-1 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] border border-[#E5E5EA] text-[#1D1D1F] font-bold text-xs inline-flex items-center space-x-1.5 transition-colors cursor-pointer"
-          title="View raw extracted JSON blob and key-value pairs"
-        >
-          <Code className="w-3.5 h-3.5 text-[#0071E3]" />
-          <span>View Raw Extraction (JSON)</span>
-        </button>
+      <div
+        onClick={() => setIsModalOpen(true)}
+        className="cursor-pointer group flex items-center min-w-0"
+        title="Click to view extraction preview, key-value pairs, and JSON data"
+      >
+        {children}
       </div>
 
       <RawExtractionModal

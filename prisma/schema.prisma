@@ -259,6 +259,10 @@ model Shipment {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
+  masterShipmentId   String?
+  masterShipment     Shipment?         @relation("MasterHouseRelation", fields: [masterShipmentId], references: [id], onDelete: SetNull)
+  houseShipments     Shipment[]        @relation("MasterHouseRelation")
+
   documents               ShipmentDocument[]
   lineItems               ShipmentLineItem[]
   agentDecisions          AgentDecision[]
@@ -267,11 +271,13 @@ model Shipment {
   regulatoryUpdateImpacts RegulatoryUpdateImpact[]
   reconciliationIssues    ReconciliationIssue[]
   pipelineJobs            PipelineJob[]
+  facts                   Fact[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
   @@index([status])
   @@index([deletedAt])
+  @@index([masterShipmentId])
 }
 
 model ShipmentDocument {
@@ -396,6 +402,7 @@ model CustomsFiling {
   complianceFindings     ComplianceFinding[]
   valuationAssistsRecord ValuationAssistsRecord?
   auditTimelines         AuditTimeline[]
+  snapshot               FilingSnapshot?
 
   @@index([shipmentId])
   @@index([accountId])
@@ -961,31 +968,35 @@ model AuditTimeline {
 }
 
 model DeniedPartyWatchlist {
-  id            String   @id @default(cuid())
-  listSource    String   // OFAC_SDN | BIS_ENTITY_LIST | UN_SANCTIONS | EU_SANCTIONS | UK_HMT
+  id            String    @id @default(cuid())
+  listSource    String    // OFAC_SDN | BIS_ENTITY_LIST | UN_SANCTIONS | EU_SANCTIONS | UK_HMT
   entityName    String
-  entityType    String   // Individual | Organization | Vessel
+  entityType    String    // Individual | Organization | Vessel
   country       String
-  program       String?  // SDNTK | RUSSIA-EO14024 | COUNTER-NARCOTICS
+  program       String?   // SDNTK | RUSSIA-EO14024 | COUNTER-NARCOTICS
   addresses     Json?
-  effectiveDate DateTime @default(now())
-  createdAt     DateTime @default(now())
+  listVersion   String?   // E.g., "2026-08-08"
+  publishDate   DateTime? // Release date of source file
+  effectiveDate DateTime  @default(now())
+  createdAt     DateTime  @default(now())
 
   @@index([entityName])
   @@index([listSource])
 }
 
 model ScreeningLog {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   accountId    String
-  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   targetName   String
-  targetType   String   // Shipper | Consignee | Broker | Carrier | Manufacturer
-  matchStatus  String   // PASSED | FLAGGED | BLOCKED
-  matchScore   Int      @default(0) // 0-100 fuzzy match score
+  targetType   String    // Shipper | Consignee | Broker | Carrier | Manufacturer
+  matchStatus  String    // PASSED | FLAGGED | BLOCKED
+  matchScore   Int       @default(0) // 0-100 fuzzy match score
   matchedParty String?
   listSource   String?
-  screenedAt   DateTime @default(now())
+  listVersion  String?   // Logged list version at moment of screening
+  publishDate  DateTime? // Logged list publish date
+  screenedAt   DateTime  @default(now())
 
   @@index([accountId])
   @@index([matchStatus])
@@ -1509,4 +1520,32 @@ model ClassificationDecision {
 
   @@index([caseId])
   @@index([approvedHtsNodeId])
+}
+
+model Fact {
+  id                 String            @id @default(cuid())
+  shipmentId         String
+  shipment           Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  field              String            // e.g. "countryOfOrigin"
+  value              String            // e.g. "VN"
+  normalizedValue    String?
+  sourceType         String            // e.g. "EXTRACTED", "USER_ENTERED", "AGENT_PROPOSED"
+  confidence         Float?            // e.g. 98.5
+  documentId         String?           // Optional link to ShipmentDocument
+  documentPage       Int?              // Optional page number
+  metadata           Json?             // Stores the dynamic JSON blob for fields not modeled as columns
+  createdAt          DateTime          @default(now())
+
+  @@index([shipmentId])
+  @@index([field])
+}
+
+model FilingSnapshot {
+  id           String        @id @default(cuid())
+  filingId     String        @unique
+  filing       CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+  snapshotData Json          // Immutable JSON representation of all shipment, parties, and line item facts
+  createdAt    DateTime      @default(now())
+
+  @@index([filingId])
 }

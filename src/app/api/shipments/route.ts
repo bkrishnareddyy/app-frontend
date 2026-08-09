@@ -22,6 +22,8 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
       agentDecisions: true,
       customsFilings: true,
       assignedBroker: true,
+      masterShipment: true,
+      houseShipments: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -35,12 +37,13 @@ const createShipmentSchema = z.object({
   entryType: z.string().min(1).optional(),
   incoterm: z.string().min(1).optional(),
   estimatedArrival: z.string().datetime().optional().or(z.string().min(1).optional()),
+  masterShipmentId: z.string().min(1).optional(),
 });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, createShipmentSchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
-  const { importerName, poReference, entryType, incoterm, estimatedArrival } = bodyVal.data;
+  const { importerName, poReference, entryType, incoterm, estimatedArrival, masterShipmentId } = bodyVal.data;
 
   // Dynamic sequence calculation directly from database count
   const shipmentCount = await db.shipment.count({
@@ -49,6 +52,16 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
   const nextSeq = shipmentCount + 1;
   const shipmentNumber = `SHP-2026-${String(nextSeq).padStart(6, "0")}`;
+
+  // Verify masterShipment exists and belongs to the same account if specified
+  if (masterShipmentId) {
+    const master = await db.shipment.findFirst({
+      where: { id: masterShipmentId, accountId: ctx.accountId },
+    });
+    if (!master) {
+      return NextResponse.json({ error: "Invalid masterShipmentId: Master shipment not found in this account" }, { status: 400 });
+    }
+  }
 
   const shipment = await db.shipment.create({
     data: {
@@ -64,6 +77,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       riskScore: 20,
       ownerName: ctx.firstName || "Stephen",
       assignedBrokerId: ctx.roleName === "PLANNER" ? ctx.userId : null,
+      masterShipmentId: masterShipmentId || null,
     },
   });
 
@@ -73,7 +87,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: "shipment.create",
     entity: "Shipment",
     entityId: shipment.id,
-    metadata: { shipmentNumber },
+    metadata: { shipmentNumber, masterShipmentId },
   });
 
   return NextResponse.json({ shipment, requestId }, { status: 201 });
