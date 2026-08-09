@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { ClassificationCaseRepository } from "@/repositories/classificationCaseRepository";
+import { z } from "zod";
 
-export async function GET(req: Request, { params }: { params: Promise<{ caseId: string }> }) {
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
+const paramsSchema = z.object({ caseId: z.string().min(1) });
+
+export const GET = withAuthenticatedRoute<{ caseId: string }>(async ({ ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
 
   try {
-    const { caseId } = await params;
-    const classificationCase = await ClassificationCaseRepository.getById(ctx!.accountId, caseId);
+    const classificationCase = await ClassificationCaseRepository.getById(ctx.accountId, paramsVal.data.caseId);
 
     if (!classificationCase) {
       return NextResponse.json({ error: "Classification case not found" }, { status: 404 });
@@ -18,4 +21,4 @@ export async function GET(req: Request, { params }: { params: Promise<{ caseId: 
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch classification case" }, { status: 500 });
   }
-}
+});

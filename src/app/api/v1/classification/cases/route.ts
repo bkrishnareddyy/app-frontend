@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { ClassificationCaseEngine } from "@/modules/classification/classificationCaseEngine";
 import { db } from "@/lib/db";
 
-export async function POST(req: Request) {
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
-
+export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   try {
     const body = await req.json();
     const { rawDescription, externalReference, priority, structuredAttributesJson, countryOfOrigin, intendedUse } = body;
@@ -16,8 +13,8 @@ export async function POST(req: Request) {
     }
 
     const result = await ClassificationCaseEngine.createCase({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       rawDescription,
       externalReference,
       priority,
@@ -30,15 +27,12 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to create classification case" }, { status: 500 });
   }
-}
+});
 
-export async function GET(req: Request) {
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
-
+export const GET = withAuthenticatedRoute(async ({ ctx }) => {
   try {
     const cases = await db.classificationCase.findMany({
-      where: { accountId: ctx!.accountId },
+      where: { accountId: ctx.accountId },
       include: {
         subjects: true,
         documents: true,
@@ -52,4 +46,4 @@ export async function GET(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch classification cases" }, { status: 500 });
   }
-}
+});

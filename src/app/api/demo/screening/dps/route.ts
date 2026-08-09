@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 
@@ -45,52 +45,44 @@ async function ensureWatchlistSeeded() {
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+  await ensureWatchlistSeeded();
 
-    await ensureWatchlistSeeded();
+  const body = await req.json();
+  const { name, targetType, country } = body;
 
-    const body = await req.json();
-    const { name, targetType, country } = body;
+  if (!name) {
+    return NextResponse.json({ error: "Name is required for screening" }, { status: 400 });
+  }
 
-    if (!name) {
-      return NextResponse.json({ error: "Name is required for screening" }, { status: 400 });
-    }
+  const cleanName = name.trim().toLowerCase();
 
-    const cleanName = name.trim().toLowerCase();
+  // Perform fuzzy string matching against watchlists
+  const watchlists = await db.deniedPartyWatchlist.findMany();
+  let bestMatch = null;
+  let maxScore = 0;
 
-    // Perform fuzzy string matching against watchlists
-    const watchlists = await db.deniedPartyWatchlist.findMany();
-    let bestMatch = null;
-    let maxScore = 0;
+  for (const entry of watchlists) {
+    const entryClean = entry.entityName.toLowerCase();
+    let score = 0;
 
-    for (const entry of watchlists) {
-      const entryClean = entry.entityName.toLowerCase();
-      let score = 0;
-
-      if (cleanName === entryClean) {
-        score = 100;
-      } else if (cleanName.includes(entryClean) || entryClean.includes(cleanName)) {
-        score = 85;
-      } else {
-        const words = cleanName.split(" ");
-        const matchedWords = words.filter((w: string) => w.length > 3 && entryClean.includes(w));
-        if (matchedWords.length > 0) {
-          score = Math.min(75, matchedWords.length * 30);
-        }
-      }
-
-      if (score > maxScore) {
-        maxScore = score;
-        bestMatch = entry;
+    if (cleanName === entryClean) {
+      score = 100;
+    } else if (cleanName.includes(entryClean) || entryClean.includes(cleanName)) {
+      score = 85;
+    } else {
+      const words = cleanName.split(" ");
+      const matchedWords = words.filter((w: string) => w.length > 3 && entryClean.includes(w));
+      if (matchedWords.length > 0) {
+        score = Math.min(75, matchedWords.length * 30);
       }
     }
 
-    const matchStatus = maxScore >= 80 ? "BLOCKED" : maxScore >= 50 ? "FLAGGED" : "PASSED";
+    if (score > maxScore) {
+      maxScore = score;
+      bestMatch = entry;
+    }
+  }
 
     const log = await db.screeningLog.create({
       data: {
@@ -105,15 +97,19 @@ export async function POST(req: Request) {
         publishDate: bestMatch ? bestMatch.publishDate : new Date("2026-08-08T00:00:00Z"),
       },
     });
+  const matchStatus = maxScore >= 80 ? "BLOCKED" : maxScore >= 50 ? "FLAGGED" : "PASSED";
 
-    await createAuditLog({
+  const log = await db.screeningLog.create({
+    data: {
       accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "screening.dps",
-      entity: "ScreeningLog",
-      entityId: log.id,
-      metadata: { targetName: name, matchStatus, matchScore: maxScore },
-    });
+      targetName: name,
+      targetType: targetType || "Shipper",
+      matchStatus,
+      matchScore: maxScore,
+      matchedParty: bestMatch ? bestMatch.entityName : null,
+      listSource: bestMatch ? bestMatch.listSource : null,
+    },
+  });
 
     return NextResponse.json({
       screeningResult: {
@@ -141,3 +137,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: "screening.dps",
+    entity: "ScreeningLog",
+    entityId: log.id,
+    metadata: { targetName: name, matchStatus, matchScore: maxScore },
+  });
+
+  return NextResponse.json({
+    screeningResult: {
+      targetName: name,
+      matchStatus,
+      matchScore: maxScore,
+      matchedEntity: bestMatch
+        ? {
+            entityName: bestMatch.entityName,
+            listSource: bestMatch.listSource,
+            program: bestMatch.program,
+            country: bestMatch.country,
+          }
+        : null,
+      recommendation: matchStatus === "BLOCKED" ? "DO NOT SHIP / BLOCK TRANSACTION" : matchStatus === "FLAGGED" ? "MANUAL COMPLIANCE REVIEW REQUIRED" : "CLEAR TO SHIP",
+      screenedAt: log.screenedAt,
+    },
+  });
+});

@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { ClassificationCaseEngine } from "@/modules/classification/classificationCaseEngine";
+import { z } from "zod";
 
-export async function POST(req: Request, { params }: { params: Promise<{ caseId: string }> }) {
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
+const paramsSchema = z.object({ caseId: z.string().min(1) });
+
+export const POST = withAuthenticatedRoute<{ caseId: string }>(async ({ req, ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { caseId } = paramsVal.data;
 
   try {
-    const { caseId } = await params;
     const body = await req.json();
     const { proposalId, approvedHtsNodeId, decisionStatus, rationale, overrideReason } = body;
 
@@ -16,8 +20,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ caseId:
     }
 
     const decision = await ClassificationCaseEngine.recordDecision({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       caseId,
       proposalId,
       approvedHtsNodeId,
@@ -30,4 +34,4 @@ export async function POST(req: Request, { params }: { params: Promise<{ caseId:
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to record classification decision" }, { status: 500 });
   }
-}
+});

@@ -1,35 +1,28 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { z } from "zod";
 
-export async function GET(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+const paramsSchema = z.object({ id: z.string().min(1) });
 
-    const { id } = await context.params;
+export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
 
-    const scenario = await db.landedCostScenario.findFirst({
-      where: { id, accountId: ctx.accountId },
-      include: {
-        lineItems: {
-          include: { htsCode: true },
-        },
+  const scenario = await db.landedCostScenario.findFirst({
+    where: { id, accountId: ctx.accountId },
+    include: {
+      lineItems: {
+        include: { htsCode: true },
       },
-    });
+    },
+  });
 
-    if (!scenario) {
-      return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ scenario });
-  } catch (error) {
-    console.error("GET /api/simulator/scenarios/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  if (!scenario) {
+    return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
   }
-}
+
+  return NextResponse.json({ scenario });
+});

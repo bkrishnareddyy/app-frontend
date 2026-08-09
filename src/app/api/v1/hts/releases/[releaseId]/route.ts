@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { withPublicRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 
-export async function GET(req: Request, { params }: { params: Promise<{ releaseId: string }> }) {
+export const GET = withPublicRoute<{ releaseId: string }>(async ({ params }) => {
   try {
-    const { releaseId } = await params;
+    const { releaseId } = params;
     const release = await db.htsRelease.findUnique({
       where: { id: releaseId },
       include: {
@@ -21,4 +22,4 @@ export async function GET(req: Request, { params }: { params: Promise<{ releaseI
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch release detail" }, { status: 500 });
   }
-}
+});

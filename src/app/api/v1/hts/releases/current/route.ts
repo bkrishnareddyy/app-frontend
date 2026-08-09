@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { withPublicRoute } from "@/lib/api/auth-guards";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 
-export async function GET() {
+export const GET = withPublicRoute(async () => {
   try {
     const currentRelease = await HtsSearchService.getCurrentRelease();
     if (!currentRelease) {
@@ -11,4 +12,4 @@ export async function GET() {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch current release" }, { status: 500 });
   }
-}
+});

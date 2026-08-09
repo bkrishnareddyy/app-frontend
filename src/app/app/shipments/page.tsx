@@ -82,6 +82,23 @@ export default async function ShipmentsConsolePage() {
       totalDuties: Number(filing.totalDuties),
       totalTaxes: Number(filing.totalTaxes),
       totalAmount: Number(filing.totalAmount),
+    lineItems: s.lineItems.map((li) => ({
+      ...li,
+      unitPrice: Number(li.unitPrice),
+      totalValue: Number(li.totalValue),
+      createdAt: li.createdAt.toISOString(),
+      updatedAt: li.updatedAt.toISOString(),
+    })),
+    customsFilings: s.customsFilings.map((cf) => ({
+      ...cf,
+      totalValue: Number(cf.totalValue),
+      totalDuties: Number(cf.totalDuties),
+      totalTaxes: Number(cf.totalTaxes),
+      totalAmount: Number(cf.totalAmount),
+      submittedAt: cf.submittedAt.toISOString(),
+      releasedAt: cf.releasedAt ? cf.releasedAt.toISOString() : null,
+      createdAt: cf.createdAt.toISOString(),
+      updatedAt: cf.updatedAt.toISOString(),
     })),
   }));
 

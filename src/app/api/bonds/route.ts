@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/api/auth-guards";
-import { buildErrorResponse, generateRequestId , errorMessage } from "@/lib/api/error";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
@@ -17,26 +17,14 @@ const createBondSchema = z.object({
   importerOfRecordId: z.string().optional(),
 });
 
-export async function GET(req: Request) {
-  const requestId = generateRequestId();
-  const { ctx, errorResponse } = await authorizeRequest();
-  if (errorResponse) return errorResponse;
+export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
+  const bonds = await BondService.listBonds(ctx.accountId);
+  return NextResponse.json({ bonds, requestId });
+});
 
-  try {
-    const bonds = await BondService.listBonds(ctx!.accountId);
-    return NextResponse.json({ bonds, requestId });
-  } catch (error: unknown) {
-    return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to list bonds", undefined, requestId);
-  }
-}
-
-export async function POST(req: Request) {
-  const requestId = generateRequestId();
-  const { ctx, errorResponse } = await authorizeRequest("bonds.manage");
-  if (errorResponse) return errorResponse;
-
+export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   // Idempotency check
-  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx!.accountId, requestId);
+  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
 
@@ -44,11 +32,11 @@ export async function POST(req: Request) {
   if ("response" in bodyVal) return bodyVal.response;
 
   try {
-    const result = await BondService.createBond(ctx!.accountId, ctx!.userId, bodyVal.data);
+    const result = await BondService.createBond(ctx.accountId, ctx.userId, bodyVal.data);
 
     await createAuditLog({
-      accountId: ctx!.accountId,
-      userId: ctx!.userId,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
       action: "bond.create",
       entity: "Bond",
       entityId: result.bond.id,
@@ -58,7 +46,7 @@ export async function POST(req: Request) {
     const responsePayload = { bond: result.bond, metadata: result.metadata, requestId };
 
     if (idempotencyKey) {
-      await persistIdempotency(ctx!.accountId, idempotencyKey, "", 201, responsePayload);
+      await persistIdempotency(ctx.accountId, idempotencyKey, "", 201, responsePayload);
     }
 
     return NextResponse.json(responsePayload, { status: 201 });
@@ -68,4 +56,4 @@ export async function POST(req: Request) {
     }
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to create bond", undefined, requestId);
   }
-}
+}, { permission: "bonds.manage" });

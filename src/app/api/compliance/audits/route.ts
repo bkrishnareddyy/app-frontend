@@ -1,35 +1,25 @@
 import { NextResponse } from "next/server";
-import { getAccountContext } from "@/lib/auth";
+import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 
-export async function GET(req: Request) {
-  try {
-    const ctx = await getAccountContext();
-    if (!ctx) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
+  const { searchParams } = new URL(req.url);
+  const result = searchParams.get("result");
 
-    const { searchParams } = new URL(req.url);
-    const result = searchParams.get("result");
-
-    const where: import("@prisma/client").Prisma.ComplianceAuditRecordWhereInput = { accountId: ctx.accountId };
-    if (result) {
-      where.overallResult = { equals: result, mode: "insensitive" };
-    }
-
-    const auditRecords = await db.complianceAuditRecord.findMany({
-      where,
-      include: {
-        filing: {
-          include: { shipment: true },
-        },
-      },
-      orderBy: { runAt: "desc" },
-    });
-
-    return NextResponse.json({ auditRecords });
-  } catch (error) {
-    console.error("GET /api/compliance/audits error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  const where: import("@prisma/client").Prisma.ComplianceAuditRecordWhereInput = { accountId: ctx.accountId };
+  if (result) {
+    where.overallResult = { equals: result, mode: "insensitive" };
   }
-}
+
+  const auditRecords = await db.complianceAuditRecord.findMany({
+    where,
+    include: {
+      filing: {
+        include: { shipment: true },
+      },
+    },
+    orderBy: { runAt: "desc" },
+  });
+
+  return NextResponse.json({ auditRecords });
+});
