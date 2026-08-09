@@ -1,5 +1,6 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { CommandCenterClient } from "./CommandCenterClient";
 
 export default async function CommandCenterPage() {
@@ -15,6 +16,9 @@ export default async function CommandCenterPage() {
       agentDecisions: true,
       customsFilings: true,
       assignedBroker: true,
+      documents: true,
+      lineItems: true,
+      exceptionItems: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -57,26 +61,38 @@ export default async function CommandCenterPage() {
   });
 
   // Serialize models safely for client component props
-  const formattedShipments = shipments.map((s) => ({
-    id: s.id,
-    shipmentNumber: s.shipmentNumber,
-    referenceNumber: s.poReference,
-    exporterName: s.importerName, // matches previous fallback naming
-    primaryHtsCode: "7318.15.2065", // fallback
-    totalValue: s.readinessScore * 500, // mock fallback matches previous layout
-    readinessScore: s.readinessScore,
-    status: s.status,
-    healthStatus: s.healthStatus,
-    riskScore: s.riskScore,
-    assignedBrokerId: s.assignedBrokerId,
-    assignedBroker: s.assignedBroker
-      ? {
-          id: s.assignedBroker.id,
-          firstName: s.assignedBroker.firstName,
-          lastName: s.assignedBroker.lastName,
-        }
-      : null,
-  }));
+  const formattedShipments = shipments.map((s) => {
+    // readinessScore is a static column default, never updated as
+    // documents/line items/exceptions change -- compute the real figure.
+    const readinessScore = computeReadinessScore(s);
+    // Primary HTS code and entered value were previously a hardcoded literal
+    // and (readinessScore * 500) respectively -- neither reflected the
+    // shipment's actual line items. Derive both from real data instead.
+    const primaryLineItem = [...s.lineItems].sort(
+      (a, b) => Number(b.totalValue) - Number(a.totalValue)
+    )[0];
+    const totalValue = s.lineItems.reduce((sum, li) => sum + Number(li.totalValue), 0);
+    return {
+      id: s.id,
+      shipmentNumber: s.shipmentNumber,
+      referenceNumber: s.poReference,
+      exporterName: s.importerName, // matches previous fallback naming
+      primaryHtsCode: primaryLineItem?.htsCode ?? "Not Yet Classified",
+      totalValue,
+      readinessScore,
+      status: s.status,
+      healthStatus: s.healthStatus,
+      riskScore: s.riskScore,
+      assignedBrokerId: s.assignedBrokerId,
+      assignedBroker: s.assignedBroker
+        ? {
+            id: s.assignedBroker.id,
+            firstName: s.assignedBroker.firstName,
+            lastName: s.assignedBroker.lastName,
+          }
+        : null,
+    };
+  });
 
   const formattedDecisions = decisions.map((d) => ({
     id: d.id,

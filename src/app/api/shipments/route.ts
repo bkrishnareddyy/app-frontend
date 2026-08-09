@@ -4,6 +4,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { z } from "zod";
 
 export const GET = withAuthenticatedRoute(async ({ ctx }) => {
@@ -24,11 +25,19 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
       assignedBroker: true,
       masterShipment: true,
       houseShipments: true,
+      exceptionItems: true,
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ shipments });
+  // readinessScore is a static column default (87), never updated as
+  // documents/line items/exceptions change -- compute the real figure here.
+  const shipmentsWithReadiness = shipments.map((s) => ({
+    ...s,
+    readinessScore: computeReadinessScore(s),
+  }));
+
+  return NextResponse.json({ shipments: shipmentsWithReadiness });
 });
 
 const createShipmentSchema = z.object({

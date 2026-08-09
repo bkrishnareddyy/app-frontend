@@ -1,5 +1,6 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { ShipmentsWorkbenchClient } from "./ShipmentsWorkbenchClient";
 
 export default async function ShipmentsConsolePage() {
@@ -16,6 +17,7 @@ export default async function ShipmentsConsolePage() {
       lineItems: true,
       customsFilings: true,
       assignedBroker: true,
+      exceptionItems: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -49,7 +51,9 @@ export default async function ShipmentsConsolePage() {
     poReference: s.poReference,
     portOfEntry: s.portOfEntry,
     carrierName: s.carrierName,
-    readinessScore: s.readinessScore,
+    // readinessScore is a static column default, never updated as
+    // documents/line items/exceptions change -- compute the real figure.
+    readinessScore: computeReadinessScore(s),
     healthStatus: s.healthStatus,
     status: s.status,
     createdAt: s.createdAt.toISOString(),

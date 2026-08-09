@@ -463,13 +463,13 @@ export function CommandCenterClient({
                           {shp.exporterName || shp.shipper || "Shenzhen Hardware Corp"}
                         </td>
                         <td className="py-3 px-4 font-mono text-[11px] text-[#1D1D1F]">
-                          {shp.primaryHtsCode || "7318.15.2065"}
+                          {shp.primaryHtsCode ?? "Not Yet Classified"}
                         </td>
                         <td className="py-3 px-4 font-semibold">
-                          ${(shp.totalValue || 48500.0).toLocaleString()}
+                          ${(shp.totalValue ?? 0).toLocaleString()}
                         </td>
                         <td className="py-3 px-4 font-bold text-emerald-600">
-                          {shp.readinessScore || 96}%
+                          {shp.readinessScore ?? 0}%
                         </td>
                         <td className="py-3 px-4">
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
