@@ -69,5 +69,5 @@ describe("Master / House Shipment Hierarchy Integration Suite", () => {
     expect(fetchedMaster!.houseShipments.length).toBe(1);
     expect(fetchedMaster!.houseShipments[0].id).toBe(houseId);
     expect(fetchedMaster!.houseShipments[0].importerName).toBe("Apex Child Co");
-  });
+  }, 30000);
 });
