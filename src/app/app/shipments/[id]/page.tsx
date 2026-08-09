@@ -19,6 +19,7 @@ import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
 import { DocumentViewerControls } from "./DocumentViewerControls";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
+import { ShipmentClientEditor } from "./ShipmentClientEditor";
 import { ExceptionsDrawer } from "./ExceptionsDrawer";
 import { LineItemsTable } from "./LineItemsTable";
 import { PreFilingReadiness } from "./PreFilingReadiness";
@@ -50,6 +51,7 @@ export default async function ShipmentWorkspacePage(props: {
           bond: true,
         },
       },
+      client: true,
     },
   });
 
@@ -117,6 +119,19 @@ export default async function ShipmentWorkspacePage(props: {
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
     (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
+
+  // Planners may tag the Client on shipments assigned to them; every other
+  // field on this page stays Enterprise Admin-only.
+  const canEditClient =
+    isEnterpriseAdmin ||
+    (context.roleNames.includes("PLANNER") && shipment.assignedBrokerId === context.userId);
+
+  const clients = canEditClient
+    ? await db.client.findMany({
+        where: { accountId: context.accountId },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   let exceptionItems = await db.exceptionItem.findMany({
     where: { shipmentId: shipment.id, accountId: context.accountId },
@@ -924,6 +939,13 @@ export default async function ShipmentWorkspacePage(props: {
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               {shipment.status}
             </span>
+            <ShipmentClientEditor
+              shipmentId={shipment.id}
+              initialClientId={shipment.clientId}
+              initialClientName={shipment.client?.name ?? null}
+              clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+              canEdit={canEditClient}
+            />
             <div className="flex items-center space-x-1.5 text-xs text-[#86868B]">
               <Sparkles className="w-3.5 h-3.5 text-[#0071E3]" />
               <span>Consumption Entry • US Customs</span>

@@ -731,6 +731,10 @@ model ImporterOfRecord {
   address           Json
   bondId            String?
   bond              Bond?    @relation(fields: [bondId], references: [id], onDelete: SetNull)
+  // A Client (forwarder's customer) can have multiple legal importer
+  // entities on file -- e.g. separate CBP importer numbers per subsidiary.
+  clientId          String?
+  client            Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -739,6 +743,7 @@ model ImporterOfRecord {
   powersOfAttorney PowerOfAttorney[]
 
   @@index([accountId])
+  @@index([clientId])
 }
 
 // A forwarder's customer. One forwarder Account can have many Clients;
@@ -756,7 +761,8 @@ model Client {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  shipments Shipment[]
+  shipments        Shipment[]
+  importersOfRecord ImporterOfRecord[]
 
   @@index([accountId])
   @@index([accountId, status])

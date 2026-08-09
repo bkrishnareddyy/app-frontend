@@ -9,6 +9,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
     include: {
       bond: true,
       powersOfAttorney: true,
+      client: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -18,10 +19,17 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
-  const { name, irsEin, cbpImporterNumber, address, bondId } = body;
+  const { name, irsEin, cbpImporterNumber, address, bondId, clientId } = body;
 
   if (!name || !cbpImporterNumber) {
     return NextResponse.json({ error: "Name and cbpImporterNumber are required" }, { status: 400 });
+  }
+
+  if (clientId) {
+    const client = await db.client.findFirst({ where: { id: clientId, accountId: ctx.accountId } });
+    if (!client) {
+      return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
+    }
   }
 
   const importer = await db.importerOfRecord.create({
@@ -32,8 +40,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       cbpImporterNumber,
       address: address || { street: "100 Trade Plaza", city: "Los Angeles", state: "CA", zip: "90012", country: "USA" },
       bondId,
+      clientId: clientId || null,
     },
-    include: { bond: true },
+    include: { bond: true, client: true },
   });
 
   await createAuditLog({
