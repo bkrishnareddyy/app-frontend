@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const dbMock = {
   landedCostScenario: { findFirst: vi.fn() },
-  hTSCode: { findFirst: vi.fn() },
+  htsNode: { findFirst: vi.fn() },
   landedCostScenarioLineItem: { create: vi.fn() },
 };
 
@@ -19,11 +19,10 @@ const { POST } = await import("@/app/api/simulator/scenarios/[id]/line-items/rou
 
 const HTS = {
   id: "hts_1",
-  htsCode10: "8481.80.5090",
+  htsNumberDisplay: "8481.80.5090",
+  htsNumberNormalized: "8481805090",
   description: "Valves",
-  generalDutyRate: "2.5%",
-  section301Applicable: false,
-  section232Applicable: false,
+  dutyRates: [{ rateColumn: "General", rawRateText: "2.5%" }],
 };
 
 const VALID = {
@@ -61,7 +60,7 @@ beforeEach(() => {
       isPlatformAdmin: false,
     });
   dbMock.landedCostScenario.findFirst.mockResolvedValue({ id: "scn_1", accountId: "acc_1" });
-  dbMock.hTSCode.findFirst.mockResolvedValue(HTS);
+  dbMock.htsNode.findFirst.mockResolvedValue(HTS);
   dbMock.landedCostScenarioLineItem.create.mockImplementation(async ({ data }: { data: unknown }) => data);
 });
 

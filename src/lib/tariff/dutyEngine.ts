@@ -1,5 +1,4 @@
-import { HTSCode, ShipmentLineItem } from "@prisma/client";
-import { db } from "@/lib/db";
+import { ShipmentLineItem } from "@prisma/client";
 
 /**
  * The engine only reads these four fields and coerces the numerics, so it also
@@ -11,6 +10,20 @@ export type TariffLineInput = Pick<Partial<ShipmentLineItem>, "htsCode"> & {
   unitPrice?: ShipmentLineItem["unitPrice"] | number | null;
   totalValue?: ShipmentLineItem["totalValue"] | number | null;
 };
+
+// Decoupled from any specific HTS table's Prisma type -- callers build this
+// shape from whatever real HTS rate source they're using (the real ingested
+// HtsNode/HtsDutyRate data via HtsNodeRepository.toDutyRateInput()).
+// Section 301/232 fields default to inapplicable/zero since there is no
+// real trade-remedy data source ingested; that's an honest "unknown", not a
+// computed zero.
+export interface DutyRateInput {
+  generalDutyRate?: string | null;
+  section301Applicable?: boolean | null;
+  section301AdditionalRate?: number | null;
+  section232Applicable?: boolean | null;
+  section232AdditionalRate?: number | null;
+}
 
 export interface LineItemDutyResult {
   customsValue: number;
@@ -62,32 +75,60 @@ export function calculateHMF(customsValue: number, isOcean: boolean = true): num
 }
 
 /**
- * Loads the tariff master rows for a set of line items. Without this the engine sees
- * no HTS data at all and every line comes back unrated with no Section 301/232 duty.
+ * Loads the real ingested duty rates for a set of line items. Without this the
+ * engine sees no HTS data at all and every line comes back unrated.
  */
 export async function loadHtsCodesMap(
   lineItems: Array<TariffLineInput>
-): Promise<Record<string, Partial<HTSCode>>> {
+): Promise<Record<string, DutyRateInput>> {
+  const { db } = await import("@/lib/db");
   const codes = [...new Set(lineItems.map((li) => li.htsCode).filter((c): c is string => !!c))];
   if (codes.length === 0) return {};
 
-  const rows = await db.hTSCode.findMany({ where: { htsCode10: { in: codes } } });
-  return Object.fromEntries(rows.map((row) => [row.htsCode10, row]));
+  const normalizedOf = new Map(codes.map((code) => [code, code.replace(/[^0-9]/g, "")]));
+  const nodes = await db.htsNode.findMany({
+    where: { htsNumberNormalized: { in: [...normalizedOf.values()].filter(Boolean) } },
+    include: { dutyRates: true },
+  });
+  const byNormalized = new Map(nodes.map((n) => [n.htsNumberNormalized, n]));
+
+  const map: Record<string, DutyRateInput> = {};
+  for (const code of codes) {
+    const node = byNormalized.get(normalizedOf.get(code) ?? "");
+    // A code with no ingested node stays unrated rather than getting a guessed rate.
+    const general = node?.dutyRates.find((r) => r.rateColumn === "General");
+    map[code] = {
+      generalDutyRate: general?.rawRateText ?? null,
+      section301Applicable: false,
+      section301AdditionalRate: 0,
+      section232Applicable: false,
+      section232AdditionalRate: 0,
+    };
+  }
+  return map;
+}
+
+/**
+ * Reads a published General rate. "Free" is a rate of 0%, not a missing one, so
+ * only text that names no rate at all comes back null.
+ */
+export function parsePublishedDutyRate(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const text = raw.trim();
+  if (/^free\b/i.test(text)) return 0;
+  const parsed = parseFloat(text.replace("%", ""));
+  return isNaN(parsed) ? null : parsed / 100;
 }
 
 export function calculateLineItemDuty(
   lineItem: TariffLineInput,
-  htsCode?: Partial<HTSCode> | null
+  htsCode?: DutyRateInput | null
 ): LineItemDutyResult {
   const customsValue = Math.round(((Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0))) * 100) / 100;
 
   // No published rate means the duty is unknown, not 2.8% and not zero. Callers must
   // check unratedLineCount before presenting a total as complete.
-  let baseDutyRate: number | null = null;
-  if (htsCode?.generalDutyRate) {
-    const parsed = parseFloat(htsCode.generalDutyRate.replace("%", ""));
-    if (!isNaN(parsed)) baseDutyRate = parsed / 100;
-  }
+  const baseDutyRate = parsePublishedDutyRate(htsCode?.generalDutyRate);
 
   const section301Rate = htsCode?.section301Applicable ? (Number(htsCode.section301AdditionalRate) || 0) / 100 : 0;
   const section232Rate = htsCode?.section232Applicable ? (Number(htsCode.section232AdditionalRate) || 0) / 100 : 0;
@@ -119,7 +160,7 @@ export function calculateLineItemDuty(
 
 export function computeFilingTariff(
   lineItems: Array<TariffLineInput>,
-  htsCodesMap: Record<string, Partial<HTSCode>> = {}
+  htsCodesMap: Record<string, DutyRateInput> = {}
 ): TariffEngineResult {
   let totalCustomsValue = 0;
   let totalBaseDuty = 0;

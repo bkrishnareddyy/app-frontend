@@ -13,33 +13,59 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
   const DB_TIMEOUT = 30_000;
 
   const TEST_HTS_CODE = "8481.80.5090";
-  /** True only when this suite inserted the tariff row and must remove it again. */
-  let seededHtsCode = false;
+  const TEST_HTS_NORMALIZED = "8481805090";
+  /** Set only when this suite inserted the tariff rows and must remove them again. */
+  let seededReleaseId: string | null = null;
 
-  // transmitFiling refuses any line with no published duty rate, so the tariff
+  // transmitFiling refuses any line with no published duty rate, so the HTS
   // master needs this code before the filing can be sent. The rate below is a
   // test fixture, not a real HTSUS rate, so it must never be left behind in a
-  // shared database, and a pre-existing real row is never overwritten.
+  // shared database, and a pre-existing real node is never overwritten.
   beforeAll(async () => {
-    const existing = await db.hTSCode.findUnique({ where: { htsCode10: TEST_HTS_CODE } });
+    const existing = await db.htsNode.findFirst({
+      where: { htsNumberNormalized: TEST_HTS_NORMALIZED },
+    });
     if (!existing) {
-      await db.hTSCode.create({
+      const release = await db.htsRelease.create({
         data: {
-          htsCode10: TEST_HTS_CODE,
-          description: "Valves, other",
-          chapterNumber: "84",
-          headingNumber: "8481",
-          subheadingNumber: "848180",
-          generalDutyRate: "2.8%",
+          editionYear: 1900,
+          revisionNumber: 0,
+          releaseName: "Filing snapshot test fixture",
+          effectiveFrom: new Date("1900-01-01"),
+          sourceUrl: "test://filing-snapshot",
+          sourceFormat: "JSON",
+          sha256: `test-${Date.now()}`,
+          validationStatus: "VALIDATED",
         },
       });
-      seededHtsCode = true;
+      await db.htsNode.create({
+        data: {
+          releaseId: release.id,
+          sourceRowNumber: 1,
+          indentLevel: 0,
+          htsNumberDisplay: TEST_HTS_CODE,
+          htsNumberNormalized: TEST_HTS_NORMALIZED,
+          codeLevel: 10,
+          description: "Valves, other",
+          fullDescription: "Valves, other",
+          chapter: "84",
+          heading: "8481",
+          subheading6: "848180",
+          tariffLine8: "84818050",
+          statisticalSuffix10: TEST_HTS_NORMALIZED,
+          dutyRates: {
+            create: { rateColumn: "General", rawRateText: "2.8%", rateType: "AdValorem", adValoremPercent: 2.8 },
+          },
+        },
+      });
+      seededReleaseId = release.id;
     }
   }, DB_TIMEOUT);
 
   afterAll(async () => {
-    if (seededHtsCode) {
-      await db.hTSCode.delete({ where: { htsCode10: TEST_HTS_CODE } });
+    // Cascades to the node and its duty rate.
+    if (seededReleaseId) {
+      await db.htsRelease.delete({ where: { id: seededReleaseId } });
     }
   }, DB_TIMEOUT);
 

@@ -31,6 +31,7 @@ export const POST = withAuthenticatedRoute<{ id: string; exceptionId: string }>(
         status: "Resolved",
         resolvedAt: new Date(),
         resolvedBy: ctx.userId,
+        resolvedByName: [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || ctx.email,
       },
     });
 

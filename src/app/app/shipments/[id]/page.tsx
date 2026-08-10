@@ -20,6 +20,8 @@ import { documentViewUrl } from "@/lib/documentUrl";
 import { openStatusVariants } from "@/modules/exceptions/exceptionState";
 import { evaluateFilingReadiness } from "@/modules/filing/filingReadiness";
 import { entryTypeLabel } from "@/modules/filing/entryType";
+import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
+import { buildAgentInvocations } from "./agentInvocations";
 import {
   averageOfKnown,
   displayPercent,
@@ -77,7 +79,8 @@ export default async function ShipmentWorkspacePage(props: {
   if (!shipment) notFound();
 
   // Safe to load by id alone: the query above already proved account ownership.
-  const { facts } = await CanonicalShipmentService.getCanonicalState(shipment.id);
+  const canonical = await CanonicalShipmentService.getCanonicalState(shipment.id);
+  const { facts, agentExecutionLogs } = canonical;
 
   // The pipeline stepper reports logged runs. An agent that never ran has no row.
   const agentRuns = await db.agentExecutionLog.findMany({
@@ -89,6 +92,14 @@ export default async function ShipmentWorkspacePage(props: {
     if (!latestRunByStep.has(run.stepNumber)) latestRunByStep.set(run.stepNumber, run);
   }
   const pipelineRuns = [...latestRunByStep.values()].sort((a, b) => a.stepNumber - b.stepNumber);
+
+  // Merges AgentExecutionRecord (selective re-runs) and AgentExecutionLog
+  // (the real 10-agent upload pipeline) into one waterfall-ready list --
+  // see agentInvocations.ts for why these two tables exist separately.
+  const agentInvocations = buildAgentInvocations(
+    canonical.shipment.agentExecutionRecords || [],
+    agentExecutionLogs || []
+  );
 
   // The step count belongs to the job, not to a literal in the markup.
   const latestJob = await db.pipelineJob.findFirst({
@@ -705,6 +716,15 @@ export default async function ShipmentWorkspacePage(props: {
             ))}
           </ol>
         )}
+
+        {/* Grouped by invocation, so a selective re-run reads as its own run
+            rather than being flattened into the step summary above. */}
+        <div className="space-y-3 pt-2">
+          <h3 className="text-sm font-bold text-[#1D1D1F]">
+            Run history ({agentInvocations.length})
+          </h3>
+          <AgentExecutionTimeline invocations={agentInvocations} />
+        </div>
       </section>
     </div>
   );

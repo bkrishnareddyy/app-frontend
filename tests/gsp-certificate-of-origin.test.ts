@@ -24,10 +24,17 @@ vi.mock("@/lib/db", () => ({
         ...data,
       })),
     },
-    hTSCode: {
+    htsNode: {
       findMany: vi.fn().mockResolvedValue([
-        { htsCode10: "7318.15.2065", description: "Screws and bolts of stainless steel" },
+        {
+          id: "node_1",
+          htsNumberDisplay: "7318.15.2065",
+          htsNumberNormalized: "7318152065",
+          description: "Screws and bolts of stainless steel",
+          dutyRates: [{ rateColumn: "General", rawRateText: "Free" }],
+        },
       ]),
+      count: vi.fn().mockResolvedValue(1),
     },
     customsFiling: {
       create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({

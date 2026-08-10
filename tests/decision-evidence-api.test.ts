@@ -10,7 +10,7 @@ const ctxMock = vi.fn();
 
 const dbMock = {
   agentDecision: { findFirst: vi.fn() },
-  hTSCode: { findMany: vi.fn() },
+  htsNode: { findMany: vi.fn() },
   ruling: { findMany: vi.fn() },
 };
 
@@ -31,20 +31,19 @@ function call(id = "dec_1") {
 }
 
 function htsRecord(overrides: Record<string, unknown> = {}) {
+  const { generalDutyRate = "Free", ...rest } = overrides as { generalDutyRate?: string };
   return {
-    htsCode10: "8471300100",
+    htsNumberNormalized: "8471300100",
     description: "Portable automatic data processing machines",
-    generalDutyRate: "Free",
-    column2DutyRate: "35%",
-    specialRatePrograms: null,
-    section301Applicable: false,
-    section301AdditionalRate: null,
-    section232Applicable: false,
-    section232AdditionalRate: null,
-    effectiveDate: new Date("2026-01-01T00:00:00.000Z"),
-    expirationDate: null,
-    sourceRevision: "HTSUS 2026 Rev 1",
-    ...overrides,
+    dutyRates: [
+      { rateColumn: "General", rawRateText: generalDutyRate },
+      { rateColumn: "Column 2", rawRateText: "35%" },
+    ],
+    release: {
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      releaseName: "HTSUS 2026 Rev 1",
+    },
+    ...rest,
   };
 }
 
@@ -66,7 +65,7 @@ beforeEach(() => {
     regulations: ["19 CFR 152"],
     dataSources: ["HTSUS"],
   });
-  dbMock.hTSCode.findMany.mockResolvedValue([]);
+  dbMock.htsNode.findMany.mockResolvedValue([]);
   dbMock.ruling.findMany.mockResolvedValue([]);
 });
 
@@ -95,8 +94,8 @@ describe("GET /api/decisions/[id]/evidence", () => {
   it("looks up both codes by their digits, not their published punctuation", async () => {
     await call();
 
-    expect(dbMock.hTSCode.findMany.mock.calls[0][0].where).toEqual({
-      htsCode10: { in: ["8471300100", "8517620090"] },
+    expect(dbMock.htsNode.findMany.mock.calls[0][0].where).toEqual({
+      htsNumberNormalized: { in: ["8471300100", "8517620090"] },
     });
   });
 
@@ -117,7 +116,7 @@ describe("GET /api/decisions/[id]/evidence", () => {
   });
 
   it("returns the effective date and source release of a loaded code", async () => {
-    dbMock.hTSCode.findMany.mockResolvedValue([htsRecord()]);
+    dbMock.htsNode.findMany.mockResolvedValue([htsRecord()]);
 
     const body = await (await call()).json();
 
@@ -131,9 +130,9 @@ describe("GET /api/decisions/[id]/evidence", () => {
   });
 
   it("computes the general-rate difference when both codes are loaded", async () => {
-    dbMock.hTSCode.findMany.mockResolvedValue([
-      htsRecord({ htsCode10: "8471300100", generalDutyRate: "6.5%" }),
-      htsRecord({ htsCode10: "8517620090", generalDutyRate: "2.5%" }),
+    dbMock.htsNode.findMany.mockResolvedValue([
+      htsRecord({ htsNumberNormalized: "8471300100", generalDutyRate: "6.5%" }),
+      htsRecord({ htsNumberNormalized: "8517620090", generalDutyRate: "2.5%" }),
     ]);
 
     const body = await (await call()).json();
@@ -142,16 +141,12 @@ describe("GET /api/decisions/[id]/evidence", () => {
     expect(body.duty.deltaPercent).toBe(4);
   });
 
-  it("lists an applicable Section 301 rate against the code that carries it", async () => {
-    dbMock.hTSCode.findMany.mockResolvedValue([
-      htsRecord({ section301Applicable: true, section301AdditionalRate: "25" }),
-    ]);
+  it("reports no trade-remedy duty, since no such data is ingested", async () => {
+    dbMock.htsNode.findMany.mockResolvedValue([htsRecord()]);
 
     const body = await (await call()).json();
 
-    expect(body.proposed.additionalDuties).toEqual([
-      { programme: "Section 301", percent: 25 },
-    ]);
+    expect(body.proposed.additionalDuties).toEqual([]);
   });
 
   it("says nothing about a current code when the decision names none", async () => {
@@ -221,7 +216,7 @@ describe("GET /api/decisions/[id]/evidence", () => {
 
     const body = await (await call()).json();
 
-    expect(dbMock.hTSCode.findMany).not.toHaveBeenCalled();
+    expect(dbMock.htsNode.findMany).not.toHaveBeenCalled();
     expect(dbMock.ruling.findMany).not.toHaveBeenCalled();
     expect(body.rulings).toEqual([]);
     expect(body.duty.reason).toMatch(/neither a current nor a proposed code/);

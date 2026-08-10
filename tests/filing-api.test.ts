@@ -16,7 +16,7 @@ const dbMock = {
   filingSnapshot: {
     create: vi.fn(),
   },
-  hTSCode: {
+  htsNode: {
     findMany: vi.fn(),
   },
 };
@@ -34,6 +34,14 @@ function lineItem(overrides: Record<string, unknown> = {}) {
     unitPrice: 500,
     totalValue: 5000,
     ...overrides,
+  };
+}
+
+/** An ingested HTS node carrying one published General rate. */
+function htsNode(generalRate: string) {
+  return {
+    htsNumberNormalized: "8481805090",
+    dutyRates: [{ rateColumn: "General", rawRateText: generalRate }],
   };
 }
 
@@ -65,9 +73,7 @@ describe("FilingService.transmitFiling: duty completeness", () => {
       filingRecord([lineItem(), lineItem({ id: "li_2", htsCode: "9999.99.9999" })])
     );
     // Only the first code resolves, so the second line is unrated.
-    dbMock.hTSCode.findMany.mockResolvedValue([
-      { htsCode10: "8481.80.5090", generalDutyRate: "2.8%" },
-    ]);
+    dbMock.htsNode.findMany.mockResolvedValue([htsNode("2.8%")]);
 
     await expect(FilingService.transmitFiling("acc_1", "user_1", "fil_1")).rejects.toThrow(
       /1 of 2 line\(s\) have no published duty rate/
@@ -78,9 +84,7 @@ describe("FilingService.transmitFiling: duty completeness", () => {
 
   it("transmits when every line resolves to a published rate", async () => {
     dbMock.customsFiling.findFirst.mockResolvedValue(filingRecord([lineItem()]));
-    dbMock.hTSCode.findMany.mockResolvedValue([
-      { htsCode10: "8481.80.5090", generalDutyRate: "2.8%" },
-    ]);
+    dbMock.htsNode.findMany.mockResolvedValue([htsNode("2.8%")]);
 
     const result = await FilingService.transmitFiling("acc_1", "user_1", "fil_1");
 
@@ -91,9 +95,7 @@ describe("FilingService.transmitFiling: duty completeness", () => {
 
   it("treats a genuine 0% rate as rated rather than unknown", async () => {
     dbMock.customsFiling.findFirst.mockResolvedValue(filingRecord([lineItem()]));
-    dbMock.hTSCode.findMany.mockResolvedValue([
-      { htsCode10: "8481.80.5090", generalDutyRate: "0%" },
-    ]);
+    dbMock.htsNode.findMany.mockResolvedValue([htsNode("0%")]);
 
     const result = await FilingService.transmitFiling("acc_1", "user_1", "fil_1");
 
@@ -102,7 +104,7 @@ describe("FilingService.transmitFiling: duty completeness", () => {
 
   it("still refuses a filing with no line items at all", async () => {
     dbMock.customsFiling.findFirst.mockResolvedValue(filingRecord([]));
-    dbMock.hTSCode.findMany.mockResolvedValue([]);
+    dbMock.htsNode.findMany.mockResolvedValue([]);
 
     await expect(FilingService.transmitFiling("acc_1", "user_1", "fil_1")).rejects.toThrow(
       /without line items/
@@ -114,9 +116,7 @@ describe("FilingService.transmitFiling: duty completeness", () => {
       ...filingRecord([lineItem()]),
       filingStatus: "Draft",
     });
-    dbMock.hTSCode.findMany.mockResolvedValue([
-      { htsCode10: "8481.80.5090", generalDutyRate: "2.8%" },
-    ]);
+    dbMock.htsNode.findMany.mockResolvedValue([htsNode("2.8%")]);
 
     await expect(FilingService.transmitFiling("acc_1", "user_1", "fil_1")).rejects.toThrow();
     expect(dbMock.customsFiling.update).not.toHaveBeenCalled();

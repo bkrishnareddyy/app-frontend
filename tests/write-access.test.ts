@@ -16,7 +16,7 @@ const dbMock = {
   customsFiling: {
     create: vi.fn(),
   },
-  hTSCode: {
+  htsNode: {
     findMany: vi.fn(),
   },
 };

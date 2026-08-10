@@ -59,10 +59,10 @@ export class ResponseManagementAgent {
     // condition was entryNumber.startsWith("QBR-"), and QBR is this system's
     // own filer code, so it matched every entry the Customs Filing Agent has
     // ever produced.
-    const status = "COMPLETED_NO_ACTION" as const;
+    const status: ResponseManagementOutput["status"] = "COMPLETED_NO_ACTION";
     const totalPotentialRefund = null;
     const refundOpportunities: PostEntryRefundOpportunity[] = [];
-    const evaluatorScore = null;
+    const evaluatorScore: number | null = null;
 
     const reasoningChain = input.entryNumber
       ? `Post-Entry Scanner: Entry ${input.entryNumber} recorded. Section 301 exclusion and duty drawback scan requires live USTR/CBP API integration — not available in current environment. No refund amounts claimed. Manual review recommended post-filing.`

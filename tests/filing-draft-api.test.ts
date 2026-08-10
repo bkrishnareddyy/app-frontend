@@ -12,7 +12,7 @@ const dbMock = {
   customsFiling: {
     create: vi.fn(),
   },
-  hTSCode: {
+  htsNode: {
     findMany: vi.fn(),
   },
 };
@@ -48,8 +48,13 @@ function shipment(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** The rate row that makes the shipment's single line fully rated. */
-const RATED = [{ htsCode10: "8481.80.5090", generalDutyRate: "2.5%" }];
+/** The ingested node that makes the shipment's single line fully rated. */
+const RATED = [
+  {
+    htsNumberNormalized: "8481805090",
+    dutyRates: [{ rateColumn: "General", rawRateText: "2.5%" }],
+  },
+];
 
 function post(body: Record<string, unknown>) {
   return POST(
@@ -76,7 +81,7 @@ beforeEach(() => {
     });
   dbMock.shipment.findFirst.mockResolvedValue(shipment());
   dbMock.shipment.update.mockResolvedValue({});
-  dbMock.hTSCode.findMany.mockResolvedValue(RATED);
+  dbMock.htsNode.findMany.mockResolvedValue(RATED);
   dbMock.customsFiling.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: "fil_1",
     ...data,
@@ -133,7 +138,7 @@ describe("POST /api/filing: duty totals", () => {
   });
 
   it("leaves duty null when a line has no published rate", async () => {
-    dbMock.hTSCode.findMany.mockResolvedValue([]);
+    dbMock.htsNode.findMany.mockResolvedValue([]);
 
     await post({ shipmentId: "shp_1", entryType: "01" });
 

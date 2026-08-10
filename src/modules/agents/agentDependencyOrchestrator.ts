@@ -3,6 +3,7 @@ import { ReconciliationEngine } from "@/modules/shipment/reconciliationEngine";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent } from "./documentIntelligenceAgent";
+import { ProductIntelligenceAgent } from "./productIntelligenceAgent";
 import { HTSClassificationAgent } from "./htsClassificationAgent";
 import { OriginRulesAgent } from "./originRulesAgent";
 import { ValuationAssistsAgent } from "./valuationAssistsAgent";
@@ -50,6 +51,9 @@ export class AgentDependencyOrchestrator {
   static async processEvent(params: AgentOrchestrationParams): Promise<AgentOrchestrationResult> {
     const startTime = Date.now();
     const { shipmentId, triggerEvent, payload } = params;
+    // Groups every agent step this call fires into a single invocation for
+    // the Agent Executions waterfall view.
+    const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
     const invokedByLabel =
       triggerEvent === "USER_FIELD_UPDATED"
@@ -105,6 +109,7 @@ export class AgentDependencyOrchestrator {
             error,
             startedAt: agentStart,
             completedAt,
+            runId,
           },
         });
       }
@@ -139,9 +144,25 @@ export class AgentDependencyOrchestrator {
   ): string[] {
     switch (triggerEvent) {
       case "DOCUMENT_UPLOADED":
+        // Response & Post-Summary Agent is deliberately excluded here: its
+        // own implementation is a placeholder that always returns
+        // COMPLETED_NO_ACTION until a real USTR/CBP API is wired up, so
+        // re-running it on reattach can never produce a different result --
+        // there's nothing to learn by paying for that run.
+        //
+        // Customs Filing Agent is also deliberately excluded: unlike every
+        // other agent here (which only appends an AgentDecision audit row),
+        // it CREATES a new CustomsFiling record with a fabricated CBP entry
+        // number and status "Accepted"/"Released" whenever the shipment
+        // looks ready -- i.e. it simulates actually transmitting and having
+        // the entry cleared by customs. Firing that automatically as a side
+        // effect of a document reattach, with no user attestation, would
+        // fabricate a real-looking "filed and released" record. It must
+        // only run from an explicit, authorized filing action.
         return [
           "Document Intake Agent",
           "Document Intelligence Agent",
+          "Product Intelligence Agent",
           "HTS Classification Agent",
           "Origin Rules Agent",
           "Valuation & Assists Agent",
@@ -185,6 +206,17 @@ export class AgentDependencyOrchestrator {
     const { shipmentId, accountId, payload } = params;
     const userId = params.userId || "usr_system";
 
+    // HTS Classification, Origin Rules, and Product Intelligence all need
+    // real line-item data to produce anything meaningful -- previously they
+    // silently ran on payload?.lineItems || [] (always empty, since no
+    // caller ever populates it), so these three "ran" but recomputed
+    // nothing. Fetch the shipment's actual current line items once here so
+    // that re-running them on reattach can genuinely change their output.
+    const needsLineItems = ["HTS Classification Agent", "Origin Rules Agent", "Product Intelligence Agent"];
+    const dbLineItems = needsLineItems.includes(agentName)
+      ? await db.shipmentLineItem.findMany({ where: { shipmentId } })
+      : [];
+
     switch (agentName) {
       case "Document Intake Agent":
         if (payload?.fileUrl && payload.fileName) {
@@ -207,12 +239,32 @@ export class AgentDependencyOrchestrator {
         });
         break;
 
+      case "Product Intelligence Agent":
+        await ProductIntelligenceAgent.execute({
+          accountId,
+          userId,
+          shipmentId,
+          // payload.lineItems carries the origin agent's shape, which has no
+          // description, so this agent always reads the stored lines.
+          lineItems: dbLineItems.map((li) => ({
+            lineNumber: li.lineNumber,
+            sku: li.partNumber || undefined,
+            description: li.description,
+          })),
+        });
+        break;
+
       case "HTS Classification Agent":
         await HTSClassificationAgent.execute({
           accountId,
           userId,
           shipmentId,
-          productProfiles: payload?.productProfiles || [],
+          productProfiles:
+            payload?.productProfiles ||
+            dbLineItems.map((li) => ({
+              lineNumber: li.lineNumber,
+              rawDescription: li.description,
+            })),
         });
         break;
 
@@ -221,7 +273,13 @@ export class AgentDependencyOrchestrator {
           accountId,
           userId,
           shipmentId,
-          lineItems: payload?.lineItems || [],
+          lineItems:
+            payload?.lineItems ||
+            dbLineItems.map((li) => ({
+              lineNumber: li.lineNumber,
+              htsCode: li.htsCode,
+              manufacturingCountry: li.countryOfOrigin,
+            })),
         });
         break;
 

@@ -107,7 +107,7 @@ describe("risk acceptance permission", () => {
       "acc_1",
       "exc_1",
       expect.objectContaining({ status: "WAIVED", resolutionReason: "accepted" }),
-      "usr_1"
+      expect.objectContaining({ userId: "usr_1" })
     );
   });
 });

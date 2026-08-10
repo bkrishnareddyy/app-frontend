@@ -55,9 +55,13 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     const records =
       wanted.length === 0
         ? []
-        : await db.hTSCode.findMany({ where: { htsCode10: { in: wanted } } });
+        : await db.htsNode.findMany({
+            where: { htsNumberNormalized: { in: wanted } },
+            include: { dutyRates: true, release: true },
+            orderBy: { sourceRowNumber: "asc" },
+          });
 
-    const byCode = new Map(records.map((r) => [r.htsCode10, r]));
+    const byCode = new Map(records.map((r) => [r.htsNumberNormalized, r]));
 
     const describe = (digits: string | null, display: string | null) => {
       if (digits === null) return null;
@@ -76,17 +80,26 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
           sourceRevision: null,
         };
       }
+      const rate = (column: string) =>
+        record.dutyRates.find((r) => r.rateColumn === column)?.rawRateText ?? null;
       return {
         code: display,
         found: true as const,
         description: record.description,
-        generalDutyRate: record.generalDutyRate,
-        column2DutyRate: record.column2DutyRate,
-        specialRatePrograms: record.specialRatePrograms,
-        additionalDuties: additionalDuties(record),
-        effectiveDate: record.effectiveDate.toISOString(),
-        expirationDate: record.expirationDate?.toISOString() ?? null,
-        sourceRevision: record.sourceRevision,
+        generalDutyRate: rate("General"),
+        column2DutyRate: rate("Column 2"),
+        specialRatePrograms: rate("Special"),
+        // No trade-remedy data source is ingested, so these are reported as
+        // not tracked rather than as a computed zero.
+        additionalDuties: additionalDuties({
+          section301Applicable: false,
+          section301AdditionalRate: null,
+          section232Applicable: false,
+          section232AdditionalRate: null,
+        }),
+        effectiveDate: record.release?.effectiveFrom?.toISOString() ?? null,
+        expirationDate: null,
+        sourceRevision: record.release?.releaseName ?? null,
       };
     };
 

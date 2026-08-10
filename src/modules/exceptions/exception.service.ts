@@ -26,6 +26,21 @@ export interface ExceptionUpdateInput {
   expectedVersion: number;
 }
 
+export interface ExceptionResolver {
+  userId: string;
+  name: string;
+}
+
+// Fields Document Intelligence extracts on every document and that have a
+// real place to be written back to (see field-review route) -- kept in one
+// place so the label shown to users always matches the fieldKey used to
+// group/resolve exceptions.
+export const DOCUMENT_FIELD_LABELS: Record<string, string> = {
+  exporterName: "Exporter Name",
+  importerName: "Importer / Consignee Name",
+  originCountry: "Country of Origin",
+};
+
 export const VALID_EXCEPTION_STATES: readonly string[] = EXCEPTION_STATES;
 
 export class ExceptionService {
@@ -69,7 +84,7 @@ export class ExceptionService {
     accountId: string,
     exceptionId: string,
     input: ExceptionUpdateInput,
-    userId?: string | null
+    resolver?: ExceptionResolver | null
   ) {
     const existing = await db.exceptionItem.findFirst({
       where: { id: exceptionId, accountId },
@@ -105,13 +120,14 @@ export class ExceptionService {
       }
     }
 
-    // There is no column for the reason, so the audit entry is the only durable
-    // record of it. Write it before the status moves and fail closed: a closed
-    // exception with no stated reason is the outcome this guard exists to prevent.
+    // The audit entry records the reason alongside the transition itself, and it
+    // fails closed: a closed exception with no stated reason is the outcome this
+    // guard exists to prevent.
+    const isClosing = Boolean(nextStatus && isTerminalExceptionState(nextStatus));
     if (nextStatus && requiresResolutionReason(nextStatus)) {
       await createAuditLog({
         accountId,
-        userId: userId ?? null,
+        userId: resolver?.userId ?? null,
         action: "exception.resolve",
         entity: "ExceptionItem",
         entityId: exceptionId,
@@ -131,7 +147,10 @@ export class ExceptionService {
         status: nextStatus,
         assignedToUserId: input.assignedToUserId !== undefined ? input.assignedToUserId : undefined,
         shipmentId: input.shipmentId !== undefined ? input.shipmentId : undefined,
-        resolvedAt: nextStatus && isTerminalExceptionState(nextStatus) ? new Date() : undefined,
+        resolvedAt: isClosing ? new Date() : undefined,
+        resolvedBy: isClosing ? resolver?.userId : undefined,
+        resolvedByName: isClosing ? resolver?.name : undefined,
+        resolutionNote: isClosing ? input.resolutionReason : undefined,
         version: { increment: 1 },
       },
       include: {
@@ -142,5 +161,90 @@ export class ExceptionService {
     });
 
     return updated;
+  }
+
+  /**
+   * Keeps per-document field exceptions in sync with the latest extraction
+   * for one document: opens an exception for each expected field that's
+   * still missing, and auto-resolves any that are now present (e.g. after
+   * a document was re-processed). Never touches fields that were never in
+   * DOCUMENT_FIELD_LABELS -- this is intentionally narrow, not a general
+   * validation engine.
+   */
+  static async syncDocumentFieldExceptions(input: {
+    accountId: string;
+    shipmentId: string;
+    documentId: string;
+    fileName: string;
+    fields: Record<string, string | null | undefined>;
+  }) {
+    for (const fieldKey of Object.keys(DOCUMENT_FIELD_LABELS)) {
+      const value = input.fields[fieldKey];
+      const label = DOCUMENT_FIELD_LABELS[fieldKey];
+
+      const existingOpen = await db.exceptionItem.findFirst({
+        where: { documentId: input.documentId, fieldKey, status: { not: "Resolved" } },
+      });
+
+      if (!value) {
+        if (!existingOpen) {
+          await db.exceptionItem.create({
+            data: {
+              accountId: input.accountId,
+              shipmentId: input.shipmentId,
+              documentId: input.documentId,
+              fieldKey,
+              code: `MISSING_FIELD:${fieldKey}`,
+              category: "MISSING_DATA",
+              type: "missing_document",
+              severity: "Medium",
+              blocking: false,
+              description: `${label} was not found on ${input.fileName}.`,
+              requiredAction: `Provide ${label} or confirm it's not applicable.`,
+              sourceAgent: "Document Intelligence Agent",
+            },
+          });
+        }
+      } else if (existingOpen) {
+        await db.exceptionItem.update({
+          where: { id: existingOpen.id },
+          data: {
+            status: "Resolved",
+            resolvedAt: new Date(),
+            resolvedBy: "SYSTEM",
+            resolvedByName: "Automated re-extraction",
+            resolutionNote: `${label} was found on reprocessing: "${value}".`,
+          },
+        });
+      }
+    }
+  }
+
+  /**
+   * Resolves the open exception (if any) for one document field, with real
+   * approver identity -- used by the field-review route so approving/editing
+   * a field also clears its exception instead of leaving a stale duplicate.
+   */
+  static async resolveDocumentFieldException(
+    documentId: string,
+    fieldKey: string,
+    resolver: ExceptionResolver,
+    note: string
+  ) {
+    const existingOpen = await db.exceptionItem.findFirst({
+      where: { documentId, fieldKey, status: { not: "Resolved" } },
+    });
+    if (!existingOpen) return null;
+
+    return db.exceptionItem.update({
+      where: { id: existingOpen.id },
+      data: {
+        status: "Resolved",
+        resolvedAt: new Date(),
+        resolvedBy: resolver.userId,
+        resolvedByName: resolver.name,
+        resolutionNote: note,
+      },
+    });
   }
 }

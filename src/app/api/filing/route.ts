@@ -327,7 +327,8 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     );
   }
 
-  // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine
+  // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine, grounded
+  // in the real ingested HTS Master Release data rather than a flat rate guess.
   const tariffResult = computeFilingTariff(
     shipment.lineItems,
     await loadHtsCodesMap(shipment.lineItems)

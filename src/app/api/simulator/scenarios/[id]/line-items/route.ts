@@ -1,19 +1,30 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { validatePathParams } from "@/lib/api/validation";
+import { validatePathParams, parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { calculateMPF, calculateHMF } from "@/lib/tariff/dutyEngine";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { calculateMPF, calculateHMF, parsePublishedDutyRate } from "@/lib/tariff/dutyEngine";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
+const bodySchema = z.object({
+  description: z.string().optional(),
+  htsCode10: z.string().min(1, "htsCode10 is required — a real HTS code, not a fallback default"),
+  unitValue: z.number().positive(),
+  quantity: z.number().int().positive(),
+  freightCost: z.number().optional(),
+  insuranceCost: z.number().optional(),
+  dutyRateOverride: z.number().optional(),
+});
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
-  const body = await req.json();
-  const { description, htsCode10, unitValue, quantity, freightCost, insuranceCost, dutyRateOverride } = body;
+  const bodyVal = await parseAndValidateBody(req, bodySchema, requestId);
+  if ("response" in bodyVal) return bodyVal.response;
+  const { description, htsCode10, unitValue, quantity, freightCost, insuranceCost, dutyRateOverride } = bodyVal.data;
 
   if (typeof htsCode10 !== "string" || htsCode10.trim() === "") {
     return NextResponse.json(
@@ -60,25 +71,24 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
   }
 
-  const hts = await db.hTSCode.findFirst({
-    where: { htsCode10: htsCode10.trim() },
-  });
-
-  // Never invent a tariff line in the HTS master to satisfy a request.
-  if (!hts) {
+  // Resolves against the real ingested HTS Master Release data. This used to fall
+  // back to a hardcoded "8481.80.5090" at 2.8% and would fabricate a tariff row
+  // when the code was unknown; an unresolvable code is now a 404.
+  const normalizedCode = htsCode10.replace(/[^0-9]/g, "");
+  const node = normalizedCode ? await HtsNodeRepository.findByNormalizedCode(normalizedCode) : null;
+  if (!node) {
     return NextResponse.json(
-      { error: `HTS code ${htsCode10} not found in the tariff master`, code: "HTS_CODE_NOT_FOUND" },
+      { error: `HTS code ${htsCode10} not found in the HTS Master Release data`, code: "HTS_CODE_NOT_FOUND" },
       { status: 404 }
     );
   }
+  const dutyRateInput = HtsNodeRepository.toDutyRateInput(node);
 
   let baseDutyRate: number | null = null;
   if (typeof dutyRateOverride === "number" && Number.isFinite(dutyRateOverride)) {
     baseDutyRate = dutyRateOverride / 100;
   } else {
-    const parsed = parseFloat((hts.generalDutyRate ?? "").replace("%", ""));
-    // A genuine 0% stays 0; only an unparseable rate is unknown.
-    if (!isNaN(parsed)) baseDutyRate = parsed / 100;
+    baseDutyRate = parsePublishedDutyRate(dutyRateInput.generalDutyRate);
   }
 
   if (baseDutyRate === null) {
@@ -91,8 +101,8 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     );
   }
 
-  const section301Rate = hts.section301Applicable ? (Number(hts.section301AdditionalRate) || 0) / 100 : 0.0;
-  const section232Rate = hts.section232Applicable ? (Number(hts.section232AdditionalRate) || 0) / 100 : 0.0;
+  const section301Rate = dutyRateInput.section301Applicable ? (Number(dutyRateInput.section301AdditionalRate) || 0) / 100 : 0.0;
+  const section232Rate = dutyRateInput.section232Applicable ? (Number(dutyRateInput.section232AdditionalRate) || 0) / 100 : 0.0;
 
   const totalDutyRate = baseDutyRate + section301Rate + section232Rate;
   const totalCustomsValue = unitValue * quantity;
@@ -100,13 +110,14 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   // Line-level fees are indicative only: MPF is a per-entry fee with a statutory
   // floor and ceiling, so the entry total is computed by the calculate endpoint.
   const computedFees = Math.round((calculateMPF(totalCustomsValue) + calculateHMF(totalCustomsValue, true)) * 100) / 100;
-  const computedLandedCost = totalCustomsValue + freightCost + insuranceCost + computedDuty + computedFees;
+  const computedLandedCost =
+    totalCustomsValue + Number(freightCost) + Number(insuranceCost) + computedDuty + computedFees;
 
   const lineItem = await db.landedCostScenarioLineItem.create({
     data: {
       scenarioId: id,
-      description: description || hts.description,
-      htsCodeId: hts.id,
+      description: description || node.description,
+      htsCodeId: node.id,
       unitValue,
       quantity,
       freightCost,

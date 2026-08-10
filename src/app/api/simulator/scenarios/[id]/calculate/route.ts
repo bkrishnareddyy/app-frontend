@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { calculateMPF, calculateHMF } from "@/lib/tariff/dutyEngine";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { calculateMPF, calculateHMF, parsePublishedDutyRate } from "@/lib/tariff/dutyEngine";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -17,7 +18,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     where: { id, accountId: ctx.accountId },
     include: {
       lineItems: {
-        include: { htsCode: true },
+        include: { htsCode: { include: { dutyRates: true } } },
       },
     },
   });
@@ -28,15 +29,13 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
 
   const lineCalculations = scenario.lineItems.map((item) => {
     const customsValue = Number(item.unitValue) * Number(item.quantity);
-    const hts = item.htsCode;
+    const hts = HtsNodeRepository.toDutyRateInput(item.htsCode);
 
     let baseDutyRate: number | null = null;
     if (item.dutyRateOverride !== null && item.dutyRateOverride !== undefined) {
       baseDutyRate = Number(item.dutyRateOverride) / 100;
     } else {
-      const parsed = parseFloat((hts.generalDutyRate ?? "").replace("%", ""));
-      // A genuine 0% stays 0; only an unparseable rate is unknown.
-      if (!isNaN(parsed)) baseDutyRate = parsed / 100;
+      baseDutyRate = parsePublishedDutyRate(hts.generalDutyRate);
     }
 
     const sec301Rate = hts.section301Applicable ? (Number(hts.section301AdditionalRate) || 0) / 100 : 0.0;
@@ -47,7 +46,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     return {
       id: item.id,
       description: item.description,
-      htsCode: hts.htsCode10,
+      htsCode: item.htsCode.htsNumberDisplay,
       customsValue,
       baseDutyRate: baseDutyRate === null ? null : `${(baseDutyRate * 100).toFixed(1)}%`,
       section301Rate: `${(sec301Rate * 100).toFixed(1)}%`,

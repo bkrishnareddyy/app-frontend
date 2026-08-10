@@ -4,6 +4,15 @@ import { createAuditLog } from "@/lib/audit";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+
+// Real, ingested HTS Master Release data (29k+ classifiable nodes, 50k+
+// parsed duty rate rows) -- looks up the General column rate for a
+// 10-digit HTS code, in dotted display format ("8481.80.5090").
+function realGeneralDutyRate(node: { dutyRates: { rateColumn: string; rawRateText: string }[] } | null): string | null {
+  const general = node?.dutyRates.find((r) => r.rateColumn === "General");
+  return general?.rawRateText ?? null;
+}
 
 export interface ClassificationResultItem {
   lineNumber: number;
@@ -18,13 +27,6 @@ export interface ClassificationResultItem {
   evaluatorCritique: string;
   refinementTurns: number;
   legalRationale: string;
-}
-
-/** The HTS reference row fields this agent reads. */
-interface HtsCandidate {
-  htsCode10?: string | null;
-  htsNumberDisplay?: string | null;
-  description?: string | null;
 }
 
 interface HtsModelResult {
@@ -199,15 +201,17 @@ export class HTSClassificationAgent {
     const results: ClassificationResultItem[] = [];
 
     for (const item of input.productProfiles) {
-      // Seed DB candidates: query on first meaningful word of description for context
+      // Seed candidates from the real, ingested HTS Master Release data
+      // (HtsNode/HtsDutyRate -- 29k+ classifiable nodes, 50k+ parsed duty
+      // rate rows) instead of the near-empty legacy HTSCode table, and
+      // include each candidate's real General duty rate so the LLM is
+      // grounded in actual rate data rather than recalling one from memory.
       const keyword = (item.rawDescription || "").split(" ").find((w) => w.length > 3) || "";
-      let htsCandidates: HtsCandidate[] = [];
+      let htsCandidates: Awaited<ReturnType<typeof HtsNodeRepository.searchNodes>>["items"] = [];
       try {
         if (keyword) {
-          htsCandidates = await db.hTSCode.findMany({
-            where: { description: { contains: keyword, mode: "insensitive" } },
-            take: 3,
-          });
+          const result = await HtsNodeRepository.searchNodes({ q: keyword, level: 10, limit: 3 });
+          htsCandidates = result.items;
         }
       } catch (err) {
         debugError = logAgentError(
@@ -221,7 +225,7 @@ export class HTSClassificationAgent {
       const candidateContext =
         htsCandidates.length > 0
           ? htsCandidates
-              .map((c) => `${c.htsCode10}: ${c.description}`)
+              .map((c) => `${c.htsNumberDisplay}: ${c.description} (General duty rate: ${realGeneralDutyRate(c) ?? "not on file"})`)
               .join("\n")
           : "No DB candidates found.";
 
@@ -253,6 +257,27 @@ ${candidateContext}`;
           if (parsed.htsCode) {
             htsResult = parsed;
             aiProvider = "Gemini 2.5 Flash HTS Classification Engine";
+
+            // Ground the LLM's recalled duty rate in the real ingested HTS
+            // data rather than trusting what it remembered. If the code it
+            // returned resolves to a real node, override dutyRate with the
+            // actual General column rate; if it doesn't resolve (wrong
+            // format, hallucinated code), say so honestly instead of
+            // presenting an ungrounded rate as if it were verified.
+            try {
+              const normalizedCode = String(parsed.htsCode).replace(/[^0-9]/g, "");
+              const matchedNode = normalizedCode ? await HtsNodeRepository.findByNormalizedCode(normalizedCode) : null;
+              const realRate = realGeneralDutyRate(matchedNode);
+              parsed.dutyRate =
+                realRate !== null ? realRate : "Duty rate unverified — code not found in HTS Master Release data";
+            } catch (err) {
+              debugError = logAgentError(
+                "HTS Classification Agent",
+                input.shipmentId,
+                "HTS duty rate grounding lookup",
+                err
+              );
+            }
           }
         } catch (err: unknown) {
           debugError = logAgentError(
@@ -267,8 +292,9 @@ ${candidateContext}`;
       // Fallback: use DB candidate with low confidence and clear labeling — NO fabricated rulings or codes
       if (!htsResult) {
         const dbCandidate = htsCandidates[0];
-        const fallbackCode = dbCandidate?.htsCode10 || dbCandidate?.htsNumberDisplay || "UNCLASSIFIABLE";
+        const fallbackCode = dbCandidate?.htsNumberDisplay || "UNCLASSIFIABLE";
         const fallbackDesc = dbCandidate?.description || `No DB match for: ${item.rawDescription}`;
+        const fallbackRate = realGeneralDutyRate(dbCandidate ?? null);
         const lowConfidence = htsCandidates.length > 0 ? 35 : 0;
         const rationaleReason = debugError
           ? `Gemini API call failed (${debugError}). `
@@ -277,13 +303,17 @@ ${candidateContext}`;
         htsResult = {
           htsCode: fallbackCode,
           htsDescription: fallbackDesc,
-          dutyRate: "Duty rate unverified — requires classification review",
+          // The CODE itself is still an unverified low-confidence keyword
+          // match, not a confirmed classification -- but if we are showing
+          // this candidate code, its rate should be the real one on file
+          // for it, not a placeholder string.
+          dutyRate: fallbackRate ?? "Duty rate unverified — requires classification review",
           griCitations: [],
           crossRulings: [], // Never fabricate a citation
           confidence: lowConfidence,
           legalRationale: `${rationaleReason}DB candidate used as unverified low-confidence suggestion (${lowConfidence}% confidence). Requires human broker classification review before filing.`,
         };
-        
+
         if (!process.env.GEMINI_API_KEY) {
           aiProvider = "Deterministic HTS DB Lookup (No API Key)";
         }

@@ -47,6 +47,53 @@ export default async function PlatformAdminPage() {
     memberCount: a.memberships.length,
   }));
 
+  // HTS Master Data admin tab: real per-country release/row/status data,
+  // no fabricated placeholders.
+  const [publishedReleases, draftReleases, nodeCounts, mostRecentRelease] = await Promise.all([
+    db.htsRelease.findMany({
+      where: { publicationStatus: "PUBLISHED" },
+      orderBy: { effectiveFrom: "desc" },
+    }),
+    db.htsRelease.findMany({
+      where: { publicationStatus: "DRAFT" },
+      orderBy: { retrievedAt: "desc" },
+    }),
+    db.htsNode.groupBy({
+      by: ["releaseId"],
+      _count: { _all: true },
+    }),
+    db.htsRelease.findFirst({
+      orderBy: { retrievedAt: "desc" },
+      select: { retrievedAt: true },
+    }),
+  ]);
+
+  const nodeCountByRelease = new Map(nodeCounts.map((n) => [n.releaseId, n._count._all]));
+
+  const countryVersions = publishedReleases.map((r) => ({
+    country: r.country,
+    releaseId: r.id,
+    releaseName: r.releaseName,
+    publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+    effectiveFrom: r.effectiveFrom.toISOString(),
+    rowCount: nodeCountByRelease.get(r.id) || 0,
+  }));
+
+  const pendingDrafts = draftReleases.map((r) => ({
+    releaseId: r.id,
+    country: r.country,
+    releaseName: r.releaseName,
+    retrievedAt: r.retrievedAt.toISOString(),
+    rowCount: nodeCountByRelease.get(r.id) || 0,
+  }));
+
+  const htsAdmin = {
+    countryVersions,
+    pendingDrafts,
+    totalRowCount: countryVersions.reduce((sum, c) => sum + c.rowCount, 0),
+    lastRefreshAt: mostRecentRelease?.retrievedAt.toISOString() || null,
+  };
+
   return (
     <div className="min-h-screen bg-[#F5F5F7] text-[#1D1D1F] p-8 selection:bg-[#0071E3]/20 selection:text-[#0071E3]">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -71,7 +118,7 @@ export default async function PlatformAdminPage() {
           </Link>
         </div>
 
-        <PlatformAdminConsole accounts={formattedAccounts} />
+        <PlatformAdminConsole accounts={formattedAccounts} htsAdmin={htsAdmin} />
       </div>
     </div>
   );

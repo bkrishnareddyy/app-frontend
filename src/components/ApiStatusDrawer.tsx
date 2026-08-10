@@ -83,17 +83,17 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   // 🟢 READY TO GO - HTS MASTER & CLASSIFICATION ENGINE
   {
     method: "GET",
-    path: "/api/hts",
+    path: "/api/v1/hts/search",
     name: "HTS Master Code Lookup & Search",
-    description: "Searches the 10-digit HTSUS reference master dataset by keyword, chapter, or code.",
+    description: "Searches the real ingested HTS Master Release dataset (29k+ nodes) by keyword, chapter, or code.",
     status: "READY",
     tag: "HTS & Classification",
   },
   {
     method: "GET",
-    path: "/api/hts/[code]",
+    path: "/api/v1/hts/codes/[code]/rates",
     name: "HTS Code Detail & Rates",
-    description: "Retrieves complete tariff rates, Section 301/232 applicability, column 2 rates, and special trade program eligibility.",
+    description: "Retrieves real parsed tariff rates (General, Special, Column 2) from the ingested HTS Master Release data.",
     status: "READY",
     tag: "HTS & Classification",
   },

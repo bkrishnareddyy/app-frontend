@@ -19,7 +19,6 @@ const updateSchema = z.object({
   assignedToUserId: z.string().optional(),
   shipmentId: z.string().min(1).nullable().optional(),
   resolutionReason: z.string().optional(),
-  resolutionEvidence: z.string().optional(),
   expectedVersion: z.number().int({ message: "expectedVersion integer is required for concurrency control" }),
 });
 
@@ -48,12 +47,11 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   }
 
   try {
-    const updated = await ExceptionService.updateException(
-      ctx.accountId,
-      id,
-      bodyVal.data,
-      ctx.userId
-    );
+    const resolverName = [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || ctx.email;
+    const updated = await ExceptionService.updateException(ctx.accountId, id, bodyVal.data, {
+      userId: ctx.userId,
+      name: resolverName,
+    });
 
     await createAuditLog({
       accountId: ctx.accountId,

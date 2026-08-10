@@ -40,7 +40,7 @@ function update(input: Record<string, unknown>) {
     "acc_1",
     "exc_1",
     { expectedVersion: 3, ...input } as never,
-    "usr_1"
+    { userId: "usr_1", name: "Test Resolver" }
   );
 }
 

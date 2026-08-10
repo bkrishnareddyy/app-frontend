@@ -18,10 +18,17 @@ vi.mock("../src/lib/db", () => ({
     agentDecision: {
       create: vi.fn().mockImplementation(async ({ data }) => ({ id: `dec_${Date.now()}`, ...data })),
     },
-    hTSCode: {
+    htsNode: {
       findMany: vi.fn().mockResolvedValue([
-        { htsCode10: "7318.15.2065", description: "Screws and bolts of stainless steel" },
+        {
+          id: "node_1",
+          htsNumberDisplay: "7318.15.2065",
+          htsNumberNormalized: "7318152065",
+          description: "Screws and bolts of stainless steel",
+          dutyRates: [{ rateColumn: "General", rawRateText: "Free" }],
+        },
       ]),
+      count: vi.fn().mockResolvedValue(1),
     },
     customsFiling: {
       create: vi.fn().mockImplementation(async ({ data }) => ({ id: `filing_${Date.now()}`, ...data })),
@@ -107,7 +114,7 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
 
   it("Agent 4 (HTS Classification): abstains rather than suggesting an unrelated code when nothing matches", async () => {
     const { db } = await import("../src/lib/db");
-    const findMany = db.hTSCode.findMany as unknown as ReturnType<typeof vi.fn>;
+    const findMany = db.htsNode.findMany as unknown as ReturnType<typeof vi.fn>;
     findMany.mockResolvedValueOnce([]);
 
     const res = await HTSClassificationAgent.execute({
@@ -218,6 +225,8 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
       shipmentId: "shp_1",
       enteredValue: 46800.0,
       dutyDue: 0.0,
+      // Transmission is an authorized act; without this the agent stops at NOT_SUBMITTED.
+      authorized: true,
     });
     expect(res.aceResponse.status).toBe("ACCEPTED");
     expect(res.aceResponse.cbpActionCode).toContain("1C");
