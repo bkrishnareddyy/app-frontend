@@ -1,5 +1,6 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { documentViewUrl } from "@/lib/documentUrl";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -1179,7 +1180,7 @@ export default async function ShipmentWorkspacePage(props: {
               {primaryDoc ? (
                 (() => {
                   const proxyUrl = primaryDoc.fileUrl?.includes("vercel-storage.com")
-                    ? `/api/documents/proxy?url=${encodeURIComponent(primaryDoc.fileUrl)}`
+                    ? documentViewUrl(primaryDoc.id)
                     : primaryDoc.fileUrl || "#";
 
                   let docLineItems: any[] = [];

@@ -22,6 +22,7 @@ import {
   Users,
 } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
+import { documentViewUrl } from "@/lib/documentUrl";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { RawExtractionModal } from "@/components/RawExtractionModal";
 
@@ -582,7 +583,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
           proxyUrl={
             previewDoc.url && previewDoc.url !== "#"
               ? previewDoc.url.includes("vercel-storage.com")
-                ? `/api/documents/proxy?url=${encodeURIComponent(previewDoc.url)}`
+                ? documentViewUrl(previewDoc.id)
                 : previewDoc.url
               : undefined
           }
