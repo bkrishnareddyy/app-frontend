@@ -36,6 +36,8 @@ export interface NavSection {
   id: string;
   labelKey: string;
   items: NavItem[];
+  /** Rendered by the header account menu instead, but still authorizes its routes. */
+  hiddenFromSidebar?: boolean;
 }
 
 export const ACCOUNT_ADMIN_ROLES = ["OWNER", "ADMIN"];
@@ -59,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: "administration",
     labelKey: "accountAdmin",
+    hiddenFromSidebar: true,
     items: [
       {
         id: "account",
@@ -128,6 +131,7 @@ export function canAccessNavItem(access: NavAccess, item: NavItem): boolean {
 
 export function visibleNavigation(access: NavAccess, sections: NavSection[] = NAV_SECTIONS): NavSection[] {
   return sections
+    .filter((section) => !section.hiddenFromSidebar)
     .map((section) => ({ ...section, items: section.items.filter((item) => canAccessNavItem(access, item)) }))
     .filter((section) => section.items.length > 0);
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { Building2, Globe, Bot, Settings2, Building, Users, Contact2, Shield, LogOut, UserCog } from "lucide-react";
+import { Building2, Globe, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog } from "lucide-react";
 import { ManageAccountModal } from "./ManageAccountModal";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
@@ -24,6 +24,7 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
   const manageAccountItems = [
     { name: t.nav.accountProfile, href: "/app/admin", icon: Building, description: "Company details & preferences" },
     { name: t.nav.userManagement, href: "/app/admin/users", icon: Users, description: "Members, roles & invitations" },
+    { name: t.nav.rolesPermissions, href: "/app/admin/roles", icon: ShieldCheck, description: "Role definitions & permission grants" },
     { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings2, description: "Configuration & audit log" },
     { name: t.nav.clients, href: "/app/clients", icon: Contact2, description: "Manage your customer portfolio" },
     ...(isPlatformAdmin

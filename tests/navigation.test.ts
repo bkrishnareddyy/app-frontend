@@ -20,26 +20,36 @@ function hrefsFor(access: NavAccess): string[] {
 }
 
 describe("navigation visibility", () => {
-  it("hides account administration from viewers and members", () => {
-    for (const access of [viewer, member]) {
+  it("keeps account administration out of the sidebar for every role", () => {
+    // The header account menu renders these, so the sidebar must not repeat them.
+    for (const access of [viewer, member, admin, owner, platform]) {
       const hrefs = hrefsFor(access);
       expect(hrefs).not.toContain("/app/admin");
       expect(hrefs).not.toContain("/app/admin/users");
+      expect(hrefs).not.toContain("/app/admin/roles");
       expect(hrefs).not.toContain("/app/admin/settings");
+    }
+  });
+
+  it("hides account administration from viewers and members", () => {
+    for (const access of [viewer, member]) {
+      expect(canAccessHref(access, "/app/admin")).toBe(false);
+      expect(canAccessHref(access, "/app/admin/users")).toBe(false);
+      expect(canAccessHref(access, "/app/admin/settings")).toBe(false);
     }
   });
 
   it("shows account administration to ADMIN and OWNER", () => {
     for (const access of [admin, owner]) {
-      expect(hrefsFor(access)).toContain("/app/admin/users");
+      expect(canAccessHref(access, "/app/admin/users")).toBe(true);
+      expect(canAccessHref(access, "/app/admin/roles")).toBe(true);
     }
   });
 
   it("grants admin items by explicit permission when the role is not an admin role", () => {
     const scoped: NavAccess = { roleNames: ["MEMBER"], permissions: ["users.manage"], isPlatformAdmin: false };
-    const hrefs = hrefsFor(scoped);
-    expect(hrefs).toContain("/app/admin/users");
-    expect(hrefs).not.toContain("/app/admin/settings");
+    expect(canAccessHref(scoped, "/app/admin/users")).toBe(true);
+    expect(canAccessHref(scoped, "/app/admin/settings")).toBe(false);
   });
 
   it("shows the platform console only to platform admins", () => {
@@ -68,7 +78,7 @@ describe("navigation visibility", () => {
 });
 
 describe("canAccessHref server guard", () => {
-  it("mirrors sidebar visibility", () => {
+  it("still authorizes routes whose section is hidden from the sidebar", () => {
     expect(canAccessHref(viewer, "/app/admin/users")).toBe(false);
     expect(canAccessHref(admin, "/app/admin/users")).toBe(true);
   });
