@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
-import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Loader2, Search, Globe2 } from "lucide-react";
+import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Loader2, Search, Globe2, Rocket } from "lucide-react";
 import { HtsAdminPanel, HtsAdminData } from "./HtsAdminPanel";
-import { VersionPill } from "@/components/VersionPill";
+import { DeploymentsPanel } from "./DeploymentsPanel";
 
 interface AccountItem {
   id: string;
@@ -23,7 +23,7 @@ interface PlatformAdminConsoleProps {
 
 export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsoleProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"accounts" | "hts">("accounts");
+  const [activeTab, setActiveTab] = useState<"accounts" | "hts" | "deployments">("accounts");
   const [companyName, setCompanyName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -89,8 +89,7 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
       )}
 
       {/* Tab Switcher */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2">
         <button
           onClick={() => setActiveTab("accounts")}
           className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
@@ -109,12 +108,20 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
           <Globe2 className="w-3.5 h-3.5" />
           <span>HS / HTS Master Data</span>
         </button>
-        </div>
-
-        <VersionPill />
+        <button
+          onClick={() => setActiveTab("deployments")}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
+            activeTab === "deployments" ? "bg-[#0071E3] text-white" : "bg-white border border-[#E5E5EA] text-[#86868B] hover:text-[#1D1D1F]"
+          }`}
+        >
+          <Rocket className="w-3.5 h-3.5" />
+          <span>Deployments</span>
+        </button>
       </div>
 
       {activeTab === "hts" && <HtsAdminPanel data={htsAdmin} />}
+
+      {activeTab === "deployments" && <DeploymentsPanel />}
 
       {activeTab === "accounts" && (
         <>

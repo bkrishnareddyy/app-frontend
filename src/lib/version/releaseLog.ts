@@ -9,6 +9,15 @@ export interface ReleaseLogEntry {
 // changes is rolled out; the platform admin version pill reads this list.
 export const RELEASE_LOG: ReleaseLogEntry[] = [
   {
+    version: "0.1.1",
+    commit: "current",
+    date: "2026-08-10T00:00:00Z",
+    summary: [
+      "Moved deployment info from a header pill to a dedicated Deployments tab.",
+      "Shows the currently deployed build plus rollout history, matching Accounts/HTS tabs.",
+    ],
+  },
+  {
     version: "0.1.0",
     commit: "b3149ce",
     date: "2026-08-10T00:00:00Z",
