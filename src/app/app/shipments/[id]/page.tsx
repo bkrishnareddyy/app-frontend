@@ -373,7 +373,7 @@ export default async function ShipmentWorkspacePage(props: {
   }
 
   // 7. Customs Value & Commercial Terms
-  let valueStatus: "Ready" | "Needs Information" = "Ready";
+  let valueStatus: "Ready" | "Needs Review" | "Needs Information" = "Ready";
   let valueResult = "Reconciled";
   let valueDetails = "Transaction currency, unit values, and declared transaction amounts are consistent.";
   let valueActionRequired = "";
@@ -383,6 +383,14 @@ export default async function ShipmentWorkspacePage(props: {
     valueResult = "Valuation pending document extraction";
     valueDetails = "Declared customs values and commercial terms cannot be validated without line items.";
     valueActionRequired = "Upload Commercial Invoice to run valuation extraction.";
+  } else if (documents.length === 0) {
+    // Same class of bug as HTS Confidence: stored unitPrice on a line item
+    // survives document detachment, so it can't be trusted as a live,
+    // currently-substantiated value without a document backing it.
+    valueStatus = "Needs Review";
+    valueResult = "Valuation unverified — no document attached";
+    valueDetails = "Line items carry stored transaction values, but no document is currently attached to substantiate them. These figures predate detachment and can't be trusted as current.";
+    valueActionRequired = "Attach the commercial invoice that backs these declared values.";
   } else {
     const hasValueMissing = displayLineItems.some((item: any) => !item.unitPrice || Number(item.unitPrice) <= 0);
     if (hasValueMissing) {
