@@ -9,6 +9,8 @@ import { FilingReadinessAgent, FilingReadinessOutput } from "./filingReadinessAg
 import { CustomsFilingAgent, CustomsFilingOutput } from "./customsFilingAgent";
 import { ResponseManagementAgent, ResponseManagementOutput } from "./responseManagementAgent";
 import { AgentState, CanonicalShipmentState } from "./agentState";
+import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+import { Prisma, ShipmentLineItem } from "@prisma/client";
 import {
   ComplianceAgent,
   AgentResult,
@@ -16,6 +18,31 @@ import {
   HumanReviewTask,
   RequiredFieldRequirement,
 } from "./complianceAgent";
+
+/**
+ * Duty owed on the classified lines, or null when it cannot be established.
+ *
+ * Both filing steps used to be handed a literal `dutyDue: 0.0`, so every entry
+ * summary the pipeline produced declared $0.00 duty owed regardless of the
+ * tariff. A line with no published rate leaves the total understated, so the
+ * whole figure is reported as unknown rather than as a partial sum.
+ */
+async function computePipelineDutyDue(state: AgentState): Promise<number | null> {
+  const classifications = state.classificationOutput?.classifications ?? [];
+  const extracted = state.intelligenceOutput?.lineItems ?? [];
+  if (classifications.length === 0 || extracted.length === 0) return null;
+
+  const amountByLine = new Map(extracted.map((li) => [li.lineNumber, li.totalAmount]));
+  const lineItems: Array<Partial<ShipmentLineItem>> = [];
+  for (const c of classifications) {
+    const amount = amountByLine.get(c.lineNumber);
+    if (typeof amount !== "number") return null;
+    lineItems.push({ htsCode: c.htsCode, totalValue: new Prisma.Decimal(amount) });
+  }
+
+  const tariff = computeFilingTariff(lineItems, await loadHtsCodesMap(lineItems));
+  return tariff.unratedLineCount > 0 ? null : tariff.totalDuty;
+}
 
 export interface PipelineOrchestrationInput {
   accountId: string;
@@ -26,6 +53,7 @@ export interface PipelineOrchestrationInput {
   fileBuffer?: Buffer;
   mimeType?: string;
   docTypeOverride?: string;
+  entryType?: string;
   // Human label + machine trigger code recorded on every AgentExecutionLog
   // row this run produces, for the Agent Executions waterfall view.
   triggerEvent?: string;
@@ -34,18 +62,20 @@ export interface PipelineOrchestrationInput {
 
 export interface PipelineOrchestrationOutput {
   shipmentId: string;
-  packetId: string;
+  packetId: string | null;
   status: "COMPLETED" | "BLOCKED" | "REVIEW_REQUIRED";
   lifecycleStatus: "COMPLETED" | "BLOCKED" | "REVIEW_REQUIRED";
   userActionStatus: "ACTION_REQUIRED" | "NONE";
   pipelineStatus: "Completed" | "Review Required";
-  canonicalShipmentState: CanonicalShipmentState;
+  canonicalShipmentState: CanonicalShipmentState | null;
   blockingReasonCodes: string[];
+  /** The agents whose prerequisites never arrived, so the run stopped short. */
+  haltedAgents: Array<{ stepNumber: number; name: string }>;
   readiness: {
     score: number;
     readyForTransmission: boolean;
     blockers: BlockerDetail[];
-  };
+  } | null;
   extractedData: {
     exporter: string | null;
     importer: string | null;
@@ -56,7 +86,7 @@ export interface PipelineOrchestrationOutput {
     lineItemsCount: number;
     isValidCommercialInvoice: boolean;
     validationFailures: string[];
-  };
+  } | null;
   agentsSummary: {
     total: number;
     completed: number;
@@ -68,20 +98,91 @@ export interface PipelineOrchestrationOutput {
   auditTrailUrl: string;
   totalAgentsExecuted: number;
   stateHistoryCount: number;
-  mathValidationPassed: boolean;
+  mathValidationPassed: boolean | null;
   mathDiscrepancies: string[];
   evaluatorRefinementsCount: number;
   agentResults: {
-    agent1_intake: DocumentIntakeAgentOutput;
-    agent2_intelligence: DocumentIntelligenceOutput;
-    agent3_product: ProductIntelligenceOutput;
-    agent4_classification: HTSClassificationOutput;
-    agent5_origin: OriginRulesOutput;
-    agent6_valuation: ValuationAssistsOutput;
-    agent7_compliance: ComplianceAuditOutput;
-    agent8_readiness: FilingReadinessOutput;
-    agent9_filing: CustomsFilingOutput;
-    agent10_response: ResponseManagementOutput;
+    agent1_intake?: DocumentIntakeAgentOutput;
+    agent2_intelligence?: DocumentIntelligenceOutput;
+    agent3_product?: ProductIntelligenceOutput;
+    agent4_classification?: HTSClassificationOutput;
+    agent5_origin?: OriginRulesOutput;
+    agent6_valuation?: ValuationAssistsOutput;
+    agent7_compliance?: ComplianceAuditOutput;
+    agent8_readiness?: FilingReadinessOutput;
+    agent9_filing?: CustomsFilingOutput;
+    agent10_response?: ResponseManagementOutput;
+  };
+}
+
+const isSkippedStatus = (s: unknown) => String(s).startsWith("Skipped");
+const isCompletedStatus = (s: unknown) =>
+  s === "Completed" || String(s) === "ACCEPTED" || String(s) === "COMPLETED_NO_ACTION";
+
+/**
+ * A run that stopped short states what is missing and reports nothing it did
+ * not observe: no readiness score, no extracted data, no canonical state.
+ */
+function buildHaltedOutput(
+  input: PipelineOrchestrationInput,
+  state: AgentState,
+  haltedAgents: Array<{ stepNumber: number; name: string }>
+): PipelineOrchestrationOutput {
+  const named = haltedAgents.map((a) => `Agent ${a.stepNumber} (${a.name})`).join(", ");
+  // The skip branch records a "Review Required" entry, so the history alone
+  // cannot tell a gated step from one that ran and asked for review.
+  const haltedSteps = new Set(haltedAgents.map((a) => a.stepNumber));
+  const executed = state.history.filter((h) => !haltedSteps.has(h.stepNumber));
+  const completed = executed.filter((h) => isCompletedStatus(h.status)).length;
+
+  return {
+    shipmentId: input.shipmentId,
+    packetId: state.intakeOutput?.packetId ?? null,
+    status: "BLOCKED",
+    lifecycleStatus: "BLOCKED",
+    userActionStatus: "ACTION_REQUIRED",
+    pipelineStatus: "Review Required",
+    canonicalShipmentState: null,
+    blockingReasonCodes: ["PIPELINE_PREREQUISITES_MISSING"],
+    haltedAgents,
+    readiness: null,
+    extractedData: null,
+    agentsSummary: {
+      total: 10,
+      completed,
+      blocked: executed.length - completed,
+      skipped: haltedAgents.length,
+    },
+    humanActions: [
+      `Supply the upstream data ${named} needs, then re-run the pipeline.`,
+    ],
+    humanReviewTask: {
+      taskId: `task_${Date.now()}`,
+      priority: "HIGH",
+      assignedTeam: "Customs Brokerage Operations",
+      reason: `Pipeline halted: ${named} could not run because upstream prerequisites are missing.`,
+      requiredAction: "Review the agents that did run to see which input is absent, then re-run",
+      requiredFields: [],
+      slaHours: 24,
+    },
+    auditTrailUrl: `/api/audit/room/${input.shipmentId}`,
+    totalAgentsExecuted: executed.length,
+    stateHistoryCount: state.history.length,
+    mathValidationPassed: state.intelligenceOutput?.mathValidationPassed ?? null,
+    mathDiscrepancies: state.mathDiscrepancies,
+    evaluatorRefinementsCount: state.evaluatorRefinementsCount,
+    agentResults: {
+      agent1_intake: state.intakeOutput ?? undefined,
+      agent2_intelligence: state.intelligenceOutput ?? undefined,
+      agent3_product: state.productOutput ?? undefined,
+      agent4_classification: state.classificationOutput ?? undefined,
+      agent5_origin: state.originOutput ?? undefined,
+      agent6_valuation: state.valuationOutput ?? undefined,
+      agent7_compliance: state.complianceOutput ?? undefined,
+      agent8_readiness: state.readinessOutput ?? undefined,
+      agent9_filing: state.filingOutput ?? undefined,
+      agent10_response: state.responseOutput ?? undefined,
+    },
   };
 }
 
@@ -98,15 +199,23 @@ export class DocumentIntakeStep implements ComplianceAgent<PipelineOrchestration
   }
 
   async execute(state: AgentState, input: PipelineOrchestrationInput): Promise<AgentResult<DocumentIntakeAgentOutput>> {
-    const fileName = input.fileName || "uploaded-trade-document.pdf";
-    const fileUrl = input.fileUrl || `https://storage.qubere.ai/docs/${fileName}`;
+    // These used to default to "uploaded-trade-document.pdf" at
+    // https://storage.qubere.ai/docs/..., so any run without a file (the queue
+    // worker never passes one) wrote a ShipmentDocument row naming a file that
+    // does not exist, at an origin the file proxy does not even trust.
+    if (!input.fileName || (!input.fileUrl && !input.fileBuffer)) {
+      throw new Error(
+        "Document Intake Agent requires a fileName and either a fileUrl or a fileBuffer."
+      );
+    }
+    const fileName = input.fileName;
 
     const output = await DocumentIntakeAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
       shipmentId: input.shipmentId,
       fileName,
-      fileUrl,
+      fileUrl: input.fileUrl,
       fileBuffer: input.fileBuffer,
       mimeType: input.mimeType,
       docTypeOverride: input.docTypeOverride,
@@ -137,7 +246,7 @@ export class DocumentIntelligenceStep implements ComplianceAgent<PipelineOrchest
   }
 
   async execute(state: AgentState, input: PipelineOrchestrationInput): Promise<AgentResult<DocumentIntelligenceOutput>> {
-    const fileName = input.fileName || "uploaded-trade-document.pdf";
+    const fileName = input.fileName;
     const output = await DocumentIntelligenceAgent.execute({
       accountId: input.accountId,
       userId: input.userId,
@@ -275,7 +384,7 @@ export class OriginRulesStep implements ComplianceAgent<PipelineOrchestrationInp
       agentName: this.name,
       stepNumber: this.stepNumber,
       status: output.status === "Completed" ? "Completed" : "Review Required",
-      confidence: output.status === "Completed" ? 90 : 0,
+      confidence: null,
       summary: output.status === "Completed"
         ? `Qualified ${output.qualifications[0]?.countryOfOrigin} (${output.qualifications[0]?.ftaProgram}${output.qualifications[0]?.estimatedSavings !== null ? ` - Duty Savings: $${output.qualifications[0]?.estimatedSavings}` : ""})`
         : "Origin Rules BLOCKED: Country of origin or product HTS classification unavailable",
@@ -351,7 +460,7 @@ export class ComplianceAuditStep implements ComplianceAgent<PipelineOrchestratio
       agentName: this.name,
       stepNumber: this.stepNumber,
       status: output.status === "Completed" ? "Completed" : "Review Required",
-      confidence: output.status === "Completed" ? 95 : 0,
+      confidence: null,
       summary: output.status === "Completed"
         ? `Audited pre-filing rules (Risk Score: ${output.riskScore}, UFLPA Cleared)`
         : "Compliance Audit BLOCKED: Prerequisites Missing (HTS classification unavailable, Origin unverified)",
@@ -386,12 +495,13 @@ export class FilingReadinessStep implements ComplianceAgent<PipelineOrchestratio
       userId: input.userId,
       shipmentId: input.shipmentId,
       enteredValue: val?.enteredCustomsValue ?? null,
-      dutyDue: 0.0,
+      dutyDue: await computePipelineDutyDue(state),
       lineItemCount: intel?.lineItems.length || 0,
       hasCommercialInvoice: Boolean(intel?.hasCommercialInvoice),
       isHtsBlocked,
       isOriginBlocked,
       isComplianceBlocked,
+      entryType: input.entryType,
     });
 
     state.readinessOutput = output;
@@ -428,7 +538,7 @@ export class CustomsFilingStep implements ComplianceAgent<PipelineOrchestrationI
       userId: input.userId,
       shipmentId: input.shipmentId,
       enteredValue: val?.enteredCustomsValue ?? null,
-      dutyDue: 0.0,
+      dutyDue: await computePipelineDutyDue(state),
       readyForTransmission: Boolean(readiness?.readyForTransmission),
     });
 
@@ -438,7 +548,7 @@ export class CustomsFilingStep implements ComplianceAgent<PipelineOrchestrationI
       agentName: this.name,
       stepNumber: this.stepNumber,
       status: output.status,
-      confidence: output.aceResponse.status === "ACCEPTED" ? 100 : 0,
+      confidence: null,
       summary: output.aceResponse.status === "ACCEPTED"
         ? `Transmitted to CBP ACE (Entry #${output.aceResponse.cbpEntryNumber}, Action: ${output.aceResponse.cbpActionCode})`
         : `ACE Transmission BLOCKED: ${output.aceResponse.cbpActionCode}`,
@@ -470,14 +580,17 @@ export class ResponseManagementStep implements ComplianceAgent<PipelineOrchestra
     });
 
     state.responseOutput = output;
-    state.evaluatorRefinementsCount = (state.evaluatorRefinementsCount || 1) + 1;
+    state.evaluatorRefinementsCount += 1;
 
     return {
       agentName: this.name,
       stepNumber: this.stepNumber,
       status: output.status === "Completed" ? "Completed" : "Review Required",
-      confidence: intel?.hasCommercialInvoice ? 95 : 0,
-      summary: `Post-Summary scan complete: $${output.totalPotentialRefund} in refund opportunities identified.`,
+      confidence: null,
+      summary:
+        output.totalPotentialRefund === null
+          ? "Entry recorded for post-summary review. No refund scan ran: it needs a live USTR/CBP integration."
+          : `Post-Summary scan complete: $${output.totalPotentialRefund} in refund opportunities identified.`,
       aiProviderUsed: output.aiProviderUsed,
       decisionId: output.agentDecisionId,
       output,
@@ -490,18 +603,22 @@ export class ResponseManagementStep implements ComplianceAgent<PipelineOrchestra
 // -----------------------------------------------------------------------------
 
 export class ComplianceWorkflowEngine {
-  private steps: ComplianceAgent[] = [
-    new DocumentIntakeStep(),
-    new DocumentIntelligenceStep(),
-    new ProductIntelligenceStep(),
-    new HTSClassificationStep(),
-    new OriginRulesStep(),
-    new ValuationAssistsStep(),
-    new ComplianceAuditStep(),
-    new FilingReadinessStep(),
-    new CustomsFilingStep(),
-    new ResponseManagementStep(),
-  ];
+  private steps: ComplianceAgent[];
+
+  constructor(steps?: ComplianceAgent[]) {
+    this.steps = steps ?? [
+      new DocumentIntakeStep(),
+      new DocumentIntelligenceStep(),
+      new ProductIntelligenceStep(),
+      new HTSClassificationStep(),
+      new OriginRulesStep(),
+      new ValuationAssistsStep(),
+      new ComplianceAuditStep(),
+      new FilingReadinessStep(),
+      new CustomsFilingStep(),
+      new ResponseManagementStep(),
+    ];
+  }
 
   async executePipeline(input: PipelineOrchestrationInput): Promise<{
     state: AgentState;
@@ -525,9 +642,10 @@ export class ComplianceWorkflowEngine {
           timestamp: new Date().toISOString(),
           status: "Review Required",
           summary: `${step.name} SKIPPED: Prerequisites missing from AgentState context.`,
-          confidence: 0,
+          confidence: null,
           aiProviderUsed: "SYSTEM_GATE",
-          decisionId: `dec_skipped_${Date.now()}_${step.stepNumber}`,
+          // A skipped step produced no decision, so there is no id to record.
+          decisionId: null,
           durationMs: 0,
         });
         continue;
@@ -548,9 +666,9 @@ export class ComplianceWorkflowEngine {
         agentName: result.agentName,
         stepNumber: result.stepNumber,
         timestamp: new Date().toISOString(),
-        status: result.status as any,
+        status: result.status,
         summary: result.summary,
-        confidence: result.confidence as any,
+        confidence: result.confidence,
         aiProviderUsed: result.aiProviderUsed,
         decisionId: result.decisionId,
         durationMs,
@@ -563,16 +681,32 @@ export class ComplianceWorkflowEngine {
       console.warn("[ComplianceWorkflowEngine] Async DB audit persistence failed:", err);
     });
 
-    const agent1 = state.intakeOutput!;
-    const agent2 = state.intelligenceOutput!;
-    const agent3 = state.productOutput!;
-    const agent4 = state.classificationOutput!;
-    const agent5 = state.originOutput!;
-    const agent6 = state.valuationOutput!;
-    const agent7 = state.complianceOutput!;
-    const agent8 = state.readinessOutput!;
-    const agent9 = state.filingOutput!;
-    const agent10 = state.responseOutput!;
+    // The loop records a skipped step and continues, but the assembly below needs
+    // every output. A skipped step used to surface as a TypeError, then as a
+    // throw the worker filed as a job failure and retried - when what actually
+    // happened is that the run is waiting on a human, not broken.
+    const agent1 = state.intakeOutput;
+    const agent2 = state.intelligenceOutput;
+    const agent3 = state.productOutput;
+    const agent4 = state.classificationOutput;
+    const agent5 = state.originOutput;
+    const agent6 = state.valuationOutput;
+    const agent7 = state.complianceOutput;
+    const agent8 = state.readinessOutput;
+    const agent9 = state.filingOutput;
+    const agent10 = state.responseOutput;
+
+    const produced = [agent1, agent2, agent3, agent4, agent5, agent6, agent7, agent8, agent9, agent10];
+    const haltedAgents = this.steps
+      .filter((step) => !produced[step.stepNumber - 1])
+      .map((step) => ({ stepNumber: step.stepNumber, name: step.name }));
+
+    if (
+      !agent1 || !agent2 || !agent3 || !agent4 || !agent5 ||
+      !agent6 || !agent7 || !agent8 || !agent9 || !agent10
+    ) {
+      return { state, output: buildHaltedOutput(input, state, haltedAgents) };
+    }
 
     // Machine-Readable Blocking Reason Codes
     const blockingReasonCodes: string[] = [];
@@ -697,8 +831,8 @@ export class ComplianceWorkflowEngine {
       agent6.status, agent7.status, agent8.status, agent9.status, agent10.status,
     ];
 
-    const isSkipped = (s: any) => String(s).startsWith("Skipped");
-    const isCompleted = (s: any) => s === "Completed" || String(s) === "ACCEPTED" || String(s) === "COMPLETED_NO_ACTION";
+    const isSkipped = isSkippedStatus;
+    const isCompleted = isCompletedStatus;
 
     const completedCount = allStatuses.filter(isCompleted).length;
     const skippedCount = allStatuses.filter(isSkipped).length;
@@ -739,6 +873,7 @@ export class ComplianceWorkflowEngine {
       pipelineStatus,
       canonicalShipmentState,
       blockingReasonCodes,
+      haltedAgents,
       readiness: {
         score: agent8.readinessScore,
         readyForTransmission: agent8.readyForTransmission,
@@ -765,10 +900,10 @@ export class ComplianceWorkflowEngine {
       humanReviewTask,
       auditTrailUrl: `/api/audit/room/${input.shipmentId}`,
       totalAgentsExecuted: 10,
-      stateHistoryCount: state.history?.length || 10,
+      stateHistoryCount: state.history.length,
       mathValidationPassed: agent2.mathValidationPassed,
       mathDiscrepancies: state.mathDiscrepancies,
-      evaluatorRefinementsCount: state.evaluatorRefinementsCount || 2,
+      evaluatorRefinementsCount: state.evaluatorRefinementsCount,
       agentResults: {
         agent1_intake: agent1,
         agent2_intelligence: agent2,

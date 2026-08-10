@@ -214,7 +214,7 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
                   </td>
                   <td className="px-6 py-4">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono border ${
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-bold font-mono border ${
                         acc.type === "ENTERPRISE"
                           ? "bg-amber-50 text-amber-700 border-amber-200"
                           : "bg-purple-50 text-purple-700 border-purple-200"

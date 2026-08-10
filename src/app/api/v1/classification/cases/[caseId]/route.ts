@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { ClassificationCaseRepository } from "@/repositories/classificationCaseRepository";
@@ -18,7 +19,7 @@ export const GET = withAuthenticatedRoute<{ caseId: string }>(async ({ ctx, requ
     }
 
     return NextResponse.json({ classificationCase });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch classification case" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

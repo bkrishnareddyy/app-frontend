@@ -10,8 +10,8 @@ interface DocumentItem {
   id: string;
   docType: string;
   fileName: string;
-  pageCount: number;
-  confidence: number;
+  pageCount: number | null;
+  confidence: number | null;
   status: string;
   fileUrl?: string | null;
 }
@@ -120,7 +120,7 @@ export function ShipmentDocumentsSection({
     <>
       <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F] shrink-0">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F] min-w-0 break-words">
             DOCUMENTS ({documents.length} uploaded)
           </h3>
           <button
@@ -147,15 +147,15 @@ export function ShipmentDocumentsSection({
                     : "bg-[#F5F5F7] border-[#E5E5EA]"
                 }`}
               >
-                <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                <div className="flex items-start space-x-2.5 min-w-0 pr-2">
                   {received ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                   ) : (
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                   )}
                   <div className="min-w-0">
-                    <p className="font-bold text-[#1D1D1F] truncate">{doc.docType}</p>
-                    <p className="text-[10px] text-[#86868B] truncate">
+                    <p className="font-bold text-[#1D1D1F] break-words">{doc.docType}</p>
+                    <p className="text-[10px] text-[#86868B] break-words">
                       {doc.fileName} ({doc.pageCount || 1} pages)
                     </p>
                   </div>

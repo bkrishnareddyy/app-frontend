@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { ClassificationCaseEngine } from "@/modules/classification/classificationCaseEngine";
 import { db } from "@/lib/db";
@@ -24,10 +25,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     });
 
     return NextResponse.json(result, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to create classification case" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
-});
+}, { write: true });
 
 export const GET = withAuthenticatedRoute(async ({ ctx }) => {
   try {
@@ -43,7 +44,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
     });
 
     return NextResponse.json({ cases });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch classification cases" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

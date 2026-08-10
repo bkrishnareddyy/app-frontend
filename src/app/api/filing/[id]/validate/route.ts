@@ -3,6 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { applyTransition, canTransition } from "@/modules/filings/filingStateMachine";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -59,6 +60,18 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   }
 
   const isValid = raisedExceptions.length === 0;
+  const transition = isValid ? "validate.pass" : "validate.fail";
+
+  // Validation result only moves the filing when the transition is legal from
+  // its current status; an already-transmitted filing is not rewound.
+  let newStatus: string | null = null;
+  if (canTransition(filing.filingStatus, transition)) {
+    newStatus = applyTransition(filing.filingStatus, transition);
+    await db.customsFiling.update({
+      where: { id: filing.id },
+      data: { filingStatus: newStatus },
+    });
+  }
 
   await createAuditLog({
     accountId: ctx.accountId,
@@ -66,7 +79,12 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     action: "filing.validate",
     entity: "CustomsFiling",
     entityId: filing.id,
-    metadata: { isValid, raisedExceptionsCount: raisedExceptions.length },
+    metadata: {
+      isValid,
+      raisedExceptionsCount: raisedExceptions.length,
+      previousStatus: filing.filingStatus,
+      newStatus,
+    },
   });
 
   return NextResponse.json({
@@ -74,8 +92,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       filingId: filing.id,
       isValid,
       status: isValid ? "PASSED" : "FAILED",
+      previousFilingStatus: filing.filingStatus,
+      filingStatus: newStatus ?? filing.filingStatus,
       raisedExceptionsCount: raisedExceptions.length,
       exceptions: raisedExceptions,
     },
   });
-});
+}, { write: true });

@@ -36,9 +36,13 @@ export class AgentOrchestrator {
     const { output } = await engine.executePipeline(input);
     const totalMs = Date.now() - startTime;
 
+    const readiness = output.readiness
+      ? `Readiness Score: ${output.readiness.score}%`
+      : `Halted at: ${output.haltedAgents.map((a) => `Agent ${a.stepNumber}`).join(", ")}`;
+
     console.log(`\n================================================================================`);
     console.log(`🏁 [Qubere Agent Pipeline] WORKFLOW FINISHED in ${totalMs}ms`);
-    console.log(`📊 Status: ${output.pipelineStatus} | Readiness Score: ${output.readiness.score}% | Completed: ${output.agentsSummary.completed}/10`);
+    console.log(`📊 Status: ${output.pipelineStatus} | ${readiness} | Completed: ${output.agentsSummary.completed}/10`);
     console.log(`================================================================================\n`);
 
     return output;

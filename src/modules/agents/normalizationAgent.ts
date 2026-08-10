@@ -4,6 +4,7 @@ import { createAuditLog } from "@/lib/audit";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { AgentState } from "./agentState";
 import { DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
+import { logAgentError } from "./agentLogger";
 
 export const NORMALIZATION_AGENT_SYSTEM_PROMPT = `
 You are Qubere Business Intelligence Normalization Agent.
@@ -215,11 +216,12 @@ Preserve every business object extracted by the previous agent.
 The normalized output must be deterministic, traceable, auditable, and suitable for downstream customs filing, compliance, ERP integration, workflow orchestration, analytics, and AI agents.
 `;
 
-export interface NormalizedField<T = any> {
+export interface NormalizedField<T = unknown> {
   originalLabel: string;
-  originalValue: any;
+  originalValue: unknown;
   normalizedValue: T;
-  confidence: number;
+  /** Null when no model scored the field, e.g. deterministic transcription. */
+  confidence: number | null;
   page?: number | null;
   section?: string | null;
   sourceDocument?: string | null;
@@ -268,37 +270,77 @@ export interface CanonicalFinancialsObject {
 }
 
 export interface CanonicalEnterpriseModel {
-  document: Record<string, any>;
+  document: Record<string, unknown>;
   parties: CanonicalParty[];
-  addresses: any[];
+  addresses: unknown[];
   products: CanonicalProductItem[];
   shipments: CanonicalShipmentObject[];
-  packages: any[];
-  transport: any[];
-  financials: CanonicalFinancialsObject | Record<string, any>;
+  packages: unknown[];
+  transport: unknown[];
+  financials: CanonicalFinancialsObject | Record<string, unknown>;
   references: Array<{
     originalLabel: string;
-    originalValue: string;
+    originalValue: unknown;
     normalizedValue: string;
-    confidence: number;
+    confidence: number | null;
     processingTimestamp: string;
   }>;
-  documents: any[];
+  documents: unknown[];
   relationships: Array<{ type: string; from: string; to: string; description?: string }>;
   validation: Array<{ check: string; result: "pass" | "fail" | "warning"; details: string }>;
   audit: {
     processedAt: string;
     agentName: string;
     inputPacketId: string;
-    sourceDocument: string;
+    sourceDocument: string | null;
   };
+}
+
+export interface NormalizationSourceLineItem {
+  sku?: string | null;
+  description?: string | null;
+  quantity?: number | null;
+  unitPrice?: number | null;
+  totalAmount?: number | null;
+  unitOfMeasure?: string | null;
+  countryOfOrigin?: string | null;
+}
+
+/** The subset of the Document Intelligence output this agent actually reads. */
+export interface NormalizationSource {
+  packetId?: string | null;
+  fileName?: string | null;
+  documentMetadata?: { filename?: string | null } | null;
+  detectedDocType?: string | null;
+  hasCommercialInvoice?: boolean | null;
+  exporterName?: string | null;
+  importerName?: string | null;
+  originCountry?: string | null;
+  destinationCountry?: string | null;
+  midCode?: string | null;
+  invoiceNumber?: string | number | null;
+  currency?: string | null;
+  invoiceSubtotal?: number | null;
+  incoterm?: string | null;
+  lineItems?: NormalizationSourceLineItem[] | null;
+  validationFailures?: string[] | null;
+}
+
+/** Deterministic transcription: the value is copied, not inferred, so it carries no confidence. */
+function transcribed<T>(
+  originalLabel: string,
+  originalValue: unknown,
+  normalizedValue: T,
+  processingTimestamp: string
+): NormalizedField<T> {
+  return { originalLabel, originalValue, normalizedValue, confidence: null, processingTimestamp };
 }
 
 export interface NormalizationAgentInput {
   accountId: string;
   userId: string;
   shipmentId: string;
-  documentIntelligenceData: DocumentIntelligenceOutput | Record<string, any>;
+  documentIntelligenceData: DocumentIntelligenceOutput | Record<string, unknown>;
   state?: AgentState;
 }
 
@@ -306,9 +348,9 @@ export interface NormalizationAgentOutput {
   shipmentId: string;
   status: "Completed" | "Review Required";
   canonicalModel: CanonicalEnterpriseModel;
-  confidence: number;
+  confidence: number | null;
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
 }
 
@@ -384,13 +426,17 @@ export class NormalizationAgent {
 
   static async execute(input: NormalizationAgentInput): Promise<NormalizationAgentOutput> {
     const timestamp = new Date().toISOString();
-    const docData = input.documentIntelligenceData || {};
-    const packetId = (docData as any).packetId || `pkt_${Date.now()}`;
-    const fileName = (docData as any).fileName || (docData as any).documentMetadata?.filename || "trade-document.pdf";
+    const docData = (input.documentIntelligenceData || {}) as NormalizationSource;
+    const packetId = docData.packetId || `pkt_${Date.now()}`;
+    // Null, not "trade-document.pdf": this name is written to the canonical
+    // model's audit provenance and to the AgentDecision description.
+    const fileName = docData.fileName || docData.documentMetadata?.filename || null;
 
     let aiProvider = "Gemini 2.5 Flash Normalization Engine";
     let canonicalModel: CanonicalEnterpriseModel | null = null;
-    let confidence = 95;
+    // Stays null unless a model actually reports one. The deterministic mapper
+    // transcribes fields rather than inferring them, so it has no confidence.
+    let confidence: number | null = null;
 
     if (process.env.GEMINI_API_KEY) {
       try {
@@ -412,9 +458,13 @@ ${JSON.stringify(docData, null, 2)}`;
         const parsed = JSON.parse(response.text || "{}");
         if (parsed.parties && parsed.products) {
           canonicalModel = parsed as CanonicalEnterpriseModel;
+          confidence = typeof parsed.confidence === "number" ? parsed.confidence : null;
         }
-      } catch (err: any) {
-        console.warn("[NormalizationAgent] Gemini API execution failed, using deterministic canonical mapper:", err?.message || err);
+      } catch (err: unknown) {
+        console.warn(
+          "[NormalizationAgent] Gemini API execution failed, using deterministic canonical mapper:",
+          err instanceof Error ? err.message : err
+        );
         aiProvider = "Qubere Deterministic Normalization Engine";
       }
     } else {
@@ -427,36 +477,57 @@ ${JSON.stringify(docData, null, 2)}`;
       if (docData.exporterName) {
         parties.push({
           id: `party_exp_${Date.now()}`,
-          role: { originalLabel: "Shipper / Exporter", originalValue: docData.exporterName, normalizedValue: "Exporter", confidence: 95, processingTimestamp: timestamp },
-          name: { originalLabel: "Exporter Name", originalValue: docData.exporterName, normalizedValue: String(docData.exporterName).trim(), confidence: 95, processingTimestamp: timestamp },
-          country: docData.originCountry ? { originalLabel: "Country of Origin", originalValue: docData.originCountry, normalizedValue: String(docData.originCountry).trim(), confidence: 95, processingTimestamp: timestamp } : null,
-          taxIdOrMid: docData.midCode ? { originalLabel: "MID Code", originalValue: docData.midCode, normalizedValue: String(docData.midCode).trim(), confidence: 95, processingTimestamp: timestamp } : null,
+          role: transcribed("Shipper / Exporter", docData.exporterName, "Exporter", timestamp),
+          name: transcribed("Exporter Name", docData.exporterName, String(docData.exporterName).trim(), timestamp),
+          country: docData.originCountry
+            ? transcribed("Country of Origin", docData.originCountry, String(docData.originCountry).trim(), timestamp)
+            : null,
+          taxIdOrMid: docData.midCode
+            ? transcribed("MID Code", docData.midCode, String(docData.midCode).trim(), timestamp)
+            : null,
         });
       }
       if (docData.importerName) {
         parties.push({
           id: `party_imp_${Date.now()}`,
-          role: { originalLabel: "Consignee / Importer", originalValue: docData.importerName, normalizedValue: "Importer", confidence: 95, processingTimestamp: timestamp },
-          name: { originalLabel: "Importer Name", originalValue: docData.importerName, normalizedValue: String(docData.importerName).trim(), confidence: 95, processingTimestamp: timestamp },
-          country: docData.destinationCountry ? { originalLabel: "Destination Country", originalValue: docData.destinationCountry, normalizedValue: String(docData.destinationCountry).trim(), confidence: 95, processingTimestamp: timestamp } : null,
+          role: transcribed("Consignee / Importer", docData.importerName, "Importer", timestamp),
+          name: transcribed("Importer Name", docData.importerName, String(docData.importerName).trim(), timestamp),
+          country: docData.destinationCountry
+            ? transcribed("Destination Country", docData.destinationCountry, String(docData.destinationCountry).trim(), timestamp)
+            : null,
         });
       }
 
       const rawItems = Array.isArray(docData.lineItems) ? docData.lineItems : [];
-      const products: CanonicalProductItem[] = rawItems.map((item: any, idx: number) => ({
+      const products: CanonicalProductItem[] = rawItems.map((item, idx) => ({
         id: `prod_${idx + 1}_${Date.now()}`,
-        sku: item.sku ? { originalLabel: "SKU / Item No", originalValue: item.sku, normalizedValue: String(item.sku).trim(), confidence: 95, processingTimestamp: timestamp } : null,
-        description: { originalLabel: "Description", originalValue: item.description || "Unspecified Goods", normalizedValue: String(item.description || "Unspecified Goods").trim(), confidence: 95, processingTimestamp: timestamp },
-        quantity: typeof item.quantity === "number" ? { originalLabel: "Quantity", originalValue: item.quantity, normalizedValue: item.quantity, confidence: 95, processingTimestamp: timestamp } : null,
-        unitPrice: typeof item.unitPrice === "number" ? { originalLabel: "Unit Price", originalValue: item.unitPrice, normalizedValue: item.unitPrice, confidence: 95, processingTimestamp: timestamp } : null,
-        totalAmount: typeof item.totalAmount === "number" ? { originalLabel: "Total Amount", originalValue: item.totalAmount, normalizedValue: item.totalAmount, confidence: 95, processingTimestamp: timestamp } : null,
-        unitOfMeasure: item.unitOfMeasure ? { originalLabel: "Unit of Measure", originalValue: item.unitOfMeasure, normalizedValue: String(item.unitOfMeasure).trim(), confidence: 95, processingTimestamp: timestamp } : null,
-        countryOfOrigin: item.countryOfOrigin || docData.originCountry ? { originalLabel: "Country of Origin", originalValue: item.countryOfOrigin || docData.originCountry, normalizedValue: String(item.countryOfOrigin || docData.originCountry).trim(), confidence: 95, processingTimestamp: timestamp } : null,
+        sku: item.sku ? transcribed("SKU / Item No", item.sku, String(item.sku).trim(), timestamp) : null,
+        // The source description is preserved as-is; the placeholder is display text only.
+        description: transcribed(
+          "Description",
+          item.description ?? null,
+          item.description ? String(item.description).trim() : "Unspecified Goods",
+          timestamp
+        ),
+        quantity: typeof item.quantity === "number" ? transcribed("Quantity", item.quantity, item.quantity, timestamp) : null,
+        unitPrice: typeof item.unitPrice === "number" ? transcribed("Unit Price", item.unitPrice, item.unitPrice, timestamp) : null,
+        totalAmount: typeof item.totalAmount === "number" ? transcribed("Total Amount", item.totalAmount, item.totalAmount, timestamp) : null,
+        unitOfMeasure: item.unitOfMeasure
+          ? transcribed("Unit of Measure", item.unitOfMeasure, String(item.unitOfMeasure).trim(), timestamp)
+          : null,
+        countryOfOrigin: item.countryOfOrigin || docData.originCountry
+          ? transcribed(
+              "Country of Origin",
+              item.countryOfOrigin || docData.originCountry,
+              String(item.countryOfOrigin || docData.originCountry).trim(),
+              timestamp
+            )
+          : null,
       }));
 
-      const references: Array<{ originalLabel: string; originalValue: string; normalizedValue: string; confidence: number; processingTimestamp: string }> = [];
+      const references: CanonicalEnterpriseModel["references"] = [];
       if (docData.invoiceNumber) {
-        references.push({ originalLabel: "Invoice Number", originalValue: String(docData.invoiceNumber), normalizedValue: String(docData.invoiceNumber).trim(), confidence: 95, processingTimestamp: timestamp });
+        references.push(transcribed("Invoice Number", docData.invoiceNumber, String(docData.invoiceNumber).trim(), timestamp));
       }
 
       canonicalModel = {
@@ -472,22 +543,24 @@ ${JSON.stringify(docData, null, 2)}`;
         shipments: [
           {
             id: `ship_${Date.now()}`,
-            shipper: docData.exporterName ? { originalLabel: "Shipper", originalValue: docData.exporterName, normalizedValue: docData.exporterName, confidence: 95, processingTimestamp: timestamp } : null,
-            consignee: docData.importerName ? { originalLabel: "Consignee", originalValue: docData.importerName, normalizedValue: docData.importerName, confidence: 95, processingTimestamp: timestamp } : null,
-            originCountry: docData.originCountry ? { originalLabel: "Origin", originalValue: docData.originCountry, normalizedValue: docData.originCountry, confidence: 95, processingTimestamp: timestamp } : null,
-            destinationCountry: docData.destinationCountry ? { originalLabel: "Destination", originalValue: docData.destinationCountry, normalizedValue: docData.destinationCountry, confidence: 95, processingTimestamp: timestamp } : null,
+            shipper: docData.exporterName ? transcribed("Shipper", docData.exporterName, docData.exporterName, timestamp) : null,
+            consignee: docData.importerName ? transcribed("Consignee", docData.importerName, docData.importerName, timestamp) : null,
+            originCountry: docData.originCountry ? transcribed("Origin", docData.originCountry, docData.originCountry, timestamp) : null,
+            destinationCountry: docData.destinationCountry
+              ? transcribed("Destination", docData.destinationCountry, docData.destinationCountry, timestamp)
+              : null,
           },
         ],
         packages: [],
         transport: [],
         financials: {
           currency: docData.currency
-            ? { originalLabel: "Currency", originalValue: docData.currency, normalizedValue: docData.currency, confidence: 95, processingTimestamp: timestamp }
-            : { originalLabel: "Currency", originalValue: null, normalizedValue: null, confidence: 0, processingTimestamp: timestamp },
+            ? transcribed("Currency", docData.currency, docData.currency, timestamp)
+            : transcribed("Currency", null, null, timestamp),
           totalValue: typeof docData.invoiceSubtotal === "number"
-            ? { originalLabel: "Invoice Subtotal", originalValue: docData.invoiceSubtotal, normalizedValue: docData.invoiceSubtotal, confidence: 95, processingTimestamp: timestamp }
-            : { originalLabel: "Invoice Subtotal", originalValue: null, normalizedValue: null, confidence: 0, processingTimestamp: timestamp },
-          incoterms: docData.incoterm ? { originalLabel: "Incoterms", originalValue: docData.incoterm, normalizedValue: docData.incoterm, confidence: 95, processingTimestamp: timestamp } : null,
+            ? transcribed("Invoice Subtotal", docData.invoiceSubtotal, docData.invoiceSubtotal, timestamp)
+            : transcribed("Invoice Subtotal", null, null, timestamp),
+          incoterms: docData.incoterm ? transcribed("Incoterms", docData.incoterm, docData.incoterm, timestamp) : null,
         },
         references,
         documents: [
@@ -511,7 +584,8 @@ ${JSON.stringify(docData, null, 2)}`;
     const productCount = canonicalModel.products?.length || 0;
     const reasoningChain = `Normalized document intelligence into canonical enterprise model. Formatted ${partyCount} parties, ${productCount} products, and financials using ${aiProvider}. Deterministic audit provenance preserved.`;
 
-    let agentDecisionId = "dec_fallback_normalization";
+    // Null, not a synthetic id: a failed write produced no AgentDecision row.
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -525,7 +599,9 @@ ${JSON.stringify(docData, null, 2)}`;
           purpose: "Transform document intelligence extractions into a canonical, deterministic enterprise business model",
           dataSources: ["Document Intelligence Output", aiProvider],
           regulations: ["Canonical Enterprise Model Specification"],
-          proposedDescription: `Canonical Enterprise Model for ${fileName}`,
+          proposedDescription: fileName
+            ? `Canonical Enterprise Model for ${fileName}`
+            : "Canonical Enterprise Model for an unnamed source document",
           rulesApplied: [
             "Entity & Role Normalization Rule",
             "Semantic Value Preservation Rule",
@@ -534,22 +610,38 @@ ${JSON.stringify(docData, null, 2)}`;
         },
       });
       agentDecisionId = agentDecision.id;
-    } catch (err) {}
+    } catch (err) {
+      logAgentError(
+        "Business Intelligence Normalization Agent",
+        input.shipmentId,
+        "DB agentDecision create",
+        err
+      );
+    }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: {
-          agentName: "Business Intelligence Normalization Agent",
-          partyCount,
-          productCount,
-        },
-      });
-    } catch (err) {}
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: {
+            agentName: "Business Intelligence Normalization Agent",
+            partyCount,
+            productCount,
+          },
+        });
+      } catch (err) {
+        logAgentError(
+          "Business Intelligence Normalization Agent",
+          input.shipmentId,
+          "createAuditLog",
+          err
+        );
+      }
+    }
 
     const output: NormalizationAgentOutput = {
       shipmentId: input.shipmentId,

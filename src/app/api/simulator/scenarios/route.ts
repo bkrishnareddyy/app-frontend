@@ -49,4 +49,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   return NextResponse.json({ scenario }, { status: 201 });
-});
+}, { write: true });

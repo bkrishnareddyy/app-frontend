@@ -93,12 +93,15 @@ export class ClassificationService {
           agentName: "Classification Agent",
           agentIcon: "Scale",
           status: requiresReview ? "Review Required" : "Approved",
-          confidence: requiresReview ? 75 : 95,
+          // Candidates are ranked by deterministic heading matching, not by a model
+          // that reports a confidence. 75/95 were invented and shown as percentages.
+          confidence: null,
           decisionSummary: `Classification proposal for ${input.productDescription}: HTS ${primaryMatch.htsCode10}`,
           purpose: "Hierarchical heading analysis and legal source citation",
           dataSources: [datasetVersion],
           regulations: ["GRI 1", "GRI 6"],
-          currentHtsCode: "0000.00.0000",
+          // No existing classification is read here, so there is no current code.
+          currentHtsCode: null,
           proposedHtsCode: primaryMatch.htsCode10,
           proposedDescription: primaryMatch.description,
           rulesApplied: ["GRI 1", "GRI 6"],

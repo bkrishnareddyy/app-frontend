@@ -7,18 +7,23 @@ export interface ExtractedLineItem {
   countryOfOrigin?: string;
 }
 
+export interface LineItemExtractionResult {
+  lineItems: ExtractedLineItem[];
+  /** Why extraction did not run. Null when it genuinely ran. */
+  unavailableReason: string | null;
+}
+
+/**
+ * No extraction model is wired up in this build. This previously returned a
+ * fixed hydraulic-valve line item regardless of the text supplied.
+ */
 export class LineItemExtractionAgent {
-  static async extractLineItems(rawText: string): Promise<ExtractedLineItem[]> {
-    console.log(`[ExtractionAgent] Parsing line items from text payload...`);
-    return [
-      {
-        partNumber: "V-400-HYD",
-        description: "Hydraulic Control Valves Model V-400 for industrial fluid control",
-        quantity: 500,
-        unitPrice: 120.0,
-        totalValue: 60000.0,
-        countryOfOrigin: "JP",
-      },
-    ];
+  static async extractLineItems(rawText: string): Promise<LineItemExtractionResult> {
+    return {
+      lineItems: [],
+      unavailableReason: rawText.trim()
+        ? "No line-item extraction model is configured, so the document text has not been parsed."
+        : "No document text was available to extract line items from.",
+    };
   }
 }

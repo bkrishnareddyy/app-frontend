@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { Building2, Globe, Bot, Settings2, Building, Users, Contact2, Shield, LogOut, UserCog } from "lucide-react";
+import { Building2, Globe, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog } from "lucide-react";
 import { ManageAccountModal } from "./ManageAccountModal";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
@@ -24,6 +24,7 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
   const manageAccountItems = [
     { name: t.nav.accountProfile, href: "/app/admin", icon: Building, description: "Company details & preferences" },
     { name: t.nav.userManagement, href: "/app/admin/users", icon: Users, description: "Members, roles & invitations" },
+    { name: t.nav.rolesPermissions, href: "/app/admin/roles", icon: ShieldCheck, description: "Role definitions & permission grants" },
     { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings2, description: "Configuration & audit log" },
     { name: t.nav.clients, href: "/app/clients", icon: Contact2, description: "Manage your customer portfolio" },
     ...(isPlatformAdmin
@@ -39,19 +40,21 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
   ];
 
   return (
-    <header className="h-16 border-b border-[#E5E5EA] bg-[#F5F5F7]/80 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-30">
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center space-x-2 text-[#86868B] text-sm font-medium">
-          <Building2 className="w-4 h-4 text-[#0071E3]" />
-          <span className="text-[#1D1D1F] font-semibold">{tenantName}</span>
-          <span className="text-[#86868B]">/</span>
-          <span className="text-[#86868B] text-xs px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] font-medium shadow-2xs">
+    <header className="h-16 shrink-0 border-b border-[#E5E5EA] bg-[#F5F5F7]/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4 z-30">
+      <div className="flex items-center min-w-0">
+        <div className="flex items-center space-x-2 text-[#86868B] text-sm font-medium min-w-0">
+          <Building2 className="w-4 h-4 shrink-0 text-[#0071E3]" />
+          <span className="text-[#1D1D1F] font-semibold truncate" title={tenantName}>
+            {tenantName}
+          </span>
+          <span className="text-[#86868B] shrink-0">/</span>
+          <span className="text-[#86868B] text-xs px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] font-medium shadow-2xs shrink-0 whitespace-nowrap">
             Account Isolated
           </span>
         </div>
       </div>
 
-      <div className="relative flex items-center">
+      <div className="relative flex items-center shrink-0">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           className="flex items-center space-x-2.5 pl-1 pr-2.5 py-1 rounded-full hover:bg-white/70 transition-colors cursor-pointer"
@@ -59,15 +62,19 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
           {user?.imageUrl ? (
             <img
               src={user.imageUrl}
-              alt={userName}
+              alt=""
               className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-xs font-bold">
+            <div
+              aria-hidden="true"
+              className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-xs font-bold"
+            >
               {userName.charAt(0).toUpperCase()}
             </div>
           )}
           <span className="text-xs font-semibold text-[#1D1D1F] hidden sm:inline">{userName}</span>
+          <span className="sr-only sm:hidden">{userName}</span>
         </button>
 
         {isMenuOpen && (

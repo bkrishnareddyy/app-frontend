@@ -1,9 +1,8 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
-import { Prisma } from "@prisma/client";
 import { AgentState, MultiDimensionalConfidence } from "./agentState";
+import { logAgentError } from "./agentLogger";
 import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
 import { ShipmentPartyService } from "@/modules/shipment/shipmentPartyService";
 import { ExceptionService } from "@/modules/exceptions/exception.service";
@@ -254,7 +253,7 @@ export interface DocumentIntelligenceOutput {
   tables?: Array<{
     purpose: string;
     headers: string[];
-    rows: any[][];
+    rows: unknown[][];
     page?: number;
     confidence?: number;
   }>;
@@ -293,7 +292,7 @@ export interface DocumentIntelligenceOutput {
   /** Populated when the Gemini vision call throws, so failures are visible in the API response. */
   extractionError?: string;
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
 }
 
@@ -489,7 +488,7 @@ export class DocumentIntelligenceAgent {
     let tradeMetadata: TradeMetadata | undefined = undefined;
     let entities: Array<{ type: string; value: string; confidence: number; page?: number; section?: string }> | undefined = undefined;
     let relationships: Array<{ type: string; from: string; to: string; description?: string }> | undefined = undefined;
-    let tables: Array<{ purpose: string; headers: string[]; rows: any[][]; page?: number; confidence?: number }> | undefined = undefined;
+    let tables: Array<{ purpose: string; headers: string[]; rows: unknown[][]; page?: number; confidence?: number }> | undefined = undefined;
     let validations: Array<{ check: string; result: "pass" | "fail" | "warning"; details: string }> | undefined = undefined;
     let warnings: string[] | undefined = undefined;
 
@@ -571,10 +570,11 @@ INSTRUCTIONS:
         if (typeof parsed.hasCommercialInvoice === "boolean") hasCommercialInvoice = parsed.hasCommercialInvoice;
         if (parsed.confidence) confidence = parsed.confidence;
         if (parsed.lineItems && parsed.lineItems.length > 0) lineItems = parsed.lineItems;
-      } catch (err: any) {
-        console.warn("Agent 2 Gemini Vision extraction error:", err?.message || err);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn("Agent 2 Gemini Vision extraction error:", message);
         aiProvider = "Qubere Key-Value Discovery Engine";
-        extractionError = err?.message || String(err);
+        extractionError = message;
       }
     } else {
       aiProvider = "Qubere Key-Value Discovery Engine";
@@ -628,13 +628,14 @@ INSTRUCTIONS:
       } else {
         // Production fallback: Gemini returned no results (vision call failed or no key present).
         // Ground all values to null — do NOT invent data.
-        const rawFileName = input.fileName || "trade-document.pdf";
-        const cleanFileName = rawFileName.replace(/[-_]/g, " ").replace(/\.[^/.]+$/, "");
-        const formattedTitle = cleanFileName.charAt(0).toUpperCase() + cleanFileName.slice(1);
-
-        rawDiscoveredKeyValues = {
-          "Document Title": formattedTitle,
-        };
+        // The title is derived from the filename, so with no filename there is
+        // nothing to report; it used to read "Trade document" as if discovered.
+        rawDiscoveredKeyValues = {};
+        if (input.fileName) {
+          const cleanFileName = input.fileName.replace(/[-_]/g, " ").replace(/\.[^/.]+$/, "");
+          rawDiscoveredKeyValues["Document Title"] =
+            cleanFileName.charAt(0).toUpperCase() + cleanFileName.slice(1);
+        }
 
         extractionStatus = "failed";
         exporterName = null;
@@ -679,8 +680,9 @@ INSTRUCTIONS:
     const agencyReasoning = filingDetermination?.reasoning ? ` PGA Routing: ${filingDetermination.primaryAgency} (${filingDetermination.reasoning}).` : "";
     const reasoningChain = `Qubere Document Intelligence parsed ${Object.keys(rawDiscoveredKeyValues).length} label-value pairs from packet ${input.packetId}. Synonym Extrapolation mapped Exporter: '${exporterName || "Unknown"}', Consignee: '${importerName || "Unknown"}', Origin: ${originCountry || "Unknown"}.${agencyReasoning} Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}. Compliance status: ${status}.`;
 
-    // Persist AgentDecision in DB
-    let agentDecisionId = "dec_fallback_intelligence";
+    // Persist AgentDecision in DB.
+    // Null, not a synthetic id: a failed write produced no AgentDecision row.
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -714,7 +716,14 @@ INSTRUCTIONS:
         },
       });
       agentDecisionId = agentDecision.id;
-    } catch (err) {}
+    } catch (err) {
+      logAgentError(
+        "Document Intelligence Agent",
+        input.shipmentId,
+        "DB agentDecision create",
+        err
+      );
+    }
 
     // Save JSON Blob & raw extraction content directly onto ShipmentDocument
     try {
@@ -827,23 +836,27 @@ INSTRUCTIONS:
     }
 
     // Create Audit Log
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: {
-          agentName: "Document Intelligence Agent",
-          packetId: input.packetId,
-          discoveredPairsCount: Object.keys(rawDiscoveredKeyValues).length,
-          hasCommercialInvoice,
-          missingFieldsCount: missingFields.length,
-          primaryAgency: filingDetermination?.primaryAgency || "CBP",
-        },
-      });
-    } catch (err) {}
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: {
+            agentName: "Document Intelligence Agent",
+            packetId: input.packetId,
+            discoveredPairsCount: Object.keys(rawDiscoveredKeyValues).length,
+            hasCommercialInvoice,
+            missingFieldsCount: missingFields.length,
+            primaryAgency: filingDetermination?.primaryAgency || "CBP",
+          },
+        });
+      } catch (err) {
+        logAgentError("Document Intelligence Agent", input.shipmentId, "createAuditLog", err);
+      }
+    }
 
     const detectedDocType = documentClassification?.documentType || (isCoO ? "GENERAL_CERTIFICATE_OF_ORIGIN" : "COMMERCIAL_INVOICE");
     const isValidCommercialInvoice = hasCommercialInvoice && missingFields.length === 0 && mathValidationPassed;

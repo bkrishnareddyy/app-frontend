@@ -12,7 +12,19 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Obsolete one-off codemods and throwaway investigation scripts. These are
+    // not application code and are not maintained; they are out of lint scope.
+    "fix_decimal*.js",
+    "fix_engine.js",
+    "scratch/**",
   ]),
+  {
+    rules: {
+      // Destructuring a field out to keep it off a response body is a deliberate
+      // omission, not dead code. Everything else stays reported.
+      "@typescript-eslint/no-unused-vars": ["warn", { ignoreRestSiblings: true }],
+    },
+  },
 ]);
 
 export default eslintConfig;

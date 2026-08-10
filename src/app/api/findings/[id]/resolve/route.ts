@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { z } from "zod";
 
+const FINDING_STATUSES = ["Open", "Investigating", "Resolved", "AcceptedRisk", "Closed"];
+
 const paramsSchema = z.object({ id: z.string().min(1) });
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
@@ -15,6 +17,15 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   const body = await req.json();
   const { status, notes } = body;
 
+  // An absent status used to default to "Resolved", so an empty body closed the
+  // finding, and any string at all was written straight through.
+  if (typeof status !== "string" || !FINDING_STATUSES.includes(status)) {
+    return NextResponse.json(
+      { error: `status must be one of ${FINDING_STATUSES.join(", ")}` },
+      { status: 400 }
+    );
+  }
+
   const finding = await db.complianceFinding.findFirst({
     where: { id, accountId: ctx.accountId },
   });
@@ -23,7 +34,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return NextResponse.json({ error: "Compliance finding not found" }, { status: 404 });
   }
 
-  const newStatus = status || "Resolved";
+  const newStatus = status;
 
   const updatedFinding = await db.complianceFinding.update({
     where: { id },
@@ -38,7 +49,9 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     data: {
       accountId: ctx.accountId,
       filingId: finding.filingId,
-      event: `Compliance Finding Resolved: ${finding.rule} (${newStatus})`,
+      // Every transition used to be recorded as "Resolved", so moving a finding to
+      // Investigating logged a resolution that had not happened.
+      event: `Compliance Finding ${finding.status} -> ${newStatus}: ${finding.rule}`,
       actor: `Compliance Analyst (${ctx.userId})`,
       metadata: { findingId: id, status: newStatus, notes },
     },
@@ -54,4 +67,4 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   });
 
   return NextResponse.json({ finding: updatedFinding });
-});
+}, { write: true });

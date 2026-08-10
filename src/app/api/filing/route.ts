@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { computeFilingTariff, DutyRateInput } from "@/lib/tariff/dutyEngine";
-import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+import { ENTRY_TYPE_CODES, entryTypeVariants, normalizeEntryType } from "@/modules/filing/entryType";
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
@@ -53,11 +53,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     }
   }
 
-  // Filter by entry type
-  if (entryType) {
-    where.entryType = { contains: entryType, mode: "insensitive" };
-  }
-
   // Financial filters
   if (minDuty !== undefined || maxDuty !== undefined) {
     where.totalDuties = {};
@@ -104,6 +99,26 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   if (Object.keys(shipmentWhere).length > 0) {
     where.shipment = shipmentWhere;
+  }
+
+  // Filter by entry type. Rows written before the column was canonicalised
+  // still hold "Consumption Entry" or "01 - CONSUMPTION ENTRY", so a filter
+  // on the code has to match every spelling of that code. It goes in AND
+  // because the keyword search below owns OR and would otherwise erase it.
+  if (entryType) {
+    const code = normalizeEntryType(entryType);
+    if (code) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: entryTypeVariants(code).map((variant) => ({
+            entryType: { equals: variant, mode: "insensitive" as const },
+          })),
+        },
+      ];
+    } else {
+      where.entryType = { contains: entryType, mode: "insensitive" };
+    }
   }
 
   // Keyword & Natural Language search across multiple fields
@@ -179,54 +194,54 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   // Format filings with rich computed metadata & default breakdowns
   const filings = rawFilings.map((filing) => {
     const lineItems = filing.shipment?.lineItems || [];
-    const primaryCOO = lineItems[0]?.countryOfOrigin || filing.shipment?.countryOfExport || "USA";
-    const totalCustomsValue = Number(filing.totalValue) || lineItems.reduce((acc, item) => acc + Number(item.totalValue), 0);
-    const totalDuty = Number(filing.totalDuties) || 0;
-    const totalTaxes = Number(filing.totalTaxes) || 0;
+    const primaryCOO = lineItems[0]?.countryOfOrigin ?? filing.shipment?.countryOfExport ?? null;
+    const totalCustomsValue =
+      filing.totalValue !== null
+        ? Number(filing.totalValue)
+        : lineItems.length > 0
+        ? lineItems.reduce((acc, item) => acc + Number(item.totalValue), 0)
+        : null;
+    const totalDuty = filing.totalDuties !== null ? Number(filing.totalDuties) : null;
+    const totalTaxes = filing.totalTaxes !== null ? Number(filing.totalTaxes) : null;
 
-    // Compute standard duty breakdown if null
-    const dutyBreakdown = filing.dutyBreakdown || [
-      { feeName: "Base Customs Duty", amount: Math.round(Number(totalDuty) * 0.7 * 100) / 100, rate: "3.5%" },
-      { feeName: "Merchandise Processing Fee (MPF)", amount: Math.round(Number(totalDuty) * 0.15 * 100) / 100, rate: "0.3464%" },
-      { feeName: "Harbor Maintenance Fee (HMF)", amount: Math.round(Number(totalDuty) * 0.15 * 100) / 100, rate: "0.125%" },
-    ];
+    // Duty lines come from a real calculation or not at all. The previous
+    // fallback split the total 70/15/15 and labelled the slices with rates
+    // that were never used to compute them.
+    const dutyBreakdown = Array.isArray(filing.dutyBreakdown) ? filing.dutyBreakdown : [];
 
     return {
       id: filing.id,
       shipmentId: filing.shipmentId,
       entryNumber: filing.entryNumber,
-      entryType: filing.entryType || filing.shipment?.entryType || "Consumption Entry",
+      entryType: filing.entryType ?? filing.shipment?.entryType ?? null,
       filingStatus: filing.filingStatus,
       paymentStatus: filing.paymentStatus,
       authority: filing.authority,
       filingType: filing.filingType,
 
       // Logistics & Parties
-      importerOfRecord: filing.shipment?.importerName || "Unknown Importer",
-      customsBroker: "Qubere Automated Compliance Services",
-      portOfEntry: filing.shipment?.portOfEntry || "Port of Los Angeles (2704)",
-      modeOfTransport: filing.shipment?.incoterm?.includes("Air") ? "Air" : "Ocean",
-      carrier: filing.shipment?.carrierName || "Maersk Line",
-      billOfLading: `BOL-${filing.entryNumber.replace(/[^0-9]/g, "").slice(-8)}`,
-      houseBill: `HBOL-${filing.entryNumber.replace(/[^0-9]/g, "").slice(-6)}`,
-      containerCount: Math.max(1, lineItems.length),
+      importerOfRecord: filing.shipment?.importerName ?? null,
+      portOfEntry: filing.shipment?.portOfEntry ?? null,
+      modeOfTransport: null,
+      carrier: filing.shipment?.carrierName ?? null,
+      containerCount: null,
       countryOfOrigin: primaryCOO,
-      supplier: lineItems[0]?.partNumber ? `Supplier Corp (${lineItems[0].partNumber.slice(0, 4)})` : "Global Trade Supplier Ltd",
-      shipmentReference: filing.shipment?.shipmentNumber || `SHP-${filing.id.slice(0, 6)}`,
-      poReference: filing.shipment?.poReference,
+      supplier: null,
+      shipmentReference: filing.shipment?.shipmentNumber ?? null,
+      poReference: filing.shipment?.poReference ?? null,
 
       // Financials
       totalCustomsValue,
       currency: "USD",
       totalDuty,
       taxes: totalTaxes,
-      fees: Math.round((totalDuty * 0.1) * 100) / 100,
+      fees: null,
       totalAmount: filing.totalAmount,
       dutyBreakdown,
 
       // Compliance & Risk
-      aiRiskScore: filing.shipment?.riskScore ?? 15,
-      readinessScore: filing.shipment?.readinessScore ?? 95,
+      aiRiskScore: filing.shipment?.riskScore ?? null,
+      readinessScore: filing.shipment?.readinessScore ?? null,
 
       // Timestamps
       submissionDate: filing.submittedAt || filing.createdAt,
@@ -292,22 +307,38 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
 
-  // Ground each line item's duty rate in the real ingested HTS Master
-  // Release data instead of computing every line at a flat 2.8% guess.
-  const htsCodesMap: Record<string, DutyRateInput> = {};
-  for (const item of shipment.lineItems) {
-    if (!item.htsCode || htsCodesMap[item.htsCode]) continue;
-    const normalized = item.htsCode.replace(/[^0-9]/g, "");
-    const node = normalized ? await HtsNodeRepository.findByNormalizedCode(normalized) : null;
-    htsCodesMap[item.htsCode] = HtsNodeRepository.toDutyRateInput(node);
+  // Block 2 of the Form 7501. It was defaulted to "Consumption Entry", so a
+  // warehouse, FTZ or antidumping entry was recorded as a consumption entry.
+  const declaredEntryType = entryType || shipment.entryType;
+  if (!declaredEntryType) {
+    return NextResponse.json(
+      { error: "entryType is required and is not recorded on the shipment" },
+      { status: 400 }
+    );
   }
 
-  // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine
-  const tariffResult = computeFilingTariff(shipment.lineItems, htsCodesMap);
-  const calculatedValue = tariffResult.totalCustomsValue > 0 ? tariffResult.totalCustomsValue : 17750.0;
-  const calculatedDuty = tariffResult.totalDuty;
-  const calculatedTaxes = 0;
-  const calculatedTotal = tariffResult.totalAmount;
+  const entryTypeCode = normalizeEntryType(declaredEntryType);
+  if (!entryTypeCode) {
+    return NextResponse.json(
+      {
+        error: `"${declaredEntryType}" is not a CBP entry type. Use one of: ${ENTRY_TYPE_CODES.join(", ")}.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine, grounded
+  // in the real ingested HTS Master Release data rather than a flat rate guess.
+  const tariffResult = computeFilingTariff(
+    shipment.lineItems,
+    await loadHtsCodesMap(shipment.lineItems)
+  );
+  // Any line without a published rate makes every total an understatement,
+  // so the figures stay null rather than being persisted as if complete.
+  const dutyIsComplete = tariffResult.unratedLineCount === 0;
+  const calculatedValue = tariffResult.totalCustomsValue;
+  const calculatedDuty = dutyIsComplete ? tariffResult.totalDuty : null;
+  const calculatedTotal = dutyIsComplete ? tariffResult.totalAmount : null;
 
   const entrySuffix = shipment.shipmentNumber.split("-")[2] || Math.floor(100000 + Math.random() * 900000).toString();
   const entryNumber = customEntryNumber || `5901-26-${entrySuffix}`;
@@ -324,12 +355,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       accountId: ctx.accountId,
       entryNumber,
       authority: "US Customs (CBP)",
-      entryType: entryType || shipment.entryType || "Consumption Entry",
+      entryType: entryTypeCode,
       filingType: filingType || "ABI - Automated",
       filingStatus: "Draft",
-      totalValue: shipment.lineItems.reduce((acc, item) => acc + Number(item.unitPrice) * Number(item.quantity), 0),
+      totalValue: calculatedValue,
       totalDuties: calculatedDuty,
-      totalTaxes: calculatedTaxes,
+      // Null, not 0: no tax calculation runs here, and 0 would claim one did.
+      totalTaxes: null,
       totalAmount: calculatedTotal,
       dutyBreakdown,
     },
@@ -353,5 +385,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     metadata: { entryNumber, shipmentId, filingStatus: "Draft" },
   });
 
-  return NextResponse.json({ filing }, { status: 201 });
-});
+  return NextResponse.json(
+    {
+      filing,
+      // > 0 means totalDuties is a floor, not the amount owed. The draft is
+      // still created so the gap is visible and can be classified.
+      unratedLineCount: tariffResult.unratedLineCount,
+    },
+    { status: 201 }
+  );
+}, { write: true });

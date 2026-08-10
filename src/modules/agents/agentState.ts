@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { DocumentIntakeAgentOutput } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
 import { ProductIntelligenceOutput } from "./productIntelligenceAgent";
@@ -54,11 +55,13 @@ export interface AgentStateHistoryEntry {
   agentName: string;
   stepNumber: number;
   timestamp: string;
-  status: "Completed" | "Review Required" | "Attention";
+  status: "Completed" | "Review Required" | "Attention" | "BLOCKED";
   summary: string;
-  confidence: number | MultiDimensionalConfidence;
+  /** Null when the agent reported no confidence. Never substitute a figure. */
+  confidence: number | MultiDimensionalConfidence | null;
   aiProviderUsed: string;
-  decisionId: string;
+  /** Null when no AgentDecision row was persisted. Never substitute a synthetic id. */
+  decisionId: string | null;
   durationMs?: number;
 }
 
@@ -118,18 +121,10 @@ export class AgentState {
    */
   public async persistToDatabase(): Promise<void> {
     try {
-      // Ensure account exists to satisfy foreign key constraint
-      await db.account.upsert({
-        where: { id: this.accountId },
-        update: {},
-        create: {
-          id: this.accountId,
-          name: "Demo Enterprise Account",
-          slug: `account-${this.accountId.slice(0, 8)}`,
-          type: "ENTERPRISE",
-          status: "ACTIVE",
-        },
-      });
+      // This used to upsert the account first "to satisfy the foreign key", which
+      // turned an unknown accountId into a live ACTIVE ENTERPRISE tenant named
+      // "Demo Enterprise Account" with no owner and no membership. The foreign key
+      // is the tenant integrity check; let it fail.
 
       // Write execution logs. Each row is its own try/catch: a single
       // failing insert (e.g. a stale Prisma Client rejecting a new column)
@@ -146,9 +141,11 @@ export class AgentState {
               stepNumber: entry.stepNumber,
               status: entry.status,
               summary: entry.summary,
-              confidence: entry.confidence as any,
+              confidence: (entry.confidence ?? Prisma.JsonNull) as Prisma.InputJsonValue,
               aiProviderUsed: entry.aiProviderUsed,
-              decisionId: entry.decisionId,
+              // The column is a non-null String, so "no decision persisted" records as
+              // empty rather than a synthetic id. Making it nullable needs a migration.
+              decisionId: entry.decisionId ?? "",
               timestamp: new Date(entry.timestamp),
               runId: this.runId,
               triggerEvent: this.triggerEvent,
@@ -165,36 +162,35 @@ export class AgentState {
       const isReady = Boolean(this.readinessOutput?.readyForTransmission);
       const isCleared = this.complianceOutput?.status === "Completed";
       const lifecycleStatus = isReady ? "COMPLETED" : "BLOCKED";
+      // The column is a non-null Int, so an uncomputed score records as 0 rather than
+      // an invented figure. Making it nullable needs a migration.
+      const completenessScore = this.intelligenceOutput?.confidenceMetrics?.dataCompleteness ?? 0;
+      const snapshotData: Prisma.InputJsonObject = {
+        packetId: this.packetId,
+        mathValidationPassed: this.mathValidationPassed,
+        mathDiscrepancies: this.mathDiscrepancies,
+        historyCount: this.history.length,
+      };
 
       await db.shipmentStateRecord.upsert({
         where: { shipmentId: this.shipmentId },
         update: {
           lifecycleStatus,
           userActionStatus: isReady ? "NONE" : "ACTION_REQUIRED",
-          completenessScore: this.intelligenceOutput?.confidenceMetrics?.dataCompleteness ?? 85,
+          completenessScore,
           complianceStatus: isCleared ? "CLEARED" : "BLOCKED_DEPENDENCY",
           readinessScore: this.readinessOutput?.readinessScore ?? 0,
-          snapshotData: {
-            packetId: this.packetId,
-            mathValidationPassed: this.mathValidationPassed,
-            mathDiscrepancies: this.mathDiscrepancies,
-            historyCount: this.history.length,
-          } as any,
+          snapshotData,
         },
         create: {
           accountId: this.accountId,
           shipmentId: this.shipmentId,
           lifecycleStatus,
           userActionStatus: isReady ? "NONE" : "ACTION_REQUIRED",
-          completenessScore: this.intelligenceOutput?.confidenceMetrics?.dataCompleteness ?? 85,
+          completenessScore,
           complianceStatus: isCleared ? "CLEARED" : "BLOCKED_DEPENDENCY",
           readinessScore: this.readinessOutput?.readinessScore ?? 0,
-          snapshotData: {
-            packetId: this.packetId,
-            mathValidationPassed: this.mathValidationPassed,
-            mathDiscrepancies: this.mathDiscrepancies,
-            historyCount: this.history.length,
-          } as any,
+          snapshotData,
         },
       });
     } catch (err) {
@@ -202,7 +198,7 @@ export class AgentState {
     }
   }
 
-  toJSON(): Record<string, any> {
+  toJSON(): Record<string, unknown> {
     return {
       accountId: this.accountId,
       userId: this.userId,
@@ -225,9 +221,14 @@ export class AgentState {
     };
   }
 
-  static fromJSON(data: any): AgentState {
-    const json = typeof data === "string" ? JSON.parse(data) : (data || {});
-    const state = new AgentState(json.accountId || "", json.userId || "", json.shipmentId || "");
+  static fromJSON(data: unknown): AgentState {
+    const json: Record<string, unknown> =
+      typeof data === "string" ? JSON.parse(data) : ((data as Record<string, unknown>) ?? {});
+    const state = new AgentState(
+      typeof json.accountId === "string" ? json.accountId : "",
+      typeof json.userId === "string" ? json.userId : "",
+      typeof json.shipmentId === "string" ? json.shipmentId : ""
+    );
     Object.assign(state, json);
     return state;
   }

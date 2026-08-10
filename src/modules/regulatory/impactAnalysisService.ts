@@ -22,9 +22,6 @@ export class ImpactAnalysisService {
       },
     });
 
-    // Identify changed HTS codes
-    const htsCodesInPortfolio = Array.from(new Set(products.map((p) => p.htsCode!).filter(Boolean)));
-
     // Check for tariff changes in HtsChange table or match against active release nodes
     const impactedProducts = [];
     for (const product of products) {

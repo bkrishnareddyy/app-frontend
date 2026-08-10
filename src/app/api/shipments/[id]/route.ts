@@ -18,9 +18,18 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   const { id } = paramsVal.data;
 
   try {
+    // Ownership is proved here so the canonical loader is never reached with a foreign id.
+    const owned = await db.shipment.findFirst({
+      where: { id, accountId: ctx.accountId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!owned) {
+      return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+    }
+
     const canonical = await CanonicalShipmentService.getCanonicalState(id);
     return NextResponse.json(canonical);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Failed to load canonical shipment state:", err);
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
@@ -32,7 +41,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   const { id } = paramsVal.data;
 
   const body = await req.json();
-  const { assignedBrokerId, shipmentNumber, lineItems, clientId, parties, importerName, countryOfOrigin, incoterm } = body;
+  const { lineItems, clientId, parties, countryOfOrigin, incoterm } = body;
 
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
@@ -49,7 +58,8 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       userId: ctx.userId,
       changeType: "USER_FIELD_UPDATE",
       field: "countryOfOrigin",
-      previousValue: shipment.countryOfOrigin || "Germany",
+      // A missing prior value is recorded as unknown, never as an invented country.
+      previousValue: shipment.countryOfOrigin,
       newValue: countryOfOrigin,
       reason: "User manual update",
     });
@@ -95,7 +105,11 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   if (Array.isArray(lineItems) && lineItems.length > 0) {
     for (const item of lineItems) {
       if (item.id) {
-        const existingItem = await db.shipmentLineItem.findUnique({ where: { id: item.id } });
+        // Scoped to this shipment so an id from another tenant cannot be edited.
+        const existingItem = await db.shipmentLineItem.findFirst({
+          where: { id: item.id, shipmentId: id, accountId: ctx.accountId },
+          select: { id: true },
+        });
         if (existingItem) {
           await db.shipmentLineItem.update({
             where: { id: item.id },

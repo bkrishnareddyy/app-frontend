@@ -2,27 +2,33 @@ import { OCRAgent } from "../ocr/ocrAgent";
 import { LineItemExtractionAgent } from "../extraction/extractionAgent";
 import { HTSClassificationAgent } from "../hts/htsAgent";
 import { ECCNAgent } from "../eccn/eccnAgent";
-import { ScreeningAgent } from "../screening/screeningAgent";
+import { ScreeningAgent, type ScreeningStatus } from "../screening/screeningAgent";
 
 export interface OrchestrationResult {
   jobId: string;
   documentId: string;
-  status: "COMPLETED" | "FAILED";
+  status: "COMPLETED" | "FAILED" | "UNAVAILABLE";
   extractedLineItems: Array<{
     description: string;
     quantity: number;
     unitPrice: number;
     htsClassification: {
-      htsCode: string;
-      dutyRate: string;
-      confidenceScore: number;
+      htsCode: string | null;
+      dutyRate: string | null;
+      confidenceScore: number | null;
     };
     eccn: {
-      eccnCode: string;
-      licenseRequired: boolean;
+      eccnCode: string | null;
+      licenseRequired: boolean | null;
     };
   }>;
-  screeningPassed: boolean;
+  screening: {
+    status: ScreeningStatus;
+    screenedParties: string[];
+    unavailableReason: string | null;
+  };
+  /** Set when a stage could not run, so callers do not read the empty result as a clean pass. */
+  unavailableReason: string | null;
 }
 
 export class AgentOrchestrator {
@@ -37,11 +43,11 @@ export class AgentOrchestrator {
     const ocrResult = await OCRAgent.parseDocument(fileUrl);
 
     // Step 2: Extraction
-    const lineItems = await LineItemExtractionAgent.extractLineItems(ocrResult.rawText);
+    const extraction = await LineItemExtractionAgent.extractLineItems(ocrResult.rawText);
 
     // Step 3 & 4: HTS + ECCN + Screening per Line Item
     const processedItems = [];
-    for (const item of lineItems) {
+    for (const item of extraction.lineItems) {
       const hts = await HTSClassificationAgent.classifyProduct(item.description, item.countryOfOrigin);
       const eccn = await ECCNAgent.evaluateExportControls(item.description, hts.htsCode);
 
@@ -61,14 +67,24 @@ export class AgentOrchestrator {
       });
     }
 
-    const partyScreening = await ScreeningAgent.screenParty("Tokyo Precision Components Ltd.", "JP");
+    // The parties on this document are not extracted yet, so there is nobody to
+    // screen. This previously screened a hardcoded name and reported the result
+    // as though it belonged to the shipment.
+    const partyScreening = await ScreeningAgent.screenParty("");
+
+    const unavailableReason = ocrResult.unavailableReason ?? extraction.unavailableReason ?? null;
 
     return {
       jobId,
       documentId,
-      status: "COMPLETED",
+      status: unavailableReason ? "UNAVAILABLE" : "COMPLETED",
       extractedLineItems: processedItems,
-      screeningPassed: partyScreening.isPassed,
+      screening: {
+        status: partyScreening.status,
+        screenedParties: [],
+        unavailableReason: partyScreening.unavailableReason,
+      },
+      unavailableReason,
     };
   }
 }

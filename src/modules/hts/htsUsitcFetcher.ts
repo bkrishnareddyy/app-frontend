@@ -45,8 +45,9 @@ async function fetchChapter(chapter: string): Promise<{ items: HtsRawItem[]; res
     const data = await res.json();
     const items: HtsRawItem[] = Array.isArray(data) ? data : [];
     return { items, result: { chapter, itemCount: items.length, ok: true } };
-  } catch (err: any) {
-    return { items: [], result: { chapter, itemCount: 0, ok: false, error: err?.message || String(err) } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { items: [], result: { chapter, itemCount: 0, ok: false, error: message } };
   } finally {
     clearTimeout(timeout);
   }

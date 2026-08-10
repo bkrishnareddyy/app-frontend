@@ -12,7 +12,7 @@ const matchSchema = z.object({
 });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
-  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
+  const { idempotencyKey, requestHash, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
 
@@ -34,11 +34,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     const responsePayload = { ...result, requestId };
 
     if (idempotencyKey) {
-      await persistIdempotency(ctx.accountId, idempotencyKey, "", 200, responsePayload);
+      await persistIdempotency(ctx.accountId, idempotencyKey, requestHash ?? "", 200, responsePayload);
     }
 
     return NextResponse.json(responsePayload);
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to run drawback matching", undefined, requestId);
   }
-});
+}, { write: true });

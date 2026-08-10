@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
+import { RULING_TYPES } from "@/modules/regulatory/crossIngestionService";
 
 export interface RulingSearchOptions {
   htsCode?: string;
@@ -12,7 +14,7 @@ export class RulingService {
    * Search CBP CROSS Rulings index by HTS code or search terms.
    */
   static async searchRulings(options: RulingSearchOptions) {
-    const where: any = {};
+    const where: Prisma.RulingWhereInput = {};
 
     if (options.rulingNumber) {
       where.rulingNumber = { contains: options.rulingNumber, mode: "insensitive" };
@@ -50,11 +52,15 @@ export class RulingService {
     issuedAt: Date;
     title: string;
     office?: string;
-    rulingType?: string;
+    rulingType: string;
     sourceUrl?: string;
     htsCodes: string[];
     fragments: Array<{ fragmentType: string; text: string }>;
   }) {
+    if (!RULING_TYPES.includes(data.rulingType as (typeof RULING_TYPES)[number])) {
+      throw new Error(`rulingType must be one of: ${RULING_TYPES.join(", ")}`);
+    }
+
     return db.ruling.upsert({
       where: { rulingNumber: data.rulingNumber },
       update: {
@@ -67,8 +73,8 @@ export class RulingService {
         rulingNumber: data.rulingNumber,
         issuedAt: data.issuedAt,
         title: data.title,
-        office: data.office || "HQ",
-        rulingType: data.rulingType || "HQ",
+        office: data.office ?? null,
+        rulingType: data.rulingType,
         sourceUrl: data.sourceUrl,
         htsReferences: {
           create: data.htsCodes.map((code) => ({

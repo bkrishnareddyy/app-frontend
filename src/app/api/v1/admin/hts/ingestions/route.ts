@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { HtsIngestionService } from "@/modules/hts/htsIngestionService";
 
@@ -26,7 +27,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     });
 
     return NextResponse.json({ release, status: "STAGED_DRAFT" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to stage HTS release" }, { status: 400 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

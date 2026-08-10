@@ -34,6 +34,16 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "Original filing not found" }, { status: 404 });
   }
 
+  if (refundOpportunityId) {
+    const opportunity = await db.refundOpportunity.findFirst({
+      where: { id: refundOpportunityId, accountId: ctx.accountId },
+      select: { id: true },
+    });
+    if (!opportunity) {
+      return NextResponse.json({ error: "Refund opportunity not found" }, { status: 404 });
+    }
+  }
+
   const origDuty = originalDutyAmount !== undefined ? originalDutyAmount : filing.totalDuties;
   const corrDuty = correctedDutyAmount !== undefined ? correctedDutyAmount : Math.round((origDuty * 0.7) * 100) / 100;
   const refundAmount = Math.max(0, origDuty - corrDuty);
@@ -74,4 +84,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   return NextResponse.json({ psc }, { status: 201 });
-});
+}, { write: true });

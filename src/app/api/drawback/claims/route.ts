@@ -38,7 +38,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
 });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
-  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
+  const { idempotencyKey, requestHash, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
 
@@ -60,11 +60,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     const responsePayload = { drawbackClaim: result.claim, internalRef: result.internalClaimRef, requestId };
 
     if (idempotencyKey) {
-      await persistIdempotency(ctx.accountId, idempotencyKey, "", 201, responsePayload);
+      await persistIdempotency(ctx.accountId, idempotencyKey, requestHash ?? "", 201, responsePayload);
     }
 
     return NextResponse.json(responsePayload, { status: 201 });
   } catch (error: unknown) {
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to create drawback claim", undefined, requestId);
   }
-}, { permission: "drawback.claim" });
+}, { permission: "drawback.claim", write: true });

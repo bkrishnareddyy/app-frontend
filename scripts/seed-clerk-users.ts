@@ -52,8 +52,15 @@ async function seedClerkUsers() {
         });
         console.log(`Created user ${u.email} in Clerk (ID: ${newUser.id}).`);
       }
-    } catch (err: any) {
-      console.error(`Failed to create ${u.email} in Clerk:`, err?.errors?.[0]?.message || err.message);
+    } catch (err: unknown) {
+      const clerkMessage =
+        typeof err === "object" && err !== null && "errors" in err
+          ? (err as { errors?: Array<{ message?: string }> }).errors?.[0]?.message
+          : undefined;
+      console.error(
+        `Failed to create ${u.email} in Clerk:`,
+        clerkMessage || (err instanceof Error ? err.message : String(err))
+      );
     }
   }
 

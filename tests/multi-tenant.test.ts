@@ -1,156 +1,232 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-interface Account {
-  id: string;
-  name: string;
-  slug: string;
-  type: "ENTERPRISE" | "INDIVIDUAL";
-  status: string;
-  ownerUserId?: string;
-}
+// This suite previously exercised a `MockAccountDatabase` declared in this same
+// file. One test built a role object literal and then asserted that literal held
+// the values just assigned to it. No production code was imported, so the real
+// account-resolution path was never covered.
 
-interface User {
-  id: string;
-  clerkUserId: string;
-  email: string;
-  isPlatformAdmin: boolean;
-}
+const clerk = {
+  auth: vi.fn(),
+  currentUser: vi.fn(),
+};
 
-interface Role {
-  id: string;
-  name: string;
-  isSystem: boolean;
-  accountId?: string | null;
-}
+const cookieStore = { get: vi.fn() };
 
-interface AccountMembership {
-  id: string;
-  accountId: string;
-  userId: string;
-  roleId: string;
-  status: string;
-}
+const dbMock = {
+  user: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  account: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+  role: { findFirst: vi.fn(), create: vi.fn() },
+};
 
-interface AuditLog {
-  id: string;
-  accountId: string;
-  userId?: string;
-  action: string;
-  entity: string;
-  entityId: string;
-  success: boolean;
-}
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: () => clerk.auth(),
+  currentUser: () => clerk.currentUser(),
+}));
+vi.mock("next/headers", () => ({ cookies: async () => cookieStore }));
+vi.mock("@/lib/db", () => ({ db: dbMock }));
 
-class MockAccountDatabase {
-  accounts: Account[] = [];
-  users: User[] = [];
-  memberships: AccountMembership[] = [];
-  roles: Role[] = [
-    { id: "role_owner", name: "OWNER", isSystem: true, accountId: null },
-    { id: "role_admin", name: "ADMIN", isSystem: true, accountId: null },
-    { id: "role_member", name: "MEMBER", isSystem: true, accountId: null },
-    { id: "role_viewer", name: "VIEWER", isSystem: true, accountId: null },
-  ];
-  auditLogs: AuditLog[] = [];
+const { getAccountContext, hasPermission, ACTIVE_ACCOUNT_COOKIE } = await import("@/lib/auth");
 
-  createEnterpriseAccount(name: string, slug: string, platformAdminUser: User): Account {
-    if (!platformAdminUser.isPlatformAdmin) {
-      throw new Error("Only Platform Admins can create Enterprise Accounts");
-    }
-    const account: Account = {
-      id: `acc_ent_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-      name,
-      slug,
+function membership(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "mem_1",
+    accountId: "acc_1",
+    status: "ACTIVE",
+    deletedAt: null,
+    account: {
+      id: "acc_1",
+      name: "Acme Corp",
+      slug: "acme-corp",
       type: "ENTERPRISE",
       status: "ACTIVE",
-    };
-    this.accounts.push(account);
-    return account;
-  }
-
-  createIndividualAccount(user: User): Account {
-    const account: Account = {
-      id: `acc_ind_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-      name: `${user.email}'s Workspace`,
-      slug: `user-${user.id}`,
-      type: "INDIVIDUAL",
-      status: "ACTIVE",
-      ownerUserId: user.id,
-    };
-    this.accounts.push(account);
-
-    this.memberships.push({
-      id: `mem_${Date.now()}`,
-      accountId: account.id,
-      userId: user.id,
-      roleId: "role_owner",
-      status: "ACTIVE",
-    });
-
-    return account;
-  }
-
-  logAction(accountId: string, userId: string, action: string, entity: string, entityId: string, success: boolean = true) {
-    const log: AuditLog = {
-      id: `log_${Date.now()}`,
-      accountId,
-      userId,
-      action,
-      entity,
-      entityId,
-      success,
-    };
-    this.auditLogs.push(log);
-    return log;
-  }
+      dataMode: "LIVE",
+      ownerUserId: "u_1",
+      deletedAt: null,
+      createdAt: new Date("2026-01-01"),
+    },
+    // A membership now carries a set of roles through the join table rather
+    // than a single roleId.
+    roles: [role("OWNER")],
+    ...overrides,
+  };
 }
 
-describe("Qubere Enterprise Identity & Final Schema Refinements", () => {
-  let db: MockAccountDatabase;
-  let platformAdmin: User;
-  let regularUser: User;
+/** One AccountMembershipRole row, as the context query includes it. */
+function role(name: string, permissions: string[] = []) {
+  return {
+    roleId: `role_${name.toLowerCase()}`,
+    role: {
+      id: `role_${name.toLowerCase()}`,
+      name,
+      rolePermissions: permissions.map((p) => ({ permission: { name: p } })),
+    },
+  };
+}
 
-  beforeEach(() => {
-    db = new MockAccountDatabase();
-    platformAdmin = { id: "u_admin", clerkUserId: "clerk_admin", email: "admin@qubere.ai", isPlatformAdmin: true };
-    regularUser = { id: "u_john", clerkUserId: "clerk_john", email: "john@acme.com", isPlatformAdmin: false };
-    db.users.push(platformAdmin, regularUser);
+function user(memberships: unknown[], platformRoles: unknown[] = []) {
+  return {
+    id: "u_1",
+    clerkUserId: "clerk_1",
+    email: "john@acme.com",
+    firstName: "John",
+    lastName: "Doe",
+    platformRoles,
+    memberships,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  clerk.auth.mockResolvedValue({ userId: "clerk_1" });
+  clerk.currentUser.mockResolvedValue({
+    emailAddresses: [{ emailAddress: "john@acme.com" }],
+    firstName: "John",
+    lastName: "Doe",
+  });
+  cookieStore.get.mockReturnValue(undefined);
+});
+
+describe("getAccountContext membership resolution", () => {
+  it("resolves the active membership and its account", async () => {
+    dbMock.user.findFirst.mockResolvedValue(user([membership()]));
+
+    const ctx = await getAccountContext();
+
+    expect(ctx?.accountId).toBe("acc_1");
+    expect(ctx?.roleNames).toEqual(["OWNER"]);
+    expect(ctx?.accountType).toBe("ENTERPRISE");
   });
 
-  it("1. Individual Account automatically links ownerUserId foreign key reference", () => {
-    const indAccount = db.createIndividualAccount(regularUser);
-    expect(indAccount.ownerUserId).toEqual(regularUser.id);
-    expect(indAccount.slug).toBeDefined();
+  it("denies access when the only membership is disabled", async () => {
+    // Previously fell through to memberships[0] and only the account was checked,
+    // so a DISABLED member kept full access to the account.
+    dbMock.user.findFirst.mockResolvedValue(user([membership({ status: "DISABLED" })]));
+
+    expect(await getAccountContext()).toBeNull();
   });
 
-  it("2. System roles have isSystem=true and accountId=null, while custom roles are scoped to accountId", () => {
-    const systemRoles = db.roles.filter((r) => r.isSystem);
-    expect(systemRoles).toHaveLength(4);
-    expect(systemRoles.every((r) => r.accountId === null)).toBe(true);
+  it("denies access when the only membership is inactive", async () => {
+    dbMock.user.findFirst.mockResolvedValue(user([membership({ status: "INACTIVE" })]));
 
-    // Custom role
-    const customRole: Role = {
-      id: "role_custom_1",
-      name: "Trade Compliance Manager",
-      isSystem: false,
-      accountId: "acc_123",
-    };
-    expect(customRole.isSystem).toBe(false);
-    expect(customRole.accountId).toEqual("acc_123");
+    expect(await getAccountContext()).toBeNull();
   });
 
-  it("3. Platform Admin can provision Enterprise accounts with unique slugs", () => {
-    const ent = db.createEnterpriseAccount("Acme Corp", "acme-corp", platformAdmin);
-    expect(ent.slug).toEqual("acme-corp");
-    expect(ent.type).toEqual("ENTERPRISE");
+  it("skips a disabled membership in favour of an active one", async () => {
+    dbMock.user.findFirst.mockResolvedValue(
+      user([
+        membership({ status: "DISABLED" }),
+        membership({
+          id: "mem_2",
+          accountId: "acc_2",
+          account: { ...membership().account, id: "acc_2", name: "Beta Ltd", slug: "beta" },
+        }),
+      ])
+    );
+
+    const ctx = await getAccountContext();
+
+    expect(ctx?.accountId).toBe("acc_2");
   });
 
-  it("4. Audit Logs record outcome success/denied boolean flag", () => {
-    const ent = db.createEnterpriseAccount("Acme Corp", "acme-corp", platformAdmin);
-    const logSuccess = db.logAction(ent.id, platformAdmin.id, "ACCOUNT_UPDATED", "Account", ent.id, true);
-    const logDenied = db.logAction(ent.id, regularUser.id, "DELETE_ACCOUNT", "Account", ent.id, false);
+  it("denies access when the account itself is suspended", async () => {
+    dbMock.user.findFirst.mockResolvedValue(
+      user([membership({ account: { ...membership().account, status: "SUSPENDED" } })])
+    );
 
-    expect(logSuccess.success).toBe(true);
-    expect(logDenied.success).toBe(false);
+    expect(await getAccountContext()).toBeNull();
+  });
+
+  it("ignores an account-switch cookie naming an account the user is not a member of", async () => {
+    cookieStore.get.mockReturnValue({ value: "acc_someone_else" });
+    dbMock.user.findFirst.mockResolvedValue(user([membership()]));
+
+    const ctx = await getAccountContext();
+
+    // Falls back to a real membership rather than honouring the cookie.
+    expect(ctx?.accountId).toBe("acc_1");
+    expect(cookieStore.get).toHaveBeenCalledWith(ACTIVE_ACCOUNT_COOKIE);
+  });
+
+  it("honours the cookie when the user really is a member of that account", async () => {
+    cookieStore.get.mockReturnValue({ value: "acc_2" });
+    dbMock.user.findFirst.mockResolvedValue(
+      user([
+        membership(),
+        membership({
+          id: "mem_2",
+          accountId: "acc_2",
+          account: { ...membership().account, id: "acc_2", name: "Beta Ltd", slug: "beta" },
+        }),
+      ])
+    );
+
+    const ctx = await getAccountContext();
+
+    expect(ctx?.accountId).toBe("acc_2");
+  });
+
+  it("returns null for a signed-out caller without querying the database", async () => {
+    clerk.auth.mockResolvedValue({ userId: null });
+
+    expect(await getAccountContext()).toBeNull();
+    expect(dbMock.user.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("platform admin derivation", () => {
+  it("is false for a normal account owner", async () => {
+    dbMock.user.findFirst.mockResolvedValue(user([membership()]));
+
+    const ctx = await getAccountContext();
+
+    expect(ctx?.isPlatformAdmin).toBe(false);
+  });
+
+  it("requires the PLATFORM_ADMIN platform role, not an account role", async () => {
+    dbMock.user.findFirst.mockResolvedValue(
+      user([membership()], [{ platformRole: { name: "SUPPORT" } }])
+    );
+
+    expect((await getAccountContext())?.isPlatformAdmin).toBe(false);
+
+    dbMock.user.findFirst.mockResolvedValue(
+      user([membership()], [{ platformRole: { name: "PLATFORM_ADMIN" } }])
+    );
+
+    expect((await getAccountContext())?.isPlatformAdmin).toBe(true);
+  });
+});
+
+describe("hasPermission", () => {
+  it("grants a permission held by the role", async () => {
+    dbMock.user.findFirst.mockResolvedValue(
+      user([
+        membership({
+          roles: [role("MEMBER", ["documents.create"])],
+        }),
+      ])
+    );
+
+    expect(await hasPermission("documents.create")).toBe(true);
+    expect(await hasPermission("users.manage")).toBe(false);
+  });
+
+  it("denies every permission when there is no context", async () => {
+    clerk.auth.mockResolvedValue({ userId: null });
+
+    expect(await hasPermission("documents.create")).toBe(false);
+  });
+
+  it("does not grant permissions through a disabled membership", async () => {
+    dbMock.user.findFirst.mockResolvedValue(
+      user([
+        membership({
+          status: "DISABLED",
+          roles: [role("ADMIN", ["users.manage"])],
+        }),
+      ])
+    );
+
+    expect(await hasPermission("users.manage")).toBe(false);
   });
 });

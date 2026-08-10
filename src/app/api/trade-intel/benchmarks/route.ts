@@ -2,34 +2,11 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 
-async function ensureBenchmarksSeeded() {
-  const count = await db.tradeBenchmark.count();
-  if (count === 0) {
-    await db.tradeBenchmark.createMany({
-      data: [
-        {
-          htsCode10: "8481.80.5090",
-          industryAvgDuty: 2.8,
-          avgDeclaredPrice: 135.5,
-          topOriginCountry: "Japan",
-          totalUSVolumeVal: 485000000.0,
-        },
-        {
-          htsCode10: "8537.10.2030",
-          industryAvgDuty: 2.7,
-          avgDeclaredPrice: 92.0,
-          topOriginCountry: "China",
-          totalUSVolumeVal: 1250000000.0,
-        },
-      ],
-      skipDuplicates: true,
-    });
-  }
-}
+// ensureBenchmarksSeeded() used to run here and write invented industry averages
+// and US import volumes into the shared TradeBenchmark table on the first read.
+// The table is global, so one tenant's GET published those figures to every tenant.
 
 export const GET = withAuthenticatedRoute(async ({ req }) => {
-  await ensureBenchmarksSeeded();
-
   const { searchParams } = new URL(req.url);
   const htsCode = searchParams.get("htsCode");
 

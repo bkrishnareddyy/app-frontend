@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -23,17 +23,15 @@ interface ManageAccountModalProps {
 export function ManageAccountModal({ isOpen, onClose, items }: ManageAccountModalProps) {
   const pathname = usePathname();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [mounted, setMounted] = useState(false);
+  const [wasOpen, setWasOpen] = useState(isOpen);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
+  // Reset the selected pane whenever the modal transitions to open.
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) setSelectedIndex(0);
-  }, [isOpen]);
+  }
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const selected = items[selectedIndex];
   const SelectedIcon = selected?.icon;

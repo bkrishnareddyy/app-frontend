@@ -14,7 +14,7 @@ export type ShipmentEventType =
 export interface LogEventParams {
   shipmentId: string;
   eventType: ShipmentEventType;
-  payload?: any;
+  payload?: Record<string, unknown>;
   triggeredBy?: string;
 }
 

@@ -37,5 +37,23 @@ describe("HTS Master Engine Test Suite", () => {
       expect(parsed.rateType).toBe("Unparsed");
       expect(parsed.parseStatus).toBe("UNPARSED_FALLBACK");
     });
+
+    it("reports an absent rate as missing rather than duty-free", () => {
+      for (const absent of ["", "   "]) {
+        const parsed = RateParser.parse(absent);
+        expect(parsed.rateType).toBe("Missing");
+        expect(parsed.parseStatus).toBe("MISSING_IN_SOURCE");
+        expect(parsed.isFree).toBe(false);
+        expect(parsed.adValoremPercent).toBeNull();
+        expect(parsed.rawRateText).toBe("");
+      }
+    });
+
+    it("keeps a genuine zero-percent rate as a real zero", () => {
+      const parsed = RateParser.parse("0%");
+      expect(parsed.rateType).toBe("AdValorem");
+      expect(parsed.adValoremPercent).toBe(0);
+      expect(parsed.parseStatus).toBe("PARSED");
+    });
   });
 });

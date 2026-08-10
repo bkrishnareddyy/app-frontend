@@ -11,12 +11,28 @@ import { ComplianceAuditAgent } from "./complianceAuditAgent";
 import { FilingReadinessAgent } from "./filingReadinessAgent";
 import { ShipmentEventBus, ShipmentEventType } from "@/modules/events/shipmentEventBus";
 
+/**
+ * The fields the dependency graph and the agent invocations actually read.
+ * The index signature is what lets the whole payload be logged verbatim to the
+ * event bus, so callers may attach extra trigger metadata alongside these keys.
+ */
+export interface AgentTriggerPayload {
+  field?: string;
+  newValue?: string | null;
+  documentId?: string;
+  fileName?: string;
+  fileUrl?: string;
+  productProfiles?: Parameters<typeof HTSClassificationAgent.execute>[0]["productProfiles"];
+  lineItems?: Parameters<typeof OriginRulesAgent.execute>[0]["lineItems"];
+  [key: string]: unknown;
+}
+
 export interface AgentOrchestrationParams {
   shipmentId: string;
   accountId: string;
   userId?: string;
   triggerEvent: ShipmentEventType;
-  payload?: any;
+  payload?: AgentTriggerPayload;
 }
 
 export interface AgentOrchestrationResult {
@@ -24,7 +40,7 @@ export interface AgentOrchestrationResult {
   triggerEvent: ShipmentEventType;
   agentsExecuted: string[];
   durationMs: number;
-  canonicalState: any;
+  canonicalState: Awaited<ReturnType<typeof CanonicalShipmentService.getCanonicalState>>;
 }
 
 export class AgentDependencyOrchestrator {
@@ -34,7 +50,7 @@ export class AgentDependencyOrchestrator {
    */
   static async processEvent(params: AgentOrchestrationParams): Promise<AgentOrchestrationResult> {
     const startTime = Date.now();
-    const { shipmentId, accountId, triggerEvent, payload } = params;
+    const { shipmentId, triggerEvent, payload } = params;
     // Groups every agent step this call fires into a single invocation for
     // the Agent Executions waterfall view.
     const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -72,9 +88,9 @@ export class AgentDependencyOrchestrator {
       try {
         await this.runSingleAgent(agentName, params);
         executedAgents.push(agentName);
-      } catch (err: any) {
+      } catch (err: unknown) {
         status = "FAILED";
-        error = err.message || "Agent execution failed";
+        error = err instanceof Error ? err.message : "Agent execution failed";
         console.error(`❌ [AgentDependencyOrchestrator] Agent ${agentName} failed:`, err);
       } finally {
         const completedAt = new Date();
@@ -122,7 +138,10 @@ export class AgentDependencyOrchestrator {
   /**
    * Maps domain events to affected agents in the dependency graph
    */
-  private static determineAgentsToRun(triggerEvent: ShipmentEventType, payload?: any): string[] {
+  private static determineAgentsToRun(
+    triggerEvent: ShipmentEventType,
+    payload?: AgentTriggerPayload
+  ): string[] {
     switch (triggerEvent) {
       case "DOCUMENT_UPLOADED":
         // Response & Post-Summary Agent is deliberately excluded here: its
@@ -200,7 +219,7 @@ export class AgentDependencyOrchestrator {
 
     switch (agentName) {
       case "Document Intake Agent":
-        if (payload?.fileUrl) {
+        if (payload?.fileUrl && payload.fileName) {
           await DocumentIntakeAgent.execute({
             accountId,
             userId,
@@ -225,13 +244,13 @@ export class AgentDependencyOrchestrator {
           accountId,
           userId,
           shipmentId,
-          lineItems:
-            payload?.lineItems ||
-            dbLineItems.map((li) => ({
-              lineNumber: li.lineNumber,
-              sku: li.partNumber || undefined,
-              description: li.description,
-            })),
+          // payload.lineItems carries the origin agent's shape, which has no
+          // description, so this agent always reads the stored lines.
+          lineItems: dbLineItems.map((li) => ({
+            lineNumber: li.lineNumber,
+            sku: li.partNumber || undefined,
+            description: li.description,
+          })),
         });
         break;
 

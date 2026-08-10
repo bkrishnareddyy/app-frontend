@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withPublicRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 
@@ -19,7 +20,7 @@ export const GET = withPublicRoute<{ releaseId: string }>(async ({ params }) => 
     }
 
     return NextResponse.json({ release });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch release detail" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

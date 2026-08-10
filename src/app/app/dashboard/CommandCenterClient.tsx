@@ -17,6 +17,7 @@ import {
   Bot,
   Users,
   DollarSign,
+  Plus,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
@@ -164,21 +165,22 @@ export function CommandCenterClient({
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 max-w-72">
             <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-2.5" />
             <input
               type="text"
               placeholder={t.dashboard.searchPlaceholder}
               disabled
-              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#86868B] w-72 opacity-50 cursor-not-allowed"
+              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#86868B] w-full opacity-50 cursor-not-allowed"
             />
           </div>
 
           <Link
             href="/app/shipments/new"
-            className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+            className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 shrink-0 whitespace-nowrap cursor-pointer"
           >
-            <span>+ {t.dashboard.newShipment}</span>
+            <Plus className="w-4 h-4" />
+            <span>{t.dashboard.newShipment}</span>
           </Link>
         </div>
       </div>
@@ -324,24 +326,24 @@ export function CommandCenterClient({
       )}
 
       {/* Top KPI Metric Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* 1. Value at Risk */}
         <Link
           href="/app/shipments"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-red-600">
-            <span className="font-semibold">Value at Risk</span>
-            <DollarSign className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-red-600">
+            <span className="font-semibold min-w-0 leading-tight">Value at Risk</span>
+            <DollarSign className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">
             ${valueAtRisk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </p>
-          <div className="flex items-center justify-between mt-2 gap-2">
-            <span className="text-[10px] text-[#86868B]">
+          <div className="flex flex-wrap items-center justify-between mt-2 gap-x-2 gap-y-1">
+            <span className="text-[10px] text-[#86868B] truncate">
               {notReadyShipments.length} not ready to file
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap shrink-0">
               {clearedShipments.length} cleared
             </span>
           </div>
@@ -352,14 +354,14 @@ export function CommandCenterClient({
           href="/app/shipments"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-blue-600">
-            <span className="font-semibold">{t.dashboard.kpiTotal}</span>
-            <FileText className="w-4 h-4 text-blue-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-blue-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiTotal}</span>
+            <FileText className="w-4 h-4 shrink-0 text-blue-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{inProgressCount}</p>
-          <div className="h-8 w-full mt-2 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg border border-blue-100 flex items-center justify-between px-2 text-[10px] text-blue-600 font-semibold group-hover:bg-blue-600 group-hover:text-white transition-all">
-            <span>Active Agent Pipelines</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg border border-blue-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-blue-600 font-semibold group-hover:bg-blue-600 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">Active Agent Pipelines</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -368,14 +370,14 @@ export function CommandCenterClient({
           href="/app/filing"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
-            <span className="font-semibold">{t.dashboard.kpiReady}</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiReady}</span>
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-emerald-600">{readyToFileCount}</p>
-          <div className="h-8 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between px-2 text-[10px] text-emerald-700 font-semibold group-hover:bg-emerald-600 group-hover:text-white transition-all">
-            <span>Verified for ACE</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-emerald-700 font-semibold group-hover:bg-emerald-600 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">Verified for ACE</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -384,14 +386,14 @@ export function CommandCenterClient({
           href="/app/decisions?status=Needs+Review"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-amber-600">
-            <span className="font-semibold">{t.dashboard.kpiAttention}</span>
-            <AlertCircle className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-amber-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiAttention}</span>
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-amber-600">{onHoldCount}</p>
-          <div className="h-8 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between px-2 text-[10px] text-amber-700 font-semibold group-hover:bg-amber-500 group-hover:text-white transition-all">
-            <span>{reviewRequiredDecisions} Broker Reviews</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-amber-700 font-semibold group-hover:bg-amber-500 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">{reviewRequiredDecisions} Broker Reviews</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -400,14 +402,14 @@ export function CommandCenterClient({
           href="/app/filing"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-indigo-600">
-            <span className="font-semibold">{t.dashboard.kpiSubmitted}</span>
-            <Send className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-indigo-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiSubmitted}</span>
+            <Send className="w-4 h-4 shrink-0 text-indigo-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{submittedCount}</p>
-          <div className="h-8 w-full mt-2 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center justify-between px-2 text-[10px] text-indigo-700 font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-all">
-            <span>1C Released</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-indigo-700 font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">1C Released</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -416,14 +418,14 @@ export function CommandCenterClient({
           href="/app/filing"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
-            <span className="font-semibold">Completed Filings</span>
-            <TrendingUp className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
+            <span className="font-semibold min-w-0 leading-tight">Completed Filings</span>
+            <TrendingUp className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{completedCount}</p>
-          <div className="h-8 w-full mt-2 bg-slate-50 rounded-lg border border-[#E5E5EA] flex items-center justify-between px-2 text-[10px] text-[#86868B] font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
-            <span>100% Audit Settled</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-slate-50 rounded-lg border border-[#E5E5EA] flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-[#86868B] font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">100% Audit Settled</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
       </div>
@@ -518,8 +520,8 @@ export function CommandCenterClient({
         <div className="space-y-6">
           {/* Agent Insights Card */}
           <div className="bg-white p-6 rounded-3xl border border-[#E5E5EA] shadow-2xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3">
-              <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E5E5EA] pb-3">
+              <div className="flex items-center space-x-2 min-w-0">
                 <Bot className="w-5 h-5 text-[#0071E3]" />
                 <h3 className="text-sm font-extrabold text-[#1D1D1F]">
                   {t.dashboard.agentInsights}
@@ -527,7 +529,7 @@ export function CommandCenterClient({
               </div>
               <Link
                 href="/agents"
-                className="text-[11px] text-[#0071E3] font-semibold hover:underline cursor-pointer"
+                className="text-[11px] text-[#0071E3] font-semibold hover:underline whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {t.dashboard.allAgentsButton}
               </Link>

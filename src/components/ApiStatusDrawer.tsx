@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Code2, X, CheckCircle2, Clock, Server, Copy, Check, Sparkles } from "lucide-react";
+import { useDialogFocus } from "@/lib/useDialogFocus";
+import { Code2, X, CheckCircle2, Clock, Server, Copy, Check } from "lucide-react";
 
 interface ApiEndpoint {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   name: string;
   description: string;
-  status: "READY" | "IN_PROGRESS";
+  status: "READY" | "IN_PROGRESS" | "MOCK";
   tag: string;
 }
 
@@ -261,21 +262,23 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     tag: "Duty Drawback",
   },
 
-  // 🟢 READY TO GO - DENIED PARTY SCREENING & EMBARGOES
+  // DENIED PARTY SCREENING & EMBARGOES
   {
     method: "POST",
-    path: "/api/screening/dps",
+    path: "/api/demo/screening/dps",
     name: "Denied Party & Sanctions Screening",
-    description: "Performs real-time fuzzy screening against OFAC SDN, BIS Entity List, UN, and EU sanctions watchlists.",
-    status: "READY",
+    description:
+      "Substring match against whatever denied-party rows are loaded. No OFAC, BIS, UN or EU list is ingested, so this cannot clear a party.",
+    status: "MOCK",
     tag: "Sanctions & Screening",
   },
   {
     method: "POST",
     path: "/api/screening/embargo",
     name: "Embargo & UFLPA Region Screening",
-    description: "Screens country of origin, transshipment ports, and manufacturers against OFAC embargoes and UFLPA Xinjiang forced labor controls.",
-    status: "READY",
+    description:
+      "Matches origin, transshipment and manufacturer text against loaded embargo rules. Returns not-screened until rules are ingested.",
+    status: "MOCK",
     tag: "Sanctions & Screening",
   },
   {
@@ -333,11 +336,12 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
   const [activeTab, setActiveTab] = useState<"READY" | "IN_PROGRESS">("READY");
   const [selectedTag, setSelectedTag] = useState<string>("ALL");
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const drawerRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
   const readyApis = API_ENDPOINTS.filter((e) => e.status === "READY");
-  const inProgressApis = API_ENDPOINTS.filter((e) => e.status === "IN_PROGRESS");
+  const inProgressApis = API_ENDPOINTS.filter((e) => e.status !== "READY");
 
   const currentTabList = activeTab === "READY" ? readyApis : inProgressApis;
   const tags = ["ALL", ...Array.from(new Set(currentTabList.map((e) => e.tag)))];
@@ -354,7 +358,14 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-4xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="api-directory-title"
+        tabIndex={-1}
+        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-4xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-4 shrink-0">
           <div className="flex items-center space-x-3">
@@ -362,13 +373,14 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
               <Code2 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-extrabold text-[#1D1D1F] tracking-tight">Qubere Trade API Directory</h2>
+              <h2 id="api-directory-title" className="text-lg font-extrabold text-[#1D1D1F] tracking-tight">Qubere Trade API Directory</h2>
               <p className="text-xs text-[#86868B]">Complete REST API endpoints across all 8 enterprise product lines</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
+            aria-label="Close API directory"
             className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -399,12 +411,12 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
               }`}
             >
               <Clock className="w-4 h-4 text-amber-500" />
-              <span>Roadmap ({inProgressApis.length})</span>
+              <span>Not production ready ({inProgressApis.length})</span>
             </button>
           </div>
 
           {/* Tag Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-[11px] font-semibold">
+          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-sm font-semibold">
             {tags.map((tag) => (
               <button
                 key={tag}
@@ -431,7 +443,7 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 font-mono text-xs">
                   <span
-                    className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                    className={`px-2 py-0.5 rounded-md font-bold text-sm ${
                       api.method === "GET"
                         ? "bg-emerald-100 text-emerald-800"
                         : api.method === "POST"
@@ -450,7 +462,7 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
                   </button>
                 </div>
 
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] text-[#0071E3]">
+                <span className="text-sm font-bold px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] text-[#0071E3]">
                   {api.tag}
                 </span>
               </div>

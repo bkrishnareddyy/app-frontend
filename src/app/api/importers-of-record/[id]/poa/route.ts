@@ -44,4 +44,4 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   });
 
   return NextResponse.json({ powerOfAttorney: poa }, { status: 201 });
-});
+}, { write: true });

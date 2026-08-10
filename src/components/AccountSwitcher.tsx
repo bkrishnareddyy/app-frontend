@@ -73,7 +73,7 @@ export function AccountSwitcher({
           <div className="truncate">
             <p className="text-xs font-bold text-[#1D1D1F] truncate">{currentAccountName}</p>
             <div className="flex items-center space-x-1.5 mt-0.5">
-              <span className="text-[10px] text-[#86868B] font-mono uppercase">{currentAccountType}</span>
+              <span className="text-[11px] text-[#86868B] font-mono uppercase">{currentAccountType}</span>
               <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-50 text-[#0071E3] font-semibold border border-blue-100">
                 {currentRoleNames.join(", ")}
               </span>
@@ -85,7 +85,7 @@ export function AccountSwitcher({
 
       {isOpen && (
         <div className="absolute top-full left-0 w-full mt-2 bg-white border border-[#E5E5EA] rounded-2xl shadow-xl z-50 p-2 space-y-1">
-          <p className="px-2 py-1 text-[10px] font-bold text-[#86868B] uppercase tracking-wider">
+          <p className="px-2 py-1 text-[11px] font-bold text-[#86868B] uppercase tracking-wider">
             Your Accounts ({memberships.length})
           </p>
           {memberships.map((m) => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withPublicRoute } from "@/lib/api/auth-guards";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 
@@ -15,7 +16,7 @@ export const GET = withPublicRoute<{ code: string }>(async ({ req, params }) => 
 
     const notes = node.noteLinks.map((nl) => nl.fragment);
     return NextResponse.json({ htsCode: node.htsNumberDisplay, notes });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch HTS legal notes" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

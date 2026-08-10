@@ -3,7 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
-import { calculateMPF, calculateHMF } from "@/lib/tariff/dutyEngine";
+import { calculateMPF, calculateHMF, parsePublishedDutyRate } from "@/lib/tariff/dutyEngine";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -12,6 +12,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
+
 
   const scenario = await db.landedCostScenario.findFirst({
     where: { id, accountId: ctx.accountId },
@@ -29,37 +30,54 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const lineCalculations = scenario.lineItems.map((item) => {
     const customsValue = Number(item.unitValue) * Number(item.quantity);
     const hts = HtsNodeRepository.toDutyRateInput(item.htsCode);
-    const baseDutyRate = item.dutyRateOverride !== null && item.dutyRateOverride !== undefined
-      ? Number(item.dutyRateOverride) / 100
-      : (hts.generalDutyRate ? parseFloat(hts.generalDutyRate.replace("%", "")) / 100 : NaN) || 0.028;
+
+    let baseDutyRate: number | null = null;
+    if (item.dutyRateOverride !== null && item.dutyRateOverride !== undefined) {
+      baseDutyRate = Number(item.dutyRateOverride) / 100;
+    } else {
+      baseDutyRate = parsePublishedDutyRate(hts.generalDutyRate);
+    }
 
     const sec301Rate = hts.section301Applicable ? (Number(hts.section301AdditionalRate) || 0) / 100 : 0.0;
     const sec232Rate = hts.section232Applicable ? (Number(hts.section232AdditionalRate) || 0) / 100 : 0.0;
-    const effectiveRate = baseDutyRate + sec301Rate + sec232Rate;
-
-    const duty = Math.round((customsValue * effectiveRate) * 100) / 100;
-    const fees = Math.round((calculateMPF(customsValue) + calculateHMF(customsValue, true)) * 100) / 100;
-    const landedCost = customsValue + (item.freightCost ? Number(item.freightCost) : 0) + (item.insuranceCost ? Number(item.insuranceCost) : 0) + duty + fees;
+    const effectiveRate = baseDutyRate === null ? null : baseDutyRate + sec301Rate + sec232Rate;
+    const duty = effectiveRate === null ? null : Math.round(customsValue * effectiveRate * 100) / 100;
 
     return {
       id: item.id,
       description: item.description,
       htsCode: item.htsCode.htsNumberDisplay,
       customsValue,
-      baseDutyRate: `${(baseDutyRate * 100).toFixed(1)}%`,
+      baseDutyRate: baseDutyRate === null ? null : `${(baseDutyRate * 100).toFixed(1)}%`,
       section301Rate: `${(sec301Rate * 100).toFixed(1)}%`,
       section232Rate: `${(sec232Rate * 100).toFixed(1)}%`,
-      totalEffectiveDutyRate: `${(effectiveRate * 100).toFixed(1)}%`,
+      totalEffectiveDutyRate: effectiveRate === null ? null : `${(effectiveRate * 100).toFixed(1)}%`,
       duty,
-      fees,
-      landedCost,
+      freightCost: item.freightCost ? Number(item.freightCost) : 0,
+      insuranceCost: item.insuranceCost ? Number(item.insuranceCost) : 0,
     };
   });
 
   const totalCustomsValue = lineCalculations.reduce((sum, l) => sum + l.customsValue, 0);
-  const totalDuty = lineCalculations.reduce((sum, l) => sum + l.duty, 0);
-  const totalFees = lineCalculations.reduce((sum, l) => sum + l.fees, 0);
-  const totalLandedCost = lineCalculations.reduce((sum, l) => sum + l.landedCost, 0);
+
+  // MPF and HMF are per-entry fees, and MPF is clamped to a statutory floor and
+  // ceiling. Computing them per line and summing would multiply both bounds.
+  const mpfAmount = calculateMPF(totalCustomsValue);
+  const hmfAmount = calculateHMF(totalCustomsValue, true);
+  const totalFees = Math.round((mpfAmount + hmfAmount) * 100) / 100;
+
+  const unratedLines = lineCalculations.filter((l) => l.duty === null).length;
+  const totalDuty = unratedLines > 0
+    ? null
+    : Math.round(lineCalculations.reduce((sum, l) => sum + (l.duty ?? 0), 0) * 100) / 100;
+
+  const totalFreightAndInsurance = lineCalculations.reduce(
+    (sum, l) => sum + l.freightCost + l.insuranceCost,
+    0
+  );
+  const totalLandedCost = totalDuty === null
+    ? null
+    : Math.round((totalCustomsValue + totalFreightAndInsurance + totalDuty + totalFees) * 100) / 100;
 
   return NextResponse.json({
     calculation: {
@@ -70,9 +88,14 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       totalCustomsValue,
       totalDuty,
       totalFees,
+      feeBreakdown: { mpfAmount, hmfAmount },
       totalLandedCost,
-      effectiveLandedMultiplier: totalCustomsValue > 0 ? (totalLandedCost / totalCustomsValue).toFixed(4) : "1.0000",
+      unratedLineCount: unratedLines,
+      effectiveLandedMultiplier:
+        totalLandedCost !== null && totalCustomsValue > 0
+          ? (totalLandedCost / totalCustomsValue).toFixed(4)
+          : null,
       lineCalculations,
     },
   });
-});
+}, { write: true });

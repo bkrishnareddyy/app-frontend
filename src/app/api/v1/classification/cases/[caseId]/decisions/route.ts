@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { ClassificationCaseEngine } from "@/modules/classification/classificationCaseEngine";
@@ -31,7 +32,7 @@ export const POST = withAuthenticatedRoute<{ caseId: string }>(async ({ req, ctx
     });
 
     return NextResponse.json({ decision }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to record classification decision" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
-});
+}, { write: true });

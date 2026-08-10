@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
+import { db } from "@/lib/db";
 import { AgentDependencyOrchestrator } from "@/modules/agents/agentDependencyOrchestrator";
 import { z } from "zod";
 
@@ -13,6 +14,16 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
+  // The orchestrator does not check ownership, so a foreign id would otherwise
+  // run this tenant's agents against another tenant's shipment.
+  const owned = await db.shipment.findFirst({
+    where: { id, accountId: ctx.accountId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!owned) {
+    return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+  }
+
   try {
     const result = await AgentDependencyOrchestrator.processEvent({
       shipmentId: id,
@@ -23,8 +34,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     });
 
     return NextResponse.json(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Failed to run reconciliation:", err);
-    return NextResponse.json({ error: err.message || "Reconciliation failed" }, { status: 500 });
+    // The internal message stays in the log rather than going back to the caller.
+    return NextResponse.json({ error: "Reconciliation failed" }, { status: 500 });
   }
 });
+
