@@ -60,8 +60,8 @@ export const GET = withPublicRoute(async ({ req, requestId }) => {
       failedChapters: failedChapters.length ? failedChapters : undefined,
       note: "Staged as DRAFT. Publish via POST /api/v1/admin/hts/releases/[releaseId]/publish after review.",
     });
-  } catch (err: any) {
-    if (String(err?.message || "").includes("Duplicate ingestion rejected")) {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Duplicate ingestion rejected")) {
       return NextResponse.json({
         status: "NO_CHANGE",
         requestId,
@@ -70,6 +70,9 @@ export const GET = withPublicRoute(async ({ req, requestId }) => {
         note: "Fetched content is identical to the currently published release -- nothing staged.",
       });
     }
-    return NextResponse.json({ status: "FAILED", requestId, error: err?.message || String(err) }, { status: 500 });
+    return NextResponse.json(
+      { status: "FAILED", requestId, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 });

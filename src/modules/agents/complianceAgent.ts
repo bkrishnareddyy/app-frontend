@@ -23,14 +23,18 @@ export interface BlockerDetail {
   message: string;
 }
 
-export interface AgentResult<TOutput = any> {
+export type AgentRunStatus = "Completed" | "Review Required" | "Attention" | "BLOCKED";
+
+export interface AgentResult<TOutput = unknown> {
   agentName: string;
   stepNumber: number;
-  status: "Completed" | "Review Required" | "Attention" | "BLOCKED" | string;
-  confidence: number | Record<string, number>;
+  status: AgentRunStatus;
+  /** Null when the agent reported no confidence. Never substitute a figure. */
+  confidence: number | Record<string, number> | null;
   summary: string;
   aiProviderUsed: string;
-  decisionId: string;
+  /** Null when no AgentDecision row was persisted. Never substitute a synthetic id. */
+  decisionId: string | null;
   output: TOutput;
   blockers?: BlockerDetail[];
   humanReviewTask?: HumanReviewTask | null;
@@ -40,7 +44,7 @@ export interface AgentResult<TOutput = any> {
  * ComplianceAgent interface: Pluggable contract for autonomous agents in the Qubere engine.
  * Enables modular execution, dependency gating, and standardized validation.
  */
-export interface ComplianceAgent<TInput = any, TOutput = any> {
+export interface ComplianceAgent<TInput = unknown, TOutput = unknown> {
   readonly name: string;
   readonly stepNumber: number;
 

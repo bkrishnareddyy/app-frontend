@@ -1,5 +1,6 @@
 import { AccountContext, getAccountContext, hasPermission } from "@/lib/auth";
 import { buildErrorResponse, generateRequestId, handleApiError } from "./error";
+import { canWrite, READ_ONLY_MESSAGE } from "./write-access";
 
 export type AuthenticatedRouteHandler = (
   ctx: AccountContext,
@@ -72,6 +73,23 @@ export async function authorizeRequest(
   return { ctx, errorResponse: null };
 }
 
+/** authorizeRequest plus the read-only role check every mutating route needs. */
+export async function authorizeWrite(
+  requiredPermission?: PermissionRequirement
+): Promise<{ ctx: AccountContext | null; errorResponse: ReturnType<typeof buildErrorResponse> | null }> {
+  const result = await authorizeRequest(requiredPermission);
+  if (result.errorResponse || !result.ctx) return result;
+
+  if (!canWrite(result.ctx)) {
+    return {
+      ctx: null,
+      errorResponse: buildErrorResponse(403, "READ_ONLY_ROLE", READ_ONLY_MESSAGE),
+    };
+  }
+
+  return result;
+}
+
 export type RouteHandlerArgs<TParams> = {
   req: Request;
   ctx: AccountContext;
@@ -99,11 +117,13 @@ type NextRouteContext<TParams> = { params: Promise<TParams> };
  */
 export function withAuthenticatedRoute<TParams = Record<string, never>>(
   handler: (args: RouteHandlerArgs<TParams>) => Promise<Response>,
-  options?: { permission?: PermissionRequirement }
+  options?: { permission?: PermissionRequirement; write?: boolean }
 ) {
   return async (req: Request, context?: NextRouteContext<TParams>): Promise<Response> => {
     const requestId = generateRequestId();
-    const { ctx, errorResponse } = await authorizeRequest(options?.permission);
+    const { ctx, errorResponse } = options?.write
+      ? await authorizeWrite(options?.permission)
+      : await authorizeRequest(options?.permission);
     if (errorResponse) return errorResponse;
 
     try {

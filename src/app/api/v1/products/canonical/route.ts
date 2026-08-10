@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { ProductMasterService } from "@/modules/product/productMasterService";
 
@@ -25,7 +26,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     });
 
     return NextResponse.json({ product }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to create canonical product" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
-});
+}, { write: true });

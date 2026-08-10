@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { ShieldCheck, ArrowRight, Building2, Code2 } from "lucide-react";
+import { ArrowRight, Building2 } from "lucide-react";
 import { LandingPageHeader } from "@/components/LandingPageHeader";
 
 export default async function LandingPage() {

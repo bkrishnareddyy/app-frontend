@@ -1,4 +1,5 @@
 import { EntitlementService } from "@/modules/auth/entitlementService";
+import { DomainError } from "@/lib/api/error";
 import { ClassificationCaseEngine } from "./classificationCaseEngine";
 
 export interface BatchItemInput {
@@ -16,7 +17,7 @@ export class BatchClassificationService {
    */
   static async submitBatch(accountId: string, userId: string, items: BatchItemInput[]) {
     if (!items || items.length === 0) {
-      throw new Error("Batch items array cannot be empty.");
+      throw new DomainError("Batch items array cannot be empty.", "EMPTY_BATCH", 400);
     }
 
     // Verify account entitlement quota

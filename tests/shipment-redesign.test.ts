@@ -6,18 +6,20 @@ describe("Qubere Shipment Domain Production Redesign Unit & Integration Tests", 
     const mockShipment = {
       id: "shp_test_1",
       shipmentNumber: "SHP-2026-001",
+      clientId: "cli_1",
       entryType: "01 — Consumption",
       portOfEntry: "Los Angeles (2704)",
-      mode: "Ocean",
       countryOfExport: "Germany",
       countryOfOrigin: "Germany",
-      carrier: "Maersk",
+      carrierName: "Maersk",
       incoterm: "CIF",
+      // Classification confidence is only trusted while a document is attached.
+      documents: [{ id: "doc_1", status: "Received" }],
       lineItems: [
         { id: "li_1", htsCode: "8481.80.5090", htsConfidence: 96 },
         { id: "li_2", htsCode: "8542.31.0000", htsConfidence: 94 },
       ],
-      exceptions: [
+      exceptionItems: [
         { id: "exp_1", code: "MISSING_CERT_OF_ORIGIN", blocking: true, severity: "High" },
       ],
     };

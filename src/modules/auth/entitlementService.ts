@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { DomainError } from "@/lib/api/error";
 
 export class EntitlementService {
   /**
@@ -10,7 +11,7 @@ export class EntitlementService {
     });
 
     if (!account) {
-      throw new Error(`Account '${accountId}' not found.`);
+      throw new DomainError(`Account '${accountId}' not found.`, "ACCOUNT_NOT_FOUND", 404);
     }
 
     const monthlyLimit = account.type === "ENTERPRISE" ? 10000 : 100;
@@ -24,7 +25,11 @@ export class EntitlementService {
     });
 
     if (usedThisMonth + requestedBatchSize > monthlyLimit) {
-      throw new Error(`Batch execution quota exceeded (${usedThisMonth}/${monthlyLimit} monthly classification cases used for account type '${account.type}'). Upgrade to Enterprise plan for increased capacity.`);
+      throw new DomainError(
+        `Batch execution quota exceeded (${usedThisMonth}/${monthlyLimit} monthly classification cases used for account type '${account.type}'). Upgrade to Enterprise plan for increased capacity.`,
+        "QUOTA_EXCEEDED",
+        429
+      );
     }
 
     return { allowed: true, remainingQuota: monthlyLimit - usedThisMonth };

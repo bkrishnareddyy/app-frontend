@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { logAgentError } from "./agentLogger";
 
 export interface AuditCheckResult {
@@ -35,7 +34,7 @@ export interface ComplianceAuditOutput {
   blockingReasons?: string[];
   confidence: number;
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
@@ -78,7 +77,8 @@ export class ComplianceAuditAgent {
       const reasoningChain =
         "Compliance Audit Gating STOPPED: Cannot perform pre-filing audit. HTS classification and origin inputs are unavailable. 0 rules evaluated.";
 
-      let agentDecisionId = "dec_fallback_compliance";
+      // Null, not a synthetic id: a failed write produced no AgentDecision row.
+      let agentDecisionId: string | null = null;
       try {
         const agentDecision = await db.agentDecision.create({
           data: {
@@ -193,7 +193,7 @@ export class ComplianceAuditAgent {
 
     const reasoningChain = `Executed ${auditResults.length} deterministic compliance rules for HTS ${hts} from ${co}. ${auditChecksPassed}/${auditResults.length} checks passed. Risk score: ${riskScore}/100.${uflpaRelevant ? " UFLPA manual review required." : ""}${addCvdApplicable ? " ADD/CVD scope verification required." : ""} Note: live entity-list and full ADD/CVD registry checks require external API integration not available in this environment.`;
 
-    let agentDecisionId = "dec_fallback_compliance";
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -221,24 +221,26 @@ export class ComplianceAuditAgent {
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: {
-          agentName: "Compliance Agent",
-          htsCode: hts,
-          countryOfOrigin: co,
-          auditChecksRun: auditResults.length,
-          auditChecksPassed,
-          riskScore,
-        },
-      });
-    } catch (err) {
-      debugError = logAgentError("Compliance Agent", input.shipmentId, "createAuditLog", err);
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: {
+            agentName: "Compliance Agent",
+            htsCode: hts,
+            countryOfOrigin: co,
+            auditChecksRun: auditResults.length,
+            auditChecksPassed,
+            riskScore,
+          },
+        });
+      } catch (err) {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "createAuditLog", err);
+      }
     }
 
     return {

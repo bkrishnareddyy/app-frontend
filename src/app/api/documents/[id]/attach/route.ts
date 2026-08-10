@@ -61,9 +61,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       triggerEvent: "DOCUMENT_UPLOADED",
       payload: { documentId: id, fileName: doc.fileName, reattached: true },
     });
-  } catch (err: any) {
-    console.error("Agent orchestration failed on document attach:", err?.message || err);
+  } catch (err: unknown) {
+    console.error("Agent orchestration failed on document attach:", err);
   }
 
   return NextResponse.json({ document: updated, requestId });
 });
+

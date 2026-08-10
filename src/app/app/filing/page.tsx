@@ -1,5 +1,7 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { displayCurrency, displayDate, displayText } from "@/lib/honest";
+import { filingStages, type FilingStageState } from "@/modules/filings/filingStateMachine";
 import Link from "next/link";
 import {
   FileCheck2,
@@ -14,12 +16,46 @@ import {
   Info,
 } from "lucide-react";
 
-export default async function CustomsFilingPage() {
+const CLEARED_STATUSES = new Set(["Accepted", "Released", "Closed", "BrokerApproved"]);
+const BLOCKED_STATUSES = new Set(["ValidationFailed", "Rejected", "CustomsHold", "Cancelled"]);
+
+function statusPill(status: string | null | undefined): string {
+  if (status && CLEARED_STATUSES.has(status)) return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (status && BLOCKED_STATUSES.has(status)) return "bg-red-50 text-red-700 border-red-200";
+  return "bg-[#F5F5F7] text-[#6E6E73] border-[#E5E5EA]";
+}
+
+const STAGE_STYLES: Record<FilingStageState, string> = {
+  complete: "border-emerald-500 bg-emerald-50 text-emerald-800",
+  current: "border-[#0071E3] bg-blue-50 text-blue-900 font-bold",
+  blocked: "border-red-300 bg-red-50 text-red-800",
+  pending: "border-[#E5E5EA] bg-[#F5F5F7] text-[#86868B]",
+};
+
+const STAGE_STATE_LABELS: Record<FilingStageState, string> = {
+  complete: "Completed",
+  current: "In progress",
+  blocked: "Blocked",
+  pending: "Pending",
+};
+
+export default async function CustomsFilingPage(props: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const searchParams = await props.searchParams;
   const context = await getAccountContext();
   if (!context) return null;
 
+  const param = (value: string | string[] | undefined) =>
+    typeof value === "string" ? value.trim() || null : Array.isArray(value) ? value[0] ?? null : null;
+  const filingId = param(searchParams.filingId);
+  const shipmentId = param(searchParams.shipmentId);
+
   const filing = await db.customsFiling.findFirst({
-    where: { accountId: context.accountId },
+    where: {
+      accountId: context.accountId,
+      ...(filingId ? { id: filingId } : shipmentId ? { shipmentId } : {}),
+    },
     include: {
       shipment: { include: { documents: true } },
       responses: { orderBy: { receivedAt: "desc" } },
@@ -27,13 +63,37 @@ export default async function CustomsFilingPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  const dutyBreakdown = (filing?.dutyBreakdown as { feeName: string; amount: number; rate: string }[]) || [
-    { feeName: "Basic Customs Duty (2.5%)", amount: 335.0, rate: "2.5%" },
-    { feeName: "Section 301 China Duty (7.5%)", amount: 630.0, rate: "7.5%" },
-    { feeName: "Merchandise Processing Fee (MPF)", amount: 46.42, rate: "0.3464%" },
-    { feeName: "Harbor Maintenance Fee (HMF)", amount: 16.75, rate: "0.125%" },
-    { feeName: "State Harbor Tax", amount: 8.5, rate: "Fixed" },
-  ];
+  // A deep link that resolves to nothing has to say so. Falling through to the
+  // newest filing would render a different entry under the requested one's URL.
+  if ((filingId || shipmentId) && !filing) {
+    return (
+      <div className="max-w-xl mx-auto py-16 text-center space-y-3">
+        <AlertCircle className="w-8 h-8 mx-auto text-amber-500" aria-hidden="true" />
+        <h1 className="text-xl font-semibold text-[#1D1D1F]">Filing not found</h1>
+        <p className="text-sm text-[#86868B]">
+          {filingId
+            ? "The filing this link points to is not in this account. It may have been removed."
+            : "No customs filing has been created for that shipment yet."}
+        </p>
+        <Link href="/app/filing" className="inline-block text-sm font-semibold text-[#0071E3]">
+          Open the most recent filing
+        </Link>
+      </div>
+    );
+  }
+
+  const dutyBreakdown =
+    (filing?.dutyBreakdown as { feeName: string; amount: number; rate: string }[] | null) ?? [];
+
+  const stages = filingStages(filing?.filingStatus ?? "");
+  // Only the stages CustomsFiling actually timestamps get a date; the rest show none
+  // rather than borrowing a neighbouring stage's time.
+  const stageDates: Record<string, Date | null> = {
+    prepare: filing?.createdAt ?? null,
+    review: null,
+    transmit: filing?.submittedAt ?? null,
+    clearance: filing?.releasedAt ?? null,
+  };
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -49,12 +109,12 @@ export default async function CustomsFilingPage() {
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Export 7501 Package — disabled until QPR-001 Gate 2: requires real provider + broker approval */}
           <button
             disabled
             title="Export 7501 Package requires a validated filing with real CBP data. Coming in Gate 2."
-            className="px-4 py-2 bg-white border border-[#E5E5EA] text-[#86868B] text-xs font-semibold rounded-xl shadow-2xs flex items-center space-x-1.5 opacity-50 cursor-not-allowed"
+            className="px-4 py-2 bg-white border border-[#E5E5EA] text-[#86868B] text-xs font-semibold rounded-xl shadow-2xs flex items-center space-x-1.5 whitespace-nowrap opacity-50 cursor-not-allowed"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export 7501 Package</span>
@@ -63,7 +123,7 @@ export default async function CustomsFilingPage() {
           <button
             disabled
             title="CBP transmission requires a real ABI/ACE provider configured in production. Coming in Gate 2."
-            className="px-5 py-2 bg-[#0071E3] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 opacity-40 cursor-not-allowed"
+            className="px-5 py-2 bg-[#0071E3] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 whitespace-nowrap opacity-40 cursor-not-allowed"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Transmit to CBP (ABI)</span>
@@ -75,21 +135,19 @@ export default async function CustomsFilingPage() {
       <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
         <h2 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Customs Filing Timeline</h2>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
-          {[
-            { step: 1, name: "Prepare Filing Package", status: "Completed", date: "15 May 10:00 AM", color: "border-emerald-500 bg-emerald-50 text-emerald-800" },
-            { step: 2, name: "Transmit to CBP (ABI)", status: "Completed", date: "15 May 10:15 AM", color: "border-emerald-500 bg-emerald-50 text-emerald-800" },
-            { step: 3, name: "CBP Response & Clearance", status: "In Progress", date: "Active", color: "border-[#0071E3] bg-blue-50 text-blue-900 font-bold" },
-            { step: 4, name: "Close Entry & Payment", status: "Pending", date: "Waiting", color: "border-[#E5E5EA] bg-[#F5F5F7] text-[#86868B]" },
-          ].map((st) => (
-            <div key={st.step} className={`p-4 rounded-xl border ${st.color} space-y-1`}>
-              <div className="flex items-center justify-between">
-                <span className="font-extrabold text-sm">Step {st.step}</span>
-                <span className="text-[10px] uppercase font-bold">{st.status}</span>
+          {stages.map((stage, index) => {
+            const at = stageDates[stage.key];
+            return (
+              <div key={stage.key} className={`p-4 rounded-xl border ${STAGE_STYLES[stage.state]} space-y-1`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-sm">Step {index + 1}</span>
+                  <span className="text-[10px] uppercase font-bold">{STAGE_STATE_LABELS[stage.state]}</span>
+                </div>
+                <p className="font-bold text-[#1D1D1F]">{stage.label}</p>
+                {at ? <p className="text-[10px] text-[#86868B]">{displayDate(at)}</p> : null}
               </div>
-              <p className="font-bold text-[#1D1D1F]">{st.name}</p>
-              <p className="text-[10px] text-[#86868B]">{st.date}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -101,53 +159,59 @@ export default async function CustomsFilingPage() {
             <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3">
               <div>
                 <h3 className="text-sm font-extrabold text-[#1D1D1F]">
-                  Entry Summary: {filing?.entryNumber || "5901-26-004872"}
+                  Entry Summary: {displayText(filing?.entryNumber)}
                 </h3>
-                <p className="text-xs text-[#86868B]">Filing Authority: {filing?.authority || "US Customs (CBP)"}</p>
+                <p className="text-xs text-[#86868B]">Filing Authority: {displayText(filing?.authority)}</p>
               </div>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Status: {filing?.filingStatus || "Filed"}
+              <span className={`px-3 py-1 rounded-full text-xs font-bold border ${statusPill(filing?.filingStatus)}`}>
+                Status: {displayText(filing?.filingStatus)}
               </span>
             </div>
 
             {/* Entry Summary Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-              <div><p className="text-[#86868B]">Entry Type</p><p className="font-bold text-[#1D1D1F]">{filing?.entryType || "Consumption Entry"}</p></div>
-              <div><p className="text-[#86868B]">Filing Method</p><p className="font-bold text-[#1D1D1F]">{filing?.filingType || "ABI - Automated"}</p></div>
-              <div><p className="text-[#86868B]">Payment Status</p><p className="font-bold text-emerald-600">{filing?.paymentStatus || "Paid"}</p></div>
-              <div><p className="text-[#86868B]">Entered Value</p><p className="font-bold text-[#1D1D1F]">USD ${(filing?.totalValue || 17750).toLocaleString()}</p></div>
+              <div><p className="text-[#86868B]">Entry Type</p><p className="font-bold text-[#1D1D1F]">{displayText(filing?.entryType)}</p></div>
+              <div><p className="text-[#86868B]">Filing Method</p><p className="font-bold text-[#1D1D1F]">{displayText(filing?.filingType)}</p></div>
+              <div><p className="text-[#86868B]">Payment Status</p><p className={`font-bold ${filing?.paymentStatus === "Paid" ? "text-emerald-600" : "text-[#1D1D1F]"}`}>{displayText(filing?.paymentStatus)}</p></div>
+              <div><p className="text-[#86868B]">Entered Value</p><p className="font-bold text-[#1D1D1F]">{displayCurrency(filing?.totalValue?.toString())}</p></div>
             </div>
 
             {/* Duty & Tax Breakdown Table (DYNAMIC FROM DATABASE) */}
             <div className="space-y-3 pt-3 border-t border-[#E5E5EA]">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Duty & Tax Breakdown</h4>
 
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#E5E5EA] text-[#86868B]">
-                    <th className="pb-2">Duty Fee Item</th>
-                    <th className="pb-2">Calculation Rate</th>
-                    <th className="pb-2 text-right">Amount (USD)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E5EA]">
-                  {dutyBreakdown.map((duty: { feeName: string; amount: number; rate: string }, idx: number) => (
-                    <tr key={idx} className="hover:bg-[#F5F5F7]">
-                      <td className="py-2.5 font-semibold text-[#1D1D1F]">{duty.feeName}</td>
-                      <td className="py-2.5 text-[#86868B]">{duty.rate}</td>
-                      <td className="py-2.5 text-right font-bold text-[#1D1D1F]">
-                        ${duty.amount.toFixed(2)}
-                      </td>
+              {dutyBreakdown.length === 0 ? (
+                <p className="text-xs text-[#86868B]">
+                  No duty or fee lines have been calculated for this entry yet.
+                </p>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E5E5EA] text-[#86868B]">
+                      <th className="pb-2">Duty Fee Item</th>
+                      <th className="pb-2">Calculation Rate</th>
+                      <th className="pb-2 text-right">Amount (USD)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5E5EA]">
+                    {dutyBreakdown.map((duty: { feeName: string; amount: number; rate: string }, idx: number) => (
+                      <tr key={idx} className="hover:bg-[#F5F5F7]">
+                        <td className="py-2.5 font-semibold text-[#1D1D1F]">{duty.feeName}</td>
+                        <td className="py-2.5 text-[#86868B]">{duty.rate}</td>
+                        <td className="py-2.5 text-right font-bold text-[#1D1D1F]">
+                          {displayCurrency(duty.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
 
               <div className="flex justify-end pt-3 border-t border-[#E5E5EA] text-xs space-y-1 text-right">
                 <div>
-                  <p className="text-[#86868B]">Total Duties: <span className="font-bold text-[#1D1D1F]">${(filing?.totalDuties || 2850).toFixed(2)}</span></p>
-                  <p className="text-[#86868B]">Total Taxes: <span className="font-bold text-[#1D1D1F]">${(filing?.totalTaxes || 13100).toFixed(2)}</span></p>
-                  <p className="font-extrabold text-sm text-[#0071E3] mt-1">Total Due: ${(filing?.totalAmount || 16250).toFixed(2)}</p>
+                  <p className="text-[#86868B]">Total Duties: <span className="font-bold text-[#1D1D1F]">{displayCurrency(filing?.totalDuties?.toString())}</span></p>
+                  <p className="text-[#86868B]">Total Taxes: <span className="font-bold text-[#1D1D1F]">{displayCurrency(filing?.totalTaxes?.toString())}</span></p>
+                  <p className="font-extrabold text-sm text-[#0071E3] mt-1">Total Due: {displayCurrency(filing?.totalAmount?.toString())}</p>
                 </div>
               </div>
             </div>

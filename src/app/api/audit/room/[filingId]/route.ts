@@ -46,33 +46,11 @@ export const POST = withAuthenticatedRoute<{ filingId: string }>(async ({ req, c
     : null;
 
   // Retrieve decision timeline
+  // Opening the evidence room used to write two events into it -- an entry-summary
+  // filing by a "Customs Specialist" and a monitoring audit by a "System Audit
+  // Agent" -- neither of which had occurred. An audit trail shown to CBP cannot
+  // manufacture its own entries.
   const timelines = await db.auditTimeline.findMany({
-    where: { filingId: filing.id, accountId: ctx.accountId },
-    orderBy: { timestamp: "asc" },
-  });
-
-  if (timelines.length === 0) {
-    await db.auditTimeline.createMany({
-      data: [
-        {
-          accountId: ctx.accountId,
-          filingId: filing.id,
-          event: "Customs Entry Summary Filed (CBP 7501)",
-          actor: "Customs Specialist",
-          timestamp: filing.submittedAt || filing.createdAt,
-        },
-        {
-          accountId: ctx.accountId,
-          filingId: filing.id,
-          event: "Continuous Compliance Monitoring Audit Executed",
-          actor: "System Audit Agent",
-          timestamp: new Date(),
-        },
-      ],
-    });
-  }
-
-  const updatedTimelines = await db.auditTimeline.findMany({
     where: { filingId: filing.id, accountId: ctx.accountId },
     orderBy: { timestamp: "asc" },
   });
@@ -94,7 +72,7 @@ export const POST = withAuthenticatedRoute<{ filingId: string }>(async ({ req, c
       status: "Read-Only Evidence Room",
       evidenceHashManifest,
       evidenceSet,
-      timelines: updatedTimelines,
+      timelines,
     },
   });
-});
+}, { write: true });

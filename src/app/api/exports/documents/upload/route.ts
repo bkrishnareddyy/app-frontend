@@ -32,4 +32,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   return NextResponse.json({ exportDocument: exportDoc }, { status: 201 });
-});
+}, { write: true });

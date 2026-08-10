@@ -19,8 +19,8 @@ interface DocumentItem {
   id: string;
   docType: string;
   fileName: string;
-  pageCount: number;
-  confidence: number;
+  pageCount: number | null;
+  confidence: number | null;
   status: string;
   fileUrl?: string | null;
 }
@@ -287,10 +287,10 @@ export function ShipmentsWorkbenchClient({
         <div className="flex items-center space-x-3">
           <Link
             href="/app/shipments/new"
-            className="px-4 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
+            className="px-4 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-2 shrink-0 whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Add Shipment</span>
+            <span>Add Shipment</span>
           </Link>
         </div>
       </div>

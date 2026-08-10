@@ -96,7 +96,7 @@ export default async function ShipmentsConsolePage() {
       totalDuties: Number(cf.totalDuties),
       totalTaxes: Number(cf.totalTaxes),
       totalAmount: Number(cf.totalAmount),
-      submittedAt: cf.submittedAt.toISOString(),
+      submittedAt: cf.submittedAt ? cf.submittedAt.toISOString() : null,
       releasedAt: cf.releasedAt ? cf.releasedAt.toISOString() : null,
       createdAt: cf.createdAt.toISOString(),
       updatedAt: cf.updatedAt.toISOString(),

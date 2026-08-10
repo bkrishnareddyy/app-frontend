@@ -27,7 +27,7 @@ export default async function RegulatoryIntelligencePage() {
   // ---------------------------------------------------------------------------
   const totalUpdates = updates.length;
   const highImpactCount = updates.filter((u) => u.impactLevel === "High").length;
-  const potentialImpactShipments = updates.reduce((acc, u) => acc + u.affectedShipmentsCount, 0);
+  const potentialImpactShipments = updates.reduce((acc, u) => acc + (u.affectedShipmentsCount ?? 0), 0);
 
   // Dynamic Jurisdiction Counts
   const jurisdictionCounts: Record<string, { flag: string; count: number }> = {
@@ -60,21 +60,21 @@ export default async function RegulatoryIntelligencePage() {
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 max-w-72">
             <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-2.5" />
             <input
               type="text"
               placeholder="Search coming soon…"
               disabled
               title="Regulatory intelligence search coming in Gate 2."
-              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#86868B] w-72 opacity-50 cursor-not-allowed"
+              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#86868B] w-full opacity-50 cursor-not-allowed"
             />
           </div>
 
           <button
             disabled
             title="Exporting regulatory intelligence reports coming in Gate 2."
-            className="px-4 py-2 bg-[#0071E3] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 opacity-40 cursor-not-allowed"
+            className="px-4 py-2 bg-[#0071E3] text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 shrink-0 whitespace-nowrap opacity-40 cursor-not-allowed"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export Report</span>
@@ -171,12 +171,12 @@ export default async function RegulatoryIntelligencePage() {
 
         {/* Updates Over Time Trend (5 Cols) */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Updates Over Time</h3>
-            <div className="flex items-center space-x-1 text-[11px] font-semibold text-[#86868B]">
-              <button className="px-2 py-0.5 rounded-lg bg-[#0071E3] text-white">7 Days</button>
-              <button className="px-2 py-0.5 rounded-lg hover:bg-[#F5F5F7]">30 Days</button>
-              <button className="px-2 py-0.5 rounded-lg hover:bg-[#F5F5F7]">90 Days</button>
+            <div className="flex flex-wrap items-center gap-1 text-[11px] font-semibold text-[#86868B]">
+              <button className="px-2 py-0.5 rounded-lg bg-[#0071E3] text-white whitespace-nowrap">7 Days</button>
+              <button className="px-2 py-0.5 rounded-lg hover:bg-[#F5F5F7] whitespace-nowrap">30 Days</button>
+              <button className="px-2 py-0.5 rounded-lg hover:bg-[#F5F5F7] whitespace-nowrap">90 Days</button>
             </div>
           </div>
 

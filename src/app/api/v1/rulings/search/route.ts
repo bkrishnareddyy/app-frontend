@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withPublicRoute } from "@/lib/api/auth-guards";
 import { RulingService } from "@/modules/classification/rulingService";
 
@@ -20,7 +21,7 @@ export const GET = withPublicRoute(async ({ req }) => {
     });
 
     return NextResponse.json({ rulings });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to search CBP CROSS rulings" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

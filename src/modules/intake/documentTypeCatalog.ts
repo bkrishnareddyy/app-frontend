@@ -275,9 +275,10 @@ export const SYSTEM_DOCUMENT_TYPES: DocumentTypeDefinition[] = [
 
 export class DocumentTypeCatalog {
   /**
-   * Retrieves all available document types (built-in catalog + account custom additions from DB).
+   * Returns the built-in catalog. Per-account custom document types are not
+   * stored or read yet, so no accountId is accepted.
    */
-  static async getDocumentTypes(accountId?: string): Promise<DocumentTypeDefinition[]> {
+  static async getDocumentTypes(): Promise<DocumentTypeDefinition[]> {
     return SYSTEM_DOCUMENT_TYPES;
   }
 

@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { db } from "@/lib/db";
-import { DocumentType } from "@/modules/intake/documentIntake.service";
 import { storeDocumentFile } from "@/lib/storage";
+import {
+  resolveTenantShipmentId,
+  shipmentResolutionStatus,
+  ShipmentResolutionError,
+} from "@/modules/shipments/resolveShipment";
+import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
+import { DocumentType } from "@/modules/intake/documentIntake.service";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const accountId = ctx.accountId;
@@ -10,77 +15,70 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const contentType = req.headers.get("content-type") || "";
 
-  let shipmentId: string | null = null;
-  let fileName: string = "document.pdf";
-  let fileUrl: string = "https://storage.qubere.ai/docs/sample.pdf";
-  let docTypeOverride: DocumentType | undefined = undefined;
-
-  let fileBuffer: Buffer | undefined = undefined;
-
-  if (contentType.includes("multipart/form-data")) {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    shipmentId = formData.get("shipmentId") as string | null;
-    const rawDocType = formData.get("docType") as string | null;
-
-    if (rawDocType && rawDocType !== "AUTO_DETECT") {
-      docTypeOverride = rawDocType.toUpperCase().replace(/\s+/g, "_") as DocumentType;
-    }
-
-    if (file) {
-      fileName = file.name;
-      const arrayBuffer = await file.arrayBuffer();
-      fileBuffer = Buffer.from(arrayBuffer);
-      const storageResult = await storeDocumentFile(file, file.name);
-      fileUrl = storageResult.url;
-    }
-  } else {
-    const json = await req.json().catch(() => ({}));
-    shipmentId = json.shipmentId || null;
-    fileName = json.fileName || "Commercial_Invoice.pdf";
-    fileUrl = json.fileUrl || "https://storage.qubere.ai/docs/invoice.pdf";
-    docTypeOverride = json.docType as DocumentType | undefined;
+  // Intake only ever acts on a file this route received and stored itself. The
+  // previous defaults invented a name at https://storage.qubere.ai/docs/..., so
+  // a request with no file still wrote a document row pointing at an origin the
+  // file proxy refuses to fetch. A caller-supplied fileUrl is not accepted
+  // either: the proxy later fetches stored URLs with the storage credential.
+  if (!contentType.includes("multipart/form-data")) {
+    return NextResponse.json(
+      {
+        error: "FILE_REQUIRED",
+        message:
+          "Document intake requires a multipart/form-data upload containing the file to read.",
+      },
+      { status: 400 }
+    );
   }
 
-  let targetShipmentId = shipmentId;
+  const formData = await req.formData();
+  const file = formData.get("file") as File | null;
+  const shipmentId = formData.get("shipmentId") as string | null;
+  const rawDocType = formData.get("docType") as string | null;
 
-  if (targetShipmentId) {
-    const existing = await db.shipment.findUnique({
-      where: { id: targetShipmentId },
-      select: { id: true },
-    });
-    if (!existing) {
-      targetShipmentId = null;
-    }
+  if (!file) {
+    return NextResponse.json(
+      { error: "FILE_REQUIRED", message: "No file was included in the upload." },
+      { status: 400 }
+    );
   }
 
-  if (!targetShipmentId) {
-    const activeShipment = await db.shipment.findFirst({
-      where: { accountId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
+  const docTypeOverride: DocumentType | undefined =
+    rawDocType && rawDocType !== "AUTO_DETECT"
+      ? (rawDocType.toUpperCase().replace(/\s+/g, "_") as DocumentType)
+      : undefined;
 
-    if (activeShipment) {
-      targetShipmentId = activeShipment.id;
-    } else {
-      const count = await db.shipment.count({ where: { accountId } });
-      const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
-      const newShipment = await db.shipment.create({
-        data: {
-          accountId,
-          shipmentNumber,
-          importerName: "Demo Import Account",
-          poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
-          entryType: "Consumption Entry",
-          incoterm: "FOB SHENZHEN",
-          status: "In Progress",
-          readinessScore: 85,
-          riskScore: 20,
-        },
-      });
-      targetShipmentId = newShipment.id;
+  const fileName = file.name;
+  const fileBuffer = Buffer.from(await file.arrayBuffer());
+  const storageResult = await storeDocumentFile(file, file.name);
+  const fileUrl = storageResult.url;
+
+  let targetShipmentId: string;
+  try {
+    targetShipmentId = await resolveTenantShipmentId(accountId, shipmentId);
+  } catch (err) {
+    if (err instanceof ShipmentResolutionError) {
+      if (err.code === "TARGET_NOT_DETERMINED") {
+        const intake = await recordUnassignedIntake(accountId, {
+          source: "intake_agent",
+          fileName,
+          docType: docTypeOverride ?? null,
+        });
+        return NextResponse.json(
+          {
+            error: err.code,
+            message: `${err.message} It was raised as an exception for someone to assign.`,
+            exceptionId: intake.id,
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: err.code, message: err.message },
+        { status: shipmentResolutionStatus(err.code) }
+      );
     }
+    throw err;
   }
 
   // Invoke Document Intake Agent directly with fileBuffer
@@ -99,4 +97,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     success: true,
     result,
   });
-});
+}, { write: true });

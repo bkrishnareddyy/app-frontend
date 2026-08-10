@@ -1,58 +1,121 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Upload, X, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, Link2 } from "lucide-react";
+import { useDialogFocus, dialogSurfaceProps } from "@/lib/useDialogFocus";
+
+interface UploadOutcome {
+  fileName: string;
+  ok: boolean;
+  message: string;
+}
+
+interface ShipmentOption {
+  id: string;
+  shipmentNumber?: string | null;
+  status?: string | null;
+}
+
+interface ShipmentDocumentSummary {
+  id: string;
+  docType: string;
+  fileName: string;
+}
 
 interface DocumentUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  shipmentId: string;
-  shipments?: any[];
+  shipmentId?: string;
+  shipments?: ShipmentOption[];
   onUploadSuccess?: () => void;
 }
 
 export function DocumentUploadModal({
   isOpen,
   onClose,
-  shipmentId: initialShipmentId,
+  shipmentId: initialShipmentId = "",
   shipments = [],
   onUploadSuccess,
 }: DocumentUploadModalProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [docType, setDocType] = useState<string>("Commercial Invoice");
   const [selectedShipmentId, setSelectedShipmentId] = useState<string>(initialShipmentId);
-  const [availableShipments, setAvailableShipments] = useState<any[]>(shipments);
+  const [availableShipments, setAvailableShipments] = useState<ShipmentOption[]>(shipments);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadingName, setUploadingName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [outcomes, setOutcomes] = useState<UploadOutcome[]>([]);
+  const [shipmentSearch, setShipmentSearch] = useState<string>("");
+  const [shipmentTotal, setShipmentTotal] = useState<number | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [mode, setMode] = useState<"UPLOAD" | "ATTACH_EXISTING">("UPLOAD");
-  const [unattachedDocs, setUnattachedDocs] = useState<any[]>([]);
+  const [unattachedDocs, setUnattachedDocs] = useState<ShipmentDocumentSummary[]>([]);
   const [attachingId, setAttachingId] = useState<string | null>(null);
 
+  // Reset here rather than in an effect so reopening never shows the previous tab.
+  const closeModal = useCallback(() => {
+    setMode("UPLOAD");
+    onClose();
+  }, [onClose]);
+
+  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, () => {
+    if (!isUploading) closeModal();
+  });
+
   useEffect(() => {
-    if (isOpen) {
-      if (initialShipmentId) {
-        setSelectedShipmentId(initialShipmentId);
-      }
-      fetch("/api/shipments")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.shipments && Array.isArray(data.shipments) && data.shipments.length > 0) {
+    if (!isOpen) return;
+    const controller = new AbortController();
+
+    // The picker used to request /api/shipments with no arguments, which
+    // returned every shipment in the account together with its documents, line
+    // items, decisions and filings, to fill a dropdown that needs two fields.
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (initialShipmentId) {
+          setSelectedShipmentId(initialShipmentId);
+        }
+        try {
+          const query = new URLSearchParams({ view: "summary", pageSize: "50" });
+          if (shipmentSearch.trim()) query.set("q", shipmentSearch.trim());
+          const res = await fetch(`/api/shipments?${query.toString()}`, {
+            signal: controller.signal,
+          });
+          const data = await res.json();
+          if (controller.signal.aborted) return;
+          if (Array.isArray(data.shipments)) {
             setAvailableShipments(data.shipments);
-            if (!initialShipmentId) {
+            setShipmentTotal(typeof data.total === "number" ? data.total : null);
+            if (!initialShipmentId && data.shipments.length > 0) {
               setSelectedShipmentId((prev) => prev || data.shipments[0].id);
             }
           }
-        })
-        .catch((err) => console.error("Modal shipment fetch error:", err));
+        } catch (err) {
+          if (!controller.signal.aborted) console.error("Modal shipment fetch error:", err);
+        }
+      })();
+    }, shipmentSearch ? 250 : 0);
 
-      fetch("/api/documents/unattached")
-        .then((res) => res.json())
-        .then((data) => setUnattachedDocs(data.documents || []))
-        .catch((err) => console.error("Unattached documents fetch error:", err));
-    } else {
-      setMode("UPLOAD");
-    }
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isOpen, initialShipmentId, shipmentSearch]);
+
+  // Detached documents keep their extraction, so they can be reattached instead of re-uploaded.
+  useEffect(() => {
+    if (!isOpen) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch("/api/documents/unattached", { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        setUnattachedDocs(Array.isArray(data.documents) ? data.documents : []);
+      } catch (err) {
+        if (!controller.signal.aborted) console.error("Unattached documents fetch error:", err);
+      }
+    })();
+    return () => controller.abort();
   }, [isOpen]);
 
   const handleAttachExisting = async (docId: string) => {
@@ -76,7 +139,7 @@ export function DocumentUploadModal({
       if (onUploadSuccess) onUploadSuccess();
       setTimeout(() => {
         setSuccessMsg(null);
-        onClose();
+        closeModal();
         window.location.reload();
       }, 1000);
     } catch (err: unknown) {
@@ -89,59 +152,75 @@ export function DocumentUploadModal({
   if (!isOpen) return null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setError(null);
-    }
+    setFiles(e.target.files ? [...e.target.files] : []);
+    setError(null);
+    setOutcomes([]);
   };
 
   const handleUpload = async () => {
-    if (!file) {
-      setError("Please select a document file to upload.");
+    if (files.length === 0) {
+      setError("Please select at least one document to upload.");
+      return;
+    }
+    if (!selectedShipmentId) {
+      setError("Please select a shipment.");
       return;
     }
 
     setIsUploading(true);
     setError(null);
-    setSuccessMsg(null);
+    setOutcomes([]);
 
-    try {
-      if (!selectedShipmentId) {
-        throw new Error("Please select a shipment.");
+    // Uploaded one at a time and recorded per file. A batch that reported a
+    // single result would call the whole batch a success when one file failed,
+    // and the operator would never know which document is missing.
+    const results: UploadOutcome[] = [];
+    for (const file of files) {
+      setUploadingName(file.name);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("docType", docType);
+        formData.append("shipmentId", selectedShipmentId);
+
+        const res = await fetch("/api/documents/upload", { method: "POST", body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          results.push({
+            fileName: file.name,
+            ok: false,
+            message: data?.error?.message ?? data?.error ?? "Upload failed",
+          });
+        } else {
+          results.push({ fileName: file.name, ok: true, message: "Queued for processing" });
+        }
+      } catch (err: unknown) {
+        results.push({
+          fileName: file.name,
+          ok: false,
+          message: err instanceof Error ? err.message : "Upload failed",
+        });
       }
-      
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("docType", docType);
-      formData.append("shipmentId", selectedShipmentId);
+      setOutcomes([...results]);
+    }
 
-      const res = await fetch("/api/documents/upload", {
-        method: "POST",
-        body: formData,
-      });
+    setUploadingName(null);
+    setIsUploading(false);
 
-      const data = await res.json();
+    const succeeded = results.filter((r) => r.ok);
+    if (succeeded.length > 0) {
+      setFiles(files.filter((f) => !succeeded.some((s) => s.fileName === f.name)));
+      onUploadSuccess?.();
+    }
 
-      if (!res.ok) {
-        throw new Error(data.error || "Upload failed");
-      }
-
-      setSuccessMsg(`Document "${file.name}" uploaded successfully!`);
-      setIsUploading(false);
-      setFile(null);
-
-      if (onUploadSuccess) {
-        onUploadSuccess();
-      }
-
+    // The dialog stays open while anything failed, so the per-file errors are
+    // still on screen instead of being wiped by a reload.
+    if (succeeded.length === results.length) {
       setTimeout(() => {
-        setSuccessMsg(null);
-        onClose();
+        closeModal();
         window.location.reload();
       }, 1200);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to upload document");
-      setIsUploading(false);
     }
   };
 
@@ -150,11 +229,13 @@ export function DocumentUploadModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isUploading) {
-          onClose();
+          closeModal();
         }
       }}
     >
       <div
+        ref={dialogRef}
+        {...dialogSurfaceProps("upload-document-title")}
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-lg w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200"
       >
@@ -165,13 +246,15 @@ export function DocumentUploadModal({
               <Upload className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-[#1D1D1F]">Upload Trade Document</h3>
-              <p className="text-xs text-[#86868B]">Add a commercial invoice, bill of lading, or certificate</p>
+              <h3 id="upload-document-title" className="text-base font-extrabold text-[#1D1D1F]">Upload Trade Documents</h3>
+              <p className="text-xs text-[#86868B]">Add one or more invoices, bills of lading, or certificates</p>
             </div>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors"
+            onClick={closeModal}
+            disabled={isUploading}
+            aria-label="Close upload dialog"
+            className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors disabled:opacity-40"
           >
             <X className="w-4 h-4" />
           </button>
@@ -186,10 +269,37 @@ export function DocumentUploadModal({
         )}
 
         {successMsg && (
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center space-x-2">
+          <div
+            role="status"
+            className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center space-x-2"
+          >
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{successMsg}</span>
           </div>
+        )}
+
+        {outcomes.length > 0 && (
+          <ul className="space-y-1.5" aria-live="polite">
+            {outcomes.map((outcome) => (
+              <li
+                key={outcome.fileName}
+                className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
+                  outcome.ok
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    : "bg-red-50 border-red-200 text-red-700"
+                }`}
+              >
+                {outcome.ok ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                )}
+                <span>
+                  <span className="font-semibold">{outcome.fileName}</span> — {outcome.message}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
 
         {/* Mode Tabs */}
@@ -216,19 +326,45 @@ export function DocumentUploadModal({
           <>
             {/* Shipment Selection */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#1D1D1F] ml-1">Target Shipment</label>
+              <label htmlFor="upload-shipment-search" className="text-xs font-semibold text-[#1D1D1F] ml-1">
+                Find a shipment
+              </label>
+              <input
+                id="upload-shipment-search"
+                type="search"
+                value={shipmentSearch}
+                onChange={(e) => setShipmentSearch(e.target.value)}
+                placeholder="Shipment number or importer"
+                className="w-full px-4 py-2.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/20 transition-all"
+              />
+              <label htmlFor="upload-shipment" className="text-xs font-semibold text-[#1D1D1F] ml-1 block pt-1">
+                Target Shipment
+              </label>
               <select
+                id="upload-shipment"
                 value={selectedShipmentId}
                 onChange={(e) => setSelectedShipmentId(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/20 transition-all"
               >
                 <option value="" disabled>Select a Shipment</option>
-                {(availableShipments.length > 0 ? availableShipments : shipments).map((shp: any) => (
+                {(availableShipments.length > 0 ? availableShipments : shipments).map((shp) => (
                   <option key={shp.id} value={shp.id}>
-                    {shp.shipmentNumber || shp.referenceNumber || shp.id} ({shp.status || "Unknown"})
+                    {shp.shipmentNumber ?? shp.id}
+                    {shp.status ? ` (${shp.status})` : ""}
                   </option>
                 ))}
               </select>
+              {shipmentTotal !== null && shipmentTotal > availableShipments.length && (
+                <p role="status" className="text-xs text-[#86868B] ml-1">
+                  Showing {availableShipments.length} of {shipmentTotal} shipments. Search to narrow
+                  the list.
+                </p>
+              )}
+              {shipmentTotal === 0 && (
+                <p role="status" className="text-xs text-[#86868B] ml-1">
+                  No shipment matches that search.
+                </p>
+              )}
             </div>
 
             {/* Document Type Dropdown */}
@@ -252,12 +388,14 @@ export function DocumentUploadModal({
 
             {/* Drag and Drop File Input */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1D1D1F]">Select File</label>
+              <label className="text-xs font-bold text-[#1D1D1F]">Select Files</label>
               <div className="relative border-2 border-dashed border-[#E5E5EA] hover:border-[#0071E3] rounded-2xl p-6 text-center bg-[#F5F5F7] transition-all cursor-pointer group">
                 <input
                   type="file"
+                  multiple
                   onChange={handleFileChange}
-                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.edi,.md,.txt,.json,.xml"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.edi"
+                  aria-label="Select one or more documents to upload"
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
                 <div className="flex flex-col items-center justify-center space-y-2">
@@ -266,16 +404,29 @@ export function DocumentUploadModal({
                   </div>
                   <div>
                     <p className="text-xs font-bold text-[#1D1D1F]">
-                      {file ? file.name : "Click to upload or drag & drop"}
+                      {files.length === 0
+                        ? "Click to upload or drag & drop"
+                        : files.length === 1
+                          ? files[0].name
+                          : `${files.length} files selected`}
                     </p>
-                    <p className="text-[10px] text-[#86868B] mt-0.5">
-                      {file
-                        ? `${(file.size / 1024).toFixed(1)} KB`
-                        : "PDF, PNG, JPG, XLSX, EDI, MD, TXT up to 25MB"}
+                    <p className="text-xs text-[#86868B] mt-0.5">
+                      {files.length === 0
+                        ? "PDF, PNG, JPG, XLSX or EDI up to 25MB each"
+                        : `${(files.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1)} KB total`}
                     </p>
                   </div>
                 </div>
               </div>
+              {files.length > 1 && (
+                <ul className="text-xs text-[#86868B] space-y-0.5 pt-1">
+                  {files.map((f) => (
+                    <li key={f.name} className="truncate">
+                      {f.name} — {(f.size / 1024).toFixed(1)} KB
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {/* AI Auto-Extraction Notice */}
@@ -289,7 +440,7 @@ export function DocumentUploadModal({
             {/* Modal Action Buttons */}
             <div className="flex items-center justify-end space-x-3 pt-2">
               <button
-                onClick={onClose}
+                onClick={closeModal}
                 disabled={isUploading}
                 className="px-4 py-2.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-semibold rounded-xl transition-all"
               >
@@ -297,18 +448,20 @@ export function DocumentUploadModal({
               </button>
               <button
                 onClick={handleUpload}
-                disabled={isUploading || !file}
+                disabled={isUploading || files.length === 0}
                 className="px-5 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-2 transition-all"
               >
                 {isUploading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Uploading...</span>
+                    <span>Uploading {uploadingName ?? ""}…</span>
                   </>
                 ) : (
                   <>
                     <Upload className="w-4 h-4" />
-                    <span>Upload & Parse</span>
+                    <span>
+                      {files.length > 1 ? `Upload ${files.length} files` : "Upload & Parse"}
+                    </span>
                   </>
                 )}
               </button>
@@ -320,7 +473,8 @@ export function DocumentUploadModal({
             <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center space-x-2">
               <Link2 className="w-4 h-4 text-[#0071E3] shrink-0" />
               <span>
-                Reattaching ports over the document's existing extracted data as-is and triggers the same agents a fresh upload would -- no re-extraction needed.
+                Reattaching ports over the document&apos;s existing extracted data as-is and triggers
+                the same agents a fresh upload would — no re-extraction needed.
               </span>
             </div>
 
@@ -330,7 +484,7 @@ export function DocumentUploadModal({
                   No detached documents available to attach.
                 </div>
               ) : (
-                unattachedDocs.map((doc: any) => (
+                unattachedDocs.map((doc) => (
                   <div
                     key={doc.id}
                     className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between gap-2"
@@ -361,7 +515,7 @@ export function DocumentUploadModal({
 
             <div className="flex items-center justify-end pt-2">
               <button
-                onClick={onClose}
+                onClick={closeModal}
                 className="px-4 py-2.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-semibold rounded-xl transition-all"
               >
                 Close

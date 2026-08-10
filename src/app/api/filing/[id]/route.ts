@@ -3,8 +3,8 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { computeFilingTariff, DutyRateInput } from "@/lib/tariff/dutyEngine";
-import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+import type { FilingSnapshotData } from "@/modules/filings/filing.service";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -79,26 +79,20 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   // Prefer the immutable filing snapshot (frozen at submission time) over
   // live shipment data when one exists, so this endpoint reflects what was
   // actually filed even if the underlying shipment record changes later.
-  const snapshot = filing.snapshot ? (filing.snapshot.snapshotData as any) : null;
-  const lineItems = snapshot ? (snapshot.lineItems || []) : (filing.shipment.lineItems || []);
-  const primaryCOO = snapshot ? (snapshot.shipment.countryOfOrigin || snapshot.shipment.countryOfExport || "USA") : (lineItems[0]?.countryOfOrigin || filing.shipment.countryOfExport || "USA");
-  const primaryHTS = lineItems[0]?.htsCode || "8481.80.5090";
-
-  // Ground each line item's duty rate in the real ingested HTS Master
-  // Release data instead of computing every line at a flat 2.8% guess.
-  const htsCodesMap: Record<string, DutyRateInput> = {};
-  for (const item of lineItems) {
-    if (!item.htsCode || htsCodesMap[item.htsCode]) continue;
-    const normalized = String(item.htsCode).replace(/[^0-9]/g, "");
-    const node = normalized ? await HtsNodeRepository.findByNormalizedCode(normalized) : null;
-    htsCodesMap[item.htsCode] = HtsNodeRepository.toDutyRateInput(node);
-  }
+  const snapshot = filing.snapshot
+    ? (filing.snapshot.snapshotData as unknown as FilingSnapshotData)
+    : null;
+  const lineItems = snapshot ? (snapshot.lineItems ?? []) : (filing.shipment.lineItems ?? []);
+  // Country of origin is a line-item attribute, not a shipment one: there is no
+  // Shipment.countryOfOrigin column and the snapshot never carried one.
+  const primaryCOO =
+    lineItems[0]?.countryOfOrigin ?? (snapshot ? null : filing.shipment.countryOfExport) ?? null;
+  const primaryHTS = lineItems[0]?.htsCode ?? null;
 
   // Standardized Duty Breakdown computed via Tariff Engine
-  const tariffResult = computeFilingTariff(lineItems, htsCodesMap);
-  const dutyBreakdown = filing.dutyBreakdown || tariffResult.dutyBreakdown;
+  const tariffResult = computeFilingTariff(lineItems, await loadHtsCodesMap(lineItems));
+  const dutyBreakdown = filing.dutyBreakdown ?? tariffResult.dutyBreakdown;
 
-  // Documents with enriched OCR & AI extraction metadata
   const documents = filing.shipment.documents.map((doc) => ({
     id: doc.id,
     docType: doc.docType,
@@ -108,36 +102,55 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     confidence: doc.confidence,
     status: doc.status,
     uploadedAt: doc.createdAt,
-    version: "v1.0",
-    sha256: doc.checksum || null,
-    ocrStatus: "Completed",
-    aiExtractionStatus: doc.confidence > 90 ? "Verified (100%)" : "Needs Review",
+    version: doc.version,
+    sha256: doc.checksum ?? null,
+    aiExtractionStatus:
+      doc.confidence === null
+        ? "Awaiting extraction"
+        : doc.confidence > 90
+        ? "Verified"
+        : "Needs Review",
   }));
 
-  // Generate AI Insights & Explainability evidence
+  // Classification confidence is not part of the snapshot, so it cannot be
+  // reported for a filing served from one.
+  const primaryConfidence = snapshot ? null : (filing.shipment.lineItems[0]?.htsConfidence ?? null);
   const aiInsights = [
-    `HTS code ${primaryHTS} evaluated for entry line items.`,
-    `Product classification confidence calculated at ${lineItems[0]?.htsConfidence || 96}%.`,
-    `Duty assessed at $${Number(filing.totalDuties).toFixed(2)} matching predicted tariff calculations.`,
+    primaryHTS === null
+      ? "No HTS code has been assigned to the entry line items."
+      : `HTS code ${primaryHTS} evaluated for entry line items.`,
+    primaryConfidence === null
+      ? "Product classification confidence has not been calculated."
+      : `Product classification model confidence is ${primaryConfidence}%.`,
+    filing.totalDuties === null
+      ? "Duty has not been calculated for this entry."
+      : `Duty assessed at $${Number(filing.totalDuties).toFixed(2)} matching predicted tariff calculations.`,
   ];
 
+  // Evidence is only ever what the classifier actually recorded.
   const htsRecommendation = {
     htsCode: primaryHTS,
-    confidence: `${lineItems[0]?.htsConfidence || 96}%`,
-    evidence: [
-      "Product technical specifications align with GRI 1 & GRI 6",
-      "Previous importer classification consistency verified",
-    ],
+    confidence: primaryConfidence === null ? null : `${primaryConfidence}%`,
+    evidence: [] as string[],
   };
 
-  // Immutable timeline events
+  // Only timestamps that were actually recorded. The previous version
+  // synthesised events at createdAt + 2/5/15 minutes and attributed them to a
+  // "Customs Specialist" and "CBP ACE", then labelled the result immutable.
   const timeline = [
-    { event: "Commercial Invoice Uploaded", timestamp: filing.shipment.createdAt, source: "User" },
-    { event: "AI Extraction Completed", timestamp: new Date(filing.createdAt.getTime() + 1000 * 60 * 2), source: "AI Agent" },
-    { event: "Classification Approved", timestamp: new Date(filing.createdAt.getTime() + 1000 * 60 * 5), source: "Customs Specialist" },
-    { event: "Submitted to CBP", timestamp: filing.submittedAt || filing.createdAt, source: "ABI Interface" },
-    { event: filing.filingStatus === "Released" ? "Customs Released" : "Accepted by CBP", timestamp: filing.releasedAt || new Date(filing.createdAt.getTime() + 1000 * 60 * 15), source: "CBP ACE" },
-  ];
+    { event: "Filing created", timestamp: filing.createdAt, source: "System" },
+    ...(filing.submittedAt
+      ? [{ event: "Transmitted to CBP", timestamp: filing.submittedAt, source: "ABI Interface" }]
+      : []),
+    ...filing.responses.map((resp) => ({
+      event: resp.title,
+      timestamp: resp.receivedAt,
+      source: "CBP",
+    })),
+    ...(filing.releasedAt
+      ? [{ event: "Customs released", timestamp: filing.releasedAt, source: "CBP" }]
+      : []),
+  ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   const detailedFiling = {
     id: filing.id,
@@ -151,24 +164,31 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
 
     // Summary
     importerOfRecord: snapshot ? snapshot.shipment.importerName : filing.shipment.importerName,
-    customsBroker: "Qubere Automated Compliance Services",
-    portOfEntry: snapshot ? (snapshot.shipment.portOfEntry || "Port of Los Angeles (2704)") : (filing.shipment.portOfEntry || "Port of Los Angeles (2704)"),
-    modeOfTransport: snapshot ? (snapshot.shipment.incoterm?.includes("Air") ? "Air" : "Ocean") : (filing.shipment.incoterm?.includes("Air") ? "Air" : "Ocean"),
-    carrier: snapshot ? (snapshot.shipment.carrierName || "Maersk Line") : (filing.shipment.carrierName || "Maersk Line"),
-    billOfLading: `BOL-${filing.entryNumber.replace(/[^0-9]/g, "").slice(-8)}`,
-    houseBill: `HBOL-${filing.entryNumber.replace(/[^0-9]/g, "").slice(-6)}`,
-    containerCount: Math.max(1, lineItems.length),
+    portOfEntry: snapshot ? (snapshot.shipment.portOfEntry ?? null) : (filing.shipment.portOfEntry ?? null),
+    modeOfTransport: null,
+    carrier: snapshot ? (snapshot.shipment.carrierName ?? null) : (filing.shipment.carrierName ?? null),
+    containerCount: null,
     countryOfOrigin: primaryCOO,
-    supplier: lineItems[0]?.partNumber ? `Supplier Corp (${lineItems[0].partNumber.slice(0, 4)})` : "Global Trade Supplier Ltd",
+    supplier: null,
     shipmentReference: snapshot ? snapshot.shipment.shipmentNumber : filing.shipment.shipmentNumber,
 
     // Financial Breakdown
-    totalCustomsValue: snapshot ? Number(snapshot.filingHeader.totalValue) : Number(filing.totalValue),
+    totalCustomsValue: snapshot
+      ? Number(snapshot.filingHeader.totalValue)
+      : filing.totalValue === null
+      ? null
+      : Number(filing.totalValue),
     currency: "USD",
-    totalDuty: snapshot ? Number(snapshot.filingHeader.totalDuties) : Number(filing.totalDuties),
-    totalTaxes: snapshot ? Number(snapshot.filingHeader.totalTaxes) : Number(filing.totalTaxes),
-    totalFees: Math.round((Number(snapshot ? snapshot.filingHeader.totalDuties : filing.totalDuties) * 0.1) * 100) / 100,
-    totalAmount: snapshot ? Number(snapshot.filingHeader.totalAmount) : Number(filing.totalAmount),
+    totalDuty: snapshot ? Number(snapshot.filingHeader.totalDuties) : filing.totalDuties,
+    // > 0 means some lines carry no published rate, so totalDuty is a floor.
+    unratedLineCount: tariffResult.unratedLineCount,
+    totalTaxes: snapshot ? Number(snapshot.filingHeader.totalTaxes) : filing.totalTaxes,
+    totalFees: null,
+    totalAmount: snapshot
+      ? Number(snapshot.filingHeader.totalAmount)
+      : filing.totalAmount === null
+      ? null
+      : Number(filing.totalAmount),
     dutyBreakdown,
 
     // Associated Entities
@@ -245,4 +265,4 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   });
 
   return NextResponse.json({ filing: updatedFiling });
-});
+}, { write: true });

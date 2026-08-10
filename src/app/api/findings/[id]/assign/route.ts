@@ -42,4 +42,4 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   });
 
   return NextResponse.json({ finding: updatedFinding });
-});
+}, { write: true });

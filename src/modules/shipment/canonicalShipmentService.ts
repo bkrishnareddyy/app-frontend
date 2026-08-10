@@ -1,4 +1,61 @@
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
+
+const canonicalInclude = {
+  client: true,
+  importerOfRecord: {
+    include: { bond: true, powersOfAttorney: true },
+  },
+  shipmentParties: {
+    include: {
+      legalEntity: {
+        include: { customsProfiles: true },
+      },
+    },
+  },
+  documents: {
+    include: { parseVersions: true },
+    orderBy: { createdAt: "desc" },
+  },
+  lineItems: true,
+  agentDecisions: true,
+  changeEvents: {
+    include: {
+      user: { select: { id: true, email: true, firstName: true, lastName: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  },
+  exceptionItems: {
+    where: { status: { not: "Resolved" } },
+    orderBy: { createdAt: "desc" },
+  },
+  eventLogs: {
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  },
+  agentExecutionRecords: {
+    orderBy: { startedAt: "desc" },
+    take: 100,
+  },
+} satisfies Prisma.ShipmentInclude;
+
+export type CanonicalShipment = Prisma.ShipmentGetPayload<{ include: typeof canonicalInclude }>;
+
+/** The subset of a shipment the metric calculation actually reads. */
+export interface MetricsInput {
+  shipmentNumber?: string | null;
+  importerOfRecordId?: string | null;
+  clientId?: string | null;
+  entryType?: string | null;
+  portOfEntry?: string | null;
+  countryOfExport?: string | null;
+  countryOfOrigin?: string | null;
+  carrierName?: string | null;
+  incoterm?: string | null;
+  lineItems?: { htsConfidence?: number | null }[];
+  documents?: unknown[];
+  exceptionItems?: { severity?: string | null }[];
+}
 
 export interface MultiDimensionalMetrics {
   filingReadinessScore: number; // 0-100%
@@ -34,61 +91,26 @@ export class CanonicalShipmentService {
    * Reconstructs the complete canonical shipment state from durable database records
    */
   static async getCanonicalState(shipmentId: string) {
-    const shipment = await db.shipment.findUnique({
-      where: { id: shipmentId },
-      include: {
-        client: true,
-        importerOfRecord: {
-          include: { bond: true, powersOfAttorney: true },
-        },
-        shipmentParties: {
-          include: {
-            legalEntity: {
-              include: { customsProfiles: true },
-            },
-          },
-        },
-        documents: {
-          include: { parseVersions: true },
-          orderBy: { createdAt: "desc" },
-        },
-        lineItems: true,
-        agentDecisions: true,
-        changeEvents: {
-          include: {
-            user: { select: { id: true, email: true, firstName: true, lastName: true } },
-          },
-          orderBy: { createdAt: "desc" },
-        },
-        exceptionItems: {
-          where: { status: { not: "Resolved" } },
-          orderBy: { createdAt: "desc" },
-        },
-        eventLogs: {
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        },
-        agentExecutionRecords: {
-          orderBy: { startedAt: "desc" },
-          take: 100,
-        },
-      },
-    });
-
-    if (!shipment) {
-      throw new Error(`Shipment with ID ${shipmentId} not found`);
-    }
-
     // AgentExecutionLog (written by the full 10-agent ComplianceWorkflowEngine
     // pipeline that actually runs on document upload) has no Prisma relation
     // to Shipment -- it only relates to Account, with shipmentId as a bare
     // field -- so it can't be pulled in via the include{} above and needs its
     // own query.
-    const agentExecutionLogs = await db.agentExecutionLog.findMany({
-      where: { shipmentId },
-      orderBy: { timestamp: "desc" },
-      take: 200,
-    });
+    const [shipment, agentExecutionLogs] = await Promise.all([
+      db.shipment.findUnique({
+        where: { id: shipmentId },
+        include: canonicalInclude,
+      }),
+      db.agentExecutionLog.findMany({
+        where: { shipmentId },
+        orderBy: { timestamp: "desc" },
+        take: 200,
+      }),
+    ]);
+
+    if (!shipment) {
+      throw new Error(`Shipment with ID ${shipmentId} not found`);
+    }
 
     // 1. Calculate multi-dimensional metrics
     const metrics = this.calculateMetrics(shipment);
@@ -107,25 +129,25 @@ export class CanonicalShipmentService {
   /**
    * Calculates distinct, un-collapsed readiness & compliance metrics
    */
-  static calculateMetrics(shipment: any): MultiDimensionalMetrics {
-    const activeExceptions = shipment.exceptionItems || shipment.exceptions || [];
-    const blockers = activeExceptions.filter(
-      (e: any) => e.blocking || e.severity === "Critical" || e.severity === "High"
+  static calculateMetrics(shipment: MetricsInput): MultiDimensionalMetrics {
+    const activeExceptions = shipment.exceptionItems ?? [];    const blockers = activeExceptions.filter(
+      (e) => e.severity === "Critical" || e.severity === "High"
     );
     const warnings = activeExceptions.filter(
-      (e: any) => !e.blocking && (e.severity === "Medium" || e.severity === "Low")
+      (e) => e.severity === "Medium" || e.severity === "Low"
     );
 
     // 1. Completeness Score (Check required customs & logistics fields)
+    // Only columns that exist on Shipment are counted; a field the schema cannot
+    // store would otherwise cap this score below 100 forever.
     const requiredFields = [
       shipment.shipmentNumber,
       shipment.importerOfRecordId || shipment.clientId,
       shipment.entryType,
       shipment.portOfEntry,
-      shipment.mode,
       shipment.countryOfExport,
       shipment.countryOfOrigin,
-      shipment.carrier,
+      shipment.carrierName,
       shipment.incoterm,
     ];
     const lineItems = shipment.lineItems || [];
@@ -143,7 +165,7 @@ export class CanonicalShipmentService {
     let classificationConfidenceScore = 95;
     if (lineItems.length > 0) {
       const avgConfidence =
-        lineItems.reduce((acc: number, item: any) => acc + (item.htsConfidence || 85), 0) / lineItems.length;
+        lineItems.reduce((acc: number, item) => acc + (item.htsConfidence ?? 85), 0) / lineItems.length;
       classificationConfidenceScore = Math.round(avgConfidence);
     }
     if (!classificationVerified) {
@@ -188,64 +210,57 @@ export class CanonicalShipmentService {
   }
 
   /**
-   * Builds source provenance for key facts (e.g. Country of Origin, Incoterm, Values)
+   * Builds source provenance for key facts (e.g. Country of Origin, Incoterm, Mode).
+   *
+   * A fact is only VERIFIED when a user set it or a parsed document supports it.
+   * An absent value reports MISSING rather than a plausible default, and a stored
+   * value with no surviving source reports UNVERIFIED, because a provenance panel
+   * that invents its own evidence is worse than no panel at all.
    */
-  private static buildFactProvenance(shipment: any): FactProvenance[] {
-    const changeEvents = shipment.changeEvents || [];
+  private static buildFactProvenance(shipment: CanonicalShipment): FactProvenance[] {
+    const changeEvents = shipment.changeEvents ?? [];
+    const hasParsedDocument = (shipment.documents ?? []).some(
+      (doc) => doc.status === "Received" || doc.status === "Processed"
+    );
 
-    // Check user updates for Origin
-    const userOriginChange = changeEvents.find((e: any) => e.field === "countryOfOrigin");
+    const buildFact = (
+      field: string,
+      value: string | null,
+      changeField: string,
+      documentSource: FactProvenance["sources"][number]["sourceType"]
+    ): FactProvenance => {
+      const userChange = changeEvents.find((e) => e.field === changeField);
+      const sources: FactProvenance["sources"] = [];
+
+      if (userChange) {
+        sources.push({
+          sourceType: "USER",
+          value: userChange.newValue,
+          confidence: 100,
+          timestamp: userChange.createdAt.toISOString(),
+        });
+      }
+      if (value !== null && hasParsedDocument) {
+        sources.push({ sourceType: documentSource, value, confidence: 0 });
+      }
+
+      let status: FactProvenance["status"] = "MISSING";
+      if (value !== null) status = sources.length > 0 ? "VERIFIED" : "UNVERIFIED";
+
+      return {
+        field,
+        value,
+        status,
+        // Confidence is only claimed for a value the user set themselves.
+        confidence: userChange ? 100 : 0,
+        sources,
+      };
+    };
 
     return [
-      {
-        field: "Country of Origin",
-        value: shipment.countryOfOrigin || "US",
-        status: userOriginChange ? "VERIFIED" : "VERIFIED",
-        confidence: userOriginChange ? 100 : 98,
-        sources: [
-          ...(userOriginChange
-            ? [
-                {
-                  sourceType: "USER" as const,
-                  value: userOriginChange.newValue,
-                  confidence: 100,
-                  timestamp: userOriginChange.createdAt.toISOString(),
-                },
-              ]
-            : []),
-          {
-            sourceType: "COMMERCIAL_INVOICE" as const,
-            value: shipment.countryOfOrigin || "US",
-            confidence: 97,
-          },
-        ],
-      },
-      {
-        field: "Incoterm",
-        value: shipment.incoterm || "CIF",
-        status: "VERIFIED",
-        confidence: 99,
-        sources: [
-          {
-            sourceType: "COMMERCIAL_INVOICE" as const,
-            value: shipment.incoterm || "CIF",
-            confidence: 99,
-          },
-        ],
-      },
-      {
-        field: "Mode of Transportation",
-        value: shipment.mode || "Ocean",
-        status: "VERIFIED",
-        confidence: 100,
-        sources: [
-          {
-            sourceType: "BILL_OF_LADING" as const,
-            value: shipment.mode || "Ocean",
-            confidence: 100,
-          },
-        ],
-      },
+      buildFact("Country of Origin", shipment.countryOfOrigin, "countryOfOrigin", "COMMERCIAL_INVOICE"),
+      buildFact("Incoterm", shipment.incoterm, "incoterm", "COMMERCIAL_INVOICE"),
+      buildFact("Carrier", shipment.carrierName, "carrierName", "BILL_OF_LADING"),
     ];
   }
 }

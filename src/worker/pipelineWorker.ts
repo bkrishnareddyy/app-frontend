@@ -1,4 +1,4 @@
-import { PgQueue } from "../lib/queue/pgQueue";
+import { PgQueue, toJobState } from "../lib/queue/pgQueue";
 import { ComplianceWorkflowEngine } from "../modules/agents/workflowEngine";
 import { AgentState } from "../modules/agents/agentState";
 import { PipelineOrchestrationInput } from "../modules/agents/workflowEngine";
@@ -48,18 +48,19 @@ async function startWorker() {
         });
 
         console.log(`[Worker] Job ${job.id} COMPLETED.`);
-        await PgQueue.completeJob(job.id, updatedState.toJSON());
+        await PgQueue.completeJob(job.id, toJobState(updatedState.toJSON()));
 
-      } catch (stepError: any) {
+      } catch (stepError: unknown) {
+        const message = stepError instanceof Error ? stepError.message : "Unknown Error";
         console.error(`[Worker] Job ${job.id} FAILED at step ${job.currentStep}:`, stepError);
         await PgQueue.logStepExecution({
           jobId: job.id,
           stepNumber: job.currentStep,
           agentName: `Agent Step ${job.currentStep}`,
           status: "FAILED",
-          errorMessage: stepError.message || "Unknown Error",
+          errorMessage: message,
         });
-        await PgQueue.failJob(job.id, stepError.message || "Unknown Error", state.toJSON());
+        await PgQueue.failJob(job.id, message, toJobState(state.toJSON()));
       }
       
     } catch (err) {

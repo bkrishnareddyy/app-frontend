@@ -35,7 +35,7 @@ export interface ValuationAssistsOutput {
     blockedByAgents: string[];
   };
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   /** Populated when a DB or audit call throws, so failures are visible in the API response. */
   debugError?: string;
@@ -54,7 +54,8 @@ export class ValuationAssistsAgent {
       const reasoningChain =
         "Valuation Agent skipped: Commercial Invoice pricing data is missing from document packet. Cannot appraise transaction value per 19 U.S.C. § 1401a without invoice totals.";
 
-      let agentDecisionId = "dec_fallback_valuation";
+      // Null, not a synthetic id: a failed write produced no AgentDecision row.
+      let agentDecisionId: string | null = null;
       try {
         const agentDecision = await db.agentDecision.create({
           data: {
@@ -110,7 +111,7 @@ export class ValuationAssistsAgent {
     // Never silently assume $3,200 freight or $1,500 buyer assists on every shipment.
     const adjustments: ValuationAdjustment[] = [];
 
-    const oceanFreightVal = typeof input.oceanFreight === "number" ? input.oceanFreight : (typeof (input as any).oceanFreightIncluded === "number" ? (input as any).oceanFreightIncluded : 0);
+    const oceanFreightVal = typeof input.oceanFreight === "number" ? input.oceanFreight : 0;
 
     if (oceanFreightVal > 0) {
       adjustments.push({
@@ -145,7 +146,7 @@ export class ValuationAssistsAgent {
 
     const reasoningChain = `Invoice Subtotal: $${baseVal.toFixed(2)}. ${adjustmentNote}. Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)} USD under Method 1 (Transaction Value).`;
 
-    let agentDecisionId = "dec_fallback_valuation";
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -182,27 +183,29 @@ export class ValuationAssistsAgent {
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: {
-          agentName: "Valuation Agent",
-          enteredCustomsValue,
-          valuationMethod: "METHOD_1_TRANSACTION_VALUE",
-          adjustmentsApplied: adjustments.length,
-        },
-      });
-    } catch (err) {
-      debugError = logAgentError(
-        "Valuation Agent",
-        input.shipmentId,
-        "createAuditLog",
-        err
-      );
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: {
+            agentName: "Valuation Agent",
+            enteredCustomsValue,
+            valuationMethod: "METHOD_1_TRANSACTION_VALUE",
+            adjustmentsApplied: adjustments.length,
+          },
+        });
+      } catch (err) {
+        debugError = logAgentError(
+          "Valuation Agent",
+          input.shipmentId,
+          "createAuditLog",
+          err
+        );
+      }
     }
 
     return {

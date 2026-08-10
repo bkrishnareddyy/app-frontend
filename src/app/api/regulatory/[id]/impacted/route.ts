@@ -11,55 +11,28 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
-  const regUpdate = await db.regulatoryUpdate.findUnique({
-    where: { id },
-    include: {
-      impacts: {
-        include: {
-          shipment: {
-            include: { customsFilings: true },
-          },
-        },
-      },
-    },
-  });
+  // RegulatoryUpdate is shared reference data and carries no accountId; the impact
+  // rows are only readable through the caller's own shipments.
+  const regUpdate = await db.regulatoryUpdate.findUnique({ where: { id } });
 
   if (!regUpdate) {
     return NextResponse.json({ error: "Regulatory update not found" }, { status: 404 });
   }
 
-  // Auto-create impact relation link if none exist yet for testing/demo
-  if (regUpdate.impacts.length === 0) {
-    const sampleShipments = await db.shipment.findMany({
-      where: { accountId: ctx.accountId },
-      take: 3,
-    });
-
-    for (const s of sampleShipments) {
-      await db.regulatoryUpdateImpact.create({
-        data: {
-          regulatoryUpdateId: id,
-          shipmentId: s.id,
-          impactDescription: `Section 301 tariff adjustment applies to shipment ${s.shipmentNumber}`,
-        },
-      });
-    }
-  }
-
-  const reFetched = await db.regulatoryUpdate.findUnique({
-    where: { id },
-    include: {
-      impacts: {
-        include: { shipment: true },
-      },
+  const impacts = await db.regulatoryUpdateImpact.findMany({
+    where: {
+      regulatoryUpdateId: id,
+      shipment: { accountId: ctx.accountId, deletedAt: null },
     },
+    include: { shipment: true },
+    orderBy: { createdAt: "desc" },
   });
 
-  const impactedShipments = reFetched?.impacts.map((imp) => ({
+  const impactedShipments = impacts.map((imp) => ({
     impactId: imp.id,
     impactDescription: imp.impactDescription,
     shipment: imp.shipment,
-  })) || [];
+  }));
 
   return NextResponse.json({
     regulatoryUpdate: regUpdate,

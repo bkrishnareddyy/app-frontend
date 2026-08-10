@@ -44,8 +44,10 @@ describe("Agent 1: Document Intake Agent (AI Vision & Reactive Bus) Test Suite",
     expect(result.shipmentId).toBe("shp_test_123");
     expect(result.detectedTypes).toContain("COMMERCIAL_INVOICE");
     expect(result.missingRequiredDocs).toHaveLength(0);
-    expect(result.overallConfidence).toBeGreaterThanOrEqual(90);
-    expect(result.status).toBe("Completed");
+    // No vision provider runs in tests, so the packet is classified from the filename
+    // alone. That carries no OCR confidence and must not clear the automated-filing gate.
+    expect(result.overallConfidence).toBeNull();
+    expect(result.status).toBe("Review Required");
     expect(result.agentDecisionId).toBeDefined();
     expect(result.reasoningChain).toBeDefined();
     expect(result.aiProviderUsed).toBeDefined();

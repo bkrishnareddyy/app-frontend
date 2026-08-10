@@ -2,14 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { X, Copy, Check, Code, FileText, Download, ExternalLink, Edit2 } from "lucide-react";
+import { X, Copy, Check, Code, FileText, ExternalLink, Edit2 } from "lucide-react";
+import { useDialogFocus, dialogSurfaceProps } from "@/lib/useDialogFocus";
+
+interface ExtractionPayload {
+  extractedJson?: {
+    keyValuePairs?: Record<string, unknown>;
+    extractionStatus?: string;
+  } | null;
+  rawContent?: string | null;
+}
 
 interface RawExtractionModalProps {
   isOpen: boolean;
   onClose: () => void;
   documentId: string;
   fileName: string;
-  shipmentNumber?: string;
+  shipmentNumber?: string | null;
   fileUrl?: string | null;
   proxyUrl?: string;
 }
@@ -19,41 +28,74 @@ export function RawExtractionModal({
   onClose,
   documentId,
   fileName,
-  shipmentNumber = "SHP-2026",
-  fileUrl,
+  shipmentNumber = null,
   proxyUrl,
 }: RawExtractionModalProps) {
   const router = useRouter();
-  const [data, setData] = useState<any>(null);
+  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
+  const [data, setData] = useState<ExtractionPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+
   // Set default active tab to "DOC" (Document Preview) as first option
   const [activeTab, setActiveTab] = useState<"DOC" | "KV" | "JSON">("DOC");
 
-  // Document renaming state
+  // Document renaming state. This holds only the in-progress edit; the name
+  // shown everywhere else comes straight from the fileName prop, so reopening
+  // the modal on a different document cannot display a stale name.
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState(fileName);
   const [renaming, setRenaming] = useState(false);
 
-  // Sync renaming state when fileName prop changes
   useEffect(() => {
-    setEditingNameValue(fileName);
-  }, [fileName]);
+    if (!isOpen || !documentId) return;
 
-  useEffect(() => {
-    if (isOpen && documentId) {
-      setLoading(true);
-      fetch(`/api/documents/${documentId}/extractions`)
-        .then((res) => res.json())
-        .then((resData) => {
-          setData(resData);
-          router.refresh();
-        })
-        .catch((err) => console.error("Error fetching raw extraction:", err))
-        .finally(() => setLoading(false));
+    let cancelled = false;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/documents/${documentId}/extractions`, {
+          signal: controller.signal,
+        });
+        const resData = await res.json();
+        if (cancelled) return;
+        setData(resData);
+      } catch (err) {
+        if (!cancelled && !controller.signal.aborted) {
+          console.error("Error fetching raw extraction:", err);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [isOpen, documentId]);
+
+  const runExtraction = async () => {
+    setExtracting(true);
+    setExtractError(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/extractions`, { method: "POST" });
+      const resData = await res.json();
+      if (!res.ok) {
+        setExtractError(resData?.error?.message ?? "Extraction failed.");
+        return;
+      }
+      setData(resData);
+      router.refresh();
+    } catch (err) {
+      setExtractError(err instanceof Error ? err.message : "Extraction failed.");
+    } finally {
+      setExtracting(false);
     }
-  }, [isOpen, documentId, router]);
+  };
 
   if (!isOpen) return null;
 
@@ -63,7 +105,7 @@ export function RawExtractionModal({
         {
           documentId,
           shipmentNumber,
-          fileName: editingNameValue,
+          fileName,
           extractedData: "Extraction pending vision agent processing",
         },
         null,
@@ -100,8 +142,8 @@ export function RawExtractionModal({
       router.refresh();
       // Reload page to reflect renamed document in parent component lists
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message || "Failed to rename document");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to rename document");
       setEditingNameValue(fileName);
     } finally {
       setRenaming(false);
@@ -120,6 +162,7 @@ export function RawExtractionModal({
 
   const kvPairs = data?.extractedJson?.keyValuePairs || {};
   const kvEntries = Object.entries(kvPairs);
+  const isPending = data?.extractedJson?.extractionStatus === "PENDING_VISION_PROCESSING";
 
   return (
     <div
@@ -129,6 +172,8 @@ export function RawExtractionModal({
       }}
     >
       <div
+        ref={dialogRef}
+        {...dialogSurfaceProps("raw-extraction-title")}
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-4xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
       >
@@ -176,10 +221,11 @@ export function RawExtractionModal({
                 </div>
               ) : (
                 <h3 className="text-base font-extrabold text-[#1D1D1F] flex items-center space-x-2 group">
-                  <span>{editingNameValue}</span>
+                  <span>{fileName}</span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setEditingNameValue(fileName);
                       setIsEditingName(true);
                     }}
                     className="p-1 rounded hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
@@ -189,8 +235,14 @@ export function RawExtractionModal({
                   </button>
                 </h3>
               )}
-              <p className="text-xs text-[#86868B] mt-0.5">
-                Neutral OCR &amp; Raw Extraction Vault • Shipment: <span className="font-mono text-[#0071E3] font-bold">{shipmentNumber}</span>
+              <p id="raw-extraction-title" className="text-xs text-[#86868B] mt-0.5">
+                Neutral OCR &amp; Raw Extraction Vault
+                {shipmentNumber && (
+                  <>
+                    {" • Shipment: "}
+                    <span className="font-mono text-[#0071E3] font-bold">{shipmentNumber}</span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -251,23 +303,27 @@ export function RawExtractionModal({
           ) : activeTab === "DOC" ? (
             <div className="flex-1 overflow-y-auto bg-[#F5F5F7] rounded-2xl border border-[#E5E5EA] p-4 flex items-center justify-center min-h-[350px]">
               {proxyUrl ? (
-                isImageFile(proxyUrl, editingNameValue) ? (
+                isImageFile(proxyUrl, fileName) ? (
+                  // next/image is deliberately not used: these are tenant documents
+                  // served through an authenticated proxy, and routing them via the
+                  // image optimizer would cache customs paperwork outside that path.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={proxyUrl}
-                    alt={editingNameValue}
+                    alt={fileName}
                     className="max-h-[55vh] rounded-xl border border-[#E5E5EA] shadow-md object-contain"
                   />
-                ) : isPdfFile(proxyUrl, editingNameValue) ? (
+                ) : isPdfFile(proxyUrl, fileName) ? (
                   <iframe
                     src={proxyUrl}
                     className="w-full h-[55vh] rounded-xl border border-[#E5E5EA]"
-                    title={editingNameValue}
+                    title={fileName}
                   />
                 ) : (
                   <div className="text-center p-8 space-y-3">
                     <FileText className="w-12 h-12 text-[#0071E3] mx-auto" />
                     <div>
-                      <h4 className="font-extrabold text-[#1D1D1F] text-sm">{editingNameValue}</h4>
+                      <h4 className="font-extrabold text-[#1D1D1F] text-sm">{fileName}</h4>
                       <p className="text-xs text-[#86868B] mt-1">Binary trade file stored securely in Qubere Document Vault.</p>
                     </div>
                     <a
@@ -285,7 +341,7 @@ export function RawExtractionModal({
                 <div className="text-center p-8 space-y-3">
                   <FileText className="w-12 h-12 text-[#86868B]/50 mx-auto" />
                   <div>
-                    <h4 className="font-extrabold text-[#1D1D1F] text-sm">{editingNameValue}</h4>
+                    <h4 className="font-extrabold text-[#1D1D1F] text-sm">{fileName}</h4>
                     <p className="text-xs text-[#86868B] mt-1">Document preview is currently unavailable.</p>
                   </div>
                 </div>
@@ -297,7 +353,7 @@ export function RawExtractionModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {kvEntries.map(([k, v], idx) => (
                     <div key={idx} className="p-3 rounded-xl bg-white border border-[#E5E5EA] space-y-0.5 shadow-2xs">
-                      <p className="text-[10px] text-[#86868B] font-bold uppercase">{k}</p>
+                      <p className="text-[11px] text-[#86868B] font-bold uppercase">{k}</p>
                       <p className="font-extrabold text-[#1D1D1F] break-words">
                         {v !== null && v !== undefined ? String(v) : (
                           <span className="italic font-normal text-amber-700">Not Present (Null)</span>
@@ -308,8 +364,27 @@ export function RawExtractionModal({
                 </div>
               ) : (
                 <div className="p-6 text-center text-[#86868B]">
-                  <p className="font-bold text-[#1D1D1F]">No Discovered Key-Value Pairs</p>
-                  <p className="text-[11px] mt-1">Document was processed with schema-neutral OCR. Raw content is preserved in JSON payload.</p>
+                  <p className="font-bold text-[#1D1D1F]">No key-value pairs extracted</p>
+                  {isPending ? (
+                    <>
+                      <p className="text-sm mt-1">This document has not been processed yet.</p>
+                      <button
+                        onClick={runExtraction}
+                        disabled={extracting}
+                        className="mt-4 px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                      >
+                        {extracting ? "Extracting..." : "Run extraction"}
+                      </button>
+                      {extractError && (
+                        <p className="text-sm mt-2 text-red-600">{extractError}</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm mt-1">
+                      The document was processed but no fields were discovered. Raw content is
+                      preserved in the JSON payload.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -322,7 +397,7 @@ export function RawExtractionModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-[#E5E5EA] shrink-0 text-xs">
-          <span className="text-[#86868B]">Source File: <strong>{editingNameValue}</strong></span>
+          <span className="text-[#86868B]">Source File: <strong>{fileName}</strong></span>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer"

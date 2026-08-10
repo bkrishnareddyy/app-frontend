@@ -49,8 +49,34 @@ export default async function ShipmentWorkspacePage(props: {
 
   if (!shipment) notFound();
 
-  // Load canonical state and multi-dimensional metrics from CanonicalShipmentService
-  const canonical = await CanonicalShipmentService.getCanonicalState(shipment.id);
+  const isEnterpriseAdmin =
+    context.accountType === "ENTERPRISE" &&
+    (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
+
+  const canEditClient =
+    isEnterpriseAdmin ||
+    (context.roleNames.includes("PLANNER") && shipment.assignedBrokerId === context.userId);
+
+  // None of these three depend on each other, and each database round-trip
+  // costs about a second against the remote pooler.
+  const [canonical, clients, fieldApprovals] = await Promise.all([
+    CanonicalShipmentService.getCanonicalState(shipment.id),
+    canEditClient
+      ? db.client.findMany({
+          where: { accountId: context.accountId },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
+    // Real per-field approval provenance ("who confirmed this value, and
+    // when") -- see FieldApproval in schema.prisma. Ordered desc so the first
+    // entry found for a given key (whether keyed by fieldKey alone or by
+    // documentId+fieldKey) is always the latest.
+    db.fieldApproval.findMany({
+      where: { shipmentId: shipment.id },
+      orderBy: { approvedAt: "desc" },
+    }),
+  ]);
+
   const { metrics, facts, agentExecutionLogs } = canonical;
   const fullShipment = canonical.shipment;
   const documents = fullShipment.documents || [];
@@ -82,31 +108,8 @@ export default async function ShipmentWorkspacePage(props: {
     0
   );
 
-  const isEnterpriseAdmin =
-    context.accountType === "ENTERPRISE" &&
-    (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
-
-  const canEditClient =
-    isEnterpriseAdmin ||
-    (context.roleNames.includes("PLANNER") && shipment.assignedBrokerId === context.userId);
-
-  const clients = canEditClient
-    ? await db.client.findMany({
-        where: { accountId: context.accountId },
-        orderBy: { name: "asc" },
-      })
-    : [];
-
   const activeExceptions = fullShipment.exceptionItems || [];
 
-  // Real per-field approval provenance ("who confirmed this value, and
-  // when") -- see FieldApproval in schema.prisma. Ordered desc so the first
-  // entry found for a given key (whether keyed by fieldKey alone or by
-  // documentId+fieldKey) is always the latest.
-  const fieldApprovals = await db.fieldApproval.findMany({
-    where: { shipmentId: shipment.id },
-    orderBy: { approvedAt: "desc" },
-  });
   const latestApprovalByField: Record<string, { name: string; approvedAt: string }> = {};
   const approvalByDocField = new Map<string, { name: string; approvedAt: string }>();
   for (const fa of fieldApprovals) {

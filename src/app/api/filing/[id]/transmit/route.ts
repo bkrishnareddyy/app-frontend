@@ -14,7 +14,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
-  const { idempotencyKey, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
+  const { idempotencyKey, requestHash, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
 
@@ -42,7 +42,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     };
 
     if (idempotencyKey) {
-      await persistIdempotency(ctx.accountId, idempotencyKey, "", 200, responsePayload);
+      await persistIdempotency(ctx.accountId, idempotencyKey, requestHash ?? "", 200, responsePayload);
     }
 
     return NextResponse.json(responsePayload);
@@ -52,4 +52,4 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     }
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to transmit filing", undefined, requestId);
   }
-}, { permission: "filings.submit" });
+}, { permission: "filings.submit", write: true });

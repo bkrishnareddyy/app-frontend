@@ -5,7 +5,7 @@ export interface WebhookEventPayload {
   eventType: "classification.proposed" | "classification.approved" | "classification.needs_information" | "hts.release_published" | "hts.code_changed";
   accountId: string;
   timestamp: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 export class WebhookService {
@@ -19,7 +19,7 @@ export class WebhookService {
   /**
    * Constructs a signed webhook payload.
    */
-  static buildEvent(eventType: WebhookEventPayload["eventType"], accountId: string, data: Record<string, any>, secret: string = "whsec_default_key") {
+  static buildEvent(eventType: WebhookEventPayload["eventType"], accountId: string, data: Record<string, unknown>, secret: string = "whsec_default_key") {
     const eventId = `evt_${crypto.randomBytes(12).toString("hex")}`;
     const timestamp = new Date().toISOString();
 

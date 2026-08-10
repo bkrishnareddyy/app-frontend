@@ -133,7 +133,7 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
                 return (
                   <tr key={item.id} className="hover:bg-[#F5F5F7]/30 transition-colors">
                     <td className="p-2.5 font-mono text-[#86868B] font-semibold">{item.lineNumber}</td>
-                    <td className="p-2.5 font-bold text-[#1D1D1F] max-w-xs truncate">{item.description}</td>
+                    <td className="p-2.5 font-bold text-[#1D1D1F] max-w-xs break-words">{item.description}</td>
                     
                     {/* HTS Code Column */}
                     <td className="p-2.5 font-mono relative">

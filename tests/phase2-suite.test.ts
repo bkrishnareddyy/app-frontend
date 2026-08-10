@@ -1,149 +1,119 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import {
+  calculateMPF,
+  calculateHMF,
+  calculateLineItemDuty,
+  computeFilingTariff,
+  MPF_MINIMUM,
+  MPF_MAXIMUM,
+  MPF_RATE,
+  HMF_RATE,
+} from "../src/lib/tariff/dutyEngine";
 
-// =============================================================================
-// PHASE 2 INTEGRATION & TENANT ISOLATION TEST SUITE (8 PRODUCTS)
-// =============================================================================
+// This suite previously exercised a mock class defined in this same file, so it
+// asserted nothing about the application. It now drives the real tariff engine.
 
-class Phase2MockService {
-  tenantA = "acc_qubere_tenant_a";
-  tenantB = "acc_qubere_tenant_b";
+describe("Tariff engine: statutory fee bounds", () => {
+  it("applies the MPF floor to small entries", () => {
+    // 0.3464% of $1,000 is $3.46, below the statutory minimum.
+    expect(calculateMPF(1000)).toBe(MPF_MINIMUM);
+  });
 
-  htsMaster = [
-    { id: "hts_1", htsCode10: "8481.80.5090", description: "Valves for oleohydraulic transmissions", generalDutyRate: "2.8%" },
-    { id: "hts_2", htsCode10: "8537.10.2030", description: "Electric control boards <= 1000V", generalDutyRate: "2.7%" },
-  ];
+  it("applies the MPF ceiling to large entries", () => {
+    // Unclamped this would be $3,464 on a $1M entry.
+    expect(calculateMPF(1_000_000)).toBe(MPF_MAXIMUM);
+  });
 
-  scenarios: any[] = [];
-  refundOpportunities: any[] = [];
-  pscs: any[] = [];
-  audits: any[] = [];
-  exceptions: any[] = [];
-  importers: any[] = [];
-  bonds: any[] = [];
-  originDeterminations: any[] = [];
-  exports: any[] = [];
-  drawbackClaims: any[] = [];
+  it("charges the rate between the floor and the ceiling", () => {
+    const customsValue = 50_000;
+    const expected = Math.round(customsValue * MPF_RATE * 100) / 100;
+    expect(expected).toBeGreaterThan(MPF_MINIMUM);
+    expect(expected).toBeLessThan(MPF_MAXIMUM);
+    expect(calculateMPF(customsValue)).toBe(expected);
+  });
 
-  constructor() {
-    this.seed();
-  }
+  it("charges no MPF on a zero-value entry rather than the floor", () => {
+    expect(calculateMPF(0)).toBe(0);
+  });
 
-  seed() {
-    this.scenarios.push({
-      id: "scen_a1",
-      accountId: this.tenantA,
-      name: "Tenant A China Sourcing",
-      computedLandedCost: 15000.0,
+  it("charges HMF only on ocean shipments", () => {
+    expect(calculateHMF(100_000, true)).toBe(Math.round(100_000 * HMF_RATE * 100) / 100);
+    expect(calculateHMF(100_000, false)).toBe(0);
+  });
+});
+
+describe("Tariff engine: line item duty", () => {
+  it("uses the HTS general rate when one is published", () => {
+    const result = calculateLineItemDuty(
+      { quantity: 50, unitPrice: 100 } as never,
+      { generalDutyRate: "2.8%" } as never
+    );
+    expect(result.customsValue).toBe(5000);
+    expect(result.baseDutyRate).toBeCloseTo(0.028);
+    expect(result.baseDutyAmount).toBe(140);
+  });
+
+  it("keeps a genuine duty-free rate at zero rather than falling back to a default", () => {
+    const result = calculateLineItemDuty(
+      { quantity: 10, unitPrice: 250 } as never,
+      { generalDutyRate: "0%" } as never
+    );
+    expect(result.baseDutyRate).toBe(0);
+    expect(result.baseDutyAmount).toBe(0);
+  });
+
+  it("adds Section 301 and 232 duties on top of the base rate", () => {
+    const result = calculateLineItemDuty(
+      { quantity: 1, unitPrice: 10_000 } as never,
+      {
+        generalDutyRate: "2.8%",
+        section301Applicable: true,
+        section301AdditionalRate: 25,
+      } as never
+    );
+    expect(result.section301Amount).toBe(2500);
+    expect(result.totalDutyAmount).toBe(2780);
+  });
+
+  it("reports an unrated line rather than inventing a default rate", () => {
+    const result = calculateLineItemDuty({ quantity: 4, unitPrice: 500 } as never, null);
+    expect(result.customsValue).toBe(2000);
+    expect(result.baseDutyRate).toBeNull();
+    expect(result.baseDutyAmount).toBe(0);
+  });
+});
+
+describe("Tariff engine: entry level aggregation", () => {
+  it("charges MPF once per entry, not once per line", () => {
+    const lines = Array.from({ length: 5 }, () => ({ quantity: 1, unitPrice: 1000 }));
+    const result = computeFilingTariff(lines as never);
+
+    expect(result.totalCustomsValue).toBe(5000);
+    // Five lines at $1,000 each would each hit the floor if fees were per line.
+    expect(result.totalFees).toBeLessThan(MPF_MINIMUM * 5);
+
+    const mpfLine = result.dutyBreakdown.find((f) => f.feeName.includes("MPF"));
+    expect(mpfLine?.amount).toBe(calculateMPF(5000));
+  });
+
+  it("does not exceed the MPF ceiling across many lines", () => {
+    const lines = Array.from({ length: 20 }, () => ({ quantity: 1, unitPrice: 100_000 }));
+    const result = computeFilingTariff(lines as never);
+
+    const mpfLine = result.dutyBreakdown.find((f) => f.feeName.includes("MPF"));
+    expect(mpfLine?.amount).toBe(MPF_MAXIMUM);
+  });
+
+  it("counts lines with no resolvable rate so a total is never mistaken for complete", () => {
+    const lines = [
+      { quantity: 1, unitPrice: 1000, htsCode: "8481.80.5090" },
+      { quantity: 1, unitPrice: 1000, htsCode: "9999.99.9999" },
+    ];
+    const result = computeFilingTariff(lines as never, {
+      "8481.80.5090": { generalDutyRate: "2.8%" } as never,
     });
 
-    this.scenarios.push({
-      id: "scen_b1",
-      accountId: this.tenantB,
-      name: "Tenant B Vietnam Sourcing",
-      computedLandedCost: 12000.0,
-    });
-
-    this.drawbackClaims.push({
-      id: "dbk_a1",
-      accountId: this.tenantA,
-      cbpClaimNumber: "DBK-2026-0001",
-      totalRefundClaimed: 4500.0,
-    });
-
-    this.drawbackClaims.push({
-      id: "dbk_b1",
-      accountId: this.tenantB,
-      cbpClaimNumber: "DBK-2026-0002",
-      totalRefundClaimed: 8900.0,
-    });
-  }
-
-  // HTS Master
-  searchHts(query: string) {
-    return this.htsMaster.filter((h) => h.htsCode10.includes(query) || h.description.toLowerCase().includes(query.toLowerCase()));
-  }
-
-  // Tenant Isolation Verification
-  getScenariosForTenant(accountId: string) {
-    return this.scenarios.filter((s) => s.accountId === accountId);
-  }
-
-  getDrawbackClaimsForTenant(accountId: string) {
-    return this.drawbackClaims.filter((d) => d.accountId === accountId);
-  }
-
-  // Simulator
-  calculateLandedCost(unitValue: number, quantity: number, dutyRatePct: number, freight: number) {
-    const value = unitValue * quantity;
-    const duty = Math.round((value * (dutyRatePct / 100)) * 100) / 100;
-    const fees = Math.round((value * 0.003464) * 100) / 100; // MPF
-    return { customsValue: value, duty, fees, landedCost: value + duty + fees + freight };
-  }
-
-  // Origin Determination
-  determineOrigin(criterion: string, rvcPct: number) {
-    const qualifies = rvcPct >= 60.0;
-    return { qualifies, criterion, rvcPct };
-  }
-
-  // Compliance Audit
-  runAudit(hasDocuments: boolean, hasHts: boolean) {
-    const pass = hasDocuments && hasHts;
-    return { overallResult: pass ? "Pass" : "Fail", riskScore: pass ? 12 : 75 };
-  }
-}
-
-describe("Qubere Phase 2 Product Line Test Suite", () => {
-  let mock: Phase2MockService;
-
-  beforeEach(() => {
-    mock = new Phase2MockService();
-  });
-
-  it("Product 1: HTS Master search returns matching tariff records", () => {
-    const results = mock.searchHts("8481");
-    expect(results).toHaveLength(1);
-    expect(results[0].htsCode10).toBe("8481.80.5090");
-  });
-
-  it("Product 2: Tariff & Duty Simulator accurately computes landed cost", () => {
-    const calc = mock.calculateLandedCost(100, 50, 2.8, 500); // 5000 value, 2.8% duty, 500 freight
-    expect(calc.customsValue).toBe(5000);
-    expect(calc.duty).toBe(140);
-    expect(calc.landedCost).toBeGreaterThan(5640);
-  });
-
-  it("Product 3: Trade Advisory origin determination validates USMCA RVC threshold", () => {
-    const valid = mock.determineOrigin("Criterion B", 65.0);
-    expect(valid.qualifies).toBe(true);
-
-    const invalid = mock.determineOrigin("Criterion B", 45.0);
-    expect(invalid.qualifies).toBe(false);
-  });
-
-  it("Product 4: Compliance Audit engine flags records missing HTS/documents", () => {
-    const passAudit = mock.runAudit(true, true);
-    expect(passAudit.overallResult).toBe("Pass");
-    expect(passAudit.riskScore).toBe(12);
-
-    const failAudit = mock.runAudit(false, true);
-    expect(failAudit.overallResult).toBe("Fail");
-    expect(failAudit.riskScore).toBe(75);
-  });
-
-  it("Product 5: Tenant Isolation enforcement prevents cross-tenant data leaks", () => {
-    const tenantAScenarios = mock.getScenariosForTenant(mock.tenantA);
-    const tenantBScenarios = mock.getScenariosForTenant(mock.tenantB);
-
-    expect(tenantAScenarios).toHaveLength(1);
-    expect(tenantAScenarios[0].name).toContain("Tenant A");
-
-    expect(tenantBScenarios).toHaveLength(1);
-    expect(tenantBScenarios[0].name).toContain("Tenant B");
-
-    // Verify Tenant A cannot see Tenant B drawback claims
-    const tenantADrawbacks = mock.getDrawbackClaimsForTenant(mock.tenantA);
-    expect(tenantADrawbacks).toHaveLength(1);
-    expect(tenantADrawbacks[0].cbpClaimNumber).toBe("DBK-2026-0001");
+    expect(result.unratedLineCount).toBe(1);
+    expect(result.totalDuty).toBe(28);
   });
 });

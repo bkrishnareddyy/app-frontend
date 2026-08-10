@@ -22,7 +22,7 @@ async function main() {
 
   if (existingRelease) {
     console.log("  Release already exists, reusing:", existingRelease.id);
-    release = existingRelease as any;
+    release = existingRelease;
   } else {
     release = await db.htsRelease.create({
       data: {
@@ -156,7 +156,7 @@ async function main() {
     });
     if (exists) continue;
 
-    const node = await db.htsNode.create({
+    await db.htsNode.create({
       data: {
         releaseId: release.id,
         sourceRowNumber: i + 1,

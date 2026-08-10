@@ -6,15 +6,39 @@ import { Prisma } from "@prisma/client";
  * Uses `FOR UPDATE SKIP LOCKED` to atomically claim jobs.
  */
 
+/** Job state is persisted as a JSON column, so it must be JSON-serialisable. */
+export type JobState = Prisma.InputJsonObject;
+
+/**
+ * Converts a typed agent result into the JSON shape the job state column stores.
+ * Typed interfaces have no index signature, so this is the single sanctioned crossing
+ * point between the agent types and the JSON column.
+ */
+export function toJobState(value: object): JobState {
+  return value as JobState;
+}
+
 export interface EnqueueOptions {
   accountId: string;
   userId: string;
   shipmentId: string;
-  initialState?: Record<string, any>;
+  initialState?: JobState;
   totalSteps?: number;
   priority?: number;
 }
 
+export interface ClaimedJob {
+  id: string;
+  accountId: string;
+  userId: string;
+  shipmentId: string;
+  status: string;
+  currentStep: number;
+  totalSteps: number;
+  priority: number;
+  state: JobState;
+  createdAt: Date;
+}
 export class PgQueue {
   /**
    * Enqueues a new pipeline job.
@@ -36,13 +60,40 @@ export class PgQueue {
   }
 
   /**
+   * Claims one specific job by id, for callers that already know which job they are
+   * about to run. Returns false when the job was already claimed by another worker.
+   *
+   * Use this instead of dequeueNextJob when the work is not "whatever is next in the
+   * queue" — dequeueNextJob claims the highest-priority pending job across all
+   * accounts, which is the wrong job for a caller that enqueued its own.
+   */
+  static async claimJob(jobId: string): Promise<boolean> {
+    const claimed = await db.pipelineJob.updateMany({
+      where: { id: jobId, status: "PENDING" },
+      data: {
+        status: "PROCESSING",
+        lockedAt: new Date(),
+      },
+    });
+    if (claimed.count !== 1) return false;
+
+    // Only the first claim sets startedAt; a job re-queued between steps keeps its
+    // original start time.
+    await db.pipelineJob.updateMany({
+      where: { id: jobId, startedAt: null },
+      data: { startedAt: new Date() },
+    });
+    return true;
+  }
+
+  /**
    * Atomically claims the next pending job from the queue.
    * Returns null if no jobs are available.
    */
-  static async dequeueNextJob() {
+  static async dequeueNextJob(): Promise<ClaimedJob | null> {
     // We use a raw query because Prisma does not natively support SKIP LOCKED
     // We update the status to PROCESSING and set lockedAt
-    const result = await db.$queryRaw<any[]>`
+    const result = await db.$queryRaw<ClaimedJob[]>`
       UPDATE "PipelineJob"
       SET 
         status = 'PROCESSING',
@@ -71,7 +122,7 @@ export class PgQueue {
   /**
    * Updates the job state after a step finishes, and unlocks it so the worker can pick up the next step.
    */
-  static async updateJobState(jobId: string, currentStep: number, state: Record<string, any>) {
+  static async updateJobState(jobId: string, currentStep: number, state: JobState) {
     await db.pipelineJob.update({
       where: { id: jobId },
       data: {
@@ -86,7 +137,7 @@ export class PgQueue {
   /**
    * Marks a job as completed.
    */
-  static async completeJob(jobId: string, finalState: Record<string, any>) {
+  static async completeJob(jobId: string, finalState: JobState) {
     await db.pipelineJob.update({
       where: { id: jobId },
       data: {
@@ -101,7 +152,7 @@ export class PgQueue {
   /**
    * Marks a job as failed and stops it.
    */
-  static async failJob(jobId: string, errorMsg: string, state: Record<string, any> = {}) {
+  static async failJob(jobId: string, errorMsg: string, state: JobState = {}) {
     await db.pipelineJob.update({
       where: { id: jobId },
       data: {
@@ -122,7 +173,7 @@ export class PgQueue {
     stepNumber: number;
     agentName: string;
     status: string;
-    output?: any;
+    output?: unknown;
     errorMessage?: string;
   }) {
     await db.pipelineStepExecution.create({

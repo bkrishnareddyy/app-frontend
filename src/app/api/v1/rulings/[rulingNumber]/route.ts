@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withPublicRoute } from "@/lib/api/auth-guards";
 import { CrossIngestionService } from "@/modules/regulatory/crossIngestionService";
 
@@ -12,7 +13,7 @@ export const GET = withPublicRoute<{ rulingNumber: string }>(async ({ params }) 
     }
 
     return NextResponse.json(verification);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch CROSS ruling" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 });

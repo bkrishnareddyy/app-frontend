@@ -44,8 +44,10 @@ export const POST = withAuthenticatedRoute<{ id: string; exceptionId: string }>(
 
     const canonicalState = await CanonicalShipmentService.getCanonicalState(id);
     return NextResponse.json({ success: true, canonicalState });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Failed to resolve exception:", err);
-    return NextResponse.json({ error: err.message || "Failed to resolve exception" }, { status: 500 });
+    // The internal message stays in the log rather than going back to the caller.
+    return NextResponse.json({ error: "Failed to resolve exception" }, { status: 500 });
   }
 });
+

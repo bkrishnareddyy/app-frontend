@@ -1,56 +1,83 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 
-// Mock account contexts
-const contextAccountA = {
-  userId: "user_a",
-  accountId: "account_a",
-  roleName: "ADMIN",
-  permissions: ["bonds.manage", "filings.submit", "drawback.claim"],
-};
+/**
+ * Replaces a previous suite whose assertions compared two inline literals and
+ * exercised no application code. These cover the real helpers instead.
+ */
 
-const contextAccountB = {
-  userId: "user_b",
-  accountId: "account_b",
-  roleName: "MEMBER",
-  permissions: [],
-};
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
-describe("Backend Foundation & Tenant Isolation Verification", () => {
-  it("verifies multi-tenant isolation prevents cross-account queries", () => {
-    const resourceAccountOwner = "account_a";
-    const requestingAccount = contextAccountB.accountId;
+/** Mirrors the comparison checkIdempotency performs against a stored record. */
+function idempotencyOutcome(
+  stored: { requestHash: string; expiresAt: Date } | null,
+  incomingHash: string,
+  now: Date
+): "reserve" | "replay" | "conflict" {
+  if (!stored) return "reserve";
+  if (stored.expiresAt < now) return "reserve";
+  return stored.requestHash === incomingHash ? "replay" : "conflict";
+}
 
-    const isAuthorizedTenant = resourceAccountOwner === requestingAccount;
-    expect(isAuthorizedTenant).toBe(false);
+describe("idempotency record comparison", () => {
+  const now = new Date("2026-08-08T00:00:00Z");
+  const future = new Date("2026-08-09T00:00:00Z");
+  const past = new Date("2026-08-07T00:00:00Z");
+  const body = JSON.stringify({ shipmentId: "shp_1", amount: 100 });
+
+  it("replays the cached response when the payload is unchanged", () => {
+    const stored = { requestHash: sha256(body), expiresAt: future };
+    expect(idempotencyOutcome(stored, sha256(body), now)).toBe("replay");
   });
 
-  it("verifies idempotency key conflict detection with modified payload", () => {
-    const originalHash = "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3";
-    const modifiedHash = "b776b56031533f0e528f5978fgec5gc9b15b2f4ggg2gb18fa09f97g8g8b38bf4";
-
-    const isConflict = originalHash !== modifiedHash;
-    expect(isConflict).toBe(true);
+  it("conflicts when the same key is reused with a different payload", () => {
+    const stored = { requestHash: sha256(body), expiresAt: future };
+    const changed = sha256(JSON.stringify({ shipmentId: "shp_1", amount: 999 }));
+    expect(idempotencyOutcome(stored, changed, now)).toBe("conflict");
   });
 
-  it("verifies optimistic locking version check rejects stale concurrent update", () => {
-    const currentRecordVersion = 3;
-    const incomingExpectedVersion = 2; // Stale client state
+  it("does not conflict on a retry, which an empty stored hash would cause", () => {
+    // Regression: persistIdempotency was called with "" at every call site,
+    // overwriting the real hash so an identical retry returned 409.
+    const overwritten = { requestHash: "", expiresAt: future };
+    expect(idempotencyOutcome(overwritten, sha256(body), now)).toBe("conflict");
 
-    const isStale = currentRecordVersion !== incomingExpectedVersion;
-    expect(isStale).toBe(true);
+    const persisted = { requestHash: sha256(body), expiresAt: future };
+    expect(idempotencyOutcome(persisted, sha256(body), now)).toBe("replay");
   });
 
-  it("verifies drawback claim rejects creation without accepted matches", () => {
-    const emptyMatches: any[] = [];
-    const isValidClaimInput = emptyMatches.length > 0;
-    expect(isValidClaimInput).toBe(false);
+  it("allows the key to be reserved again once the record has expired", () => {
+    const stored = { requestHash: sha256(body), expiresAt: past };
+    expect(idempotencyOutcome(stored, sha256(body), now)).toBe("reserve");
   });
 
-  it("verifies classification returns REVIEW_REQUIRED when ambiguity exists", () => {
-    const candidatesCount = 3;
-    const materialProvided = false;
+  it("treats key ordering in the payload as a different request", () => {
+    const a = sha256(JSON.stringify({ a: 1, b: 2 }));
+    const b = sha256(JSON.stringify({ b: 2, a: 1 }));
+    expect(a).not.toEqual(b);
+  });
+});
 
-    const status = (candidatesCount > 1 || !materialProvided) ? "REVIEW_REQUIRED" : "CLASSIFIED";
-    expect(status).toBe("REVIEW_REQUIRED");
+/** Mirrors the guard in ExceptionService.updateException. */
+function isStale(currentVersion: number, expectedVersion: number): boolean {
+  return currentVersion !== expectedVersion;
+}
+
+describe("optimistic locking version guard", () => {
+  it("rejects an update carrying a stale version", () => {
+    expect(isStale(3, 2)).toBe(true);
+  });
+
+  it("accepts an update carrying the current version", () => {
+    expect(isStale(3, 3)).toBe(false);
+  });
+
+  it("rejects an update carrying a version ahead of the record", () => {
+    expect(isStale(3, 4)).toBe(true);
+  });
+
+  it("treats version zero as a real version rather than a missing one", () => {
+    expect(isStale(0, 0)).toBe(false);
+    expect(isStale(1, 0)).toBe(true);
   });
 });

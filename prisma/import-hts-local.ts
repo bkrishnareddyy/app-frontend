@@ -6,7 +6,7 @@
  * Usage:
  *   npx tsx prisma/import-hts-local.ts
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
@@ -18,31 +18,35 @@ interface HTSRow {
   htsno: string;
   indent: string;
   description: string;
-  superior: string | null;
+  superior: string | boolean | null;
   units: string[];
   general: string;
   special: string;
   other: string;
-  footnotes: any[] | null;
+  footnotes: unknown[] | null;
   quotaQuantity?: string | null;
   additionalDuties?: string | null;
 }
+
+type DutyRateSeed = Omit<Prisma.HtsDutyRateCreateManyInput, "htsNodeId">;
 
 function normalizeCode(htsno: string): string {
   return (htsno || "").replace(/[^0-9]/g, "");
 }
 
 function parseRate(raw: string | undefined | null) {
-  if (!raw || raw.trim() === "" || raw.trim().toLowerCase().startsWith("free")) {
-    return { rateType: "Free", adValorem: 0, isFree: true };
+  const t = (raw || "").trim();
+  // An absent rate is not a free rate; the caller omits the column entirely.
+  if (!t) return { rateType: "Missing", adValorem: null as number | null, isFree: false };
+  if (t.toLowerCase().startsWith("free")) {
+    return { rateType: "Free", adValorem: 0 as number | null, isFree: true };
   }
-  const t = raw.trim();
   const pct = t.match(/^([0-9]+(?:\.[0-9]+)?)\s*%/);
   if (pct) {
-    return { rateType: "AdValorem", adValorem: parseFloat(pct[1]), isFree: false };
+    return { rateType: "AdValorem", adValorem: parseFloat(pct[1]) as number | null, isFree: false };
   }
   // Compound rates like "1.5¢/kg + 3.1%" — store raw, mark unparsed
-  return { rateType: "Compound", adValorem: null, isFree: false };
+  return { rateType: "Compound", adValorem: null as number | null, isFree: false };
 }
 
 const BATCH_SIZE = 500;
@@ -94,8 +98,8 @@ async function main() {
   // ─────────────────────────────────
   console.log("⚙️  Building node records...");
 
-  const nodeRecords: any[] = [];
-  const dutyRatesByNodeIndex: Array<Array<any>> = [];
+  const nodeRecords: Prisma.HtsNodeCreateManyInput[] = [];
+  const dutyRatesByNodeIndex: DutyRateSeed[][] = [];
 
   for (let i = 0; i < raw.length; i++) {
     const row = raw[i];
@@ -107,7 +111,7 @@ async function main() {
 
     if (!rawCode || rawCode.length < 4) continue;
 
-    const isSuperior = row.superior === "true" || row.superior === true as any;
+    const isSuperior = row.superior === "true" || row.superior === true;
     let codeLevel = 4;
     if (rawCode.length >= 10) codeLevel = 10;
     else if (rawCode.length >= 8) codeLevel = 8;
@@ -137,46 +141,27 @@ async function main() {
       statisticalSuffix10,
     };
 
-    // Build duty rates for this node
-    const dutyRates: any[] = [];
-    const generalParsed = parseRate(row.general);
-    dutyRates.push({
-      rateColumn: "General",
-      rawRateText: row.general || "Free",
-      rateType: generalParsed.rateType,
-      adValoremPercent: generalParsed.adValorem,
-      specificAmount: null,
-      specificUnit: null,
-      currency: "USD",
-      isFree: generalParsed.isFree,
-      parseStatus: generalParsed.rateType === "Compound" ? "UNPARSED_FALLBACK" : "PARSED",
-    });
-    if (row.special?.trim()) {
-      const p = parseRate(row.special);
+    // Build duty rates for this node. Columns the source left blank get no row.
+    const dutyRates: DutyRateSeed[] = [];
+
+    for (const [rateColumn, rawRate] of [
+      ["General", row.general],
+      ["Special", row.special],
+      ["Column 2", row.other],
+    ] as const) {
+      const parsed = parseRate(rawRate);
+      if (parsed.rateType === "Missing") continue;
+
       dutyRates.push({
-        rateColumn: "Special",
-        rawRateText: row.special,
-        rateType: p.rateType,
-        adValoremPercent: p.adValorem,
+        rateColumn,
+        rawRateText: (rawRate || "").trim(),
+        rateType: parsed.rateType,
+        adValoremPercent: parsed.adValorem,
         specificAmount: null,
         specificUnit: null,
         currency: "USD",
-        isFree: p.isFree,
-        parseStatus: p.rateType === "Compound" ? "UNPARSED_FALLBACK" : "PARSED",
-      });
-    }
-    if (row.other?.trim()) {
-      const p = parseRate(row.other);
-      dutyRates.push({
-        rateColumn: "Column 2",
-        rawRateText: row.other,
-        rateType: p.rateType,
-        adValoremPercent: p.adValorem,
-        specificAmount: null,
-        specificUnit: null,
-        currency: "USD",
-        isFree: p.isFree,
-        parseStatus: p.rateType === "Compound" ? "UNPARSED_FALLBACK" : "PARSED",
+        isFree: parsed.isFree,
+        parseStatus: parsed.rateType === "Compound" ? "UNPARSED_FALLBACK" : "PARSED",
       });
     }
 
@@ -227,7 +212,7 @@ async function main() {
   }
 
   // Build all duty rate records
-  const allDutyRates: any[] = [];
+  const allDutyRates: Prisma.HtsDutyRateCreateManyInput[] = [];
   for (let i = 0; i < nodeRecords.length; i++) {
     const nodeId = rowNumToId.get(nodeRecords[i].sourceRowNumber);
     if (!nodeId) continue;

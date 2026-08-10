@@ -267,9 +267,9 @@ export function ExceptionsDrawer({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {filtered.map((ex: any) => (
             <div key={ex.id} className="p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-2 hover:border-[#0071E3] transition-all duration-200">
-              <div className="flex items-center space-x-2 text-xs font-bold text-[#1D1D1F]">
-                {ex.icon}
-                <span>{ex.title}</span>
+              <div className="flex items-start space-x-2 text-xs font-bold text-[#1D1D1F]">
+                <span className="shrink-0">{ex.icon}</span>
+                <span className="min-w-0 break-words">{ex.title}</span>
               </div>
               <p className="text-[11px] text-[#86868B] leading-relaxed">{ex.desc}</p>
               {ex.actionType === "UPLOAD_DIRECT" ? (

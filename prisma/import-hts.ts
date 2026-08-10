@@ -12,7 +12,6 @@ import crypto from "crypto";
 const db = new PrismaClient({ log: ["warn", "error"] });
 
 const USITC_BASE = "https://hts.usitc.gov/reststop/api/details";
-const BATCH_SIZE = 100; // Prisma createMany batch size
 const REQUEST_DELAY_MS = 250; // Polite rate limiting between chapter requests
 
 interface USITCEntry {
@@ -24,7 +23,19 @@ interface USITCEntry {
   general?: string;
   special?: string;
   other?: string;
-  footnotes?: any[];
+  footnotes?: unknown[];
+}
+
+interface DutyRateSeed {
+  rateColumn: string;
+  rawRateText: string;
+  rateType: string;
+  adValoremPercent: number | null;
+  specificAmount: number | null;
+  specificUnit: string | null;
+  currency: string;
+  isFree: boolean;
+  parseStatus: string;
 }
 
 function sleep(ms: number) {
@@ -36,9 +47,10 @@ function normalizeCode(htsno: string): string {
 }
 
 function parseRate(raw: string | undefined): { rateType: string; adValorem: number | null; isFree: boolean } {
-  if (!raw) return { rateType: "Free", adValorem: 0, isFree: true };
-  const t = raw.trim().toLowerCase();
-  if (!t || t.startsWith("free")) return { rateType: "Free", adValorem: 0, isFree: true };
+  const t = (raw || "").trim().toLowerCase();
+  // An absent rate is not a free rate; the caller omits the column entirely.
+  if (!t) return { rateType: "Missing", adValorem: null, isFree: false };
+  if (t.startsWith("free")) return { rateType: "Free", adValorem: 0, isFree: true };
   const pct = t.match(/^([0-9]+(?:\.[0-9]+)?)\s*%/);
   if (pct) return { rateType: "AdValorem", adValorem: parseFloat(pct[1]), isFree: false };
   return { rateType: "Unparsed", adValorem: null, isFree: false };
@@ -155,50 +167,27 @@ async function main() {
       const statisticalSuffix10 = rawCode.length >= 10 ? rawCode.substring(8, 10) : null;
       const indentLevel = parseInt(String(entry.indent || "0"), 10) || 0;
 
-      // Parse duty rates
-      const generalParsed = parseRate(entry.general);
-      const specialParsed = parseRate(entry.special);
-      const otherParsed = parseRate(entry.other);
+      // Parse duty rates. Columns the source left blank get no row.
+      const dutyRatesData: DutyRateSeed[] = [];
 
-      const dutyRatesData: any[] = [
-        {
-          rateColumn: "General",
-          rawRateText: entry.general || "Free",
-          rateType: generalParsed.rateType,
-          adValoremPercent: generalParsed.adValorem,
-          specificAmount: null,
-          specificUnit: null,
-          currency: "USD",
-          isFree: generalParsed.isFree,
-          parseStatus: generalParsed.rateType === "Unparsed" ? "UNPARSED_FALLBACK" : "PARSED",
-        },
-      ];
+      for (const [rateColumn, rawRate] of [
+        ["General", entry.general],
+        ["Special", entry.special],
+        ["Column 2", entry.other],
+      ] as const) {
+        const parsed = parseRate(rawRate);
+        if (parsed.rateType === "Missing") continue;
 
-      if (entry.special) {
         dutyRatesData.push({
-          rateColumn: "Special",
-          rawRateText: entry.special,
-          rateType: specialParsed.rateType,
-          adValoremPercent: specialParsed.adValorem,
+          rateColumn,
+          rawRateText: (rawRate || "").trim(),
+          rateType: parsed.rateType,
+          adValoremPercent: parsed.adValorem,
           specificAmount: null,
           specificUnit: null,
           currency: "USD",
-          isFree: specialParsed.isFree,
-          parseStatus: specialParsed.rateType === "Unparsed" ? "UNPARSED_FALLBACK" : "PARSED",
-        });
-      }
-
-      if (entry.other) {
-        dutyRatesData.push({
-          rateColumn: "Column 2",
-          rawRateText: entry.other,
-          rateType: otherParsed.rateType,
-          adValoremPercent: otherParsed.adValorem,
-          specificAmount: null,
-          specificUnit: null,
-          currency: "USD",
-          isFree: otherParsed.isFree,
-          parseStatus: otherParsed.rateType === "Unparsed" ? "UNPARSED_FALLBACK" : "PARSED",
+          isFree: parsed.isFree,
+          parseStatus: parsed.rateType === "Unparsed" ? "UNPARSED_FALLBACK" : "PARSED",
         });
       }
 
@@ -225,10 +214,11 @@ async function main() {
         });
         chapterInserted++;
         totalInserted++;
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
         // Skip duplicate constraint violations silently
-        if (!err?.message?.includes("Unique constraint")) {
-          console.warn(`\n    ⚠️  Failed to insert ${displayCode}: ${err.message?.slice(0, 80)}`);
+        if (!message.includes("Unique constraint")) {
+          console.warn(`\n    ⚠️  Failed to insert ${displayCode}: ${message.slice(0, 80)}`);
         }
         totalSkipped++;
       }

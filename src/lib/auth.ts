@@ -1,6 +1,8 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { db } from "./db";
+import type { DataMode } from "./dataMode";
 
 export interface AccountContext {
   userId: string;
@@ -14,6 +16,7 @@ export interface AccountContext {
   accountName: string;
   accountSlug: string;
   accountType: "ENTERPRISE" | "INDIVIDUAL" | string;
+  dataMode: DataMode;
   ownerUserId?: string | null;
   membershipId: string;
   // A membership can hold multiple simultaneous roles (e.g. Admin + Agent) --
@@ -47,7 +50,7 @@ function generateSlug(name: string): string {
   return base || "workspace";
 }
 
-export async function getAccountContext(): Promise<AccountContext | null> {
+async function loadAccountContext(): Promise<AccountContext | null> {
   try {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) {
@@ -134,7 +137,7 @@ export async function getAccountContext(): Promise<AccountContext | null> {
       });
       if (!ownerRole) {
         ownerRole = await db.role.create({
-          data: { name: "OWNER", description: "Account Owner" },
+          data: { name: "OWNER", description: "Account Owner", isSystem: true },
         });
       }
 
@@ -235,12 +238,19 @@ export async function getAccountContext(): Promise<AccountContext | null> {
     );
 
     if (!activeMembership) {
-      activeMembership =
-        dbUser.memberships.find((m) => m.status === "ACTIVE" && m.account.deletedAt === null) ||
-        dbUser.memberships[0];
+      // No fallback to memberships[0]: that granted access through a membership
+      // whose status was INACTIVE or DISABLED, since only the account was checked below.
+      activeMembership = dbUser.memberships.find(
+        (m) => m.status === "ACTIVE" && m.account.deletedAt === null
+      );
     }
 
-    if (!activeMembership || activeMembership.account.status !== "ACTIVE" || activeMembership.account.deletedAt !== null) {
+    if (
+      !activeMembership ||
+      activeMembership.status !== "ACTIVE" ||
+      activeMembership.account.status !== "ACTIVE" ||
+      activeMembership.account.deletedAt !== null
+    ) {
       return null;
     }
 
@@ -279,6 +289,7 @@ export async function getAccountContext(): Promise<AccountContext | null> {
       accountName: activeMembership.account.name,
       accountSlug: activeMembership.account.slug,
       accountType: activeMembership.account.type,
+      dataMode: activeMembership.account.dataMode,
       ownerUserId: activeMembership.account.ownerUserId,
       membershipId: activeMembership.id,
       roleIds,
@@ -298,6 +309,10 @@ export async function getAccountContext(): Promise<AccountContext | null> {
     return null;
   }
 }
+
+// Deduped per request: the layout, the page, and every hasPermission() call each
+// need this, and the permission-tree query behind it is the slowest in the app.
+export const getAccountContext = cache(loadAccountContext);
 
 export async function hasPermission(requiredPermission: string): Promise<boolean> {
   const context = await getAccountContext();

@@ -115,7 +115,7 @@ class ExceptionResolutionMockService {
 
       let category = "VALIDATION";
       let title = dbEx.description.split(":")[0]?.trim() || "Compliance Exception";
-      let desc = dbEx.description.split(":").slice(1).join(":")?.trim() || dbEx.description;
+      const desc = dbEx.description.split(":").slice(1).join(":")?.trim() || dbEx.description;
       let actionType = "DEFAULT";
 
       if (isHts) {

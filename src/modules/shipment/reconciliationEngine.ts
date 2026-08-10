@@ -32,14 +32,14 @@ export class ReconciliationEngine {
     }
 
     const affectedAgentsSet = new Set<string>();
-    let conflictsDetected = 0;
+    const conflictsDetected = 0;
     let exceptionsGenerated = 0;
     let exceptionsResolved = 0;
 
     const activeExceptions = shipment.exceptionItems || [];
 
     // 1. Check Missing Importer / Client
-    const missingImporterException = activeExceptions.find((e: any) => e.code === "MISSING_IMPORTER_OF_RECORD");
+    const missingImporterException = activeExceptions.find((e) => e.code === "MISSING_IMPORTER_OF_RECORD");
     if (!shipment.importerOfRecordId && !shipment.clientId && shipment.shipmentParties.length === 0) {
       if (!missingImporterException) {
         await db.exceptionItem.create({
@@ -70,9 +70,9 @@ export class ReconciliationEngine {
 
     // 2. Check Line Items HTS Review Requirements
     const unreviewedItems = shipment.lineItems.filter(
-      (item: any) => item.status === "Unreviewed" || (item.htsConfidence && item.htsConfidence < 80)
+      (item) => item.status === "Unreviewed" || (item.htsConfidence !== null && item.htsConfidence < 80)
     );
-    const htsReviewException = activeExceptions.find((e: any) => e.code === "HTS_REVIEW_REQUIRED");
+    const htsReviewException = activeExceptions.find((e) => e.code === "HTS_REVIEW_REQUIRED");
 
     if (unreviewedItems.length > 0) {
       if (!htsReviewException) {

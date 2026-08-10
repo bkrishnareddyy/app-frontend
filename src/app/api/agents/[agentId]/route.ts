@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
-import { db } from "@/lib/db";
+import {
+  resolveTenantShipmentId,
+  shipmentResolutionStatus,
+  ShipmentResolutionError,
+} from "@/modules/shipments/resolveShipment";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent } from "@/modules/agents/documentIntelligenceAgent";
 import { ProductIntelligenceAgent } from "@/modules/agents/productIntelligenceAgent";
@@ -26,61 +31,52 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
 
   const body = await req.json().catch(() => ({}));
 
-  let targetShipmentId = body.shipmentId;
-
-  if (targetShipmentId) {
-    const existing = await db.shipment.findUnique({
-      where: { id: targetShipmentId },
-      select: { id: true },
-    });
-    if (!existing) {
-      targetShipmentId = null;
+  let targetShipmentId: string;
+  try {
+    targetShipmentId = await resolveTenantShipmentId(accountId, body.shipmentId);
+  } catch (err) {
+    if (err instanceof ShipmentResolutionError) {
+      return NextResponse.json(
+        { error: err.code, message: err.message },
+        { status: shipmentResolutionStatus(err.code) }
+      );
     }
-  }
-
-  if (!targetShipmentId) {
-    const activeShipment = await db.shipment.findFirst({
-      where: { accountId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
-
-    if (activeShipment) {
-      targetShipmentId = activeShipment.id;
-    } else {
-      const count = await db.shipment.count({ where: { accountId } });
-      const shipmentNumber = `SHP-2026-${String(count + 1).padStart(6, "0")}`;
-      const newShipment = await db.shipment.create({
-        data: {
-          accountId,
-          shipmentNumber,
-          importerName: "Demo Import Account",
-          poReference: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
-          entryType: "Consumption Entry",
-          incoterm: "FOB SHENZHEN",
-          status: "In Progress",
-          readinessScore: 85,
-          riskScore: 20,
-        },
-      });
-      targetShipmentId = newShipment.id;
-    }
+    throw err;
   }
 
   try {
-    let agentResult: any = null;
+    let agentResult: unknown = null;
     let agentName = "";
+
+    // Every agent below persists AgentDecision, ComplianceFinding, CustomsFiling
+    // and ShipmentDocument rows against the caller's real tenant and shipment.
+    // Missing input used to be filled with a hardcoded demo shipment (invoice
+    // $48,500 of stainless fasteners from Shenzhen Hardware Manufacturing Corp),
+    // so an under-specified request wrote fabricated compliance records onto a
+    // live shipment. Reject instead.
+    const missingInput = (fields: string[]) =>
+      NextResponse.json(
+        {
+          error: "MISSING_AGENT_INPUT",
+          message: `This agent requires ${fields.join(", ")}. Values are never substituted, because the agent writes to the shipment's compliance record.`,
+          missingFields: fields,
+        },
+        { status: 400 }
+      );
 
     switch (agentId.toLowerCase()) {
       case "document-intake":
       case "1":
         agentName = "Document Intake Agent";
+        if (!body.fileName || !body.fileUrl) {
+          return missingInput(["fileName", "fileUrl"]);
+        }
         agentResult = await DocumentIntakeAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          fileName: body.fileName || "Commercial_Invoice_INV-88421.pdf",
-          fileUrl: body.fileUrl || "https://storage.qubere.ai/docs/inv-88421.pdf",
+          fileName: body.fileName,
+          fileUrl: body.fileUrl,
         });
         break;
 
@@ -98,99 +94,125 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
       case "product-intelligence":
       case "3":
         agentName = "Product Intelligence Agent";
+        if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
+          return missingInput(["lineItems"]);
+        }
         agentResult = await ProductIntelligenceAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          lineItems: body.lineItems || [
-            { lineNumber: 1, sku: "SKU-992-FAST", description: "Stainless Steel Fasteners 1/4-20" },
-          ],
+          lineItems: body.lineItems,
         });
         break;
 
       case "hts-classification":
       case "4":
         agentName = "HTS Classification Agent";
+        if (!Array.isArray(body.productProfiles) || body.productProfiles.length === 0) {
+          return missingInput(["productProfiles"]);
+        }
         agentResult = await HTSClassificationAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          productProfiles: body.productProfiles || [
-            { lineNumber: 1, rawDescription: "Stainless Steel Fasteners 1/4-20 Grade 304" },
-          ],
+          productProfiles: body.productProfiles,
         });
         break;
 
       case "origin-rules":
       case "5":
         agentName = "Origin & Trade Agreement Agent";
+        if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
+          return missingInput(["lineItems"]);
+        }
         agentResult = await OriginRulesAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          lineItems: body.lineItems || [
-            { lineNumber: 1, htsCode: "7318.15.2065", manufacturingCountry: "MX" },
-          ],
+          lineItems: body.lineItems,
         });
         break;
 
       case "valuation-assists":
-      case "6":
+      case "6": {
         agentName = "Valuation & Assist Agent";
+        const subtotal = Number.isFinite(body.invoiceSubtotal)
+          ? body.invoiceSubtotal
+          : Number.isFinite(body.invoiceTotal)
+            ? body.invoiceTotal
+            : null;
+        if (subtotal === null) {
+          return missingInput(["invoiceSubtotal"]);
+        }
         agentResult = await ValuationAssistsAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          invoiceSubtotal: body.invoiceSubtotal || body.invoiceTotal || 48500.0,
+          invoiceSubtotal: subtotal,
         });
         break;
+      }
 
       case "compliance-audit":
       case "7":
         agentName = "Compliance & Audit Agent";
+        if (!body.htsCode || !body.countryOfOrigin || !body.supplierName) {
+          return missingInput(["htsCode", "countryOfOrigin", "supplierName"]);
+        }
         agentResult = await ComplianceAuditAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          htsCode: body.htsCode || "7318.15.2065",
-          countryOfOrigin: body.countryOfOrigin || "MX",
-          supplierName: body.supplierName || "Shenzhen Hardware Manufacturing Corp",
+          htsCode: body.htsCode,
+          countryOfOrigin: body.countryOfOrigin,
+          supplierName: body.supplierName,
         });
         break;
 
       case "filing-readiness":
       case "8":
         agentName = "Filing Readiness Agent";
+        if (!Number.isFinite(body.enteredValue) || !Number.isFinite(body.lineItemCount)) {
+          return missingInput(["enteredValue", "lineItemCount"]);
+        }
         agentResult = await FilingReadinessAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          enteredValue: body.enteredValue || 48500.0,
-          dutyDue: body.dutyDue || 0.0,
-          lineItemCount: body.lineItemCount || 1,
+          enteredValue: body.enteredValue,
+          // Unknown duty stays null; it must not be declared as $0.00.
+          dutyDue: Number.isFinite(body.dutyDue) ? body.dutyDue : null,
+          lineItemCount: body.lineItemCount,
+          entryType: body.entryType,
         });
         break;
 
       case "customs-filing":
       case "9":
         agentName = "Customs Filing Agent (ACE/CBP)";
+        if (!Number.isFinite(body.enteredValue)) {
+          return missingInput(["enteredValue"]);
+        }
         agentResult = await CustomsFilingAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          enteredValue: body.enteredValue || 46800.0,
-          dutyDue: body.dutyDue || 0.0,
+          enteredValue: body.enteredValue,
+          dutyDue: Number.isFinite(body.dutyDue) ? body.dutyDue : null,
         });
         break;
 
       case "response-management":
       case "10":
         agentName = "Response & Post-Summary Agent";
+        if (!body.entryNumber) {
+          return missingInput(["entryNumber"]);
+        }
         agentResult = await ResponseManagementAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          entryNumber: body.entryNumber || "QBR-2026-8849102",
+          entryNumber: body.entryNumber,
         });
         break;
 
@@ -209,14 +231,7 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
       agentName,
       result: agentResult,
     });
-  } catch (error: any) {
-    console.error("POST /api/agents/[agentId] error:", error);
-    return NextResponse.json(
-      {
-        error: "Agent Execution Failed",
-        details: error?.message || String(error),
-      },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
-});
+}, { write: true });

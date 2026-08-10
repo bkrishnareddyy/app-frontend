@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { DomainError } from "@/lib/api/error";
 import { RateParser } from "./rateParser";
 import { Prisma } from "@prisma/client";
 import crypto from "crypto";
@@ -45,7 +46,11 @@ export class HtsIngestionService {
     });
 
     if (existing && existing.publicationStatus === "PUBLISHED") {
-      throw new Error(`Release checksum '${sha256}' has already been published as release '${existing.id}'. Duplicate ingestion rejected.`);
+      throw new DomainError(
+        `Release checksum '${sha256}' has already been published as release '${existing.id}'. Duplicate ingestion rejected.`,
+        "DUPLICATE_RELEASE",
+        409
+      );
     }
 
     const effectiveFrom = new Date(Date.UTC(input.editionYear, 0, 1));
@@ -114,43 +119,20 @@ export class HtsIngestionService {
         statisticalSuffix10,
       });
 
-      if (item.general) {
-        const p = RateParser.parse(item.general, "General");
-        dutyRateRows.push({
-          htsNodeId: nodeId,
-          rateColumn: "General",
-          rawRateText: p.rawRateText,
-          rateType: p.rateType,
-          adValoremPercent: p.adValoremPercent,
-          specificAmount: p.specificAmount,
-          specificUnit: p.specificUnit,
-          currency: p.currency,
-          isFree: p.isFree,
-          parseStatus: p.parseStatus,
-        });
-      }
+      // A column the source left blank gets no row at all, so readers see
+      // "no rate recorded" rather than a fabricated Free rate.
+      for (const [rateColumn, rawRate] of [
+        ["General", item.general],
+        ["Special", item.special],
+        ["Column 2", item.other],
+      ] as const) {
+        if (!rawRate) continue;
+        const p = RateParser.parse(rawRate, rateColumn);
+        if (p.rateType === "Missing") continue;
 
-      if (item.special) {
-        const p = RateParser.parse(item.special, "Special");
         dutyRateRows.push({
           htsNodeId: nodeId,
-          rateColumn: "Special",
-          rawRateText: p.rawRateText,
-          rateType: p.rateType,
-          adValoremPercent: p.adValoremPercent,
-          specificAmount: p.specificAmount,
-          specificUnit: p.specificUnit,
-          currency: p.currency,
-          isFree: p.isFree,
-          parseStatus: p.parseStatus,
-        });
-      }
-
-      if (item.other) {
-        const p = RateParser.parse(item.other, "Column 2");
-        dutyRateRows.push({
-          htsNodeId: nodeId,
-          rateColumn: "Column 2",
+          rateColumn,
           rawRateText: p.rawRateText,
           rateType: p.rateType,
           adValoremPercent: p.adValoremPercent,
@@ -195,7 +177,7 @@ export class HtsIngestionService {
     });
 
     if (!candidate) {
-      throw new Error(`Release '${releaseId}' not found.`);
+      throw new DomainError(`Release '${releaseId}' not found.`, "RELEASE_NOT_FOUND", 404);
     }
 
     if (candidate.publicationStatus === "PUBLISHED") {
@@ -236,7 +218,7 @@ export class HtsIngestionService {
     });
 
     if (!release) {
-      throw new Error(`Release '${releaseId}' not found.`);
+      throw new DomainError(`Release '${releaseId}' not found.`, "RELEASE_NOT_FOUND", 404);
     }
 
     return db.$transaction(async (tx) => {

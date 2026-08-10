@@ -372,10 +372,10 @@ export function DecisionReviewClient({
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className="flex items-center bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA]">
+          <div className="flex flex-wrap items-center gap-1 bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA]">
             <button
               onClick={() => setActiveFilter("ALL")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 activeFilter === "ALL" ? "bg-white text-[#1D1D1F] shadow-2xs" : "text-[#86868B]"
               }`}
             >
@@ -383,7 +383,7 @@ export function DecisionReviewClient({
             </button>
             <button
               onClick={() => setActiveFilter("NEED_REVIEW")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 activeFilter === "NEED_REVIEW" ? "bg-amber-500 text-white shadow-2xs" : "text-[#86868B]"
               }`}
             >
@@ -391,7 +391,7 @@ export function DecisionReviewClient({
             </button>
             <button
               onClick={() => setActiveFilter("APPROVED")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 activeFilter === "APPROVED" ? "bg-emerald-600 text-white shadow-2xs" : "text-[#86868B]"
               }`}
             >
@@ -441,12 +441,12 @@ export function DecisionReviewClient({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center space-x-2 truncate">
-                        <FileText className="w-4 h-4 text-[#0071E3] shrink-0" />
-                        <span className="font-extrabold text-[#1D1D1F] truncate">{g.documentName}</span>
+                      <div className="flex items-start space-x-2 min-w-0">
+                        <FileText className="w-4 h-4 text-[#0071E3] shrink-0 mt-0.5" />
+                        <span className="font-extrabold text-[#1D1D1F] min-w-0 break-all">{g.documentName}</span>
                       </div>
                       <span
-                        className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 ${
+                        className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${
                           g.status === "Needs Review" ? "bg-amber-100 text-amber-900 border-amber-300" : "bg-emerald-100 text-emerald-900 border-emerald-300"
                         }`}
                       >
@@ -484,11 +484,11 @@ export function DecisionReviewClient({
             <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E5E5EA] pb-4">
                 <div className="space-y-1 min-w-0">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 min-w-0">
                     <FileText className="w-5 h-5 text-[#0071E3] shrink-0" />
                     <h2
                       onClick={() => primaryDoc && setIsPreviewOpen(true)}
-                      className={`text-lg font-extrabold text-[#0071E3] truncate ${primaryDoc ? "hover:underline cursor-pointer" : ""}`}
+                      className={`text-lg font-extrabold text-[#0071E3] min-w-0 break-words ${primaryDoc ? "hover:underline cursor-pointer" : ""}`}
                       title={primaryDoc ? "Click to view document" : undefined}
                     >
                       {selectedGroup.documentName}

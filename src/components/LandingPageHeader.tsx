@@ -6,7 +6,6 @@ import { ShieldCheck, Code2, Bot } from "lucide-react";
 import { ApiStatusDrawer } from "./ApiStatusDrawer";
 
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 
 export function LandingPageHeader() {
   const [isApiDrawerOpen, setIsApiDrawerOpen] = useState(false);

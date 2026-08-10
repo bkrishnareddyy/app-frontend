@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // e2e/*.spec.ts is Playwright's; the default glob would otherwise claim it.
+    include: ["tests/**/*.test.ts"],
   },
   resolve: {
     alias: {

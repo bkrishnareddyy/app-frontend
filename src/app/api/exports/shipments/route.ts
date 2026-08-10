@@ -55,4 +55,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   return NextResponse.json({ exportShipment }, { status: 201 });
-});
+}, { write: true });

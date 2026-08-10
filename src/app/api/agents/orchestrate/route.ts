@@ -32,4 +32,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     jobId: job.id,
     result: { status: "processing", shipmentId: targetShipmentId },
   });
-});
+}, { write: true });

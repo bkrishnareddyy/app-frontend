@@ -22,7 +22,8 @@ export interface ResponseManagementOutput {
   shipmentId: string;
   status: "Completed" | "Review Required" | "COMPLETED_NO_ACTION";
   refundOpportunities: PostEntryRefundOpportunity[];
-  totalPotentialRefund: number;
+  /** Null because no scan has run; 0 would claim one ran and found nothing. */
+  totalPotentialRefund: number | null;
   legalResponseDrafted: boolean;
   evaluatorScore: number | null;
   evaluatorCritique: string;
@@ -34,7 +35,7 @@ export interface ResponseManagementOutput {
     blockedByAgents: string[];
   };
   reasoningChain: string;
-  agentDecisionId: string;
+  agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
 }
@@ -50,14 +51,16 @@ export class ResponseManagementAgent {
     //   - The paid duty amount and HTS code (to match against USTR exclusions)
     //   - A live USTR / CBP API integration (not available here)
     //
-    // Without those inputs, we cannot claim any refund amount. Status is
-    // always COMPLETED_NO_ACTION until real integration is wired up -- this
-    // used to special-case any entry number starting with "QBR-" (the
-    // prefix every simulated filing gets) into a fabricated $2,902.40
-    // refund with a fake evaluator score. Removed: there is no real USTR
-    // data behind it.
+    // Without those inputs, we cannot claim any refund amount.
+    // Status is always COMPLETED_NO_ACTION until real integration is wired up.
+    //
+    // An `isTestEntry` flag used to unlock a $2,902.40 SECTION_301_EXCLUSION
+    // opportunity, an evaluator score of 97 and legalResponseDrafted. Its
+    // condition was entryNumber.startsWith("QBR-"), and QBR is this system's
+    // own filer code, so it matched every entry the Customs Filing Agent has
+    // ever produced.
     const status: ResponseManagementOutput["status"] = "COMPLETED_NO_ACTION";
-    const totalPotentialRefund = 0;
+    const totalPotentialRefund = null;
     const refundOpportunities: PostEntryRefundOpportunity[] = [];
     const evaluatorScore: number | null = null;
 
@@ -68,7 +71,8 @@ export class ResponseManagementAgent {
     const evaluatorCritique =
       "No refund amounts claimed — real Section 301 exclusion matching requires live USTR database integration with the filed HTS code and paid duty amount.";
 
-    let agentDecisionId = "dec_fallback_response";
+    // Null, not a synthetic id: a failed write produced no AgentDecision row.
+    let agentDecisionId: string | null = null;
     try {
       const agentDecision = await db.agentDecision.create({
         data: {
@@ -99,21 +103,23 @@ export class ResponseManagementAgent {
       );
     }
 
-    try {
-      await createAuditLog({
-        accountId: input.accountId,
-        userId: input.userId,
-        action: "AGENT_EXECUTION_COMPLETED",
-        entity: "AGENT_DECISION",
-        entityId: agentDecisionId,
-        metadata: {
-          agentName: "Response Agent",
-          hasEntryNumber: Boolean(input.entryNumber),
-          refundAmount: totalPotentialRefund,
-        },
-      });
-    } catch (err) {
-      debugError = logAgentError("Response Agent", input.shipmentId, "createAuditLog", err);
+    if (agentDecisionId) {
+      try {
+        await createAuditLog({
+          accountId: input.accountId,
+          userId: input.userId,
+          action: "AGENT_EXECUTION_COMPLETED",
+          entity: "AGENT_DECISION",
+          entityId: agentDecisionId,
+          metadata: {
+            agentName: "Response Agent",
+            hasEntryNumber: Boolean(input.entryNumber),
+            refundAmount: totalPotentialRefund,
+          },
+        });
+      } catch (err) {
+        debugError = logAgentError("Response Agent", input.shipmentId, "createAuditLog", err);
+      }
     }
 
     return {
