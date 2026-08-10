@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import {
+  OVERRIDE_PERMISSION,
   REVIEW_ACTIONS,
   checkReviewPermission,
   decisionProvenance,
@@ -12,6 +15,7 @@ import {
   requiredPermissions,
   reviewerIdentity,
 } from "@/modules/decisions/reviewAuthority";
+import { buildEditUpdate, readEditableValue } from "@/modules/decisions/editableFields";
 
 const REVIEWER_SELECT = {
   firstName: true,
@@ -78,6 +82,92 @@ async function applyProposedHtsCode(
   };
 }
 
+/**
+ * Correcting a value an agent proposed is the same act as overriding a
+ * classification -- a human is replacing the model's answer with their own --
+ * so it is gated by the same decisions.override permission rather than a new
+ * one, and reuses the decision.<verb> audit action naming.
+ */
+async function handleEditValue(ctx: AccountContext, body: unknown) {
+  const { decisionId, fieldKey, value } =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+
+  if (typeof decisionId !== "string" || decisionId.trim() === "") {
+    return NextResponse.json({ error: "decisionId is required" }, { status: 400 });
+  }
+  if (typeof fieldKey !== "string" || fieldKey.trim() === "") {
+    return NextResponse.json({ error: "fieldKey is required" }, { status: 400 });
+  }
+  if (typeof value !== "string" || value.trim() === "") {
+    return NextResponse.json({ error: "value is required" }, { status: 400 });
+  }
+
+  const check = checkReviewPermission(ctx, [OVERRIDE_PERMISSION]);
+  if (!check.allowed) {
+    await createAuditLog({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      action: "decision.edit_value",
+      entity: "AgentDecision",
+      entityId: decisionId,
+      success: false,
+      metadata: { reason: "PERMISSION_REQUIRED", missing: check.missing, fieldKey },
+    });
+    return NextResponse.json(
+      {
+        error: permissionDeniedMessage(check),
+        code: "PERMISSION_REQUIRED",
+        required: check.required,
+        missing: check.missing,
+      },
+      { status: 403 }
+    );
+  }
+
+  const decision = await db.agentDecision.findFirst({
+    where: { id: decisionId, accountId: ctx.accountId },
+  });
+  if (!decision) {
+    return NextResponse.json({ error: "Decision not found" }, { status: 404 });
+  }
+
+  const trimmedKey = fieldKey.trim();
+  const trimmedValue = value.trim();
+  const update = buildEditUpdate(decision, trimmedKey, trimmedValue);
+  if (!update) {
+    return NextResponse.json(
+      { error: `"${trimmedKey}" is not an editable field on this decision` },
+      { status: 400 }
+    );
+  }
+
+  const previousValue = readEditableValue(decision, trimmedKey);
+
+  await db.agentDecision.update({
+    where: { id: decisionId },
+    data: update as unknown as Prisma.AgentDecisionUpdateInput,
+  });
+
+  const updatedDecision = await db.agentDecision.findFirst({
+    where: { id: decisionId, accountId: ctx.accountId },
+    include: { reviewedByUser: { select: REVIEWER_SELECT } },
+  });
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: "decision.edit_value",
+    entity: "AgentDecision",
+    entityId: decisionId,
+    metadata: { fieldKey: trimmedKey, previousValue, newValue: trimmedValue },
+  });
+
+  return NextResponse.json({
+    decision: updatedDecision,
+    provenance: updatedDecision ? decisionProvenance(updatedDecision) : null,
+  });
+}
+
 export const GET = withAuthenticatedRoute(async ({ ctx }) => {
   const decisions = await db.agentDecision.findMany({
     where: { accountId: ctx.accountId },
@@ -99,6 +189,10 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
   const { decisionId, action, humanNotes, expectedVersion } = body;
+
+  if (action === "EDIT_VALUE") {
+    return handleEditValue(ctx, body);
+  }
 
   // An unrecognised action used to fall through to "In Progress" and then throw
   // on action.toLowerCase(), so the decision was mutated and no audit log written.

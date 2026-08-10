@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw } from "lucide-react";
+import { decisionGroupLabel, editableFieldsFor } from "@/modules/decisions/editableFields";
 
 interface ExtractionPayload {
   extractedJson?: {
@@ -39,27 +40,6 @@ export interface DocumentReviewPanelProps {
   // id placed on the subtitle line so a wrapping dialog can point
   // aria-labelledby at it. Not needed for inline (non-dialog) embedding.
   titleId?: string;
-}
-
-function fieldLabel(dec: any): string {
-  if (dec.proposedHtsCode || dec.currentHtsCode) return "HTS Classification";
-  return String(dec.agentName || "Field").replace(/\s*Agent$/i, "").trim();
-}
-
-function fieldValue(dec: any): string | null {
-  if (dec.proposedHtsCode || dec.currentHtsCode) {
-    return dec.proposedHtsCode || dec.currentHtsCode;
-  }
-  // evidenceItems is untyped Json and varies by agent -- sometimes a flat
-  // {fieldName: value} map, sometimes an array of evidence objects. Only
-  // primitive values make sense as a single displayed "value"; anything
-  // else (nested objects/arrays) falls through to the decision summary.
-  const evItems = dec?.evidenceItems && typeof dec.evidenceItems === "object" ? (dec.evidenceItems as Record<string, any>) : {};
-  const firstEvidenceValue = Object.values(evItems).find(
-    (v) => v !== null && v !== undefined && v !== "" && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
-  );
-  if (firstEvidenceValue !== undefined) return String(firstEvidenceValue);
-  return dec.decisionSummary || null;
 }
 
 function statusPillClass(status: string): string {
@@ -101,6 +81,14 @@ export function DocumentReviewPanel({
   const [editingNameValue, setEditingNameValue] = useState(fileName);
   const [renaming, setRenaming] = useState(false);
 
+  // Editing an agent-proposed field value (e.g. HTS code, exporter name).
+  // Keyed as "<decisionId>::<fieldKey>" since a single decision can carry
+  // more than one editable field (Document Intelligence, for example).
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editingFieldValue, setEditingFieldValue] = useState("");
+  const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
+  const [editFieldError, setEditFieldError] = useState<string | null>(null);
+
   // This panel can stay mounted across document selections when embedded
   // inline on a page (unlike a modal, which unmounts on close), so switching
   // documentId has to reset per-document UI state instead of relying on
@@ -109,6 +97,9 @@ export function DocumentReviewPanel({
     setActiveTab(hasFieldReview ? "FIELDS" : "DOC");
     setIsEditingName(false);
     setEditingNameValue(fileName);
+    setEditingField(null);
+    setEditingFieldValue("");
+    setEditFieldError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
 
@@ -207,6 +198,42 @@ export function DocumentReviewPanel({
       setEditingNameValue(fileName);
     } finally {
       setRenaming(false);
+    }
+  };
+
+  const beginEditField = (decisionId: string, fieldKey: string, currentValue: string | null) => {
+    setEditFieldError(null);
+    setEditingField(`${decisionId}::${fieldKey}`);
+    setEditingFieldValue(currentValue || "");
+  };
+
+  const cancelEditField = () => {
+    setEditingField(null);
+    setEditingFieldValue("");
+    setEditFieldError(null);
+  };
+
+  const commitEditField = async (decisionId: string, fieldKey: string) => {
+    const trimmedValue = editingFieldValue.trim();
+    if (trimmedValue === "") return;
+    const compositeKey = `${decisionId}::${fieldKey}`;
+    setSavingFieldKey(compositeKey);
+    setEditFieldError(null);
+    try {
+      const res = await fetch("/api/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisionId, action: "EDIT_VALUE", fieldKey, value: trimmedValue }),
+      });
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || "Failed to save edit");
+      setEditingField(null);
+      setEditingFieldValue("");
+      router.refresh();
+    } catch (err) {
+      setEditFieldError(err instanceof Error ? err.message : "Failed to save edit");
+    } finally {
+      setSavingFieldKey(null);
     }
   };
 
@@ -382,19 +409,86 @@ export function DocumentReviewPanel({
           <div className="flex-1 overflow-y-auto border border-[#E5E5EA] rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
             {decisions.map((dec) => {
               const isBusy = actionLoadingId === dec.id;
-              const value = fieldValue(dec);
+              const groupLabel = decisionGroupLabel(dec);
+              const fields = editableFieldsFor(dec);
 
               return (
                 <div key={dec.id} className="p-3.5 rounded-xl bg-white border border-[#E5E5EA] shadow-2xs space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-extrabold text-[#1D1D1F] text-[13px]">{fieldLabel(dec)}</span>
+                    <span className="font-extrabold text-[#1D1D1F] text-[13px]">{groupLabel}</span>
                     <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
                       {dec.status}
                     </span>
                   </div>
-                  <p className="font-mono font-bold text-[#1D1D1F] text-[12px] break-words">
-                    {value || <span className="italic font-normal text-amber-700">Not Extracted</span>}
-                  </p>
+
+                  {fields.length > 0 ? (
+                    <div className="space-y-2">
+                      {fields.map((f) => {
+                        const compositeKey = `${dec.id}::${f.key}`;
+                        const isEditingThis = editingField === compositeKey;
+                        const isSavingThis = savingFieldKey === compositeKey;
+
+                        return (
+                          <div key={f.key} className="group p-2.5 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA]">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10px] text-[#86868B] font-bold uppercase tracking-wide">{f.label}</p>
+                              {!isEditingThis && (
+                                <button
+                                  onClick={() => beginEditField(dec.id, f.key, f.value)}
+                                  className="p-1 rounded hover:bg-white text-[#86868B] hover:text-[#0071E3] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                                  title={`Edit ${f.label}`}
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                            {isEditingThis ? (
+                              <div className="space-y-1 mt-1">
+                                <div className="flex items-center space-x-1.5">
+                                  <input
+                                    type="text"
+                                    value={editingFieldValue}
+                                    onChange={(e) => setEditingFieldValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") commitEditField(dec.id, f.key);
+                                      if (e.key === "Escape") cancelEditField();
+                                    }}
+                                    disabled={isSavingThis}
+                                    autoFocus
+                                    className="flex-1 min-w-0 px-2 py-1 text-[12px] font-mono font-bold text-[#1D1D1F] border border-[#0071E3] rounded-lg bg-white outline-none"
+                                  />
+                                  <button
+                                    onClick={() => commitEditField(dec.id, f.key)}
+                                    disabled={isSavingThis}
+                                    className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 cursor-pointer disabled:opacity-50 shrink-0"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={cancelEditField}
+                                    disabled={isSavingThis}
+                                    className="p-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 cursor-pointer disabled:opacity-50 shrink-0"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                {editFieldError && <p className="text-[10px] text-red-600">{editFieldError}</p>}
+                              </div>
+                            ) : (
+                              <p className="font-mono font-extrabold text-[#1D1D1F] text-[12px] break-words mt-0.5">
+                                {f.value || <span className="italic font-normal text-amber-700">Not Extracted</span>}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-[#86868B] leading-relaxed">
+                      {dec.decisionSummary || "No summary available."}
+                    </p>
+                  )}
+
                   <input
                     type="text"
                     value={notesByDecision[dec.id] ?? dec.humanNotes ?? ""}
