@@ -1272,7 +1272,7 @@ export default function AgentsPage() {
                                     setDropFile(e.target.files[0]);
                                   }
                                 }}
-                                accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.csv"
+                                accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.csv,.edi,.md,.txt,.json,.xml"
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                               />
                               <div className="w-12 h-12 rounded-full bg-white border border-[#E5E5EA] flex items-center justify-center text-[#0071E3] group-hover:scale-110 transition-transform">

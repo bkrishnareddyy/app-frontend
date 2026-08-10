@@ -6,6 +6,11 @@ export interface MultiDimensionalMetrics {
   complianceRiskScore: number;   // 0-100 (0=Lowest, 100=Highest)
   complianceRiskBand: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   classificationConfidenceScore: number; // 0-100%
+  // False when no document is currently attached to the shipment -- the
+  // stored per-line-item htsConfidence never gets invalidated when its
+  // source document is detached, so this flag is what tells the UI not to
+  // trust that stale number as a live, currently-substantiated claim.
+  classificationVerified: boolean;
   isReadyForFiling: boolean;
   blockerCount: number;
   warningCount: number;
@@ -117,11 +122,20 @@ export class CanonicalShipmentService {
     const completenessScore = lineItems.length > 0 ? Math.min(100, baseCompleteness) : Math.min(80, baseCompleteness);
 
     // 2. Classification Confidence Score (Average confidence of line items)
+    // -- only trusted when at least one document is currently attached to
+    // substantiate it. htsConfidence is a static column on the line item
+    // that never gets recomputed when its source document is detached, so
+    // without a document present there's nothing live backing this claim.
+    const documents = shipment.documents || [];
+    const classificationVerified = documents.length > 0;
     let classificationConfidenceScore = 95;
     if (lineItems.length > 0) {
       const avgConfidence =
         lineItems.reduce((acc: number, item: any) => acc + (item.htsConfidence || 85), 0) / lineItems.length;
       classificationConfidenceScore = Math.round(avgConfidence);
+    }
+    if (!classificationVerified) {
+      classificationConfidenceScore = 0;
     }
 
     // 3. Compliance Risk Score (0-100, where 0 is safest)
@@ -154,6 +168,7 @@ export class CanonicalShipmentService {
       complianceRiskScore,
       complianceRiskBand,
       classificationConfidenceScore,
+      classificationVerified,
       isReadyForFiling,
       blockerCount: blockers.length,
       warningCount: warnings.length,

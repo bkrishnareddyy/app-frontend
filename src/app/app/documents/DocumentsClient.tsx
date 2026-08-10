@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   FileText,
   Upload,
@@ -86,6 +87,8 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("ALL");
   const [selectedClientId, setSelectedClientId] = useState("ALL");
+  const [selectedShipmentId, setSelectedShipmentId] = useState("ALL");
+  const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
   const [targetShipmentId, setTargetShipmentId] = useState("");
@@ -126,7 +129,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                   uploadedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "Just now",
                   url: d.fileUrl || d.url || "#",
                   shipmentId: shp.id,
-                  shipmentRef: shp.referenceNumber || shp.id,
+                  shipmentRef: shp.shipmentNumber || shp.id,
                   confidenceScore: 98,
                   assignedBrokerId: shp.assignedBrokerId,
                   assignedBrokerName: shp.assignedBroker
@@ -192,6 +195,16 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [shipments]);
 
+  const availableShipments = useMemo(() => {
+    return shipments
+      .map((shp: any) => ({ id: shp.id, ref: shp.shipmentNumber || shp.id }))
+      .sort((a, b) => a.ref.localeCompare(b.ref));
+  }, [shipments]);
+
+  const availableStatuses = useMemo(() => {
+    return Array.from(new Set(documents.map((d) => d.status).filter(Boolean))).sort();
+  }, [documents]);
+
   const filteredDocs = documents.filter((doc) => {
     // 1. Assignee/Owner filter
     if (isEnterpriseAdmin) {
@@ -216,7 +229,15 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
       selectedClientId === "ALL" ||
       (selectedClientId === "UNASSIGNED" ? !doc.clientId : doc.clientId === selectedClientId);
 
-    return matchesSearch && matchesType && matchesClient;
+    // 5. Shipment dropdown filter
+    const matchesShipment =
+      selectedShipmentId === "ALL" ||
+      (selectedShipmentId === "UNATTACHED" ? doc.unattached : doc.shipmentId === selectedShipmentId);
+
+    // 6. Status dropdown filter
+    const matchesStatus = selectedStatus === "ALL" || doc.status === selectedStatus;
+
+    return matchesSearch && matchesType && matchesClient && matchesShipment && matchesStatus;
   });
 
   const isImageFile = (url: string, name: string) => {
@@ -417,6 +438,33 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             ))}
           </select>
 
+          <select
+            value={selectedShipmentId}
+            onChange={(e) => setSelectedShipmentId(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+          >
+            <option value="ALL">All Shipments</option>
+            <option value="UNATTACHED">Unattached</option>
+            {availableShipments.map((shp) => (
+              <option key={shp.id} value={shp.id}>
+                {shp.ref}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+          >
+            <option value="ALL">All Statuses</option>
+            {availableStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+
           <button
             onClick={fetchDocuments}
             disabled={isLoading}
@@ -484,7 +532,9 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                           Unattached
                         </span>
                       ) : (
-                        <span className="text-[#0071E3]">{doc.shipmentRef}</span>
+                        <Link href={`/app/shipments/${doc.shipmentId}`} className="text-[#0071E3] hover:underline">
+                          {doc.shipmentRef}
+                        </Link>
                       )}
                     </td>
 

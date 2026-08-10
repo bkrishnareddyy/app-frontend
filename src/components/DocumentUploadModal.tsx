@@ -257,7 +257,7 @@ export function DocumentUploadModal({
                 <input
                   type="file"
                   onChange={handleFileChange}
-                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.edi"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.edi,.md,.txt,.json,.xml"
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
                 <div className="flex flex-col items-center justify-center space-y-2">
@@ -271,7 +271,7 @@ export function DocumentUploadModal({
                     <p className="text-[10px] text-[#86868B] mt-0.5">
                       {file
                         ? `${(file.size / 1024).toFixed(1)} KB`
-                        : "PDF, PNG, JPG, XLSX or EDI up to 25MB"}
+                        : "PDF, PNG, JPG, XLSX, EDI, MD, TXT up to 25MB"}
                     </p>
                   </div>
                 </div>

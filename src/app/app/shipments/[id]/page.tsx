@@ -268,10 +268,27 @@ export default async function ShipmentWorkspacePage(props: {
     partyActionRequired = `Provide details for: ${missingPartyFields.join(", ")}`;
   }
 
-  // 4. Required Documents
-  const hasInvoice = documents.some(
+  // Document lookups reused below to link "Evidence" on Ready categories
+  // to the actual uploaded document (opened in-app, in the workspace
+  // viewer), instead of showing fabricated supporting data.
+  const invoiceDoc = documents.find(
     (d: any) => d.docType?.toLowerCase().includes("invoice") || d.fileName.toLowerCase().includes("invoice")
   );
+  const packingDoc = documents.find(
+    (d: any) => d.docType?.toLowerCase().includes("packing") || d.fileName.toLowerCase().includes("packing")
+  );
+  const bolDoc = documents.find(
+    (d: any) =>
+      d.docType?.toLowerCase().includes("lading") ||
+      d.docType?.toLowerCase().includes("transport") ||
+      d.fileName.toLowerCase().includes("lading") ||
+      d.fileName.toLowerCase().includes("instructions") ||
+      d.fileName.toLowerCase().includes("waybill")
+  );
+  const docEvidenceUrl = (doc: any) => (doc ? `/app/shipments/${shipment.id}?view=workspace&docId=${doc.id}` : undefined);
+
+  // 4. Required Documents
+  const hasInvoice = Boolean(invoiceDoc);
   const docStatus = hasInvoice ? "Ready" : "Needs Information";
   const docResult = hasInvoice ? `${documents.length}/${documents.length} required documents received` : "Commercial Invoice Missing";
   const docDetails = hasInvoice
@@ -287,12 +304,22 @@ export default async function ShipmentWorkspacePage(props: {
   let htsQuestionnaire: string[] = [];
 
   const vagueItems = displayLineItems.filter((item: any) => item.htsConfidence && item.htsConfidence < 80);
+  // Line items can exist with a stored confidence value even after their
+  // source document has been detached -- that stored number is stale, not
+  // a live claim, so treat "line items but no attached document" as
+  // needing review rather than trusting it as Ready.
+  const classificationUnverified = displayLineItems.length > 0 && documents.length === 0;
 
   if (displayLineItems.length === 0) {
     merchandiseStatus = "Needs Information";
     merchandiseResult = "Classification pending document extraction";
     merchandiseDetails = "Product descriptions and HTS classifications cannot be verified until the Commercial Invoice is uploaded and processed.";
     merchandiseActionRequired = "Upload Commercial Invoice to extract line items.";
+  } else if (classificationUnverified) {
+    merchandiseStatus = "Needs Review";
+    merchandiseResult = "Classification unverified — no document attached";
+    merchandiseDetails = "Line items exist for this shipment, but no document is currently attached to substantiate their HTS classification. Their stored confidence scores predate detachment and can't be trusted as current.";
+    merchandiseActionRequired = "Attach the commercial invoice or supporting document that backs this classification.";
   } else if (vagueItems.length > 0) {
     merchandiseStatus = "Needs Review";
     merchandiseResult = `Line ${vagueItems[0].lineNumber} classification review required`;
@@ -368,9 +395,10 @@ export default async function ShipmentWorkspacePage(props: {
 
   // 8. Origin, Marking & Trade Programs
   const hasPreferentialHTS = displayLineItems.some((item: any) => item.htsCode?.startsWith("02"));
-  const hasCoODoc = documents.some(
+  const cooDoc = documents.find(
     (d: any) => d.docType?.toLowerCase().includes("certificate of origin") || d.docType?.toLowerCase().includes("coo")
   );
+  const hasCoODoc = Boolean(cooDoc);
 
   let originStatus: "Ready" | "Needs Information" | "Not Applicable" = "Not Applicable";
   let originResult = "Not Applicable";
@@ -497,6 +525,9 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: importerActionRequired,
       source: "Importer Profile Database",
       timestamp: shipment.updatedAt.toISOString(),
+      // No evidence link here -- this data is already one click away via
+      // the Filing Data tab, so a per-category "Evidence" button pointing
+      // at the same tab would be pure redundancy, not new value.
     },
     {
       id: "shipment",
@@ -509,6 +540,19 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: shipmentActionRequired,
       source: "Carrier Waybill Ingestion API",
       timestamp: shipment.updatedAt.toISOString(),
+      evidence:
+        shipmentStatus === "Ready" && bolDoc
+          ? {
+              sourceName: "Bill of Lading / Forwarding Instructions",
+              fields: [
+                { label: "Vessel / Voyage", value: extractedVessel ? `${extractedVessel} / ${extractedVoyage}` : "N/A" },
+                { label: "Booking Reference", value: extractedBookingRef || "N/A" },
+                { label: "Port of Loading / Discharge", value: `${extractedPortOfLoading || "N/A"} / ${extractedPortOfDischarge || "N/A"}` },
+              ],
+              documentUrl: docEvidenceUrl(bolDoc),
+              documentName: bolDoc.fileName,
+            }
+          : undefined,
     },
     {
       id: "parties",
@@ -521,6 +565,19 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: partyActionRequired,
       source: "Denied Watchlist sync module",
       timestamp: shipment.updatedAt.toISOString(),
+      evidence:
+        partyStatus === "Ready" && bolDoc
+          ? {
+              sourceName: "Bill of Lading / Forwarding Instructions",
+              fields: [
+                { label: "Shipper / Exporter", value: extractedShipper || "N/A" },
+                { label: "Consignee", value: extractedConsignee || "N/A" },
+                { label: "Notify Party", value: extractedNotifyParty || "N/A" },
+              ],
+              documentUrl: docEvidenceUrl(bolDoc),
+              documentName: bolDoc.fileName,
+            }
+          : undefined,
     },
     {
       id: "documents",
@@ -533,6 +590,19 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: docActionRequired,
       source: "Document Vault",
       timestamp: shipment.createdAt.toISOString(),
+      evidence:
+        docStatus === "Ready" && invoiceDoc
+          ? {
+              sourceName: "Document Vault",
+              fields: [
+                { label: "Total Documents", value: `${documents.length} Files` },
+                { label: "Commercial Invoice", value: invoiceDoc.fileName },
+                { label: "Packing List", value: packingDoc?.fileName || "Not on file" },
+              ],
+              documentUrl: docEvidenceUrl(invoiceDoc),
+              documentName: invoiceDoc.fileName,
+            }
+          : undefined,
     },
     {
       id: "merchandise",
@@ -546,6 +616,9 @@ export default async function ShipmentWorkspacePage(props: {
       source: "HTS Master Release Database",
       timestamp: shipment.updatedAt.toISOString(),
       questionnaire: htsQuestionnaire.length > 0 ? htsQuestionnaire : undefined,
+      // No evidence link here -- Verified Line Items is already a
+      // full-width section one click away via the Operational Workspace
+      // tab, so this would just redirect to something already visible.
     },
     {
       id: "quantity",
@@ -558,6 +631,18 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: qtyActionRequired,
       source: "Document Intelligence Extraction Client",
       timestamp: shipment.updatedAt.toISOString(),
+      evidence:
+        qtyStatus === "Ready" && hasInv && hasPack
+          ? {
+              sourceName: "Invoice vs. Packing List Reconciliation",
+              fields: [
+                { label: "Invoice Quantity", value: `${qtyInvoice} PCS` },
+                { label: "Packing List Quantity", value: `${qtyPacking} PCS` },
+              ],
+              documentUrl: docEvidenceUrl(packingDoc || invoiceDoc),
+              documentName: (packingDoc || invoiceDoc)?.fileName,
+            }
+          : undefined,
     },
     {
       id: "value",
@@ -570,6 +655,18 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: valueActionRequired,
       source: "Invoice Price Parser Module",
       timestamp: shipment.updatedAt.toISOString(),
+      evidence:
+        valueStatus === "Ready" && invoiceDoc
+          ? {
+              sourceName: "Commercial Invoice",
+              fields: [
+                { label: "Total Invoice Value", value: `$${totalInvoiceAmount.toLocaleString()}` },
+                { label: "Incoterm", value: shipment.incoterm || "N/A" },
+              ],
+              documentUrl: docEvidenceUrl(invoiceDoc),
+              documentName: invoiceDoc.fileName,
+            }
+          : undefined,
     },
     {
       id: "origin",
@@ -582,6 +679,15 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: originActionRequired,
       source: "Origin determination advice router",
       timestamp: shipment.updatedAt.toISOString(),
+      evidence:
+        originStatus === "Ready" && cooDoc
+          ? {
+              sourceName: "Certificate of Origin",
+              fields: [{ label: "Country of Origin", value: shipment.countryOfOrigin || "N/A" }],
+              documentUrl: docEvidenceUrl(cooDoc),
+              documentName: cooDoc.fileName,
+            }
+          : undefined,
     },
     {
       id: "pga",
@@ -679,10 +785,6 @@ export default async function ShipmentWorkspacePage(props: {
               clients={clients.map((c) => ({ id: c.id, name: c.name }))}
               canEdit={canEditClient}
             />
-            <div className="flex items-center space-x-1.5 text-xs text-[#86868B]">
-              <Sparkles className="w-3.5 h-3.5 text-[#0071E3]" />
-              <span>{shipment.entryType || "Consumption Entry"} • US Customs</span>
-            </div>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -695,25 +797,43 @@ export default async function ShipmentWorkspacePage(props: {
                 <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             ) : (
-              <div className="text-right">
-                <span
-                  aria-disabled="true"
-                  className="px-4 py-2 text-xs font-bold rounded-xl shadow-2xs flex items-center space-x-2 bg-slate-100 text-slate-400 cursor-not-allowed"
-                >
-                  <span>Send to Customs Filing</span>
-                </span>
-                <a
-                  href="#exceptions-panel"
-                  className="text-[10px] text-amber-600 font-semibold mt-1 hover:underline block"
-                >
-                  {metrics.blockerCount > 0
-                    ? `${metrics.blockerCount} blocker${metrics.blockerCount === 1 ? "" : "s"} must be resolved first →`
-                    : `Filing readiness is ${metrics.filingReadinessScore}% (needs 80%+) →`}
-                </a>
-              </div>
+              // Why it's disabled is already covered by the readiness
+              // ribbon directly below (status headline + Compliance Risk
+              // pill with its own "view" link) -- repeating it here was
+              // duplicate messaging.
+              <span
+                aria-disabled="true"
+                title="Resolve the blockers shown below to enable filing"
+                className="px-4 py-2 text-xs font-bold rounded-xl shadow-2xs flex items-center space-x-2 bg-slate-100 text-slate-400 cursor-not-allowed"
+              >
+                <span>Send to Customs Filing</span>
+              </span>
             )}
           </div>
         </div>
+
+        {/* Pre-Filing Readiness Ribbon -- moved directly under the shipment
+            name so status (at risk / ready) is the first thing visible;
+            the 4 metrics that used to be a separate card grid are now
+            pills embedded in the ribbon itself. */}
+        <PreFilingReadiness
+          categories={readinessCategories}
+          overallStatus={{
+            text: overallStatusText,
+            subtext: overallStatusSubtext,
+            type: overallStatusType,
+          }}
+          metrics={{
+            filingReadinessScore: metrics.filingReadinessScore,
+            completenessScore: metrics.completenessScore,
+            complianceRiskScore: metrics.complianceRiskScore,
+            complianceRiskBand: metrics.complianceRiskBand,
+            classificationConfidenceScore: metrics.classificationConfidenceScore,
+            classificationVerified: metrics.classificationVerified,
+            blockerCount: metrics.blockerCount,
+            warningCount: metrics.warningCount,
+          }}
+        />
 
         {/* Action Items -- unifies real DB-backed exceptions with missing
             required documents in one place, since these used to live in
@@ -725,69 +845,6 @@ export default async function ShipmentWorkspacePage(props: {
             lineItems={displayLineItems}
             missingDocumentTypes={missingDocTypes}
           />
-        </div>
-
-        {/* Multi-Dimensional Metrics Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1">
-          <div className="p-4 rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA]">
-            <span className="text-[10px] font-extrabold uppercase text-[#86868B] block mb-1">
-              Filing Readiness
-            </span>
-            <div className="flex items-baseline space-x-2">
-              <span className="text-2xl font-black text-[#1D1D1F]">{metrics.filingReadinessScore}%</span>
-              <span className="text-xs font-bold text-[#86868B]">
-                {metrics.blockerCount > 0 ? `${metrics.blockerCount} Blockers` : "No Blockers"}
-              </span>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA]">
-            <span className="text-[10px] font-extrabold uppercase text-[#86868B] block mb-1">
-              Data Completeness
-            </span>
-            <div className="flex items-baseline space-x-2">
-              <span className="text-2xl font-black text-[#1D1D1F]">{metrics.completenessScore}%</span>
-              <span className="text-xs font-bold text-[#86868B]">Customs Fields</span>
-            </div>
-          </div>
-
-          <a
-            href="#exceptions-panel"
-            className="p-4 rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA] block hover:border-amber-300 transition-colors"
-          >
-            <span className="text-[10px] font-extrabold uppercase text-[#86868B] block mb-1">
-              Compliance Risk
-            </span>
-            <div className="flex items-baseline space-x-2">
-              <span className="text-2xl font-black text-[#1D1D1F]">{metrics.complianceRiskScore}</span>
-              <span
-                className={`text-xs font-extrabold uppercase px-2 py-0.5 rounded-full border ${
-                  metrics.complianceRiskBand === "LOW"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-amber-50 text-amber-700 border-amber-200"
-                }`}
-              >
-                {metrics.complianceRiskBand}
-              </span>
-            </div>
-            <p className="text-[10px] text-[#86868B] mt-1.5 hover:underline">
-              {metrics.blockerCount > 0
-                ? `Driven by ${metrics.blockerCount} blocker${metrics.blockerCount === 1 ? "" : "s"} — view →`
-                : metrics.warningCount > 0
-                ? `${metrics.warningCount} open warning${metrics.warningCount === 1 ? "" : "s"} — view →`
-                : "No open blockers or warnings"}
-            </p>
-          </a>
-
-          <div className="p-4 rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA]">
-            <span className="text-[10px] font-extrabold uppercase text-[#86868B] block mb-1">
-              HTS Confidence
-            </span>
-            <div className="flex items-baseline space-x-2">
-              <span className="text-2xl font-black text-[#1D1D1F]">{metrics.classificationConfidenceScore}%</span>
-              <span className="text-xs font-bold text-emerald-600">Model Score</span>
-            </div>
-          </div>
         </div>
 
         {/* View Switcher Tabs */}
@@ -804,6 +861,17 @@ export default async function ShipmentWorkspacePage(props: {
             <span>Operational Workspace</span>
           </Link>
           <Link
+            href={`/app/shipments/${shipment.id}?view=filing`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+              activeTab === "filing"
+                ? "bg-[#0071E3] text-white"
+                : "bg-slate-100 text-[#86868B] hover:text-[#1D1D1F]"
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Filing Data</span>
+          </Link>
+          <Link
             href={`/app/shipments/${shipment.id}?view=audit`}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
               activeTab === "audit"
@@ -817,7 +885,7 @@ export default async function ShipmentWorkspacePage(props: {
         </div>
       </div>
 
-      {activeTab === "workspace" ? (
+      {activeTab === "filing" ? (
         <>
           {/* Shipment Identity & Importer Overview Card */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -916,14 +984,22 @@ export default async function ShipmentWorkspacePage(props: {
                   <span className="text-[#86868B] font-bold">Classification Approval</span>
                   <span
                     className={
-                      displayLineItems.length > 0
-                        ? vagueItems.length > 0
-                          ? "font-extrabold text-amber-600 uppercase text-[10px] tracking-wider"
-                          : "font-extrabold text-emerald-600 uppercase text-[10px] tracking-wider"
-                        : "text-[#86868B]/70 italic font-normal"
+                      displayLineItems.length === 0
+                        ? "text-[#86868B]/70 italic font-normal"
+                        : classificationUnverified
+                        ? "font-extrabold text-slate-500 uppercase text-[10px] tracking-wider"
+                        : vagueItems.length > 0
+                        ? "font-extrabold text-amber-600 uppercase text-[10px] tracking-wider"
+                        : "font-extrabold text-emerald-600 uppercase text-[10px] tracking-wider"
                     }
                   >
-                    {displayLineItems.length > 0 ? (vagueItems.length > 0 ? "Pending" : "Approved") : "N/A"}
+                    {displayLineItems.length === 0
+                      ? "N/A"
+                      : classificationUnverified
+                      ? "Unverified"
+                      : vagueItems.length > 0
+                      ? "Pending"
+                      : "Approved"}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
@@ -950,17 +1026,9 @@ export default async function ShipmentWorkspacePage(props: {
             facts={facts}
             currentCountryOfOrigin={shipment.countryOfOrigin}
           />
-
-          {/* Pre-Filing Readiness Ribbon */}
-          <PreFilingReadiness
-            categories={readinessCategories}
-            overallStatus={{
-              text: overallStatusText,
-              subtext: overallStatusSubtext,
-              type: overallStatusType,
-            }}
-          />
-
+        </>
+      ) : activeTab === "workspace" ? (
+        <>
           {/* Main Workspace: Documents + Embedded Viewer */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: Documents Set Summary */}

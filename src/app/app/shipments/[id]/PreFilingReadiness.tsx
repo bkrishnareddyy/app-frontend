@@ -26,6 +26,17 @@ interface CategoryDetail {
   evidence?: ComplianceEvidence;
 }
 
+interface RibbonMetrics {
+  filingReadinessScore: number;
+  completenessScore: number;
+  complianceRiskScore: number;
+  complianceRiskBand: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  classificationConfidenceScore: number;
+  classificationVerified: boolean;
+  blockerCount: number;
+  warningCount: number;
+}
+
 interface PreFilingReadinessProps {
   categories: CategoryDetail[];
   overallStatus: {
@@ -33,9 +44,10 @@ interface PreFilingReadinessProps {
     subtext: string;
     type: "BLOCKED" | "REVIEW_REQUIRED" | "INFO_REQUIRED" | "WARNINGS" | "READY";
   };
+  metrics?: RibbonMetrics;
 }
 
-export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadinessProps) {
+export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFilingReadinessProps) {
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [visibleEvidenceId, setVisibleEvidenceId] = useState<string | null>(null);
@@ -112,23 +124,84 @@ export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadi
   return (
     <div className="bg-white rounded-2xl border border-[#E5E5EA] shadow-2xs overflow-hidden transition-all">
       {/* Header Banner Ribbon */}
-      <div 
+      <div
         onClick={() => setIsTableExpanded(!isTableExpanded)}
-        className={`p-4 flex items-center justify-between flex-wrap gap-4 cursor-pointer select-none transition-colors ${getOverallStyles(overallStatus.type)} ${isTableExpanded ? 'border-b' : ''}`}
+        className={`p-4 cursor-pointer select-none transition-colors ${getOverallStyles(overallStatus.type)} ${isTableExpanded ? 'border-b' : ''}`}
       >
-        <div className="flex items-center space-x-3">
-          {getOverallIcon(overallStatus.type)}
-          <div>
-            <h3 className="text-sm font-extrabold uppercase tracking-wider">{overallStatus.text}</h3>
-            <p className="text-xs opacity-80">{overallStatus.subtext}</p>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center space-x-3">
+            {getOverallIcon(overallStatus.type)}
+            <div>
+              <h3 className="text-sm font-extrabold uppercase tracking-wider">{overallStatus.text}</h3>
+              <p className="text-xs opacity-80">{overallStatus.subtext}</p>
+            </div>
           </div>
+          <button
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-current text-xs font-semibold hover:bg-black/5 transition-colors cursor-pointer"
+          >
+            <span>{isTableExpanded ? "Hide Details" : "Show Details"}</span>
+            {isTableExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
         </div>
-        <button 
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-current text-xs font-semibold hover:bg-black/5 transition-colors cursor-pointer"
-        >
-          <span>{isTableExpanded ? "Hide Details" : "Show Details"}</span>
-          {isTableExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        </button>
+
+        {/* Metric Pills */}
+        {metrics && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-current/20" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
+              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">Filing Readiness</span>
+              <span className="text-xs font-black text-[#1D1D1F]">{metrics.filingReadinessScore}%</span>
+              <span className="text-[10px] font-bold text-[#86868B]">
+                {metrics.blockerCount > 0 ? `${metrics.blockerCount} Blockers` : "No Blockers"}
+              </span>
+            </div>
+
+            <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
+              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">Data Completeness</span>
+              <span className="text-xs font-black text-[#1D1D1F]">{metrics.completenessScore}%</span>
+              <span className="text-[10px] font-bold text-[#86868B]">Customs Fields</span>
+            </div>
+
+            <a
+              href="#exceptions-panel"
+              className="bg-white/80 hover:bg-white rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5 transition-colors"
+            >
+              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">Compliance Risk</span>
+              <span className="text-xs font-black text-[#1D1D1F]">{metrics.complianceRiskScore}</span>
+              <span
+                className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${
+                  metrics.complianceRiskBand === "LOW"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {metrics.complianceRiskBand}
+              </span>
+              <span className="text-[10px] font-bold text-[#0071E3] hover:underline">
+                {metrics.blockerCount > 0
+                  ? `${metrics.blockerCount} blockers`
+                  : metrics.warningCount > 0
+                  ? `${metrics.warningCount} warnings`
+                  : "No issues"}{" "}
+                — view →
+              </span>
+            </a>
+
+            <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
+              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">HTS Confidence</span>
+              {metrics.classificationVerified ? (
+                <>
+                  <span className="text-xs font-black text-[#1D1D1F]">{metrics.classificationConfidenceScore}%</span>
+                  <span className="text-[10px] font-bold text-[#86868B]">Model Score</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs font-black text-slate-500">Unverified</span>
+                  <span className="text-[10px] font-bold text-[#86868B]">No document attached</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Categories Table */}
@@ -148,7 +221,7 @@ export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadi
                   </div>
                   <div className="flex items-center space-x-3 shrink-0">
                     {getStatusBadge(cat.status)}
-                    {(cat.status === "Ready" || cat.status === "Not Applicable") && cat.evidence && (
+                    {cat.status === "Ready" && cat.evidence && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -186,12 +259,13 @@ export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadi
 
                     {cat.evidence.documentName && (
                       <div className="pt-2.5 border-t border-[#E5E5EA] flex items-center justify-between text-[10px]">
-                        <span className="text-[#86868B]">Supporting Document Reference</span>
+                        <span className="text-[#86868B]">Go to Evidence</span>
                         {cat.evidence.documentUrl ? (
                           <a
                             href={cat.evidence.documentUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            {...(cat.evidence.documentUrl.startsWith("/app/")
+                              ? {}
+                              : { target: "_blank", rel: "noopener noreferrer" })}
                             className="font-bold text-[#0071E3] hover:underline flex items-center space-x-1"
                             onClick={(e) => e.stopPropagation()}
                           >
