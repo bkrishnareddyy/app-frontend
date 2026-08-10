@@ -22,19 +22,38 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     return NextResponse.json({ error: "No pipeline job found" }, { status: 404 });
   }
 
-  // Auto-heal stuck PENDING / PROCESSING jobs from previous unhandled queues
+  // Auto-heal stuck PENDING / PROCESSING jobs from previous unhandled queues.
+  // The real background pipeline (triggered synchronously by the upload
+  // route right before this job was enqueued) routinely takes well past a
+  // few seconds -- a 277s single-agent run has been observed live. A short
+  // threshold here doesn't detect a "stuck" job, it just races the still-
+  // running real pipeline: both try to build this shipment's documents
+  // independently, and since this retry has no access to the original
+  // upload's fileName, it falls back to a generic placeholder name and
+  // creates a second, empty phantom ShipmentDocument row.
   const isStuck =
     (job.status === "PENDING" || job.status === "PROCESSING") &&
-    Date.now() - new Date(job.createdAt).getTime() > 6000;
+    Date.now() - new Date(job.createdAt).getTime() > 120000;
 
   if (isStuck) {
     try {
       const { AgentOrchestrator } = await import("@/modules/agents/agentOrchestrator");
       const { PgQueue } = await import("@/lib/queue/pgQueue");
+      // Re-anchor the retry to the shipment's actual most recent document
+      // instead of leaving fileName/fileUrl blank -- so if agent 1/2 do
+      // re-run, their find-or-create matches the real document by name and
+      // updates it, instead of fabricating a new one under a fake name.
+      const latestDoc = await db.shipmentDocument.findFirst({
+        where: { shipmentId: id },
+        orderBy: { createdAt: "desc" },
+        select: { fileName: true, fileUrl: true },
+      });
       const pipelineOut = await AgentOrchestrator.runFullPipeline({
         accountId: ctx.accountId,
         userId: ctx.userId,
         shipmentId: id,
+        fileName: latestDoc?.fileName,
+        fileUrl: latestDoc?.fileUrl ?? undefined,
         triggerEvent: "PIPELINE_AUTO_HEAL",
         invokedBy: "System Auto-Heal (stuck job retry)",
       });

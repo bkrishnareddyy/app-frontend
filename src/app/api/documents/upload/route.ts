@@ -6,7 +6,6 @@ import { PgQueue } from "@/lib/queue/pgQueue";
 import {
   DocumentIntakeAgent,
   DocumentType,
-  agentEventBus,
 } from "@/modules/intake/documentIntakeAgent";
 import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
 
@@ -137,9 +136,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     mimeType: file.type || "application/pdf",
     docTypeOverride,
   };
-
-  // Step 3: Emit background reactive event so Agent 1 is triggered via EventBus
-  agentEventBus.emit("document:uploaded", agentInput);
 
   // Step 4: Execute Document Intake Agent & Document Intelligence Agent for synchronous real-time inspection
   const intakeResult = await DocumentIntakeAgent.execute(agentInput);

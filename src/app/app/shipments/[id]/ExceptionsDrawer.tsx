@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, Info, FileText, CheckCircle2, ChevronRight } from "lucide-react";
 import { ExceptionResolutionModal } from "./ExceptionResolutionModal";
+import { DocumentFieldReviewModal, DocumentFieldSummary } from "./DocumentFieldReviewModal";
 
 interface ExceptionsDrawerProps {
   shipmentId: string;
@@ -13,11 +14,24 @@ interface ExceptionsDrawerProps {
   // live document list -- surfaced here as real action cards instead of
   // living only in a separate, disconnected "Document Set Summary" box.
   missingDocumentTypes?: string[];
+  // What fields we expect from each processed document, and whether each
+  // one was found/confirmed -- computed server-side in page.tsx from real
+  // extraction + FieldApproval data. Drives the "Document Field Review"
+  // cards below, so exceptions that all trace back to one document read as
+  // one review task instead of a flat, ungrouped list.
+  documentFieldSummaries?: DocumentFieldSummary[];
 }
 
-export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems, missingDocumentTypes = [] }: ExceptionsDrawerProps) {
+export function ExceptionsDrawer({
+  shipmentId,
+  exceptionItems,
+  lineItems,
+  missingDocumentTypes = [],
+  documentFieldSummaries = [],
+}: ExceptionsDrawerProps) {
   const [activeTab, setActiveTab] = useState<"ALL" | "MISSING" | "CONFLICTS" | "VALIDATION" | "WARNINGS">("ALL");
   const [selectedException, setSelectedException] = useState<any | null>(null);
+  const [reviewingDoc, setReviewingDoc] = useState<DocumentFieldSummary | null>(null);
 
   // Filter out exceptions that have been resolved
   const openExceptions = exceptionItems.filter(
@@ -215,6 +229,41 @@ export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems, missin
           </Link>
         </div>
 
+        {documentFieldSummaries.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#86868B]">Document Field Review</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {documentFieldSummaries.map((doc) => {
+                const allConfirmed = doc.confirmedCount === doc.totalCount;
+                return (
+                  <button
+                    key={doc.documentId}
+                    onClick={() => setReviewingDoc(doc)}
+                    className="text-left p-4 rounded-xl border border-[#E5E5EA] bg-[#F9F9FB] hover:border-[#0071E3] transition-all duration-200 flex items-center justify-between space-x-3 cursor-pointer"
+                  >
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                          allConfirmed ? "bg-emerald-50 border-emerald-200 text-emerald-600" : "bg-amber-50 border-amber-200 text-amber-600"
+                        }`}
+                      >
+                        {allConfirmed ? <CheckCircle2 className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-[#1D1D1F] truncate">{doc.fileName}</p>
+                        <p className="text-[10px] text-[#86868B]">
+                          {doc.confirmedCount} of {doc.totalCount} fields confirmed
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#86868B] shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {filtered.map((ex: any) => (
             <div key={ex.id} className="p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-2 hover:border-[#0071E3] transition-all duration-200">
@@ -261,6 +310,13 @@ export function ExceptionsDrawer({ shipmentId, exceptionItems, lineItems, missin
         exception={selectedException}
         shipmentId={shipmentId}
         lineItems={lineItems}
+      />
+
+      <DocumentFieldReviewModal
+        isOpen={!!reviewingDoc}
+        onClose={() => setReviewingDoc(null)}
+        shipmentId={shipmentId}
+        summary={reviewingDoc}
       />
     </>
   );

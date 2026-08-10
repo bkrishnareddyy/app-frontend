@@ -419,14 +419,3 @@ Target File Name: "${input.fileName}"`;
     return agentOutput;
   }
 }
-
-// Background Listener to wake up agent on document:uploaded events
-agentEventBus.on("document:uploaded", async (eventData: DocumentIntakeAgentInput) => {
-  console.log(`[DocumentIntakeAgent] Reactive trigger woken up for document: ${eventData.fileName}`);
-  try {
-    const result = await DocumentIntakeAgent.execute(eventData);
-    console.log(`[DocumentIntakeAgent] Autonomous intake finished for packet ${result.packetId}. Status: ${result.status}`);
-  } catch (err) {
-    console.error("[DocumentIntakeAgent] Background reactive execution error:", err);
-  }
-});

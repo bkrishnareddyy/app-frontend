@@ -27,6 +27,9 @@ export default async function DecisionReviewCenterPage(props: {
           lineItems: true,
         },
       },
+      reviewedByUser: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
