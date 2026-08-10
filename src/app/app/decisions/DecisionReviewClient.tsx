@@ -341,17 +341,7 @@ export function DecisionReviewClient({
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
       {initialShipmentId && (
-        <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-2.5 text-xs text-blue-900">
-          <div className="flex items-center space-x-2">
-            <Scale className="w-3.5 h-3.5 text-[#0071E3] shrink-0" />
-            <span>
-              Showing decisions for{" "}
-              <Link href={`/app/shipments/${initialShipmentId}`} className="font-bold hover:underline">
-                this shipment
-              </Link>{" "}
-              only ({localDecisions.length} agent checks across {groups.length} document {groups.length === 1 ? "review" : "reviews"})
-            </span>
-          </div>
+        <div className="flex items-center justify-end bg-blue-50 border border-blue-100 rounded-2xl px-4 py-2.5 text-xs text-blue-900">
           <Link href="/app/decisions" className="font-semibold text-[#0071E3] hover:underline shrink-0">
             View All Decisions →
           </Link>
