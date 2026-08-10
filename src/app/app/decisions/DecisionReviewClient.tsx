@@ -695,6 +695,11 @@ export function DecisionReviewClient({
           shipmentNumber={selectedGroup?.shipmentNumber}
           fileUrl={primaryDoc.fileUrl}
           proxyUrl={primaryDoc.fileUrl ? getProxyUrl(primaryDoc.fileUrl) : undefined}
+          decisions={selectedGroup?.decisions}
+          notesByDecision={notesByDecision}
+          onNotesChange={(id, val) => setNotesByDecision((prev) => ({ ...prev, [id]: val }))}
+          onReviewAction={handleRowAction}
+          actionLoadingId={actionLoadingId}
         />
       )}
     </div>

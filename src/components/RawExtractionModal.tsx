@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { X, Copy, Check, Code, FileText, ExternalLink, Edit2 } from "lucide-react";
+import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw } from "lucide-react";
 import { useDialogFocus, dialogSurfaceProps } from "@/lib/useDialogFocus";
 
 interface ExtractionPayload {
@@ -13,6 +13,8 @@ interface ExtractionPayload {
   rawContent?: string | null;
 }
 
+type ReviewAction = "APPROVE" | "REJECT" | "RE_EVALUATE";
+
 interface RawExtractionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,6 +23,42 @@ interface RawExtractionModalProps {
   shipmentNumber?: string | null;
   fileUrl?: string | null;
   proxyUrl?: string;
+  // Agent checks that ran on this document. When provided, the modal opens
+  // to a "Field Review" tab that presents each check as a plain field/value
+  // row instead of the raw document -- brokers care about the resulting
+  // data, not which agent produced it.
+  decisions?: any[];
+  notesByDecision?: Record<string, string>;
+  onNotesChange?: (decisionId: string, value: string) => void;
+  onReviewAction?: (decisionId: string, action: ReviewAction) => void | Promise<void>;
+  actionLoadingId?: string | null;
+}
+
+function fieldLabel(dec: any): string {
+  if (dec.proposedHtsCode || dec.currentHtsCode) return "HTS Classification";
+  return String(dec.agentName || "Field").replace(/\s*Agent$/i, "").trim();
+}
+
+function fieldValue(dec: any): string | null {
+  if (dec.proposedHtsCode || dec.currentHtsCode) {
+    return dec.proposedHtsCode || dec.currentHtsCode;
+  }
+  // evidenceItems is untyped Json and varies by agent -- sometimes a flat
+  // {fieldName: value} map, sometimes an array of evidence objects. Only
+  // primitive values make sense as a single displayed "value"; anything
+  // else (nested objects/arrays) falls through to the decision summary.
+  const evItems = dec?.evidenceItems && typeof dec.evidenceItems === "object" ? (dec.evidenceItems as Record<string, any>) : {};
+  const firstEvidenceValue = Object.values(evItems).find(
+    (v) => v !== null && v !== undefined && v !== "" && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+  );
+  if (firstEvidenceValue !== undefined) return String(firstEvidenceValue);
+  return dec.decisionSummary || null;
+}
+
+function statusPillClass(status: string): string {
+  if (status === "Approved") return "bg-emerald-100 text-emerald-900 border-emerald-300";
+  if (status === "Rejected") return "bg-red-100 text-red-900 border-red-300";
+  return "bg-amber-100 text-amber-900 border-amber-300";
 }
 
 export function RawExtractionModal({
@@ -30,6 +68,11 @@ export function RawExtractionModal({
   fileName,
   shipmentNumber = null,
   proxyUrl,
+  decisions = [],
+  notesByDecision = {},
+  onNotesChange,
+  onReviewAction,
+  actionLoadingId = null,
 }: RawExtractionModalProps) {
   const router = useRouter();
   const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
@@ -39,8 +82,12 @@ export function RawExtractionModal({
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
 
-  // Set default active tab to "DOC" (Document Preview) as first option
-  const [activeTab, setActiveTab] = useState<"DOC" | "KV" | "JSON">("DOC");
+  const hasFieldReview = decisions.length > 0;
+
+  // Field Review opens first when agent checks are available -- the whole
+  // point is to lead with results, not the raw document. Other callers of
+  // this modal don't pass decisions, so they keep defaulting to "DOC".
+  const [activeTab, setActiveTab] = useState<"FIELDS" | "DOC" | "KV" | "JSON">(hasFieldReview ? "FIELDS" : "DOC");
 
   // Document renaming state. This holds only the in-progress edit; the name
   // shown everywhere else comes straight from the fileName prop, so reopening
@@ -257,6 +304,16 @@ export function RawExtractionModal({
         {/* Tab Selection Bar */}
         <div className="flex items-center justify-between bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs shrink-0">
           <div className="flex items-center space-x-1">
+            {hasFieldReview && (
+              <button
+                onClick={() => setActiveTab("FIELDS")}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  activeTab === "FIELDS" ? "bg-white text-[#0071E3] shadow-2xs" : "text-[#86868B] hover:text-[#1D1D1F]"
+                }`}
+              >
+                Field Review ({decisions.length})
+              </button>
+            )}
             <button
               onClick={() => setActiveTab("DOC")}
               className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
@@ -299,6 +356,63 @@ export function RawExtractionModal({
           {loading ? (
             <div className="flex items-center justify-center h-full text-slate-400 text-xs py-12">
               <span>Loading raw extraction data...</span>
+            </div>
+          ) : activeTab === "FIELDS" ? (
+            <div className="flex-1 overflow-y-auto border border-[#E5E5EA] rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
+              {decisions.map((dec) => {
+                const isBusy = actionLoadingId === dec.id;
+                const value = fieldValue(dec);
+
+                return (
+                  <div key={dec.id} className="p-3.5 rounded-xl bg-white border border-[#E5E5EA] shadow-2xs space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-extrabold text-[#1D1D1F] text-[13px]">{fieldLabel(dec)}</span>
+                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
+                        {dec.status}
+                      </span>
+                    </div>
+                    <p className="font-mono font-bold text-[#1D1D1F] text-[12px] break-words">
+                      {value || <span className="italic font-normal text-amber-700">Not Extracted</span>}
+                    </p>
+                    <input
+                      type="text"
+                      value={notesByDecision[dec.id] ?? dec.humanNotes ?? ""}
+                      onChange={(e) => onNotesChange?.(dec.id, e.target.value)}
+                      placeholder="Comment..."
+                      className="w-full px-3 py-2 bg-[#F5F5F7] border border-[#E5E5EA] focus:border-[#0071E3] focus:bg-white rounded-lg text-[11px] text-[#1D1D1F] transition-all outline-none font-medium"
+                    />
+                    <div className="flex items-center justify-end space-x-2">
+                      <button
+                        onClick={() => onReviewAction?.(dec.id, "RE_EVALUATE")}
+                        disabled={isBusy}
+                        className="px-3 py-1.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-amber-700 text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer disabled:opacity-40"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Re-evaluate</span>
+                      </button>
+                      <button
+                        onClick={() => onReviewAction?.(dec.id, "REJECT")}
+                        disabled={isBusy}
+                        className="px-3 py-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer disabled:opacity-40"
+                      >
+                        <X className="w-3 h-3" />
+                        <span>Reject</span>
+                      </button>
+                      <button
+                        onClick={() => onReviewAction?.(dec.id, "APPROVE")}
+                        disabled={isBusy || dec.status === "Approved"}
+                        className="px-3.5 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-40 text-white text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer"
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>{isBusy ? "Saving..." : "Approve"}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {decisions.length === 0 && (
+                <div className="p-8 text-center text-[#86868B]">No agent checks yet for this document.</div>
+              )}
             </div>
           ) : activeTab === "DOC" ? (
             <div className="flex-1 overflow-y-auto bg-[#F5F5F7] rounded-2xl border border-[#E5E5EA] p-4 flex items-center justify-center min-h-[350px]">
