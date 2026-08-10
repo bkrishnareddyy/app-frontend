@@ -44,6 +44,19 @@ function flatEvidence(decision: DecisionLike): Record<string, unknown> | null {
   return items as Record<string, unknown>;
 }
 
+/**
+ * True only for the Document Intelligence shape specifically -- checked by key
+ * presence, not just "is a flat object", because Product Intelligence's
+ * evidenceItems ({profiles, reasoningChain}) is also a flat object and would
+ * otherwise be misidentified as the same shape.
+ */
+function documentIntelligenceEvidence(decision: DecisionLike): Record<string, unknown> | null {
+  const evidence = flatEvidence(decision);
+  if (!evidence) return null;
+  const hasKnownKey = DOCUMENT_INTELLIGENCE_FIELDS.some((f) => f.key in evidence);
+  return hasKnownKey ? evidence : null;
+}
+
 /** The fields on this decision a broker can edit, in display order. */
 export function editableFieldsFor(decision: DecisionLike): EditableField[] {
   if (decision.proposedHtsCode || decision.currentHtsCode) {
@@ -51,7 +64,7 @@ export function editableFieldsFor(decision: DecisionLike): EditableField[] {
     return [{ key: "proposedHtsCode", label: "HTS Code", value }];
   }
 
-  const evidence = flatEvidence(decision);
+  const evidence = documentIntelligenceEvidence(decision);
   if (!evidence) return [];
 
   return DOCUMENT_INTELLIGENCE_FIELDS.filter(
@@ -62,7 +75,7 @@ export function editableFieldsFor(decision: DecisionLike): EditableField[] {
 /** Human label for the group these editable fields (or lack of them) sit under. */
 export function decisionGroupLabel(decision: DecisionLike): string {
   if (decision.proposedHtsCode || decision.currentHtsCode) return "HTS Classification";
-  if (flatEvidence(decision)) return "Extracted Document Fields";
+  if (documentIntelligenceEvidence(decision)) return "Extracted Document Fields";
   return String(decision.agentName || "Check").replace(/\s*Agent$/i, "").trim();
 }
 
@@ -85,7 +98,7 @@ export function buildEditUpdate(
     return { proposedHtsCode: value };
   }
 
-  const evidence = flatEvidence(decision);
+  const evidence = documentIntelligenceEvidence(decision);
   const field = DOCUMENT_INTELLIGENCE_FIELDS.find((f) => f.key === key);
   if (evidence && field && evidence[field.key] !== undefined && evidence[field.key] !== null) {
     // Preserve the original value's type where the edit still parses as one,
