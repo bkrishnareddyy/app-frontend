@@ -332,9 +332,9 @@ export function CommandCenterClient({
           href="/app/shipments"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-red-600">
-            <span className="font-semibold truncate">Value at Risk</span>
-            <DollarSign className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-red-600">
+            <span className="font-semibold min-w-0 leading-tight">Value at Risk</span>
+            <DollarSign className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">
             ${valueAtRisk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -354,14 +354,14 @@ export function CommandCenterClient({
           href="/app/shipments"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-blue-600">
-            <span className="font-semibold truncate">{t.dashboard.kpiTotal}</span>
-            <FileText className="w-4 h-4 text-blue-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-blue-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiTotal}</span>
+            <FileText className="w-4 h-4 shrink-0 text-blue-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{inProgressCount}</p>
-          <div className="h-8 w-full mt-2 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg border border-blue-100 flex items-center justify-between px-2 text-[10px] text-blue-600 font-semibold group-hover:bg-blue-600 group-hover:text-white transition-all">
-            <span>Active Agent Pipelines</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg border border-blue-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-blue-600 font-semibold group-hover:bg-blue-600 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">Active Agent Pipelines</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -370,14 +370,14 @@ export function CommandCenterClient({
           href="/app/filing"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
-            <span className="font-semibold truncate">{t.dashboard.kpiReady}</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiReady}</span>
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-emerald-600">{readyToFileCount}</p>
-          <div className="h-8 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between px-2 text-[10px] text-emerald-700 font-semibold group-hover:bg-emerald-600 group-hover:text-white transition-all">
-            <span>Verified for ACE</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-emerald-700 font-semibold group-hover:bg-emerald-600 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">Verified for ACE</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -386,14 +386,14 @@ export function CommandCenterClient({
           href="/app/decisions?status=Needs+Review"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-amber-600">
-            <span className="font-semibold truncate">{t.dashboard.kpiAttention}</span>
-            <AlertCircle className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-amber-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiAttention}</span>
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-amber-600">{onHoldCount}</p>
-          <div className="h-8 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between px-2 text-[10px] text-amber-700 font-semibold group-hover:bg-amber-500 group-hover:text-white transition-all">
-            <span>{reviewRequiredDecisions} Broker Reviews</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-amber-700 font-semibold group-hover:bg-amber-500 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">{reviewRequiredDecisions} Broker Reviews</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -402,14 +402,14 @@ export function CommandCenterClient({
           href="/app/filing"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-indigo-600">
-            <span className="font-semibold truncate">{t.dashboard.kpiSubmitted}</span>
-            <Send className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-indigo-600">
+            <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiSubmitted}</span>
+            <Send className="w-4 h-4 shrink-0 text-indigo-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{submittedCount}</p>
-          <div className="h-8 w-full mt-2 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center justify-between px-2 text-[10px] text-indigo-700 font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-all">
-            <span>1C Released</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-indigo-700 font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">1C Released</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
 
@@ -418,14 +418,14 @@ export function CommandCenterClient({
           href="/app/filing"
           className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
         >
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
-            <span className="font-semibold truncate">Completed Filings</span>
-            <TrendingUp className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
+          <div className="flex items-start justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-emerald-600">
+            <span className="font-semibold min-w-0 leading-tight">Completed Filings</span>
+            <TrendingUp className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-[#1D1D1F]">{completedCount}</p>
-          <div className="h-8 w-full mt-2 bg-slate-50 rounded-lg border border-[#E5E5EA] flex items-center justify-between px-2 text-[10px] text-[#86868B] font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
-            <span>100% Audit Settled</span>
-            <ChevronRight className="w-3 h-3" />
+          <div className="min-h-8 w-full mt-2 bg-slate-50 rounded-lg border border-[#E5E5EA] flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-[#86868B] font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
+            <span className="min-w-0 leading-tight">100% Audit Settled</span>
+            <ChevronRight className="w-3 h-3 shrink-0" />
           </div>
         </Link>
       </div>

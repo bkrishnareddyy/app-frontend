@@ -419,22 +419,22 @@ export function DecisionReviewClient({
                   >
                     {/* Row 1: <Name of Doc> • <Status> */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center space-x-2 truncate">
-                        <FileText className="w-4 h-4 text-[#0071E3] shrink-0" />
+                      <div className="flex items-start space-x-2 min-w-0">
+                        <FileText className="w-4 h-4 text-[#0071E3] shrink-0 mt-0.5" />
                         <span
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedId(dec.id);
                             setIsPreviewOpen(true);
                           }}
-                          className="font-extrabold text-[#0071E3] hover:underline cursor-pointer truncate text-xs flex items-center space-x-1"
-                          title="Click to view document modal"
+                          className="font-extrabold text-[#0071E3] hover:underline cursor-pointer min-w-0 break-all text-xs"
+                          title={itemDocName}
                         >
-                          <span>{itemDocName}</span>
+                          {itemDocName}
                         </span>
                       </div>
                       <span
-                        className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 ${
+                        className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${
                           dec.status === "Review Required" || dec.status === "Needs Review"
                             ? "bg-amber-100 text-amber-900 border-amber-300"
                             : dec.status === "Approved"
@@ -493,7 +493,7 @@ export function DecisionReviewClient({
                     <FileText className="w-5 h-5 text-[#0071E3] shrink-0" />
                     <h2
                       onClick={() => setIsPreviewOpen(true)}
-                      className="text-lg font-extrabold text-[#0071E3] hover:underline cursor-pointer min-w-0 truncate"
+                      className="text-lg font-extrabold text-[#0071E3] hover:underline cursor-pointer min-w-0 break-words"
                       title={docName}
                     >
                       {docName}
