@@ -54,8 +54,6 @@ export const es: TranslationKeys = {
     colReadiness: "Puntaje Preparación",
     colStatus: "Estado Declaración",
     colActions: "Acciones",
-    agentInsights: "Perspectivas de Agentes de IA Autónomos",
-    allAgentsButton: "Ver los 10 Agentes de IA",
   },
   // Documents Page
   documents: {
