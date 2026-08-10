@@ -52,8 +52,6 @@ export const en = {
     colReadiness: "Readiness Score",
     colStatus: "Filing Status",
     colActions: "Actions",
-    agentInsights: "Autonomous AI Agent Insights",
-    allAgentsButton: "View All 10 AI Agents",
   },
   // Documents Page
   documents: {
