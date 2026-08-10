@@ -1,24 +1,10 @@
 "use client";
 
-import { RawExtractionModal } from "@/components/RawExtractionModal";
+import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Scale,
-  Sparkles,
-  CheckCircle2,
-  Clock,
-  Search,
-  Check,
-  RotateCcw,
-  BookOpen,
-  FileText,
-  X,
-  ChevronDown,
-  ChevronUp,
-  Layers,
-} from "lucide-react";
+import { Scale, CheckCircle2, Clock, Search, Check, FileText, Layers } from "lucide-react";
 
 interface DecisionReviewClientProps {
   decisions: any[];
@@ -116,11 +102,6 @@ function groupDecisions(decisions: any[], allDocuments: any[]): DecisionGroup[] 
   return groups;
 }
 
-function reviewerName(user: any): string | null {
-  if (!user) return null;
-  return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || null;
-}
-
 export function DecisionReviewClient({
   decisions,
   allDocuments = [],
@@ -158,10 +139,6 @@ export function DecisionReviewClient({
   };
 
   const [selectedGroupId, setSelectedGroupId] = useState<string>(findInitialGroupId());
-  const [expandedDecisionId, setExpandedDecisionId] = useState<string | null>(
-    initialDecisionId || null
-  );
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [notesByDecision, setNotesByDecision] = useState<Record<string, string>>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [bulkApproving, setBulkApproving] = useState(false);
@@ -170,8 +147,6 @@ export function DecisionReviewClient({
   const [activeFilter, setActiveFilter] = useState<"ALL" | "NEED_REVIEW" | "APPROVED">("NEED_REVIEW");
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) || groups[0];
-  const shipment = selectedGroup?.decisions[0]?.shipment;
-  const lineItems: any[] = shipment?.lineItems || [];
 
   const primaryDoc =
     allDocuments.find((d) => d.id === selectedGroup?.documentId) ||
@@ -194,11 +169,8 @@ export function DecisionReviewClient({
   useEffect(() => {
     if (filteredGroups.length > 0 && !filteredGroups.some((g) => g.id === selectedGroupId)) {
       setSelectedGroupId(filteredGroups[0].id);
-      setExpandedDecisionId(null);
     }
   }, [filteredGroups, selectedGroupId]);
-
-  const expandedDecision = selectedGroup?.decisions.find((d) => d.id === expandedDecisionId) || null;
 
   const runDecisionAction = async (decisionId: string, action: "APPROVE" | "REJECT" | "RE_EVALUATE") => {
     setActionLoadingId(decisionId);
@@ -256,67 +228,6 @@ export function DecisionReviewClient({
     return url;
   };
 
-  const renderExtractedMetadata = (dec: any) => {
-    const evItems = dec?.evidenceItems && typeof dec.evidenceItems === "object" ? (dec.evidenceItems as Record<string, any>) : {};
-    const fields: Array<{ label: string; value: any }> = [
-      { label: "Shipper / Exporter", value: evItems.exporterName },
-      { label: "Consignee / Importer", value: evItems.importerName },
-      { label: "Country of Origin", value: evItems.originCountry },
-      { label: "Incoterms", value: evItems.incoterm },
-      { label: "Currency", value: evItems.currency },
-      { label: "Entry Type", value: evItems.entryType },
-    ];
-
-    return (
-      <div className="space-y-3 pt-1">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
-          {fields.map((f) => (
-            <div key={f.label} className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-1">
-              <p className="text-[9px] text-[#86868B] uppercase font-bold">{f.label}</p>
-              <p className="font-bold text-[#1D1D1F] text-[11px]">
-                {f.value || <span className="italic font-normal text-amber-700">Not Extracted</span>}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {dec.agentName.includes("Intelligence") && (
-          <div className="space-y-1.5 pt-1">
-            <h4 className="text-[10px] font-bold uppercase text-[#86868B] tracking-wider">Extracted Line Items ({lineItems.length})</h4>
-            {lineItems.length > 0 ? (
-              <div className="border border-[#E5E5EA] rounded-xl overflow-hidden text-[11px]">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-[#F5F5F7] border-b border-[#E5E5EA] text-[9px] font-bold text-[#86868B] uppercase">
-                    <tr>
-                      <th className="p-2">SKU</th>
-                      <th className="p-2">Description</th>
-                      <th className="p-2 text-right">Qty</th>
-                      <th className="p-2 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E5E5EA]">
-                    {lineItems.map((item: any, idx: number) => (
-                      <tr key={idx}>
-                        <td className="p-2 font-mono text-[#0071E3] font-semibold">{item.sku || `SKU-${idx + 1}`}</td>
-                        <td className="p-2 font-medium text-[#1D1D1F]">{item.description}</td>
-                        <td className="p-2 text-right font-mono">{item.quantity || "—"}</td>
-                        <td className="p-2 text-right font-mono font-bold">
-                          {item.totalAmount ? `$${item.totalAmount.toFixed(2)}` : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-[11px] text-[#86868B]">No line items extracted yet.</p>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   if (initialShipmentId && localDecisions.length === 0) {
     return (
       <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -333,10 +244,6 @@ export function DecisionReviewClient({
       </div>
     );
   }
-
-  const rightPanelDecision = expandedDecision || selectedGroup?.decisions.find((d) => d.status !== "Approved") || selectedGroup?.decisions[0];
-  const groupDataSources = Array.from(new Set(selectedGroup?.decisions.flatMap((d) => d.dataSources || []) || []));
-  const groupRegulations = Array.from(new Set(selectedGroup?.decisions.flatMap((d) => d.regulations || []) || []));
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -402,7 +309,7 @@ export function DecisionReviewClient({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: one card per document review batch */}
         <div className="lg:col-span-4 space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-3">
@@ -410,7 +317,7 @@ export function DecisionReviewClient({
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">Document Reviews ({filteredGroups.length})</h3>
             </div>
 
-            <div className="space-y-3 max-h-[72vh] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[78vh] overflow-y-auto pr-1">
               {filteredGroups.map((g) => {
                 const isSelected = selectedGroup?.id === g.id;
                 const approvedCount = g.decisions.filter((d) => d.status === "Approved").length;
@@ -421,7 +328,6 @@ export function DecisionReviewClient({
                     type="button"
                     onClick={() => {
                       setSelectedGroupId(g.id);
-                      setExpandedDecisionId(null);
                       setActionSuccess(null);
                     }}
                     className={`w-full text-left p-3.5 rounded-2xl border transition-all text-xs cursor-pointer space-y-2.5 block ${
@@ -468,168 +374,37 @@ export function DecisionReviewClient({
           </div>
         </div>
 
-        {/* Center Column: merged review for the selected document */}
-        <div className="lg:col-span-5 space-y-6">
-          {selectedGroup ? (
-            <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E5E5EA] pb-4">
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center space-x-2 min-w-0">
-                    <FileText className="w-5 h-5 text-[#0071E3] shrink-0" />
-                    <h2
-                      onClick={() => primaryDoc && setIsPreviewOpen(true)}
-                      className={`text-lg font-extrabold text-[#0071E3] min-w-0 break-words ${primaryDoc ? "hover:underline cursor-pointer" : ""}`}
-                      title={primaryDoc ? "Click to view document" : undefined}
-                    >
-                      {selectedGroup.documentName}
-                    </h2>
-                  </div>
-                  <p className="text-xs text-[#86868B]">
-                    {selectedGroup.decisions.length} agent checks ·{" "}
-                    <Link href={`/app/shipments/${selectedGroup.shipmentId}`} className="font-mono text-[#0071E3] hover:underline font-bold">
-                      {selectedGroup.shipmentNumber}
-                    </Link>
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleApproveAll}
-                  disabled={bulkApproving || selectedGroup.status === "Approved"}
-                  className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 transition-colors shrink-0"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{bulkApproving ? "Approving..." : selectedGroup.status === "Approved" ? "All Approved" : "Approve All"}</span>
-                </button>
-              </div>
-
+        {/* Right Column: the document, its fields, and review actions -- inline, not a popup */}
+        <div className="lg:col-span-8">
+          {selectedGroup && primaryDoc ? (
+            <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs h-[80vh] flex flex-col">
               {actionSuccess && (
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium flex items-center space-x-2">
+                <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium flex items-center space-x-2 shrink-0">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>{actionSuccess}</span>
                 </div>
               )}
-
-              {/* Merged list of every agent check that ran on this document */}
-              <div className="space-y-2">
-                {selectedGroup.decisions.map((dec) => {
-                  const isExpanded = expandedDecisionId === dec.id;
-                  const isBusy = actionLoadingId === dec.id;
-                  const reviewer = reviewerName(dec.reviewedByUser);
-
-                  return (
-                    <div key={dec.id} className="rounded-xl border border-[#E5E5EA] overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedDecisionId(isExpanded ? null : dec.id)}
-                        className="w-full text-left p-3 bg-[#F9F9FB] hover:bg-[#F5F5F7] cursor-pointer flex items-center justify-between gap-2 text-xs"
-                      >
-                        <div className="flex items-center space-x-2 min-w-0">
-                          <Sparkles className="w-3.5 h-3.5 text-[#0071E3] shrink-0" />
-                          <div className="min-w-0">
-                            <p className="font-bold text-[#1D1D1F] truncate">{dec.agentName}</p>
-                            <p className="text-[10px] text-[#86868B] truncate">{dec.decisionSummary || "Evaluated compliance rules."}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2 shrink-0">
-                          <span
-                            className={`font-bold text-[10px] ${
-                              dec.confidence >= 90 ? "text-emerald-700" : dec.confidence > 0 ? "text-amber-700" : "text-red-600"
-                            }`}
-                          >
-                            {dec.confidence}%
-                          </span>
-                          <span
-                            className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${
-                              dec.status === "Approved"
-                                ? "bg-emerald-100 text-emerald-900 border-emerald-300"
-                                : dec.status === "Rejected"
-                                ? "bg-red-100 text-red-900 border-red-300"
-                                : "bg-amber-100 text-amber-900 border-amber-300"
-                            }`}
-                          >
-                            {dec.status}
-                          </span>
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-[#86868B]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#86868B]" />}
-                        </div>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="p-4 space-y-3 border-t border-[#E5E5EA]">
-                          {renderExtractedMetadata(dec)}
-
-                          {dec.agentName.includes("HTS") && (
-                            <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200 grid grid-cols-2 gap-3 text-xs">
-                              <div className="p-2.5 rounded-xl bg-white border border-blue-100 space-y-1">
-                                <p className="text-[9px] text-[#86868B] uppercase font-bold">Product</p>
-                                <p className="font-bold text-[#1D1D1F]">{dec.proposedDescription || "Import Product"}</p>
-                              </div>
-                              <div className="p-2.5 rounded-xl bg-blue-100/50 border border-blue-200 space-y-1">
-                                <p className="text-[9px] text-[#0071E3] uppercase font-bold">Assigned HTS Code</p>
-                                <p className="font-mono font-extrabold text-[#0071E3]">
-                                  {dec.proposedHtsCode || dec.currentHtsCode || "UNCLASSIFIABLE"}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {(dec.rulesApplied || []).length > 0 && (
-                            <div className="space-y-1.5">
-                              <h4 className="text-[10px] font-bold uppercase text-[#86868B] tracking-wider">Applied Compliance Rules</h4>
-                              {dec.rulesApplied.map((rule: string, idx: number) => (
-                                <div key={idx} className="p-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA] flex items-center space-x-2 text-[11px] text-[#1D1D1F]">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                  <span className="font-medium">{rule}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {reviewer && dec.status !== "Review Required" && (
-                            <p className="text-[10px] text-[#86868B]">
-                              {dec.status} by <span className="font-bold text-[#1D1D1F]">{reviewer}</span>
-                            </p>
-                          )}
-
-                          <textarea
-                            rows={2}
-                            value={notesByDecision[dec.id] ?? dec.humanNotes ?? ""}
-                            onChange={(e) => setNotesByDecision((prev) => ({ ...prev, [dec.id]: e.target.value }))}
-                            placeholder="Broker review notes..."
-                            className="w-full p-2.5 bg-[#F5F5F7] border border-[#E5E5EA] focus:border-[#0071E3] focus:bg-white rounded-xl text-[11px] text-[#1D1D1F] transition-all outline-none font-medium"
-                          />
-
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => handleRowAction(dec.id, "RE_EVALUATE")}
-                              disabled={isBusy}
-                              className="px-3 py-1.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-amber-700 text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              <span>Re-evaluate</span>
-                            </button>
-                            <button
-                              onClick={() => handleRowAction(dec.id, "REJECT")}
-                              disabled={isBusy}
-                              className="px-3 py-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors"
-                            >
-                              <X className="w-3 h-3" />
-                              <span>Reject</span>
-                            </button>
-                            <button
-                              onClick={() => handleRowAction(dec.id, "APPROVE")}
-                              disabled={isBusy || dec.status === "Approved"}
-                              className="px-3.5 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-40 text-white text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors"
-                            >
-                              <Check className="w-3 h-3" />
-                              <span>{isBusy ? "Saving..." : "Approve"}</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              <DocumentReviewPanel
+                documentId={primaryDoc.id}
+                fileName={primaryDoc.fileName}
+                shipmentNumber={selectedGroup.shipmentNumber}
+                proxyUrl={primaryDoc.fileUrl ? getProxyUrl(primaryDoc.fileUrl) : undefined}
+                decisions={selectedGroup.decisions}
+                notesByDecision={notesByDecision}
+                onNotesChange={(id, val) => setNotesByDecision((prev) => ({ ...prev, [id]: val }))}
+                onReviewAction={handleRowAction}
+                actionLoadingId={actionLoadingId}
+                headerRight={
+                  <button
+                    onClick={handleApproveAll}
+                    disabled={bulkApproving || selectedGroup.status === "Approved"}
+                    className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-1.5 transition-colors shrink-0"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{bulkApproving ? "Approving..." : selectedGroup.status === "Approved" ? "All Approved" : "Approve All"}</span>
+                  </button>
+                }
+              />
             </div>
           ) : (
             <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E5EA] text-xs text-[#86868B]">
@@ -637,61 +412,7 @@ export function DecisionReviewClient({
             </div>
           )}
         </div>
-
-        {/* Right Column: data provenance for the expanded (or first pending) check */}
-        <div className="lg:col-span-3 space-y-4">
-          <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">
-              {expandedDecision ? `Data Engines — ${expandedDecision.agentName}` : "AI Data Engines Used"}
-            </h3>
-            <div className="space-y-2 text-xs">
-              {(expandedDecision ? expandedDecision.dataSources || [] : groupDataSources).length > 0 ? (
-                (expandedDecision ? expandedDecision.dataSources : groupDataSources).map((src: string, idx: number) => (
-                  <div key={idx} className="p-2.5 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center space-x-2">
-                    <Sparkles className="w-3.5 h-3.5 text-[#0071E3] shrink-0" />
-                    <span className="font-semibold text-[#1D1D1F] text-[11px]">{src}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-[11px] text-[#86868B]">Expand an agent check to see the engines it used.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]">CBP Regulations &amp; Legal Authorities</h3>
-            <div className="space-y-2 text-xs">
-              {(expandedDecision ? expandedDecision.regulations || [] : groupRegulations).length > 0 ? (
-                (expandedDecision ? expandedDecision.regulations : groupRegulations).map((reg: string, idx: number) => (
-                  <div key={idx} className="p-2.5 rounded-xl bg-blue-50/50 border border-blue-100 flex items-center space-x-2">
-                    <BookOpen className="w-3.5 h-3.5 text-[#0071E3] shrink-0" />
-                    <span className="font-mono font-bold text-[#0071E3] text-[11px]">{reg}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-[11px] text-[#86868B]">No specific regulation cited yet.</p>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
-
-      {isPreviewOpen && primaryDoc && (
-        <RawExtractionModal
-          isOpen={isPreviewOpen}
-          onClose={() => setIsPreviewOpen(false)}
-          documentId={primaryDoc.id}
-          fileName={primaryDoc.fileName}
-          shipmentNumber={selectedGroup?.shipmentNumber}
-          fileUrl={primaryDoc.fileUrl}
-          proxyUrl={primaryDoc.fileUrl ? getProxyUrl(primaryDoc.fileUrl) : undefined}
-          decisions={selectedGroup?.decisions}
-          notesByDecision={notesByDecision}
-          onNotesChange={(id, val) => setNotesByDecision((prev) => ({ ...prev, [id]: val }))}
-          onReviewAction={handleRowAction}
-          actionLoadingId={actionLoadingId}
-        />
-      )}
     </div>
   );
 }
