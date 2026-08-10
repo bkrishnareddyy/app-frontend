@@ -40,10 +40,15 @@ export interface ShipmentQuery extends TableQuery<ShipmentSortColumn> {
   health: string | null;
   /** A client id, or `UNASSIGNED` for shipments that carry no client. */
   client: string | null;
+  /** A user id, or `UNASSIGNED` for shipments nobody owns. */
+  assignee: string | null;
 }
 
 /** Sentinel for "no client", which is a real filter and not the absence of one. */
 export const UNASSIGNED_CLIENT = "UNASSIGNED";
+
+/** Sentinel for "nobody", so an unowned shipment cannot fall out of every view. */
+export const UNASSIGNED_OWNER = "UNASSIGNED";
 
 function trimmed(raw: string | null): string | null {
   const value = raw?.trim();
@@ -61,6 +66,7 @@ export function parseShipmentQuery(params: URLSearchParams): ShipmentQuery {
     status: trimmed(params.get("status")),
     health: trimmed(params.get("health")),
     client: trimmed(params.get("client")),
+    assignee: trimmed(params.get("assignee")),
   };
 }
 
@@ -72,6 +78,7 @@ export interface ShipmentWhere {
   status?: string;
   healthStatus?: string;
   clientId?: string | null;
+  assignedBrokerId?: string | null;
   OR?: Array<Record<string, Insensitive>>;
 }
 
@@ -86,6 +93,9 @@ export function buildShipmentWhere(accountId: string, query: ShipmentQuery): Shi
   if (query.health) where.healthStatus = query.health;
   if (query.client) {
     where.clientId = query.client === UNASSIGNED_CLIENT ? null : query.client;
+  }
+  if (query.assignee) {
+    where.assignedBrokerId = query.assignee === UNASSIGNED_OWNER ? null : query.assignee;
   }
 
   if (query.search) {

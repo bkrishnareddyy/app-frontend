@@ -135,7 +135,14 @@ export function Sidebar({
               <ShieldCheck className="w-5 h-5" />
             </div>
             {!collapsed && (
-              <span className="text-xl font-bold tracking-tight text-[#1D1D1F] truncate">Qubere</span>
+              <span className="min-w-0">
+                <span className="block text-xl font-bold tracking-tight text-[#1D1D1F] truncate">
+                  Qubere
+                </span>
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-[#86868B] truncate">
+                  AI Trade Platform
+                </span>
+              </span>
             )}
           </Link>
           <button

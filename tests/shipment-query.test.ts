@@ -15,6 +15,7 @@ const query = (overrides: Partial<ShipmentQuery> = {}): ShipmentQuery => ({
   status: null,
   health: null,
   client: null,
+  assignee: null,
   sort: "createdAt",
   direction: "desc",
   page: 1,
@@ -108,6 +109,16 @@ describe("buildShipmentWhere", () => {
     const where = buildShipmentWhere("acct_1", query({ client: "UNASSIGNED" }));
     expect("clientId" in where).toBe(true);
     expect(where.clientId).toBeNull();
+  });
+
+  it("filters by assignee, keeping unassigned shipments reachable", () => {
+    expect(buildShipmentWhere("acct_1", query({ assignee: "usr_1" })).assignedBrokerId).toBe("usr_1");
+
+    const unassigned = buildShipmentWhere("acct_1", query({ assignee: "UNASSIGNED" }));
+    expect("assignedBrokerId" in unassigned).toBe(true);
+    expect(unassigned.assignedBrokerId).toBeNull();
+
+    expect("assignedBrokerId" in buildShipmentWhere("acct_1", query())).toBe(false);
   });
 
   it("omits a filter that was not supplied", () => {

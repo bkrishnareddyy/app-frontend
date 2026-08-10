@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
+import { db } from "@/lib/db";
 import { AgentDependencyOrchestrator } from "@/modules/agents/agentDependencyOrchestrator";
 import { z } from "zod";
 
@@ -12,6 +13,16 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
+
+  // The orchestrator does not check ownership, so a foreign id would otherwise
+  // run this tenant's agents against another tenant's shipment.
+  const owned = await db.shipment.findFirst({
+    where: { id, accountId: ctx.accountId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!owned) {
+    return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+  }
 
   try {
     const result = await AgentDependencyOrchestrator.processEvent({

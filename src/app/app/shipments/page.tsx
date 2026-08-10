@@ -19,6 +19,7 @@ import {
   buildShipmentWhere,
   parseShipmentQuery,
   shipmentSkip,
+  UNASSIGNED_OWNER,
 } from "@/modules/shipments/shipmentQuery";
 import { type ColumnSpec, resetPage, tableHref, visibleColumns } from "@/modules/tables/tableQuery";
 import { SortableHeader } from "@/components/table/SortableHeader";
@@ -127,6 +128,19 @@ export default async function ShipmentsConsolePage(props: {
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
+
+  // Only an admin may scope the console to a colleague, so nobody else is shown the roster.
+  const teamMembers = isEnterpriseAdmin
+    ? await db.accountMembership.findMany({
+        where: { accountId: ctx.accountId, status: "ACTIVE" },
+        include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },
+      })
+    : [];
+
+  const assigneeFilters = teamMembers.map((m) => ({
+    id: m.user.id,
+    label: brokerName(m.user) + (m.user.id === ctx.userId ? " (Me)" : ""),
+  }));
 
   // KPIs cover the whole workspace, so a search does not silently shrink them.
   const allForCounts = await db.shipment.findMany({
@@ -301,6 +315,39 @@ export default async function ShipmentsConsolePage(props: {
               );
             })}
           </div>
+
+          {assigneeFilters.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">
+                Assignee
+              </span>
+              {[
+                { id: null, label: "Everyone" },
+                { id: UNASSIGNED_OWNER, label: "Unassigned" },
+                ...assigneeFilters,
+              ].map((option) => {
+                const active = (query.assignee ?? null) === option.id;
+                return (
+                  <Link
+                    key={option.id ?? "all"}
+                    href={tableHref(
+                      BASE_PATH,
+                      params,
+                      resetPage({ assignee: active ? null : option.id })
+                    )}
+                    aria-current={active ? "true" : undefined}
+                    className={`px-2.5 py-1 rounded-xl border text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3] ${
+                      active
+                        ? "border-[#0071E3] bg-[#0071E3]/10 text-[#0071E3]"
+                        : "border-[#E5E5EA] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7]"
+                    }`}
+                  >
+                    {option.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
 
           <SavedViews tableId="shipments" label="shipment" />
         </div>

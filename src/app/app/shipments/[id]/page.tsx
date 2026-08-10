@@ -15,13 +15,13 @@ import { PipelineProgressTracker } from "./PipelineProgressTracker";
 import { DocumentViewerControls } from "./DocumentViewerControls";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
 import { ShipmentClientEditor } from "./ShipmentClientEditor";
+import { LineItemsTable } from "./LineItemsTable";
 import { documentViewUrl } from "@/lib/documentUrl";
 import { openStatusVariants } from "@/modules/exceptions/exceptionState";
 import { evaluateFilingReadiness } from "@/modules/filing/filingReadiness";
 import { entryTypeLabel } from "@/modules/filing/entryType";
 import {
   averageOfKnown,
-  displayCurrency,
   displayPercent,
   displayText,
   displayDate,
@@ -507,57 +507,21 @@ export default async function ShipmentWorkspacePage(props: {
             {/* Line items, as stored. Totals come from the persisted totalValue rather
                 than being recomputed here, so the page cannot disagree with the filing. */}
             {shipment.lineItems.length > 0 ? (
-              <div className="border border-[#E5E5EA] rounded-xl overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <caption className="sr-only">
-                    Line items extracted for shipment {shipment.shipmentNumber}
-                  </caption>
-                  <thead className="bg-[#F5F5F7] text-[11px] font-bold text-[#6E6E73] uppercase tracking-wider border-b border-[#E5E5EA]">
-                    <tr>
-                      <th scope="col" className="p-2.5">Line</th>
-                      <th scope="col" className="p-2.5">Description</th>
-                      <th scope="col" className="p-2.5 whitespace-nowrap">HTS code</th>
-                      <th scope="col" className="p-2.5 whitespace-nowrap">Model confidence</th>
-                      <th scope="col" className="p-2.5">Origin</th>
-                      <th scope="col" className="p-2.5">Status</th>
-                      <th scope="col" className="p-2.5 text-right">Quantity</th>
-                      <th scope="col" className="p-2.5 text-right whitespace-nowrap">Total value</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E5E5EA]">
-                    {shipment.lineItems.map((item) => (
-                      <tr key={item.id}>
-                        <td className="p-2.5 font-mono text-[#6E6E73]">{item.lineNumber}</td>
-                        <td className="p-2.5 font-bold text-[#1D1D1F]">
-                          {displayText(item.description)}
-                        </td>
-                        <td className="p-2.5 font-mono text-[#0071E3]">
-                          {displayText(item.htsCode, "Not classified")}
-                        </td>
-                        <td
-                          className={`p-2.5 font-semibold ${
-                            item.htsConfidence === null
-                              ? "text-[#86868B]"
-                              : item.htsConfidence < 80
-                              ? "text-amber-700"
-                              : "text-emerald-700"
-                          }`}
-                        >
-                          {displayPercent(item.htsConfidence)}
-                        </td>
-                        <td className="p-2.5 text-[#1D1D1F]">
-                          {displayText(item.countryOfOrigin)}
-                        </td>
-                        <td className="p-2.5 text-[#1D1D1F]">{displayText(item.status)}</td>
-                        <td className="p-2.5 text-right font-mono">{item.quantity}</td>
-                        <td className="p-2.5 text-right font-mono font-bold">
-                          {displayCurrency(item.totalValue.toString())}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <LineItemsTable
+                shipmentId={shipment.id}
+                canEdit={canEditClient}
+                lineItems={shipment.lineItems.map((item) => ({
+                  id: item.id,
+                  lineNumber: item.lineNumber,
+                  description: item.description,
+                  htsCode: item.htsCode,
+                  htsConfidence: item.htsConfidence,
+                  countryOfOrigin: item.countryOfOrigin,
+                  status: item.status,
+                  quantity: item.quantity,
+                  totalValue: item.totalValue.toString(),
+                }))}
+              />
             ) : (
               <p className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] text-sm text-[#6E6E73]">
                 No line items have been extracted for this shipment. They appear here once a
