@@ -21,6 +21,8 @@ export const dynamic = "force-dynamic";
 
 const SEVERITIES = ["Critical", "High", "Medium", "Low"];
 
+const PRESERVED_ON_SEARCH = ["mine", "unassigned", "shipmentId", "sort", "dir", "pageSize"] as const;
+
 const exceptionSelect = {
   id: true,
   type: true,
@@ -187,6 +189,12 @@ export default async function ExceptionsPage(props: {
 
       <div className="rounded-2xl bg-white border border-[#E5E5EA] p-4 space-y-4">
         <form action="/app/exceptions" method="get" className="flex flex-wrap items-end gap-3">
+          {/* A GET form replaces the whole query string, so the chips and sort state
+              have to ride along or searching silently clears them. */}
+          {PRESERVED_ON_SEARCH.map((key) => {
+            const value = params.get(key);
+            return value ? <input key={key} type="hidden" name={key} value={value} /> : null;
+          })}
           <div className="flex-1 min-w-[220px]">
             <label htmlFor="exception-search" className="block text-xs font-semibold text-[#86868B] mb-1">
               Search description or type

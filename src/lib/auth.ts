@@ -1,5 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { db } from "./db";
 import type { DataMode } from "./dataMode";
 
@@ -49,7 +50,7 @@ function generateSlug(name: string): string {
   return base || "workspace";
 }
 
-export async function getAccountContext(): Promise<AccountContext | null> {
+async function loadAccountContext(): Promise<AccountContext | null> {
   try {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) {
@@ -308,6 +309,10 @@ export async function getAccountContext(): Promise<AccountContext | null> {
     return null;
   }
 }
+
+// Deduped per request: the layout, the page, and every hasPermission() call each
+// need this, and the permission-tree query behind it is the slowest in the app.
+export const getAccountContext = cache(loadAccountContext);
 
 export async function hasPermission(requiredPermission: string): Promise<boolean> {
   const context = await getAccountContext();

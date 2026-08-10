@@ -44,7 +44,9 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
       <div className="flex items-center min-w-0">
         <div className="flex items-center space-x-2 text-[#86868B] text-sm font-medium min-w-0">
           <Building2 className="w-4 h-4 shrink-0 text-[#0071E3]" />
-          <span className="text-[#1D1D1F] font-semibold truncate">{tenantName}</span>
+          <span className="text-[#1D1D1F] font-semibold truncate" title={tenantName}>
+            {tenantName}
+          </span>
           <span className="text-[#86868B] shrink-0">/</span>
           <span className="text-[#86868B] text-xs px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] font-medium shadow-2xs shrink-0 whitespace-nowrap">
             Account Isolated
@@ -60,15 +62,19 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
           {user?.imageUrl ? (
             <img
               src={user.imageUrl}
-              alt={userName}
+              alt=""
               className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-xs font-bold">
+            <div
+              aria-hidden="true"
+              className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-xs font-bold"
+            >
               {userName.charAt(0).toUpperCase()}
             </div>
           )}
           <span className="text-xs font-semibold text-[#1D1D1F] hidden sm:inline">{userName}</span>
+          <span className="sr-only sm:hidden">{userName}</span>
         </button>
 
         {isMenuOpen && (

@@ -1,204 +1,241 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Check, Edit2, X } from "lucide-react";
-import { displayCurrency, displayPercent, displayText } from "@/lib/honest";
+import { useState, useEffect } from "react";
+import { Edit2, Check, X, Search } from "lucide-react";
 
-export interface LineItemRow {
+interface LineItem {
   id: string;
   lineNumber: number;
-  description: string | null;
-  htsCode: string | null;
-  htsConfidence: number | null;
-  countryOfOrigin: string | null;
-  status: string | null;
+  partNumber?: string | null;
+  description: string;
   quantity: number;
-  /** Pre-serialised: a Prisma Decimal cannot cross the server/client boundary. */
-  totalValue: string;
+  unitPrice: any;
+  totalValue: any;
+  countryOfOrigin: string;
+  htsCode: string;
+  htsConfidence: number;
 }
 
 interface LineItemsTableProps {
   shipmentId: string;
-  lineItems: LineItemRow[];
-  canEdit: boolean;
+  initialLineItems: LineItem[];
+  isEnterpriseAdmin?: boolean;
 }
 
-export function LineItemsTable({ shipmentId, lineItems, canEdit }: LineItemsTableProps) {
-  const router = useRouter();
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [htsCode, setHtsCode] = useState("");
-  const [countryOfOrigin, setCountryOfOrigin] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableProps) {
+  const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  
+  // Inline edit state
+  const [editHts, setEditHts] = useState("");
+  const [editCoo, setEditCoo] = useState("");
+  const [saveLoading, setSaveLoading] = useState(false);
 
-  const startEdit = (item: LineItemRow) => {
-    setEditingId(item.id);
-    setHtsCode(item.htsCode ?? "");
-    setCountryOfOrigin(item.countryOfOrigin ?? "");
-    setError(null);
+  // Autocomplete state for HTS codes
+  const [htsSuggestions, setHtsSuggestions] = useState<any[]>([]);
+  const [searchingHts, setSearchingHts] = useState(false);
+
+  useEffect(() => {
+    if (editingItemId && editHts.trim().length >= 2) {
+      setSearchingHts(true);
+      const timer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/v1/hts/search?q=${encodeURIComponent(editHts.trim())}&limit=5`);
+          if (res.ok) {
+            const data = await res.json();
+            setHtsSuggestions(data.items || []);
+          }
+        } catch (err) {
+          console.error("Failed to query HTS suggestions:", err);
+        } finally {
+          setSearchingHts(false);
+        }
+      }, 300);
+
+      return () => clearTimeout(timer);
+    } else {
+      setHtsSuggestions([]);
+    }
+  }, [editHts, editingItemId]);
+
+  const handleStartEdit = (item: LineItem) => {
+    setEditingItemId(item.id);
+    setEditHts(item.htsCode);
+    setEditCoo(item.countryOfOrigin);
+    setHtsSuggestions([]);
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setError(null);
-  };
-
-  const save = async (item: LineItemRow) => {
-    setSaving(true);
-    setError(null);
+  const handleSave = async (itemId: string) => {
+    if (editHts.trim() === "" || editCoo.trim() === "") return;
+    setSaveLoading(true);
     try {
       const res = await fetch(`/api/shipments/${shipmentId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           lineItems: [
             {
-              id: item.id,
-              htsCode: htsCode.trim() || null,
-              countryOfOrigin: countryOfOrigin.trim() || null,
+              id: itemId,
+              htsCode: editHts.trim(),
+              countryOfOrigin: editCoo.trim(),
             },
           ],
         }),
       });
+
       if (!res.ok) {
-        throw new Error("The classification could not be saved.");
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to update line item");
       }
-      setEditingId(null);
-      // A manual classification re-runs dependent agents, so the whole page is refetched.
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "The classification could not be saved.");
+
+      setLineItems(
+        lineItems.map((item) =>
+          item.id === itemId
+            ? { ...item, htsCode: editHts.trim(), countryOfOrigin: editCoo.trim(), htsConfidence: 100 }
+            : item
+        )
+      );
+      setEditingItemId(null);
+      
+      // Highlight update to other parent lists
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || "Failed to save changes");
     } finally {
-      setSaving(false);
+      setSaveLoading(false);
     }
   };
 
   return (
-    <div className="space-y-2">
-      {error ? (
-        <p role="alert" className="text-sm font-semibold text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="border border-[#E5E5EA] rounded-xl overflow-x-auto">
-        <table className="w-full text-left border-collapse text-xs">
-          <caption className="sr-only">Line items extracted for this shipment</caption>
-          <thead className="bg-[#F5F5F7] text-[11px] font-bold text-[#6E6E73] uppercase tracking-wider border-b border-[#E5E5EA]">
-            <tr>
-              <th scope="col" className="p-2.5">Line</th>
-              <th scope="col" className="p-2.5">Description</th>
-              <th scope="col" className="p-2.5 whitespace-nowrap">HTS code</th>
-              <th scope="col" className="p-2.5 whitespace-nowrap">Model confidence</th>
-              <th scope="col" className="p-2.5">Origin</th>
-              <th scope="col" className="p-2.5">Status</th>
-              <th scope="col" className="p-2.5 text-right">Quantity</th>
-              <th scope="col" className="p-2.5 text-right whitespace-nowrap">Total value</th>
-              {canEdit ? (
-                <th scope="col" className="p-2.5 text-right">
-                  <span className="sr-only">Actions</span>
-                </th>
-              ) : null}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#E5E5EA]">
-            {lineItems.map((item) => {
-              const isEditing = editingId === item.id;
-              return (
-                <tr key={item.id}>
-                  <td className="p-2.5 font-mono text-[#6E6E73]">{item.lineNumber}</td>
-                  <td className="p-2.5 font-bold text-[#1D1D1F]">{displayText(item.description)}</td>
-                  <td className="p-2.5 font-mono text-[#0071E3]">
-                    {isEditing ? (
-                      <input
-                        aria-label={`HTS code for line ${item.lineNumber}`}
-                        value={htsCode}
-                        onChange={(e) => setHtsCode(e.target.value)}
-                        disabled={saving}
-                        autoFocus
-                        className="w-32 px-2 py-1 font-mono border border-[#0071E3] rounded-lg focus:outline-hidden"
-                      />
-                    ) : (
-                      displayText(item.htsCode, "Not classified")
-                    )}
-                  </td>
-                  <td
-                    className={`p-2.5 font-semibold ${
-                      item.htsConfidence === null
-                        ? "text-[#86868B]"
-                        : item.htsConfidence < 80
-                          ? "text-amber-700"
-                          : "text-emerald-700"
-                    }`}
-                  >
-                    {displayPercent(item.htsConfidence)}
-                  </td>
-                  <td className="p-2.5 text-[#1D1D1F]">
-                    {isEditing ? (
-                      <input
-                        aria-label={`Country of origin for line ${item.lineNumber}`}
-                        value={countryOfOrigin}
-                        onChange={(e) => setCountryOfOrigin(e.target.value)}
-                        disabled={saving}
-                        className="w-28 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-hidden"
-                      />
-                    ) : (
-                      displayText(item.countryOfOrigin)
-                    )}
-                  </td>
-                  <td className="p-2.5 text-[#1D1D1F]">{displayText(item.status)}</td>
-                  <td className="p-2.5 text-right font-mono">{item.quantity}</td>
-                  <td className="p-2.5 text-right font-mono font-bold">
-                    {displayCurrency(item.totalValue)}
-                  </td>
-                  {canEdit ? (
-                    <td className="p-2.5 text-right whitespace-nowrap">
+    <div className="mt-4 space-y-2">
+      <div className="flex items-center justify-between text-xs font-bold text-[#1D1D1F]">
+        <span>Extracted Line Items ({lineItems.length})</span>
+      </div>
+      {lineItems.length > 0 ? (
+        <div className="border border-[#E5E5EA] rounded-xl overflow-visible text-xs max-h-96 overflow-y-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-[#F5F5F7] text-[10px] font-bold text-[#86868B] uppercase border-b border-[#E5E5EA]">
+              <tr>
+                <th className="p-2.5">Line</th>
+                <th className="p-2.5">Description</th>
+                <th className="p-2.5">HTS Code</th>
+                <th className="p-2.5">Origin</th>
+                <th className="p-2.5 text-right">Qty</th>
+                <th className="p-2.5 text-right">Total</th>
+                <th className="p-2.5 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E5E5EA]">
+              {lineItems.map((item) => {
+                const isEditing = editingItemId === item.id;
+                return (
+                  <tr key={item.id} className="hover:bg-[#F5F5F7]/30 transition-colors">
+                    <td className="p-2.5 font-mono text-[#86868B] font-semibold">{item.lineNumber}</td>
+                    <td className="p-2.5 font-bold text-[#1D1D1F] max-w-xs truncate">{item.description}</td>
+                    
+                    {/* HTS Code Column */}
+                    <td className="p-2.5 font-mono relative">
                       {isEditing ? (
-                        <span className="inline-flex items-center gap-1.5">
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            value={editHts}
+                            onChange={(e) => setEditHts(e.target.value)}
+                            placeholder="Search HTS Code..."
+                            className="w-32 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white font-mono text-[11px]"
+                            disabled={saveLoading}
+                          />
+                          {/* Autocomplete dropdown */}
+                          {htsSuggestions.length > 0 && (
+                            <div className="absolute left-2.5 z-40 bg-white border border-[#E5E5EA] rounded-xl shadow-lg mt-1 w-64 p-1.5 space-y-1 max-h-48 overflow-y-auto">
+                              <p className="text-[9px] text-[#86868B] font-bold px-1.5 uppercase tracking-wider">HTS Code Suggestions</p>
+                              {htsSuggestions.map((sugg) => (
+                                <button
+                                  key={sugg.id}
+                                  onClick={() => {
+                                    setEditHts(sugg.htsNumberDisplay);
+                                    setHtsSuggestions([]);
+                                  }}
+                                  className="w-full text-left p-1.5 rounded-lg hover:bg-[#F5F5F7] text-[10px] space-y-0.5 block transition-colors cursor-pointer"
+                                >
+                                  <span className="font-mono font-bold text-[#0071E3]">{sugg.htsNumberDisplay}</span>
+                                  <span className="text-[#86868B] block truncate leading-snug">{sugg.description}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[#0071E3] font-semibold">{item.htsCode}</span>
+                      )}
+                    </td>
+
+                    {/* Country of Origin Column */}
+                    <td className="p-2.5">
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={editCoo}
+                          onChange={(e) => setEditCoo(e.target.value)}
+                          placeholder="e.g. Germany"
+                          className="w-24 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white text-[11px]"
+                          disabled={saveLoading}
+                        />
+                      ) : (
+                        <span className="font-medium text-[#1D1D1F]">{item.countryOfOrigin}</span>
+                      )}
+                    </td>
+
+                    <td className="p-2.5 text-right font-mono">{item.quantity}</td>
+                    <td className="p-2.5 text-right font-mono font-bold">
+                      ${(Number(item.quantity) * Number(item.unitPrice)).toLocaleString()}
+                    </td>
+                    
+                    {/* Inline edit actions */}
+                    <td className="p-2.5 text-center">
+                      {isEditing ? (
+                        <div className="flex items-center justify-center space-x-1.5">
                           <button
-                            type="button"
-                            onClick={() => void save(item)}
-                            disabled={saving}
-                            aria-label={`Save classification for line ${item.lineNumber}`}
-                            className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 cursor-pointer"
+                            onClick={() => handleSave(item.id)}
+                            disabled={saveLoading}
+                            className="p-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                            title="Save Changes"
                           >
-                            <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                            <Check className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            type="button"
-                            onClick={cancelEdit}
-                            disabled={saving}
-                            aria-label={`Cancel editing line ${item.lineNumber}`}
-                            className="p-1.5 bg-[#F5F5F7] text-[#6E6E73] border border-[#E5E5EA] rounded-lg hover:bg-[#E5E5EA] cursor-pointer"
+                            onClick={() => setEditingItemId(null)}
+                            disabled={saveLoading}
+                            className="p-1 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 cursor-pointer"
+                            title="Cancel"
                           >
-                            <X className="w-3.5 h-3.5" aria-hidden="true" />
+                            <X className="w-3.5 h-3.5" />
                           </button>
-                        </span>
+                        </div>
                       ) : (
                         <button
-                          type="button"
-                          onClick={() => startEdit(item)}
-                          className="inline-flex items-center gap-1 text-sm font-semibold text-[#0071E3] hover:underline cursor-pointer"
+                          onClick={() => handleStartEdit(item)}
+                          className="p-1 rounded-lg hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
+                          title="Edit HTS & Origin"
                         >
-                          <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
-                          Edit HTS &amp; origin
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </td>
-                  ) : null}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {canEdit ? (
-        <p className="text-sm text-[#6E6E73]">
-          A saved classification is recorded as broker-confirmed and re-runs the dependent agents.
-        </p>
-      ) : null}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
+          <p className="font-bold">No Commercial Line Items Extracted</p>
+          <p className="text-[11px]">Line items will appear here automatically upon document vision extraction.</p>
+        </div>
+      )}
     </div>
   );
 }

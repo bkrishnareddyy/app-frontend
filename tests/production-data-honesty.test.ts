@@ -10,6 +10,8 @@ import {
 } from "@/lib/honest";
 import {
   dataModeBannerCopy,
+  dataModeFooterLabel,
+  DATA_MODES,
   isProductionWorkspace,
   requiresDataModeBanner,
   isDemoSeedingAllowedForWorkspace,
@@ -89,6 +91,15 @@ describe("Workspace data mode separation", () => {
     expect(dataModeBannerCopy("DEMO")?.label).toBe("Demo data");
     expect(dataModeBannerCopy("SANDBOX")?.label).toBe("Sandbox");
     expect(dataModeBannerCopy("SANDBOX")?.description).toContain("never transmitted to CBP");
+  });
+
+  it("never labels a non-production workspace as production in the sidebar footer", () => {
+    expect(dataModeFooterLabel("PRODUCTION")).toBe("Production Enterprise Core");
+    expect(dataModeFooterLabel("DEMO")).toBe("Demo Workspace");
+    expect(dataModeFooterLabel("SANDBOX")).toBe("Sandbox Workspace");
+    for (const mode of DATA_MODES.filter((m) => m !== "PRODUCTION")) {
+      expect(dataModeFooterLabel(mode)).not.toMatch(/production/i);
+    }
   });
 
   it("refuses to seed demo data into a production workspace", () => {

@@ -40,8 +40,8 @@ export function ShipmentTitleEditor({
 
       setIsEditing(false);
       window.location.reload(); // Refresh the page to update the URL/sidebar
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to rename shipment");
+    } catch (err: any) {
+      alert(err.message || "Failed to rename shipment");
       setTitle(initialShipmentNumber);
     } finally {
       setLoading(false);

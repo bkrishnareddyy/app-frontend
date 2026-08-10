@@ -70,37 +70,7 @@ function clusterLegacyByTime<T>(items: T[], getStartMs: (item: T) => number, sou
   return clusterOf;
 }
 
-/** The columns this builder reads, so either table can be passed in directly. */
-export interface AgentExecutionRecordInput {
-  id: string;
-  agentName: string;
-  status: string;
-  runId?: string | null;
-  triggerEvent?: string | null;
-  invokedBy?: string | null;
-  nextStep?: string | null;
-  durationMs?: number | null;
-  error?: string | null;
-  startedAt: Date | string;
-  completedAt?: Date | string | null;
-}
-
-export interface AgentExecutionLogInput {
-  id: string;
-  agentName: string;
-  status: string;
-  summary: string;
-  timestamp: Date | string;
-  runId?: string | null;
-  triggerEvent?: string | null;
-  invokedBy?: string | null;
-  durationMs?: number | null;
-}
-
-export function buildAgentInvocations(
-  records: AgentExecutionRecordInput[],
-  logs: AgentExecutionLogInput[]
-): AgentInvocation[] {
+export function buildAgentInvocations(records: any[], logs: any[]): AgentInvocation[] {
   const groups = new Map<string, AgentInvocation>();
 
   const ensureGroup = (runId: string, invokedBy: string, triggerEvent: string) => {

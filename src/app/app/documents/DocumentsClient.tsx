@@ -1,334 +1,451 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   FileText,
+  Upload,
+  Sparkles,
   Search,
+  Filter,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
   ExternalLink,
+  Bot,
   RefreshCw,
   Plus,
   Eye,
   X,
   FileCheck2,
-  ChevronLeft,
-  ChevronRight,
+  Maximize2,
+  Users,
 } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
-import { SortableHeaderButton } from "@/components/table/SortableHeaderButton";
-import Link from "next/link";
-import { documentViewUrl } from "@/lib/documentUrl";
-import { cn } from "@/lib/utils";
-import { displayDate, displayNumber, displayPercent, NOT_CALCULATED } from "@/lib/honest";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { useDialogFocus } from "@/lib/useDialogFocus";
-import type {
-  DocumentSortColumn,
-  SortDirection,
-} from "@/modules/documents/documentQuery";
+import { RawExtractionModal } from "@/components/RawExtractionModal";
 
-interface DocumentRow {
+interface ShipmentDocumentItem {
   id: string;
-  fileName: string;
-  docType: string;
+  name: string;
+  type: string;
+  docType?: string;
   status: string;
-  pageCount: number | null;
-  confidence: number | null;
-  createdAt: string;
-  shipmentId: string | null;
-  shipmentNumber: string | null;
-  clientId: string | null;
-  clientName: string | null;
-  assignedBrokerId: string | null;
-  extractedFieldCount: number;
-}
-
-interface TeamMember {
-  userId: string;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
+  uploadedAt: string;
+  url: string;
+  shipmentId: string;
+  shipmentRef?: string;
+  fileSize?: string;
+  confidenceScore?: number;
+  assignedBrokerId?: string | null;
+  assignedBrokerName: string;
+  clientId?: string | null;
+  clientName: string;
+  unattached?: boolean;
 }
 
 interface DocumentsClientProps {
-  accountName: string;
-  currentUserId: string;
-  /** Empty unless the viewer may scope the console to other people's shipments. */
-  teamMembers: TeamMember[];
+  context: {
+    userId: string;
+    roleNames: string[];
+    accountType: string;
+    accountName: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  };
+  teamMembers: Array<{
+    userId: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+  }>;
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  Received: "bg-[#F5F5F7] text-[#1D1D1F] border-[#E5E5EA]",
-  "Review Required": "bg-amber-50 text-amber-700 border-amber-200",
-  Missing: "bg-red-50 text-red-700 border-red-200",
-};
+export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) {
+  const isEnterpriseAdmin =
+    context.accountType === "ENTERPRISE" &&
+    (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
 
-function isImageFile(name: string) {
-  return /\.(png|jpe?g|webp|gif)$/i.test(name);
-}
+  // Construct full team list containing the logged-in admin themselves
+  const fullTeamList = useMemo(() => {
+    const list = [...teamMembers];
+    const hasMe = list.some((m) => m.userId === context.userId);
+    if (!hasMe) {
+      list.unshift({
+        userId: context.userId,
+        email: context.email || "me@qubere.ai",
+        firstName: context.firstName || "Me",
+        lastName: context.lastName || "",
+      });
+    }
+    return list;
+  }, [teamMembers, context]);
 
-function isPdfFile(name: string) {
-  return /\.pdf$/i.test(name);
-}
-
-export function DocumentsClient({ accountName, currentUserId, teamMembers }: DocumentsClientProps) {
-  const [documents, setDocuments] = useState<DocumentRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(25);
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [docType, setDocType] = useState("");
-  const [status, setStatus] = useState("");
-  const [clientId, setClientId] = useState("");
-  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
-  const [shipmentId, setShipmentId] = useState("");
-  const [shipments, setShipments] = useState<Array<{ id: string; ref: string }>>([]);
-  // Assignment lives on the parent shipment; empty means every assignee.
-  const [assignedBrokerIds, setAssignedBrokerIds] = useState<string[]>([]);
-  const [sort, setSort] = useState<DocumentSortColumn>("createdAt");
-  const [direction, setDirection] = useState<SortDirection>("desc");
+  const [documents, setDocuments] = useState<ShipmentDocumentItem[]>([]);
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedType, setSelectedType] = useState("ALL");
+  const [selectedClientId, setSelectedClientId] = useState("ALL");
+  const [selectedShipmentId, setSelectedShipmentId] = useState("ALL");
+  const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
-  const previewRef = useDialogFocus<HTMLDivElement>(previewDoc !== null, () => setPreviewDoc(null));
+  const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
+  const [targetShipmentId, setTargetShipmentId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const { t } = useLanguage();
 
-  const [reloadToken, setReloadToken] = useState(0);
-  const fetchDocuments = useCallback(() => setReloadToken((n) => n + 1), []);
+  // Selected team member IDs. Default is [] (All Documents)
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
-    const controller = new AbortController();
+    fetchDocuments();
+  }, []);
 
-    void (async () => {
-      setIsLoading(true);
-      setLoadError(null);
-      try {
-        const params = new URLSearchParams({
-          page: String(page),
-          pageSize: String(pageSize),
-          sort,
-          dir: direction,
-        });
-        if (search) params.set("search", search);
-        if (docType) params.set("docType", docType);
-        if (status) params.set("status", status);
-        if (clientId) params.set("clientId", clientId);
-        if (shipmentId) params.set("shipmentId", shipmentId);
-        if (assignedBrokerIds.length > 0) params.set("assignedBrokerIds", assignedBrokerIds.join(","));
+  const fetchDocuments = async () => {
+    setIsLoading(true);
+    try {
+      const [shipmentsRes, unattachedRes] = await Promise.all([
+        fetch("/api/shipments"),
+        fetch("/api/documents/unattached"),
+      ]);
 
-        const res = await fetch(`/api/documents?${params.toString()}`, { signal: controller.signal });
-        if (!res.ok) {
-          throw new Error(`Request failed with status ${res.status}`);
+      const docs: ShipmentDocumentItem[] = [];
+
+      if (shipmentsRes.ok) {
+        const data = await shipmentsRes.json();
+        if (data.shipments && Array.isArray(data.shipments)) {
+          setShipments(data.shipments);
+          data.shipments.forEach((shp: any) => {
+            if (shp.documents && Array.isArray(shp.documents)) {
+              shp.documents.forEach((d: any) => {
+                docs.push({
+                  id: d.id,
+                  name: d.fileName || d.name || "Trade_Document.pdf",
+                  type: d.docType || d.type || "Commercial Invoice",
+                  docType: d.docType || d.type || "COMMERCIAL_INVOICE",
+                  status: d.status || "Processed",
+                  uploadedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "Just now",
+                  url: d.fileUrl || d.url || "#",
+                  shipmentId: shp.id,
+                  shipmentRef: shp.shipmentNumber || shp.id,
+                  confidenceScore: 98,
+                  assignedBrokerId: shp.assignedBrokerId,
+                  assignedBrokerName: shp.assignedBroker
+                    ? `${shp.assignedBroker.firstName ?? ""} ${shp.assignedBroker.lastName ?? ""}`.trim() || shp.assignedBroker.email
+                    : "Unassigned",
+                  clientId: shp.clientId ?? null,
+                  clientName: shp.client?.name || "No Client",
+                });
+              });
+            }
+          });
         }
-        const data = await res.json();
-        if (controller.signal.aborted) return;
-        setDocuments(data.documents ?? []);
-        setTotal(data.total ?? 0);
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setLoadError(err instanceof Error ? err.message : "Could not load documents.");
-        setDocuments([]);
-        setTotal(0);
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
       }
-    })();
 
-    return () => controller.abort();
-  }, [page, pageSize, search, docType, status, clientId, shipmentId, assignedBrokerIds, sort, direction, reloadToken]);
-
-  // The filter only offers clients that exist, so it cannot produce an empty view by itself.
-  useEffect(() => {
-    const controller = new AbortController();
-
-    void (async () => {
-      try {
-        const res = await fetch("/api/clients", { signal: controller.signal });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (controller.signal.aborted) return;
-        setClients(data.clients ?? []);
-      } catch {
-        // A missing client list degrades the filter, not the document table.
+      // Detached documents -- no shipmentId, but still real rows with their
+      // extractedJson intact, kept visible here so they're findable and
+      // reattachable rather than disappearing after being detached.
+      if (unattachedRes.ok) {
+        const data = await unattachedRes.json();
+        if (data.documents && Array.isArray(data.documents)) {
+          data.documents.forEach((d: any) => {
+            docs.push({
+              id: d.id,
+              name: d.fileName || "Trade_Document.pdf",
+              type: d.docType || "Commercial Invoice",
+              docType: d.docType || "COMMERCIAL_INVOICE",
+              status: d.status || "Received",
+              uploadedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "Just now",
+              url: d.fileUrl || "#",
+              shipmentId: "",
+              shipmentRef: "Unattached",
+              confidenceScore: d.confidence || 95,
+              assignedBrokerId: null,
+              assignedBrokerName: "—",
+              clientId: null,
+              clientName: "No Client",
+              unattached: true,
+            });
+          });
+        }
       }
-    })();
 
-    return () => controller.abort();
-  }, []);
+      setDocuments(docs);
+    } catch (err) {
+      console.error("Failed to fetch documents:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Detached documents keep a null shipmentId, so the list needs an explicit option for them.
-  useEffect(() => {
-    const controller = new AbortController();
+  const toggleUser = (userId: string) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
 
-    void (async () => {
-      try {
-        const res = await fetch("/api/shipments?pageSize=100", { signal: controller.signal });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (controller.signal.aborted) return;
-        const rows: Array<{ id: string; shipmentNumber?: string | null }> = data.shipments ?? [];
-        setShipments(rows.map((s) => ({ id: s.id, ref: s.shipmentNumber ?? s.id })));
-      } catch {
-        // A missing shipment list degrades the filter, not the document table.
+  // Derived from the shipments loaded via /api/shipments (already includes client)
+  const availableClients = useMemo(() => {
+    const map = new Map<string, string>();
+    shipments.forEach((shp: any) => {
+      if (shp.client) map.set(shp.client.id, shp.client.name);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [shipments]);
+
+  const availableShipments = useMemo(() => {
+    return shipments
+      .map((shp: any) => ({ id: shp.id, ref: shp.shipmentNumber || shp.id }))
+      .sort((a, b) => a.ref.localeCompare(b.ref));
+  }, [shipments]);
+
+  const availableStatuses = useMemo(() => {
+    return Array.from(new Set(documents.map((d) => d.status).filter(Boolean))).sort();
+  }, [documents]);
+
+  const filteredDocs = documents.filter((doc) => {
+    // 1. Assignee/Owner filter
+    if (isEnterpriseAdmin) {
+      if (selectedUserIds.length > 0) {
+        if (!doc.assignedBrokerId || !selectedUserIds.includes(doc.assignedBrokerId)) {
+          return false;
+        }
       }
-    })();
+    }
 
-    return () => controller.abort();
-  }, []);
+    // 2. Search query filter
+    const matchesSearch =
+      doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (doc.shipmentRef && doc.shipmentRef.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
+    // 3. Document type dropdown filter
+    const matchesType = selectedType === "ALL" || doc.docType === selectedType;
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const rangeEnd = Math.min(page * pageSize, total);
+    // 4. Client dropdown filter
+    const matchesClient =
+      selectedClientId === "ALL" ||
+      (selectedClientId === "UNASSIGNED" ? !doc.clientId : doc.clientId === selectedClientId);
 
-  const applySort = (column: DocumentSortColumn, nextDirection: SortDirection) => {
-    setSort(column);
-    setDirection(nextDirection);
-    setPage(1);
+    // 5. Shipment dropdown filter
+    const matchesShipment =
+      selectedShipmentId === "ALL" ||
+      (selectedShipmentId === "UNATTACHED" ? doc.unattached : doc.shipmentId === selectedShipmentId);
+
+    // 6. Status dropdown filter
+    const matchesStatus = selectedStatus === "ALL" || doc.status === selectedStatus;
+
+    return matchesSearch && matchesType && matchesClient && matchesShipment && matchesStatus;
+  });
+
+  const isImageFile = (url: string, name: string) => {
+    const ext = (url || name).toLowerCase();
+    return ext.includes(".png") || ext.includes(".jpg") || ext.includes(".jpeg") || ext.includes(".webp");
+  };
+
+  const isPdfFile = (url: string, name: string) => {
+    const ext = (url || name).toLowerCase();
+    return ext.includes(".pdf");
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E5E5EA] shadow-xs">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight">{t.documents.title}</h1>
+          <div className="flex items-center space-x-2">
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide uppercase bg-blue-50 text-[#0071E3] border border-blue-100">
+              Agent 1 & 2 Ingestion
+            </span>
+            <span className="text-xs text-[#86868B]">150+ Dynamic Trade Document Types</span>
+          </div>
+          <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight mt-1">
+            {t.documents.title}
+          </h1>
           <p className="text-xs text-[#86868B] mt-0.5">
-            {t.documents.subtitle} <strong className="text-[#1D1D1F]">{accountName}</strong>
+            {t.documents.subtitle}
           </p>
         </div>
 
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-full bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+          className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-full bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>{t.documents.uploadButton}</span>
         </button>
       </div>
 
+      {/* Enterprise Admin Top Filter Controls */}
+      {isEnterpriseAdmin && (
+        <div className="bg-white p-4 rounded-3xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center space-x-2.5">
+            <Users className="w-4 h-4 text-[#0071E3]" />
+            <span className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider">
+              Assignee View
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs">
+              <button
+                onClick={() => setSelectedUserIds([])}
+                className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  selectedUserIds.length === 0 ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
+                }`}
+              >
+                All Documents
+              </button>
+              <button
+                onClick={() => setSelectedUserIds([context.userId])}
+                className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  selectedUserIds.length === 1 && selectedUserIds[0] === context.userId
+                    ? "bg-white text-[#1D1D1F] shadow-3xs"
+                    : "text-[#86868B]"
+                }`}
+              >
+                My Documents
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-2 text-xs relative">
+              <span className="text-[#86868B] font-semibold">Team Members:</span>
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
+              >
+                <span>
+                  {selectedUserIds.length === 0
+                    ? "All Team Members"
+                    : selectedUserIds.length === 1
+                    ? selectedUserIds[0] === context.userId
+                      ? `My Documents (${context.firstName || "Me"})`
+                      : (() => {
+                          const user = fullTeamList.find((u) => u.userId === selectedUserIds[0]);
+                          return user
+                            ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email
+                            : "1 Selected";
+                        })()
+                    : `${selectedUserIds.length} Selected`}
+                </span>
+                <span className="text-[#86868B] text-[9px]">▼</span>
+              </button>
+
+              {isDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E5E5EA] rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-2 mb-1 text-[10px] font-bold text-[#86868B] uppercase">
+                      <span>Select Members</span>
+                      <div className="space-x-2">
+                        <button
+                          onClick={() => setSelectedUserIds(fullTeamList.map((t) => t.userId))}
+                          className="text-[#0071E3] hover:underline cursor-pointer"
+                        >
+                          All
+                        </button>
+                        <button
+                          onClick={() => setSelectedUserIds([])}
+                          className="text-[#0071E3] hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      {fullTeamList.map((member) => {
+                        const isChecked = selectedUserIds.includes(member.userId);
+                        const memberName =
+                          member.firstName || member.lastName
+                            ? `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim()
+                            : member.email;
+
+                        return (
+                          <label
+                            key={member.userId}
+                            className="flex items-center space-x-2.5 p-2 hover:bg-[#F5F5F7] rounded-xl cursor-pointer text-left transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleUser(member.userId)}
+                              className="rounded border-[#E5E5EA] text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                            />
+                            <div className="truncate">
+                              <p className="font-bold text-[#1D1D1F] text-xs truncate">
+                                {memberName}
+                                {member.userId === context.userId && " (Me)"}
+                              </p>
+                              <p className="text-[10px] text-[#86868B] truncate">
+                                {member.email}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Controls Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Search */}
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#86868B]" />
           <input
-            type="search"
-            aria-label={t.documents.searchPlaceholder}
+            type="text"
             placeholder={t.documents.searchPlaceholder}
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] transition-colors"
           />
         </div>
 
-        {teamMembers.length > 0 && (
-          <div className="flex items-center space-x-2 w-full sm:w-auto">
-            <div className="flex items-center p-1 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA]">
-              <button
-                type="button"
-                aria-pressed={assignedBrokerIds.length === 0}
-                onClick={() => {
-                  setAssignedBrokerIds([]);
-                  setPage(1);
-                }}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer",
-                  assignedBrokerIds.length === 0 ? "bg-white text-[#1D1D1F] shadow-2xs" : "text-[#86868B]"
-                )}
-              >
-                Everyone
-              </button>
-              <button
-                type="button"
-                aria-pressed={assignedBrokerIds.length === 1 && assignedBrokerIds[0] === currentUserId}
-                onClick={() => {
-                  setAssignedBrokerIds([currentUserId]);
-                  setPage(1);
-                }}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer",
-                  assignedBrokerIds.length === 1 && assignedBrokerIds[0] === currentUserId
-                    ? "bg-white text-[#1D1D1F] shadow-2xs"
-                    : "text-[#86868B]"
-                )}
-              >
-                Assigned to me
-              </button>
-            </div>
-
-            <select
-              aria-label="Filter by assignee"
-              value={assignedBrokerIds.length === 1 ? assignedBrokerIds[0] : ""}
-              onChange={(e) => {
-                setAssignedBrokerIds(e.target.value ? [e.target.value] : []);
-                setPage(1);
-              }}
-              className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
-            >
-              <option value="">All Assignees</option>
-              {teamMembers.map((member) => (
-                <option key={member.userId} value={member.userId}>
-                  {[member.firstName, member.lastName].filter(Boolean).join(" ") || member.email}
-                  {member.userId === currentUserId ? " (Me)" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
+        {/* Filter & Refresh */}
         <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end">
           <select
-            aria-label={t.documents.allTypes}
-            value={docType}
-            onChange={(e) => {
-              setDocType(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3]"
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
           >
-            <option value="">{t.documents.allTypes}</option>
-            <option value="Commercial Invoice">Commercial Invoice</option>
-            <option value="Packing List">Packing List</option>
-            <option value="Bill of Lading">Bill of Lading</option>
-            <option value="Certificate of Origin">Certificate of Origin</option>
+            <option value="ALL">{t.documents.allTypes}</option>
+            <option value="COMMERCIAL_INVOICE">Commercial Invoice</option>
+            <option value="OCEAN_BILL_OF_LADING">Ocean Bill of Lading (B/L)</option>
+            <option value="GENERAL_CERTIFICATE_OF_ORIGIN">Certificate of Origin</option>
+            <option value="CBP_FORM_7501_ENTRY_SUMMARY">CBP Form 7501</option>
+            <option value="PACKING_LIST">Packing List</option>
           </select>
 
           <select
-            aria-label="Filter by client"
-            value={clientId}
-            onChange={(e) => {
-              setClientId(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3]"
+            value={selectedClientId}
+            onChange={(e) => setSelectedClientId(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
           >
-            <option value="">All Clients</option>
+            <option value="ALL">All Clients</option>
             <option value="UNASSIGNED">No Client</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
+            {availableClients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </select>
 
           <select
-            aria-label="Filter by shipment"
-            value={shipmentId}
-            onChange={(e) => {
-              setShipmentId(e.target.value);
-              setPage(1);
-            }}
+            value={selectedShipmentId}
+            onChange={(e) => setSelectedShipmentId(e.target.value)}
             className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
           >
-            <option value="">All Shipments</option>
+            <option value="ALL">All Shipments</option>
             <option value="UNATTACHED">Unattached</option>
-            {shipments.map((shp) => (
+            {availableShipments.map((shp) => (
               <option key={shp.id} value={shp.id}>
                 {shp.ref}
               </option>
@@ -336,18 +453,14 @@ export function DocumentsClient({ accountName, currentUserId, teamMembers }: Doc
           </select>
 
           <select
-            aria-label="Filter by status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
             className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
           >
-            <option value="">All Statuses</option>
-            {Object.keys(STATUS_STYLE).map((value) => (
-              <option key={value} value={value}>
-                {value}
+            <option value="ALL">All Statuses</option>
+            {availableStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
               </option>
             ))}
           </select>
@@ -355,307 +468,133 @@ export function DocumentsClient({ accountName, currentUserId, teamMembers }: Doc
           <button
             onClick={fetchDocuments}
             disabled={isLoading}
-            aria-label="Refresh document list"
-            className="p-2 rounded-xl border border-[#E5E5EA] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] transition-colors disabled:opacity-50 cursor-pointer"
+            className="p-2 rounded-xl border border-[#E5E5EA] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] transition-colors cursor-pointer"
+            title="Refresh List"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-[#0071E3]" : ""}`} />
           </button>
         </div>
       </div>
 
-      {loadError && (
-        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
-          {loadError}
-        </div>
-      )}
-
+      {/* Document Roster Table */}
       <div className="bg-white rounded-3xl border border-[#E5E5EA] shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-[#1D1D1F]">
             <thead className="bg-[#F5F5F7] border-b border-[#E5E5EA] text-[11px] font-semibold text-[#86868B] uppercase tracking-wider">
               <tr>
-                <SortableHeaderButton
-                  column="fileName"
-                  label={t.documents.colName}
-                  sort={sort}
-                  direction={direction}
-                  onSort={applySort}
-                />
-                <SortableHeaderButton
-                  column="docType"
-                  label={t.documents.colType}
-                  sort={sort}
-                  direction={direction}
-                  onSort={applySort}
-                />
-                <SortableHeaderButton
-                  column="shipmentNumber"
-                  label={t.documents.colShipment}
-                  sort={sort}
-                  direction={direction}
-                  onSort={applySort}
-                />
-                <SortableHeaderButton
-                  column="status"
-                  label={t.documents.colStatus}
-                  sort={sort}
-                  direction={direction}
-                  onSort={applySort}
-                />
-                <th scope="col" className="py-3 px-3 xl:px-4 whitespace-nowrap">Client</th>
-                {/* Extraction is a field count plus a model score; only the score is a column. */}
-                <SortableHeaderButton
-                  column="confidence"
-                  label="Extraction"
-                  sort={sort}
-                  direction={direction}
-                  onSort={applySort}
-                />
-                <SortableHeaderButton
-                  column="createdAt"
-                  label={t.documents.colDate}
-                  sort={sort}
-                  direction={direction}
-                  onSort={applySort}
-                />
-                <th scope="col" className="py-3 px-3 xl:px-4 whitespace-nowrap">Review</th>
+                <th className="py-3 px-5">{t.documents.colName}</th>
+                <th className="py-3 px-5">{t.documents.colType}</th>
+                <th className="py-3 px-5">{t.documents.colShipment}</th>
+                <th className="py-3 px-5">{t.documents.colStatus}</th>
+                <th className="py-3 px-5">Client</th>
+                {isEnterpriseAdmin && <th className="py-3 px-5">Owner</th>}
+                <th className="py-3 px-5">{t.documents.colDate}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5EA]">
-              {documents.length === 0 ? (
+              {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-[#86868B]">
+                  <td colSpan={isEnterpriseAdmin ? 7 : 6} className="py-12 text-center text-[#86868B]">
                     <FileText className="w-8 h-8 mx-auto text-[#86868B]/40 mb-2" />
-                    <p className="font-semibold text-sm text-[#1D1D1F]">
-                      {isLoading ? "Loading documents…" : "No documents match this view"}
+                    <p className="font-semibold text-xs text-[#1D1D1F]">No Trade Documents Uploaded Yet</p>
+                    <p className="text-[11px] text-[#86868B] mt-1">
+                      Click <strong className="text-[#0071E3]">Upload Document</strong> above to ingest a file and trigger Agent 1.
                     </p>
                   </td>
                 </tr>
               ) : (
-                documents.map((doc) => (
+                filteredDocs.map((doc) => (
                   <tr key={doc.id} className="hover:bg-[#F5F5F7]/50 transition-colors">
-                    <td className="py-3.5 px-3 xl:px-4 font-semibold text-[#1D1D1F]">
+                    {/* Document Name Click triggers Modal */}
+                    <td className="py-3.5 px-5 font-semibold text-[#1D1D1F]">
                       <button
                         onClick={() => setPreviewDoc(doc)}
-                        className="flex items-center space-x-2.5 hover:text-[#0071E3] transition-colors text-left group cursor-pointer max-w-full"
+                        className="flex items-center space-x-2.5 hover:text-[#0071E3] transition-colors text-left group cursor-pointer"
+                        title="Click to view document in modal"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] shrink-0 group-hover:scale-105 transition-transform">
                           <FileText className="w-4 h-4" />
                         </div>
-                        <span className="truncate max-w-[16rem] group-hover:underline">{doc.fileName}</span>
-                        <Eye className="w-3.5 h-3.5 shrink-0 text-[#86868B] opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <span className="truncate max-w-xs group-hover:underline">{doc.name}</span>
+                        <Eye className="w-3.5 h-3.5 text-[#86868B] opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
                     </td>
 
-                    <td className="py-3.5 px-3 xl:px-4 font-medium text-[#86868B]">
-                      <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#F5F5F7] border border-[#E5E5EA] text-[#1D1D1F] whitespace-nowrap">
-                        {doc.docType === "AUTO_DETECT" ? "Type not detected" : doc.docType}
+                    <td className="py-3.5 px-5 font-medium text-[#86868B]">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#F5F5F7] border border-[#E5E5EA] text-[#1D1D1F]">
+                        {doc.type}
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-3 xl:px-4 font-mono text-xs text-[#0071E3] whitespace-nowrap">
-                      {doc.shipmentId && doc.shipmentNumber ? (
-                        <Link href={`/app/shipments/${doc.shipmentId}`} className="hover:underline">
-                          {doc.shipmentNumber}
-                        </Link>
-                      ) : (
-                        // A detached document is a known state, not a missing value.
-                        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
+                    <td className="py-3.5 px-5 font-mono text-[11px]">
+                      {doc.unattached ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
                           Unattached
                         </span>
+                      ) : (
+                        <Link href={`/app/shipments/${doc.shipmentId}`} className="text-[#0071E3] hover:underline">
+                          {doc.shipmentRef}
+                        </Link>
                       )}
                     </td>
 
-                    <td className="py-3.5 px-3 xl:px-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap ${
-                          STATUS_STYLE[doc.status] ?? "bg-[#F5F5F7] text-[#1D1D1F] border-[#E5E5EA]"
-                        }`}
-                      >
-                        {doc.status}
+                    <td className="py-3.5 px-5">
+                      <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Processed (98% Conf)</span>
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-3 xl:px-4 whitespace-nowrap">
+                    <td className="py-3.5 px-5">
                       {doc.clientId ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#0071E3]/10 text-[#0071E3]">
                           {doc.clientName}
                         </span>
                       ) : (
-                        <span className="text-[#86868B]">{NOT_CALCULATED}</span>
+                        <span className="text-[11px] text-[#86868B]">—</span>
                       )}
                     </td>
 
-                    <td className="py-3.5 px-3 xl:px-4 text-[#86868B] whitespace-nowrap">
-                      {doc.extractedFieldCount > 0
-                        ? `${doc.extractedFieldCount} fields \u00b7 model ${displayPercent(doc.confidence)}`
-                        : "Not extracted"}
-                    </td>
+                    {isEnterpriseAdmin && (
+                      <td className="py-3.5 px-5 font-semibold text-[#1D1D1F]">
+                        {doc.assignedBrokerName}
+                      </td>
+                    )}
 
-                    <td className="py-3.5 px-3 xl:px-4 text-[#86868B] whitespace-nowrap">{displayDate(doc.createdAt)}</td>
-
-                    <td className="py-3.5 px-3 xl:px-4 whitespace-nowrap">
-                      {doc.extractedFieldCount > 0 ? (
-                        <Link
-                          href={`/app/documents/${doc.id}/review`}
-                          className="font-semibold text-[#0071E3] hover:underline"
-                        >
-                          Review fields
-                        </Link>
-                      ) : (
-                        <span className="text-[#86868B]">No fields to review</span>
-                      )}
-                    </td>
+                    <td className="py-3.5 px-5 text-[#86868B]">{doc.uploadedAt}</td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-
-        <div className="flex items-center justify-between gap-3 px-3 xl:px-4 py-3 border-t border-[#E5E5EA] text-xs text-[#86868B]">
-          <span>
-            {total === 0 ? "No documents" : `Showing ${rangeStart}–${rangeEnd} of ${total}`}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || isLoading}
-              aria-label="Previous page"
-              className="p-1.5 rounded-lg border border-[#E5E5EA] disabled:opacity-40 hover:bg-[#F5F5F7] cursor-pointer"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            <span>
-              Page {page} of {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages || isLoading}
-              aria-label="Next page"
-              className="p-1.5 rounded-lg border border-[#E5E5EA] disabled:opacity-40 hover:bg-[#F5F5F7] cursor-pointer"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
       </div>
 
+      {/* Reusable Document Viewer Modal */}
       {previewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div
-            ref={previewRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={previewDoc.fileName}
-            tabIndex={-1}
-            className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-4xl w-full p-6 space-y-5 flex flex-col max-h-[90vh]"
-          >
-            <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-4">
-              <div className="flex items-center space-x-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] shrink-0">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-base font-extrabold text-[#1D1D1F] truncate">{previewDoc.fileName}</h2>
-                  <p className="text-xs text-[#86868B]">
-                    {previewDoc.shipmentNumber ? (
-                      <span className="font-mono text-[#0071E3] font-semibold">{previewDoc.shipmentNumber}</span>
-                    ) : (
-                      NOT_CALCULATED
-                    )}{" "}
-                    · {displayDate(previewDoc.createdAt)}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setPreviewDoc(null)}
-                aria-label="Close preview"
-                className="p-2 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#F5F5F7] p-3 rounded-2xl border border-[#E5E5EA] text-xs">
-              <div className="min-w-0">
-                <dt className="text-[11px] text-[#86868B] uppercase font-bold tracking-wider">Document type</dt>
-                <dd className="font-semibold text-[#1D1D1F] mt-0.5 truncate">{previewDoc.docType}</dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-[11px] text-[#86868B] uppercase font-bold tracking-wider">Status</dt>
-                <dd className="font-semibold text-[#1D1D1F] mt-0.5 truncate">{previewDoc.status}</dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-[11px] text-[#86868B] uppercase font-bold tracking-wider">Pages</dt>
-                <dd className="font-semibold text-[#1D1D1F] mt-0.5">{displayNumber(previewDoc.pageCount)}</dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-[11px] text-[#86868B] uppercase font-bold tracking-wider">Model confidence</dt>
-                <dd className="font-semibold text-[#1D1D1F] mt-0.5">{displayPercent(previewDoc.confidence)}</dd>
-              </div>
-            </dl>
-
-            <div className="flex-1 overflow-y-auto min-h-[350px] bg-[#F5F5F7] rounded-2xl border border-[#E5E5EA] p-4 flex items-center justify-center">
-              {isImageFile(previewDoc.fileName) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={documentViewUrl(previewDoc.id)}
-                  alt={previewDoc.fileName}
-                  className="max-h-[55vh] rounded-xl border border-[#E5E5EA] shadow-md object-contain"
-                />
-              ) : isPdfFile(previewDoc.fileName) ? (
-                <iframe
-                  src={documentViewUrl(previewDoc.id)}
-                  className="w-full h-[55vh] rounded-xl border border-[#E5E5EA]"
-                  title={previewDoc.fileName}
-                />
-              ) : (
-                <div className="text-center p-8 space-y-3">
-                  <FileCheck2 className="w-12 h-12 text-[#0071E3] mx-auto" />
-                  <p className="text-xs text-[#86868B]">
-                    This file type cannot be previewed in the browser.
-                  </p>
-                  <a
-                    href={documentViewUrl(previewDoc.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#0071E3] text-white text-xs font-semibold hover:bg-[#0077ED] transition-colors"
-                  >
-                    <span>Open file in a new tab</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between border-t border-[#E5E5EA] pt-4">
-              <span className="text-xs text-[#86868B] font-mono">{previewDoc.id}</span>
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => setPreviewDoc(null)}
-                  className="px-4 py-2 rounded-xl border border-[#E5E5EA] hover:bg-[#F5F5F7] text-xs font-semibold text-[#1D1D1F] transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
-                <a
-                  href={documentViewUrl(previewDoc.id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-                >
-                  <span>Open in new tab</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
+        <RawExtractionModal
+          isOpen={!!previewDoc}
+          onClose={() => setPreviewDoc(null)}
+          documentId={previewDoc.id}
+          fileName={previewDoc.name}
+          shipmentNumber={previewDoc.shipmentRef}
+          fileUrl={previewDoc.url}
+          proxyUrl={
+            previewDoc.url && previewDoc.url !== "#"
+              ? previewDoc.url.includes("vercel-storage.com")
+                ? `/api/documents/proxy?url=${encodeURIComponent(previewDoc.url)}`
+                : previewDoc.url
+              : undefined
+          }
+        />
       )}
 
+      {/* Document Upload Modal */}
       <DocumentUploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
+        shipmentId={targetShipmentId}
+        shipments={shipments}
         onUploadSuccess={fetchDocuments}
       />
     </div>

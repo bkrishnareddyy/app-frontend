@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CircleAlert, Inbox, Scale, FileCheck2, Files, FileText, TriangleAlert } from "lucide-react";
+import {
+  ChevronRight,
+  FileCheck2,
+  Files,
+  Inbox,
+  Scale,
+  ShieldAlert,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { displayDate } from "@/lib/honest";
 import {
-  DECISION_ACTIONABLE_STATUSES,
-  DOCUMENT_ACTIONABLE_STATUSES,
-  EXCEPTION_ACTIONABLE_STATUSES,
-  FILING_ACTIONABLE_STATUSES,
-  FINDING_ACTIONABLE_STATUSES,
-  WORK_KINDS,
-  WORK_PRIORITIES,
   buildWorkQueue,
   countByKind,
   countByPriority,
@@ -18,37 +21,48 @@ import {
   paginateWorkQueue,
   parseWorkFilter,
   truncatedSources,
+  DECISION_ACTIONABLE_STATUSES,
+  DOCUMENT_ACTIONABLE_STATUSES,
+  EXCEPTION_ACTIONABLE_STATUSES,
+  FILING_ACTIONABLE_STATUSES,
+  FINDING_ACTIONABLE_STATUSES,
+  WORK_KINDS,
+  WORK_PRIORITIES,
   type WorkItemKind,
   type WorkPriority,
 } from "@/modules/work/workQueue";
-import { pageCount, tableHref } from "@/modules/tables/tableQuery";
-import { displayDate } from "@/lib/honest";
 
 export const dynamic = "force-dynamic";
 
-/** Each source is capped so one noisy table cannot crowd out the others. */
-const SOURCE_LIMIT = 200;
+/** Per-source read cap. Reaching it is reported rather than silently absorbed. */
+const SOURCE_ROW_CAP = 200;
 
-const KIND_ICON: Record<WorkItemKind, typeof Scale> = {
+const KIND_ICONS: Record<WorkItemKind, LucideIcon> = {
   decision: Scale,
-  finding: CircleAlert,
+  finding: ShieldAlert,
   filing: FileCheck2,
   document: Files,
   exception: TriangleAlert,
 };
 
-const KIND_LABEL: Record<WorkItemKind, string> = {
-  decision: "Agent decision",
-  finding: "Compliance finding",
-  filing: "Customs filing",
-  document: "Document",
-  exception: "Exception",
+const KIND_LABELS: Record<WorkItemKind, string> = {
+  decision: "Decisions",
+  finding: "Findings",
+  filing: "Filings",
+  document: "Documents",
+  exception: "Exceptions",
 };
 
-const PRIORITY_STYLE: Record<WorkPriority, string> = {
+const PRIORITY_LABELS: Record<WorkPriority, string> = {
+  critical: "Critical",
+  high: "High",
+  normal: "Normal",
+};
+
+const PRIORITY_STYLES: Record<WorkPriority, string> = {
   critical: "bg-red-50 text-red-700 border-red-200",
-  high: "bg-amber-50 text-amber-700 border-amber-200",
-  normal: "bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA]",
+  high: "bg-amber-50 text-amber-800 border-amber-200",
+  normal: "bg-[#F5F5F7] text-[#6E6E73] border-[#E5E5EA]",
 };
 
 export default async function MyWorkPage(props: {
@@ -72,8 +86,10 @@ export default async function MyWorkPage(props: {
   const documentWhere = { accountId, status: { in: DOCUMENT_ACTIONABLE_STATUSES } };
   const exceptionWhere = { accountId, status: { in: EXCEPTION_ACTIONABLE_STATUSES } };
 
-  // Statuses that never reach the queue are excluded in the query, so the cap is
-  // spent on rows that can actually appear, and the counts below are exact.
+  // Oldest first, so a capped read keeps the items that have waited longest --
+  // the same order the queue itself sorts by.
+  const oldestFirst = { createdAt: "asc" } as const;
+
   const [
     decisions,
     findings,
@@ -97,8 +113,8 @@ export default async function MyWorkPage(props: {
         shipmentId: true,
         shipment: { select: { shipmentNumber: true } },
       },
-      take: SOURCE_LIMIT,
-      orderBy: { createdAt: "asc" },
+      orderBy: oldestFirst,
+      take: SOURCE_ROW_CAP,
     }),
     db.complianceFinding.findMany({
       where: findingWhere,
@@ -111,8 +127,8 @@ export default async function MyWorkPage(props: {
         filingId: true,
         assignedToUserId: true,
       },
-      take: SOURCE_LIMIT,
-      orderBy: { createdAt: "asc" },
+      orderBy: oldestFirst,
+      take: SOURCE_ROW_CAP,
     }),
     db.customsFiling.findMany({
       where: filingWhere,
@@ -123,8 +139,8 @@ export default async function MyWorkPage(props: {
         createdAt: true,
         shipment: { select: { shipmentNumber: true } },
       },
-      take: SOURCE_LIMIT,
-      orderBy: { createdAt: "asc" },
+      orderBy: oldestFirst,
+      take: SOURCE_ROW_CAP,
     }),
     db.shipmentDocument.findMany({
       where: documentWhere,
@@ -136,8 +152,8 @@ export default async function MyWorkPage(props: {
         shipmentId: true,
         shipment: { select: { shipmentNumber: true } },
       },
-      take: SOURCE_LIMIT,
-      orderBy: { createdAt: "asc" },
+      orderBy: oldestFirst,
+      take: SOURCE_ROW_CAP,
     }),
     db.exceptionItem.findMany({
       where: exceptionWhere,
@@ -149,11 +165,11 @@ export default async function MyWorkPage(props: {
         status: true,
         createdAt: true,
         shipmentId: true,
-        assignedToUserId: true,
         shipment: { select: { shipmentNumber: true } },
+        assignedToUserId: true,
       },
-      take: SOURCE_LIMIT,
-      orderBy: { createdAt: "asc" },
+      orderBy: oldestFirst,
+      take: SOURCE_ROW_CAP,
     }),
     db.agentDecision.count({ where: decisionWhere }),
     db.complianceFinding.count({ where: findingWhere }),
@@ -162,15 +178,43 @@ export default async function MyWorkPage(props: {
     db.exceptionItem.count({ where: exceptionWhere }),
   ]);
 
-  const items = buildWorkQueue({
+  const queue = buildWorkQueue({
     userId: context.userId,
-    decisions: decisions.map((d) => ({ ...d, shipmentNumber: d.shipment?.shipmentNumber ?? null })),
+    decisions: decisions.map((d) => ({
+      id: d.id,
+      agentName: d.agentName,
+      decisionSummary: d.decisionSummary,
+      status: d.status,
+      createdAt: d.createdAt,
+      shipmentId: d.shipmentId,
+      shipmentNumber: d.shipment?.shipmentNumber ?? null,
+    })),
     findings,
-    filings: filings.map((f) => ({ ...f, shipmentNumber: f.shipment?.shipmentNumber ?? null })),
-    documents: documents.map((d) => ({ ...d, shipmentNumber: d.shipment?.shipmentNumber ?? null })),
+    filings: filings.map((f) => ({
+      id: f.id,
+      entryNumber: f.entryNumber,
+      filingStatus: f.filingStatus,
+      createdAt: f.createdAt,
+      shipmentNumber: f.shipment?.shipmentNumber ?? null,
+    })),
+    documents: documents.map((d) => ({
+      id: d.id,
+      fileName: d.fileName,
+      status: d.status,
+      createdAt: d.createdAt,
+      shipmentId: d.shipmentId,
+      shipmentNumber: d.shipment?.shipmentNumber ?? null,
+    })),
     exceptions: exceptions.map((e) => ({
-      ...e,
+      id: e.id,
+      type: e.type,
+      description: e.description,
+      severity: e.severity,
+      status: e.status,
+      createdAt: e.createdAt,
+      shipmentId: e.shipmentId,
       shipmentNumber: e.shipment?.shipmentNumber ?? null,
+      assignedToUserId: e.assignedToUserId,
     })),
   });
 
@@ -182,175 +226,185 @@ export default async function MyWorkPage(props: {
     exception: { loaded: exceptions.length, matching: exceptionTotal },
   });
 
-  const counts = countByPriority(items);
-  const kindCounts = countByKind(items);
-  const matching = filterWorkQueue(items, filter);
-  const visible = paginateWorkQueue(matching, filter);
-  const totalPages = pageCount(matching.length, filter.pageSize);
-  const firstOnPage = matching.length === 0 ? 0 : (filter.page - 1) * filter.pageSize + 1;
-  const lastOnPage = Math.min(filter.page * filter.pageSize, matching.length);
+  const priorityCounts = countByPriority(queue);
+  const kindCounts = countByKind(queue);
+  const mineCount = queue.filter((item) => item.assignedToMe).length;
+
+  const matched = filterWorkQueue(queue, filter);
+  const rows = paginateWorkQueue(matched, filter);
+  const pages = Math.max(1, Math.ceil(matched.length / filter.pageSize));
+  const firstRow = matched.length === 0 ? 0 : (filter.page - 1) * filter.pageSize + 1;
+  const lastRow = Math.min(filter.page * filter.pageSize, matched.length);
   const hasFilter = Boolean(filter.kind || filter.priority || filter.assignedToMe);
 
-  const href = (patch: Record<string, string | number | null>) =>
-    tableHref("/app/work", params, { ...patch, page: null });
+  const buildHref = (patch: Record<string, string | null>, keepPage = false) => {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null) next.delete(key);
+      else next.set(key, value);
+    }
+    if (!keepPage) next.delete("page");
+    const qs = next.toString();
+    return qs ? `/app/work?${qs}` : "/app/work";
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-[#1D1D1F]">My Work</h1>
         <p className="text-sm text-[#86868B] mt-1">
-          Everything in {context.accountName} that is waiting on a person. Items assigned to you
-          come first, then the most severe, then the longest waiting.
+          Everything in {context.accountName} that is waiting on a person, oldest first. Items
+          assigned to you are raised a level and listed before the rest.
         </p>
       </div>
 
       {truncated.length > 0 && (
-        <div
-          role="status"
-          className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900"
-        >
-          More than {SOURCE_LIMIT} items are waiting in{" "}
-          {truncated.map((kind) => KIND_LABEL[kind].toLowerCase()).join(", ")}. The oldest{" "}
-          {SOURCE_LIMIT} of each are shown, so the counts below describe what is on this page, not
-          the whole account.
+        <div role="status" className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+          More {truncated.map((kind) => KIND_LABELS[kind].toLowerCase()).join(", ")} are waiting than
+          this page reads at once. The counts below cover the first {SOURCE_ROW_CAP} of each source,
+          not the whole account.
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {WORK_PRIORITIES.map((priority) => (
-          <Link
-            key={priority}
-            href={href({ priority: filter.priority === priority ? null : priority })}
-            className={`rounded-2xl bg-white border p-4 transition-colors hover:border-[#0071E3] ${
-              filter.priority === priority ? "border-[#0071E3]" : "border-[#E5E5EA]"
-            }`}
-          >
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#86868B]">{priority}</p>
-            <p className="text-3xl font-semibold text-[#1D1D1F] mt-1 tabular-nums">{counts[priority]}</p>
-          </Link>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {(
+          [
+            ["Total waiting", queue.length, null],
+            ["Critical", priorityCounts.critical, "critical" as WorkPriority],
+            ["High", priorityCounts.high, "high" as WorkPriority],
+            ["Assigned to me", mineCount, null],
+          ] as const
+        ).map(([label, value]) => (
+          <div key={label} className="rounded-2xl bg-white border border-[#E5E5EA] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#86868B]">{label}</p>
+            <p className="text-2xl font-extrabold text-[#1D1D1F] mt-1">{value}</p>
+          </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={href({ mine: filter.assignedToMe ? null : "1" })}
-          className={`px-3 py-1.5 rounded-full border text-sm font-semibold transition-colors ${
-            filter.assignedToMe
-              ? "bg-[#0071E3] text-white border-[#0071E3]"
-              : "bg-white text-[#1D1D1F] border-[#E5E5EA] hover:border-[#0071E3]"
-          }`}
-        >
-          Assigned to me
-        </Link>
-        {WORK_KINDS.map((kind) => (
+      <div className="rounded-2xl bg-white border border-[#E5E5EA] p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <Link
-            key={kind}
-            href={href({ kind: filter.kind === kind ? null : kind })}
-            className={`px-3 py-1.5 rounded-full border text-sm font-semibold transition-colors ${
-              filter.kind === kind
-                ? "bg-[#0071E3] text-white border-[#0071E3]"
-                : "bg-white text-[#1D1D1F] border-[#E5E5EA] hover:border-[#0071E3]"
+            href={buildHref({ mine: filter.assignedToMe ? null : "1" })}
+            className={`px-3 py-1.5 rounded-full border ${
+              filter.assignedToMe ? "border-[#0071E3] text-[#0071E3]" : "border-[#E5E5EA] text-[#6E6E73]"
             }`}
           >
-            {KIND_LABEL[kind]} ({kindCounts[kind]})
+            Assigned to me ({mineCount})
           </Link>
-        ))}
-        {hasFilter && (
-          <Link href="/app/work" className="px-3 py-1.5 text-sm font-semibold text-[#0071E3]">
-            Clear filters
-          </Link>
-        )}
+          {WORK_PRIORITIES.map((priority) => (
+            <Link
+              key={priority}
+              href={buildHref({ priority: filter.priority === priority ? null : priority })}
+              className={`px-3 py-1.5 rounded-full border ${
+                filter.priority === priority
+                  ? "border-[#0071E3] text-[#0071E3]"
+                  : "border-[#E5E5EA] text-[#6E6E73]"
+              }`}
+            >
+              {PRIORITY_LABELS[priority]} ({priorityCounts[priority]})
+            </Link>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {WORK_KINDS.map((kind) => (
+            <Link
+              key={kind}
+              href={buildHref({ kind: filter.kind === kind ? null : kind })}
+              className={`px-3 py-1.5 rounded-full border ${
+                filter.kind === kind ? "border-[#0071E3] text-[#0071E3]" : "border-[#E5E5EA] text-[#6E6E73]"
+              }`}
+            >
+              {KIND_LABELS[kind]} ({kindCounts[kind]})
+            </Link>
+          ))}
+          {hasFilter && (
+            <Link href="/app/work" className="px-3 py-1.5 text-sm font-semibold text-[#0071E3]">
+              Clear
+            </Link>
+          )}
+        </div>
       </div>
 
-      {matching.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rounded-2xl bg-white border border-[#E5E5EA] p-10 text-center">
-          <Inbox className="w-8 h-8 text-[#86868B] mx-auto" />
-          <p className="mt-3 text-sm font-medium text-[#1D1D1F]">
-            {hasFilter ? "No item matches this filter" : "Nothing is waiting on you"}
-          </p>
-          <p className="mt-1 text-sm text-[#86868B]">
+          <Inbox className="w-8 h-8 mx-auto text-[#86868B]" aria-hidden="true" />
+          <p className="mt-3 text-sm text-[#6E6E73]">
             {hasFilter
-              ? "Clear the filter to see everything still waiting."
-              : "Items appear here when a decision, finding, filing or document needs review."}
+              ? "Nothing in the queue matches these filters."
+              : "Nothing is waiting on a person right now."}
           </p>
-          <Link
-            href={hasFilter ? "/app/work" : "/app/shipments"}
-            className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-[#0071E3] text-white text-sm font-medium"
-          >
-            <FileText className="w-4 h-4" />
-            {hasFilter ? "Clear filters" : "Go to shipments"}
-          </Link>
         </div>
       ) : (
-        <>
-          <ul className="rounded-2xl bg-white border border-[#E5E5EA] divide-y divide-[#E5E5EA] overflow-hidden">
-            {visible.map((item) => {
-              const Icon = KIND_ICON[item.kind];
-              return (
-                <li key={item.id}>
-                  <Link href={item.href} className="flex items-start gap-4 p-4 hover:bg-[#F5F5F7] transition-colors">
-                    <span className="mt-0.5 w-9 h-9 shrink-0 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
-                      <Icon className="w-4 h-4 text-[#86868B]" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-[#1D1D1F] truncate">{item.title}</span>
-                        <span
-                          className={`text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border whitespace-nowrap ${PRIORITY_STYLE[item.priority]}`}
-                        >
-                          {item.priority}
+        <ul className="space-y-3">
+          {rows.map((item) => {
+            const Icon = KIND_ICONS[item.kind];
+            return (
+              <li key={item.id}>
+                <Link
+                  href={item.href}
+                  className="flex items-start gap-4 rounded-2xl bg-white border border-[#E5E5EA] p-4 hover:border-[#0071E3] transition-colors"
+                >
+                  <span className="mt-0.5 shrink-0 text-[#86868B]">
+                    <Icon className="w-5 h-5" aria-hidden="true" />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-[#1D1D1F]">{item.title}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${
+                          PRIORITY_STYLES[item.priority]
+                        }`}
+                      >
+                        {PRIORITY_LABELS[item.priority]}
+                      </span>
+                      {item.assignedToMe && (
+                        <span className="px-2 py-0.5 rounded-full border border-[#0071E3] text-[11px] font-semibold text-[#0071E3]">
+                          Yours
                         </span>
-                        {item.assignedToMe && (
-                          <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border border-[#0071E3]/20 bg-[#0071E3]/10 text-[#0071E3] whitespace-nowrap">
-                            Assigned to you
-                          </span>
-                        )}
-                      </span>
-                      <span className="block text-sm text-[#86868B] mt-1">{item.reason}</span>
-                      <span className="block text-sm text-[#86868B] mt-1">
-                        {KIND_LABEL[item.kind]}
-                        {item.shipmentNumber ? ` · ${item.shipmentNumber}` : ""} · {displayDate(item.createdAt)}
-                      </span>
+                      )}
                     </span>
-                    {item.priority === "critical" && (
-                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-1" aria-hidden="true" />
-                    )}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+                    <span className="block text-sm text-[#6E6E73] mt-1 line-clamp-2" title={item.reason}>
+                      {item.reason}
+                    </span>
+                    <span className="block text-xs text-[#86868B] mt-1">
+                      {item.shipmentNumber ? `${item.shipmentNumber} · ` : ""}
+                      Waiting since {displayDate(item.createdAt)}
+                    </span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 shrink-0 text-[#86868B] mt-1" aria-hidden="true" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
-          <nav
-            aria-label="Work queue pages"
-            className="flex items-center justify-between text-sm text-[#86868B]"
-          >
-            <p>
-              Showing {firstOnPage}–{lastOnPage} of {matching.length}
-            </p>
-            <div className="flex items-center gap-2">
-              {filter.page > 1 && (
-                <Link
-                  href={tableHref("/app/work", params, { page: filter.page - 1 })}
-                  className="px-3 py-1.5 rounded-xl border border-[#E5E5EA] bg-white font-semibold text-[#1D1D1F]"
-                >
-                  Previous
-                </Link>
-              )}
-              <span>
-                Page {filter.page} of {totalPages}
-              </span>
-              {filter.page < totalPages && (
-                <Link
-                  href={tableHref("/app/work", params, { page: filter.page + 1 })}
-                  className="px-3 py-1.5 rounded-xl border border-[#E5E5EA] bg-white font-semibold text-[#1D1D1F]"
-                >
-                  Next
-                </Link>
-              )}
-            </div>
-          </nav>
-        </>
+      {matched.length > 0 && (
+        <div className="flex items-center justify-between text-sm text-[#6E6E73]">
+          <span>
+            Showing {firstRow}-{lastRow} of {matched.length}
+          </span>
+          <span className="flex items-center gap-2">
+            {filter.page > 1 && (
+              <Link
+                href={buildHref({ page: String(filter.page - 1) }, true)}
+                className="px-3 py-1.5 rounded-xl border border-[#E5E5EA] font-semibold"
+              >
+                Previous
+              </Link>
+            )}
+            {filter.page < pages && (
+              <Link
+                href={buildHref({ page: String(filter.page + 1) }, true)}
+                className="px-3 py-1.5 rounded-xl border border-[#E5E5EA] font-semibold"
+              >
+                Next
+              </Link>
+            )}
+          </span>
+        </div>
       )}
     </div>
   );

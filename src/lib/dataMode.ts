@@ -62,3 +62,15 @@ export function dataModeBannerCopy(mode: DataMode): DataModeBannerCopy | null {
       return null;
   }
 }
+
+/** Sidebar footer subtitle. Never claims production for a workspace that is not. */
+export function dataModeFooterLabel(mode: DataMode): string {
+  switch (mode) {
+    case "DEMO":
+      return "Demo Workspace";
+    case "SANDBOX":
+      return "Sandbox Workspace";
+    default:
+      return "Production Enterprise Core";
+  }
+}

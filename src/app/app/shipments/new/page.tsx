@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Package, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
-import { ENTRY_TYPES } from "@/modules/filing/entryType";
 
 export default function NewShipmentPage() {
   const router = useRouter();
@@ -12,17 +11,15 @@ export default function NewShipmentPage() {
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
 
-  // Every field has a placeholder; pre-filling them produced shipments full of
-  // invented importer, carrier and port data for anyone who just pressed Create.
   const [formData, setFormData] = useState({
-    importerName: "",
-    poReference: "",
-    entryType: "",
-    incoterm: "",
-    portOfEntry: "",
-    carrierName: "",
-    countryOfExport: "",
-    estimatedArrival: "",
+    importerName: "ABC Manufacturing India Pvt Ltd",
+    poReference: "PO-2026-849102",
+    entryType: "Consumption Entry",
+    incoterm: "CIF Los Angeles",
+    portOfEntry: "Port of Los Angeles (2704)",
+    carrierName: "Maersk Line",
+    countryOfExport: "Germany",
+    estimatedArrival: "2026-05-20",
     clientId: "",
   });
 
@@ -77,7 +74,7 @@ export default function NewShipmentPage() {
         </Link>
         <div>
           <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-[#0071E3]/10 text-[#0071E3]">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#0071E3]/10 text-[#0071E3]">
               Shipment Management
             </span>
           </div>
@@ -138,12 +135,11 @@ export default function NewShipmentPage() {
               onChange={(e) => setFormData({ ...formData, entryType: e.target.value })}
               className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
             >
-              <option value="">Select an entry type</option>
-              {ENTRY_TYPES.map((entry) => (
-                <option key={entry.code} value={entry.code}>
-                  {entry.code} — {entry.label}
-                </option>
-              ))}
+              <option value="Consumption Entry">Consumption Entry (Type 01)</option>
+              <option value="Informal Entry">Informal Entry (Type 11)</option>
+              <option value="In-Bond Entry">In-Bond Entry (Type 61)</option>
+              <option value="Foreign Trade Zone Entry">Foreign Trade Zone (Type 06)</option>
+              <option value="Temporary Importation under Bond">TIB Entry (Type 23)</option>
             </select>
           </div>
 

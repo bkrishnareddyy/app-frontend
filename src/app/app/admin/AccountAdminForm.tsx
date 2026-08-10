@@ -13,9 +13,10 @@ interface AccountAdminFormProps {
     status: string;
     createdAt: string;
   };
+  userRole: string;
 }
 
-export function AccountAdminForm({ account }: AccountAdminFormProps) {
+export function AccountAdminForm({ account, userRole }: AccountAdminFormProps) {
   const router = useRouter();
   const [name, setName] = useState(account.name);
   const [status, setStatus] = useState(account.status);
@@ -91,7 +92,7 @@ export function AccountAdminForm({ account }: AccountAdminFormProps) {
 
       {/* Country & Language Localization Preference (New Profile Section) */}
       <div className="space-y-4 apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
-        <h3 className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider mb-2 flex items-center space-x-2">
+        <h3 className="text-sm font-bold text-[#1D1D1F] uppercase tracking-wider mb-2 flex items-center space-x-2">
           <Globe className="w-4 h-4 text-[#0071E3]" />
           <span>Country & Language Localization</span>
         </h3>
@@ -137,7 +138,7 @@ export function AccountAdminForm({ account }: AccountAdminFormProps) {
             <p className="font-extrabold text-[#1D1D1F]">
               Active Region: {country.name} ({country.languageName})
             </p>
-            <p className="text-sm text-[#86868B] mt-0.5">
+            <p className="text-[11px] text-[#86868B] mt-0.5">
               Customs & Tariff Authority: <strong className="text-[#0071E3]">{country.regionalTariffAuthority}</strong>
             </p>
           </div>
@@ -146,7 +147,7 @@ export function AccountAdminForm({ account }: AccountAdminFormProps) {
 
       {/* Editable Fields */}
       <div className="space-y-4 apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
-        <h3 className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider mb-4 flex items-center space-x-2">
+        <h3 className="text-sm font-bold text-[#1D1D1F] uppercase tracking-wider mb-4 flex items-center space-x-2">
           <Building2 className="w-4 h-4 text-[#0071E3]" />
           <span>Account Attributes</span>
         </h3>

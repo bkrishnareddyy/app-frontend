@@ -61,8 +61,8 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
         throw new Error(data.error || "Failed to save field review");
       }
       window.location.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save field review");
+    } catch (err: any) {
+      setError(err.message || "Failed to save field review");
       setSavingKey(null);
     }
   };

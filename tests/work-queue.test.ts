@@ -278,7 +278,7 @@ describe("work queue links", () => {
         ],
       })
     );
-    expect(queue.find((i) => i.kind === "finding")?.href).toBe("/app/filing/f1");
+    expect(queue.find((i) => i.kind === "finding")?.href).toBe("/app/filing?filingId=f1");
     expect(queue.find((i) => i.kind === "document")?.href).toBe("/app/shipments/s9");
   });
 });

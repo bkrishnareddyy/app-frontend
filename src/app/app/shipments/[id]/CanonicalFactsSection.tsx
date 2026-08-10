@@ -21,24 +21,6 @@ export function CanonicalFactsSection({ shipmentId, facts, currentCountryOfOrigi
   const [isEditingOrigin, setIsEditingOrigin] = useState(false);
   const [newOrigin, setNewOrigin] = useState(currentCountryOfOrigin || "");
   const [saveLoading, setSaveLoading] = useState(false);
-  const [reconciling, setReconciling] = useState(false);
-  const [reconcileError, setReconcileError] = useState<string | null>(null);
-
-  const handleReconcile = async () => {
-    setReconciling(true);
-    setReconcileError(null);
-    try {
-      const res = await fetch(`/api/shipments/${shipmentId}/reconcile`, { method: "POST" });
-      if (!res.ok) {
-        throw new Error("Reconciliation could not be started.");
-      }
-      router.refresh();
-    } catch (err) {
-      setReconcileError(err instanceof Error ? err.message : "Reconciliation could not be started.");
-    } finally {
-      setReconciling(false);
-    }
-  };
 
   const handleSaveOrigin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,29 +72,11 @@ export function CanonicalFactsSection({ shipmentId, facts, currentCountryOfOrigi
             <Edit2 className="w-3.5 h-3.5" />
             <span>Edit Country of Origin</span>
           </button>
-          <button
-            onClick={() => void handleReconcile()}
-            disabled={reconciling}
-            className="px-3 py-1.5 rounded-xl bg-white border border-[#E5E5EA] text-[#0071E3] font-bold text-xs hover:bg-[#F5F5F7] transition-all flex items-center space-x-1.5 shadow-2xs disabled:opacity-60"
-          >
-            {reconciling ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-            )}
-            <span>{reconciling ? "Reconciling..." : "Re-run Reconciliation"}</span>
-          </button>
           <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-blue-50 text-[#0071E3] border border-blue-100">
             Source Provenance
           </span>
         </div>
       </div>
-
-      {reconcileError ? (
-        <p role="alert" className="text-xs font-semibold text-red-700">
-          {reconcileError}
-        </p>
-      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {facts.map((fact) => {

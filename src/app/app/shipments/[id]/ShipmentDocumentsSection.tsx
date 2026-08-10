@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files } from "lucide-react";
+import { CheckCircle2, AlertCircle, Plus, Upload, FileText, Unlink, Loader2, X, Files } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
-import { AWAITING_PROCESSING } from "@/lib/honest";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 interface DocumentItem {
   id: string;
@@ -42,9 +41,17 @@ export function ShipmentDocumentsSection({
     return () => window.removeEventListener("qubere:open-upload-modal", handleOpen);
   }, []);
 
-  // Derived from props rather than seeded into state, so a refresh of the
-  // parent is actually reflected here.
-  const documents = Array.from(new Map(initialDocs.map((d) => [d.id, d])).values());
+  // Map unique documents by ID to prevent key duplication while retaining all uploaded files
+  const uniqueDocs = Array.from(
+    new Map(initialDocs.map((d) => [d.id, d])).values()
+  );
+
+  const [documents, setDocuments] = useState<DocumentItem[]>(uniqueDocs);
+
+  // Sync state when initialDocs props change (e.g. after dynamic file upload refresh)
+  useEffect(() => {
+    setDocuments(Array.from(new Map(initialDocs.map((d) => [d.id, d])).values()));
+  }, [initialDocs]);
 
   const requestDetach = (docId: string, fileName: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -63,10 +70,10 @@ export function ShipmentDocumentsSection({
         const data = await res.json();
         throw new Error(data.error || "Failed to detach document");
       }
-      // The list is derived from props, so the refresh is what drops the row.
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
       router.refresh();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to detach document");
+    } catch (err: any) {
+      alert(err.message || "Failed to detach document");
     } finally {
       setDetachingId(null);
       setDocPendingDetach(null);
@@ -77,7 +84,6 @@ export function ShipmentDocumentsSection({
   if (originStatus !== "Not Applicable") {
     requiredTypes.push("Certificate of Origin");
   }
-
 
   const isDocReceived = (d: DocumentItem) =>
     d.status !== "Missing" &&
@@ -114,12 +120,12 @@ export function ShipmentDocumentsSection({
     <>
       <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F] shrink-0">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F] min-w-0 truncate">
             DOCUMENTS ({documents.length} uploaded)
           </h3>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-3 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1 shrink-0 whitespace-nowrap cursor-pointer"
+            className="px-3 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1 shrink-0 whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Document</span>
@@ -132,67 +138,43 @@ export function ShipmentDocumentsSection({
             const isSelected = activeDocId === doc.id;
             
             return (
-              <div
+              <Link
                 key={doc.id}
-                className={`p-3 rounded-xl border text-sm transition-colors hover:border-[#0071E3] space-y-2 ${
-                  isSelected
-                    ? "bg-blue-50/50 border-[#0071E3] shadow-2xs"
+                href={`?docId=${doc.id}`}
+                className={`p-3 rounded-xl block border flex items-center justify-between text-xs transition-colors hover:border-[#0071E3] ${
+                  isSelected 
+                    ? "bg-blue-50/50 border-[#0071E3] shadow-2xs" 
                     : "bg-[#F5F5F7] border-[#E5E5EA]"
                 }`}
               >
-                <Link
-                  href={`?docId=${doc.id}`}
-                  aria-current={isSelected ? "true" : undefined}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <div className="flex items-center space-x-2.5 min-w-0 pr-2">
-                    {received ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="font-bold text-[#1D1D1F] truncate">
-                        {doc.docType === "AUTO_DETECT" ? "Type not detected" : doc.docType}
-                      </p>
-                      <p className="text-sm text-[#86868B] truncate">
-                        {doc.fileName}
-                        {doc.pageCount !== null && ` (${doc.pageCount} pages)`}
-                      </p>
-                    </div>
-                  </div>
+                <div className="flex items-center space-x-2.5 min-w-0 pr-2">
                   {received ? (
-                    <span
-                      className="text-sm font-bold text-[#1D1D1F] bg-white px-2.5 py-0.5 rounded-full border border-[#E5E5EA] shrink-0"
-                      title="Model confidence, not legal certainty"
-                    >
-                      {doc.confidence === null
-                        ? AWAITING_PROCESSING
-                        : `Model ${doc.confidence}%`}
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-bold text-[#1D1D1F] truncate">{doc.docType}</p>
+                    <p className="text-[10px] text-[#86868B] truncate">
+                      {doc.fileName} ({doc.pageCount || 1} pages)
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  {received ? (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      {doc.confidence || 95}% Parsed
                     </span>
                   ) : (
-                    <span className="text-sm font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 shrink-0">
+                    <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
                       Missing
                     </span>
                   )}
-                </Link>
-                <div className="flex items-center justify-between gap-2">
-                  {received ? (
-                    <Link
-                      href={`/app/documents/${doc.id}/review`}
-                      className="inline-block text-sm font-semibold text-[#0071E3] hover:underline"
-                    >
-                      Review extracted fields
-                    </Link>
-                  ) : (
-                    <span />
-                  )}
-                  {/* Detaching keeps the row and its extraction, so it can be reattached without re-running vision. */}
                   <button
                     onClick={(e) => requestDetach(doc.id, doc.fileName, e)}
                     disabled={detachingId === doc.id}
                     title="Detach from this shipment"
-                    className="p-1 rounded-lg hover:bg-red-50 text-[#86868B] hover:text-red-600 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                    className="p-1 rounded-lg hover:bg-red-50 text-[#86868B] hover:text-red-600 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {detachingId === doc.id ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -201,26 +183,16 @@ export function ShipmentDocumentsSection({
                     )}
                   </button>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
 
-        <div className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] text-sm text-[#1D1D1F] space-y-1">
-          <p className="font-bold">Document set</p>
-          <p className="text-sm text-[#6E6E73]">
-            {receivedCount} of {totalRequired} required document types have a stored file.
-          </p>
-          {missingCount > 0 ? (
-            <p className="text-sm text-red-700 font-semibold">
-              Missing required: {missingTypes.join(", ")}
-            </p>
-          ) : (
-            <p className="text-sm text-emerald-700 font-semibold">
-              All required trade documents received
-            </p>
-          )}
-        </div>
+        {/* Missing-required-document actions now live in the unified
+            Exceptions panel at the top of the page, not duplicated here. */}
+        <p className="text-[11px] text-[#86868B] px-1">
+          {receivedCount}/{totalRequired} required document types on file
+        </p>
       </div>
 
       {docPendingDetach && (
@@ -252,7 +224,7 @@ export function ShipmentDocumentsSection({
             <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-start space-x-2">
               <Files className="w-4 h-4 text-[#0071E3] shrink-0 mt-0.5" />
               <span>
-                This will remove the document from this shipment. If you detach, you&apos;ll still find the document under{" "}
+                This will remove the document from this shipment. If you detach, you'll still find the document under{" "}
                 <strong>Trade Documents</strong> as unattached, and can reattach it to any shipment later — nothing is deleted.
               </span>
             </div>

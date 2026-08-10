@@ -91,25 +91,26 @@ export class CanonicalShipmentService {
    * Reconstructs the complete canonical shipment state from durable database records
    */
   static async getCanonicalState(shipmentId: string) {
-    const shipment = await db.shipment.findUnique({
-      where: { id: shipmentId },
-      include: canonicalInclude,
-    });
-
-    if (!shipment) {
-      throw new Error(`Shipment with ID ${shipmentId} not found`);
-    }
-
     // AgentExecutionLog (written by the full 10-agent ComplianceWorkflowEngine
     // pipeline that actually runs on document upload) has no Prisma relation
     // to Shipment -- it only relates to Account, with shipmentId as a bare
     // field -- so it can't be pulled in via the include{} above and needs its
     // own query.
-    const agentExecutionLogs = await db.agentExecutionLog.findMany({
-      where: { shipmentId },
-      orderBy: { timestamp: "desc" },
-      take: 200,
-    });
+    const [shipment, agentExecutionLogs] = await Promise.all([
+      db.shipment.findUnique({
+        where: { id: shipmentId },
+        include: canonicalInclude,
+      }),
+      db.agentExecutionLog.findMany({
+        where: { shipmentId },
+        orderBy: { timestamp: "desc" },
+        take: 200,
+      }),
+    ]);
+
+    if (!shipment) {
+      throw new Error(`Shipment with ID ${shipmentId} not found`);
+    }
 
     // 1. Calculate multi-dimensional metrics
     const metrics = this.calculateMetrics(shipment);

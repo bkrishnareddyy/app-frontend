@@ -1,236 +1,185 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getAccountContext } from "@/lib/auth";
+import { ShieldCheck, TriangleAlert, Users } from "lucide-react";
+import { getAccountContext, hasPermission } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAccessHref } from "@/lib/navigation";
 import {
   PERMISSION_CATALOGUE,
+  SYSTEM_ROLES,
   catalogueCoverage,
+  findPermission,
   roleGrantGap,
+  type SystemRole,
 } from "@/lib/permissions";
-import { PermissionSyncButton } from "./PermissionSyncButton";
-import { ShieldCheck, AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Roles and permissions, as they actually are.
- *
- * The gates in the API check Permission rows that, in a fresh account, nobody
- * ever created. The effect was that every non-owner was denied and nothing said
- * why. This page names each permission, says whether it exists, and says which
- * roles hold it.
- */
-export default async function RolesAdminPage() {
+function isSystemRole(name: string): name is SystemRole {
+  return (SYSTEM_ROLES as readonly string[]).includes(name.toUpperCase());
+}
+
+export default async function AdminRolesPage() {
   const context = await getAccountContext();
   if (!context) redirect("/sign-in");
-  if (!canAccessHref(context, "/app/admin/roles")) redirect("/app/work");
 
-  const [permissions, roles] = await Promise.all([
-    db.permission.findMany({ select: { id: true, name: true, description: true } }),
+  if (!(await hasPermission("users.manage"))) {
+    return (
+      <div className="max-w-xl mx-auto py-16 text-center space-y-3">
+        <ShieldCheck className="w-8 h-8 mx-auto text-[#86868B]" aria-hidden="true" />
+        <h1 className="text-xl font-semibold text-[#1D1D1F]">Roles are not visible to you</h1>
+        <p className="text-sm text-[#86868B]">
+          Viewing role definitions and permission grants requires the users.manage permission.
+        </p>
+      </div>
+    );
+  }
+
+  const [roles, permissionRows, membershipRoles] = await Promise.all([
     db.role.findMany({
-      where: { OR: [{ isSystem: true }, { accountId: context.accountId }] },
-      select: {
-        id: true,
-        name: true,
-        isSystem: true,
-        rolePermissions: { select: { permission: { select: { name: true } } } },
-        _count: { select: { membershipRoles: true } },
-      },
+      where: { OR: [{ accountId: context.accountId }, { accountId: null }] },
+      include: { rolePermissions: { include: { permission: true } } },
       orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+    }),
+    db.permission.findMany({ select: { name: true } }),
+    // Counted through this account's memberships: a system role row is shared
+    // across accounts, so its own relation count would include other tenants.
+    db.accountMembershipRole.findMany({
+      where: { accountMembership: { accountId: context.accountId } },
+      select: { roleId: true },
     }),
   ]);
 
-  const coverage = catalogueCoverage(permissions.map((p) => p.name));
-  const grantsByRole = new Map(
-    roles.map((role) => [role.id, role.rolePermissions.map((rp) => rp.permission.name)])
-  );
-  const holdersOf = new Map<string, string[]>();
-  for (const role of roles) {
-    for (const name of grantsByRole.get(role.id) ?? []) {
-      holdersOf.set(name, [...(holdersOf.get(name) ?? []), role.name]);
-    }
+  const holders = new Map<string, number>();
+  for (const row of membershipRoles) {
+    holders.set(row.roleId, (holders.get(row.roleId) ?? 0) + 1);
   }
 
-  // Owners bypass every permission check, so only an owner can bootstrap.
-  const canSync = context.isPlatformAdmin || context.roleNames.includes("OWNER");
+  const coverage = catalogueCoverage(permissionRows.map((p) => p.name));
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-12">
+    <div className="space-y-8 max-w-6xl mx-auto">
       <div>
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[#0071E3] text-xs font-semibold mb-3">
-          <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-          <span>Roles and permissions</span>
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Roles & Permissions</span>
         </div>
-        <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">
-          Roles and permissions
-        </h1>
+        <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">Role Definitions</h1>
         <p className="text-[#86868B] text-sm mt-1">
-          What each role in {context.accountName} is allowed to do, and which permissions
-          the API actually checks.
+          What each role in {context.accountName} is allowed to do. Grants are read-only here —
+          assign roles to people from{" "}
+          <Link href="/app/admin/users" className="font-semibold text-[#0071E3]">
+            User Management
+          </Link>
+          .
         </p>
       </div>
 
       {coverage.missing.length > 0 && (
-        <section
-          aria-labelledby="catalogue-gap-heading"
-          className="rounded-2xl border border-amber-200 bg-amber-50 p-5 space-y-3"
-        >
-          <div className="flex items-center space-x-2">
-            <AlertTriangle className="w-4 h-4 text-amber-700" aria-hidden="true" />
-            <h2 id="catalogue-gap-heading" className="text-sm font-bold text-amber-900">
-              {coverage.missing.length} of {coverage.total} permissions do not exist yet
-            </h2>
-          </div>
-          <p className="text-sm text-amber-900">
-            The API checks these names before allowing the action they describe. No
-            permission row carries them, so no role can hold them, and every request is
-            refused for everyone except account owners and platform administrators, who
-            bypass the check. This is why those actions appear to be denied without a
-            reason.
+        <div role="status" className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+          <p className="font-semibold">
+            {coverage.missing.length} of {coverage.total} catalogued permissions have no row in the
+            database.
           </p>
-          <ul className="text-sm text-amber-900 font-mono flex flex-wrap gap-x-4 gap-y-1">
-            {coverage.missing.map((name) => (
-              <li key={name}>{name}</li>
-            ))}
-          </ul>
-          <PermissionSyncButton canSync={canSync} />
-        </section>
+          <p className="mt-1">
+            No role can hold them, so every gate on them denies everyone except OWNER and platform
+            admins — regardless of how roles are configured. Missing:{" "}
+            <span className="font-mono">{coverage.missing.join(", ")}</span>
+          </p>
+        </div>
       )}
 
-      {coverage.missing.length === 0 && (
-        <p
-          role="status"
-          className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-900"
-        >
-          All {coverage.total} permissions the API checks exist in this database.
-        </p>
+      {coverage.unknown.length > 0 && (
+        <div role="status" className="rounded-2xl bg-white border border-[#E5E5EA] p-4 text-sm text-[#6E6E73]">
+          Permission rows that are no longer in the catalogue:{" "}
+          <span className="font-mono">{coverage.unknown.join(", ")}</span>
+        </div>
       )}
 
-      <section aria-labelledby="roles-heading" className="space-y-4">
-        <h2
-          id="roles-heading"
-          className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]"
-        >
-          Roles ({roles.length})
-        </h2>
+      <div className="space-y-4">
+        {roles.map((role) => {
+          const granted = role.rolePermissions.map((rp) => rp.permission.name).sort();
+          const gap = isSystemRole(role.name) ? roleGrantGap(role.name.toUpperCase(), granted) : null;
+          const memberCount = holders.get(role.id) ?? 0;
 
-        {roles.length === 0 ? (
-          <p className="text-sm text-[#6E6E73]">No roles exist in this database.</p>
-        ) : (
-          <ul className="space-y-3">
-            {roles.map((role) => {
-              const granted = grantsByRole.get(role.id) ?? [];
-              const gap = roleGrantGap(role.name, granted);
-              return (
-                <li
-                  key={role.id}
-                  className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-3"
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <h3 className="font-bold text-[#1D1D1F]">
-                      {role.name}
-                      <span className="ml-2 text-xs font-semibold text-[#86868B]">
-                        {role.isSystem ? "System role" : "Custom role"}
+          return (
+            <section key={role.id} className="rounded-2xl bg-white border border-[#E5E5EA] p-5 space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-lg font-bold text-[#1D1D1F]">{role.name}</h2>
+                <span className="px-2 py-0.5 rounded-full border border-[#E5E5EA] text-[11px] font-semibold text-[#6E6E73]">
+                  {role.accountId === null ? "System" : "Custom"}
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs text-[#86868B]">
+                  <Users className="w-3.5 h-3.5" aria-hidden="true" />
+                  {memberCount} {memberCount === 1 ? "member" : "members"} in this account
+                </span>
+              </div>
+
+              {role.description && <p className="text-sm text-[#6E6E73]">{role.description}</p>}
+
+              {granted.length === 0 ? (
+                <p className="text-sm text-[#86868B]">
+                  This role holds no permissions. Members who only hold it can read what the app shows
+                  them and nothing more.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {granted.map((name) => (
+                    <li key={name} className="flex flex-wrap items-baseline gap-2 text-sm">
+                      <span className="font-mono text-xs text-[#1D1D1F]">{name}</span>
+                      <span className="text-[#86868B]">
+                        {findPermission(name)?.description ?? "Not in the catalogue."}
                       </span>
-                    </h3>
-                    <p className="text-sm text-[#6E6E73]">
-                      {role._count.membershipRoles}{" "}
-                      {role._count.membershipRoles === 1 ? "member" : "members"} ·{" "}
-                      {granted.length}{" "}
-                      {granted.length === 1 ? "permission" : "permissions"} held
-                    </p>
-                  </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-                  {granted.length === 0 ? (
-                    <p className="text-sm text-[#6E6E73]">
-                      This role holds no permissions. Members of it are refused every
-                      gated action.
-                    </p>
-                  ) : (
-                    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-sm font-mono text-[#1D1D1F]">
-                      {[...granted].sort().map((name) => (
-                        <li key={name}>{name}</li>
-                      ))}
-                    </ul>
-                  )}
+              {gap && gap.missing.length > 0 && (
+                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+                  <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>
+                    Not granted the catalogue defaults for {gap.roleName}:{" "}
+                    <span className="font-mono">{gap.missing.join(", ")}</span>
+                  </span>
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
 
-                  {role.isSystem && gap.missing.length > 0 && (
-                    <p className="text-sm text-amber-800">
-                      Not yet granted the defaults for this role:{" "}
-                      <span className="font-mono">{gap.missing.join(", ")}</span>
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      <section aria-labelledby="catalogue-heading" className="space-y-4">
-        <h2
-          id="catalogue-heading"
-          className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F]"
-        >
-          Permissions the API checks ({coverage.total})
-        </h2>
-        <div className="overflow-x-auto bg-white rounded-2xl border border-[#E5E5EA] shadow-2xs">
+      <section className="rounded-2xl bg-white border border-[#E5E5EA] p-5 space-y-3">
+        <h2 className="text-lg font-bold text-[#1D1D1F]">Permission catalogue</h2>
+        <p className="text-sm text-[#6E6E73]">
+          Every permission this application gates on, and the roles that receive it when the
+          catalogue is synced. {coverage.seeded} of {coverage.total} exist in the database.
+        </p>
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <caption className="sr-only">
-              Every permission checked by the API, what it allows, and which roles hold it
-            </caption>
-            <thead className="bg-[#F5F5F7] text-left text-xs uppercase tracking-wider text-[#6E6E73]">
-              <tr>
-                <th scope="col" className="py-3 px-4">
-                  Permission
-                </th>
-                <th scope="col" className="py-3 px-4">
-                  What it allows
-                </th>
-                <th scope="col" className="py-3 px-4">
-                  Held by
-                </th>
+            <thead>
+              <tr className="text-left text-xs font-semibold uppercase tracking-wider text-[#86868B]">
+                <th className="py-2 pr-4">Permission</th>
+                <th className="py-2 pr-4">Category</th>
+                <th className="py-2 pr-4">Default roles</th>
+                <th className="py-2">What it allows</th>
               </tr>
             </thead>
             <tbody>
-              {PERMISSION_CATALOGUE.map((definition) => {
-                const holders = holdersOf.get(definition.name) ?? [];
-                const exists = !coverage.missing.includes(definition.name);
-                return (
-                  <tr key={definition.name} className="border-t border-[#E5E5EA] align-top">
-                    <td className="py-3 px-4 font-mono text-[#1D1D1F]">
-                      {definition.name}
-                      <span className="block text-xs font-sans text-[#86868B]">
-                        {definition.category}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-[#6E6E73]">{definition.description}</td>
-                    <td className="py-3 px-4">
-                      {!exists ? (
-                        <span className="text-amber-800">
-                          Not created, so no role can hold it
-                        </span>
-                      ) : holders.length === 0 ? (
-                        <span className="text-[#86868B]">No role holds it</span>
-                      ) : (
-                        [...new Set(holders)].sort().join(", ")
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {PERMISSION_CATALOGUE.map((permission) => (
+                <tr key={permission.name} className="border-t border-[#E5E5EA] align-top">
+                  <td className="py-2 pr-4 font-mono text-xs text-[#1D1D1F] whitespace-nowrap">
+                    {permission.name}
+                  </td>
+                  <td className="py-2 pr-4 text-[#6E6E73] whitespace-nowrap">{permission.category}</td>
+                  <td className="py-2 pr-4 text-[#6E6E73] whitespace-nowrap">
+                    {permission.defaultRoles.join(", ")}
+                  </td>
+                  <td className="py-2 text-[#6E6E73]">{permission.description}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-
-        {coverage.unknown.length > 0 && (
-          <p className="text-sm text-[#6E6E73]">
-            {coverage.unknown.length} permission{coverage.unknown.length === 1 ? "" : "s"}{" "}
-            exist in the database that no code checks:{" "}
-            <span className="font-mono">{coverage.unknown.join(", ")}</span>. Granting one
-            has no effect.
-          </p>
-        )}
       </section>
     </div>
   );

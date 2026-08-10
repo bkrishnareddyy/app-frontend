@@ -29,6 +29,7 @@ import { AccountSwitcher } from "./AccountSwitcher";
 import { activeNavHref, visibleNavigation, type NavIcon } from "@/lib/navigation";
 
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { dataModeFooterLabel, type DataMode } from "@/lib/dataMode";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
   inbox: Inbox,
@@ -54,6 +55,7 @@ interface SidebarProps {
   roleNames?: string[];
   isPlatformAdmin?: boolean;
   permissions?: string[];
+  dataMode?: DataMode;
   memberships?: Array<{
     accountId: string;
     accountName: string;
@@ -69,6 +71,7 @@ export function Sidebar({
   roleNames = ["OWNER"],
   isPlatformAdmin = false,
   permissions = [],
+  dataMode = "PRODUCTION",
   memberships = [],
 }: SidebarProps) {
   const pathname = usePathname();
@@ -135,13 +138,8 @@ export function Sidebar({
               <ShieldCheck className="w-5 h-5" />
             </div>
             {!collapsed && (
-              <span className="min-w-0">
-                <span className="block text-xl font-bold tracking-tight text-[#1D1D1F] truncate">
-                  Qubere
-                </span>
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-[#86868B] truncate">
-                  AI Trade Platform
-                </span>
+              <span className="block text-xl font-bold tracking-tight text-[#1D1D1F] truncate min-w-0">
+                Qubere
               </span>
             )}
           </Link>
@@ -224,6 +222,12 @@ export function Sidebar({
         </div>
 
         <div className="p-3 border-t border-[#E5E5EA] bg-white/40">
+          {!collapsed && (
+            <div className="px-2 pb-2 text-xs text-[#86868B]">
+              <p className="font-semibold text-[#1D1D1F]">Qubere AI Trade Platform</p>
+              <p className="text-[11px] text-[#86868B]">{dataModeFooterLabel(dataMode)}</p>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
