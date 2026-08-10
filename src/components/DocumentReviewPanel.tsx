@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw } from "lucide-react";
-import { decisionGroupLabel, editableFieldsFor } from "@/modules/decisions/editableFields";
+import { decisionGroupLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
 
 interface ExtractionPayload {
   extractedJson?: {
@@ -70,6 +70,8 @@ export function DocumentReviewPanel({
   const [extractError, setExtractError] = useState<string | null>(null);
 
   const hasFieldReview = decisions.length > 0;
+  const mechanicalDecisions = decisions.filter((dec) => reviewCategory(dec) === "MECHANICAL");
+  const reviewableDecisions = decisions.filter((dec) => reviewCategory(dec) !== "MECHANICAL");
 
   // Field Review opens first when agent checks are available -- the whole
   // point is to lead with results, not the raw document.
@@ -89,6 +91,15 @@ export function DocumentReviewPanel({
   const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
   const [editFieldError, setEditFieldError] = useState<string | null>(null);
 
+  // Missing fields (expected on the document, not extracted) prompt for a
+  // value up front rather than requiring a click to "start editing" first --
+  // there's nothing to display, only something to ask for. Keyed the same
+  // way as editingField, but tracked separately since several missing
+  // fields on the same decision can be filled in at once.
+  const [missingFieldValues, setMissingFieldValues] = useState<Record<string, string>>({});
+  const [savingMissingKey, setSavingMissingKey] = useState<string | null>(null);
+  const [missingFieldErrors, setMissingFieldErrors] = useState<Record<string, string>>({});
+
   // This panel can stay mounted across document selections when embedded
   // inline on a page (unlike a modal, which unmounts on close), so switching
   // documentId has to reset per-document UI state instead of relying on
@@ -100,6 +111,9 @@ export function DocumentReviewPanel({
     setEditingField(null);
     setEditingFieldValue("");
     setEditFieldError(null);
+    setMissingFieldValues({});
+    setSavingMissingKey(null);
+    setMissingFieldErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
 
@@ -237,13 +251,43 @@ export function DocumentReviewPanel({
     }
   };
 
+  const commitMissingField = async (decisionId: string, fieldKey: string) => {
+    const compositeKey = `${decisionId}::${fieldKey}`;
+    const value = (missingFieldValues[compositeKey] || "").trim();
+    if (value === "") return;
+    setSavingMissingKey(compositeKey);
+    setMissingFieldErrors((prev) => ({ ...prev, [compositeKey]: "" }));
+    try {
+      const res = await fetch("/api/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisionId, action: "EDIT_VALUE", fieldKey, value }),
+      });
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || "Failed to save");
+      router.refresh();
+    } catch (err) {
+      setMissingFieldErrors((prev) => ({
+        ...prev,
+        [compositeKey]: err instanceof Error ? err.message : "Failed to save",
+      }));
+    } finally {
+      setSavingMissingKey(null);
+    }
+  };
+
+  // Checks both url and name rather than preferring whichever is present --
+  // a proxy URL like "/api/documents/proxy?documentId=..." carries no
+  // filename at all, so relying on it alone (ignoring `name`) mislabels
+  // every locally-stored document as an unrecognized binary file even
+  // though the real fileName has a perfectly good extension.
   const isImageFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
+    const ext = `${url} ${name}`.toLowerCase();
     return ext.includes(".png") || ext.includes(".jpg") || ext.includes(".jpeg") || ext.includes(".webp");
   };
 
   const isPdfFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
+    const ext = `${url} ${name}`.toLowerCase();
     return ext.includes(".pdf");
   };
 
@@ -407,10 +451,11 @@ export function DocumentReviewPanel({
           </div>
         ) : activeTab === "FIELDS" ? (
           <div className="flex-1 overflow-y-auto border border-[#E5E5EA] rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
-            {decisions.map((dec) => {
+            {reviewableDecisions.map((dec) => {
               const isBusy = actionLoadingId === dec.id;
               const groupLabel = decisionGroupLabel(dec);
-              const fields = editableFieldsFor(dec);
+              const category = reviewCategory(dec);
+              const fields = category === "FIELDS" ? editableFieldsFor(dec) : [];
 
               return (
                 <div key={dec.id} className="p-3.5 rounded-xl bg-white border border-[#E5E5EA] shadow-2xs space-y-2.5">
@@ -421,10 +466,46 @@ export function DocumentReviewPanel({
                     </span>
                   </div>
 
-                  {fields.length > 0 ? (
+                  {category === "FIELDS" ? (
                     <div className="space-y-2">
                       {fields.map((f) => {
                         const compositeKey = `${dec.id}::${f.key}`;
+
+                        if (f.status === "MISSING") {
+                          const isSavingThis = savingMissingKey === compositeKey;
+                          const missingError = missingFieldErrors[compositeKey];
+                          return (
+                            <div key={f.key} className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 space-y-1">
+                              <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wide">
+                                {f.label} — not found, please provide
+                              </p>
+                              <div className="flex items-center space-x-1.5">
+                                <input
+                                  type="text"
+                                  value={missingFieldValues[compositeKey] || ""}
+                                  onChange={(e) =>
+                                    setMissingFieldValues((prev) => ({ ...prev, [compositeKey]: e.target.value }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitMissingField(dec.id, f.key);
+                                  }}
+                                  disabled={isSavingThis}
+                                  placeholder={`Enter ${f.label}...`}
+                                  className="flex-1 min-w-0 px-2 py-1 text-[12px] font-mono font-bold text-[#1D1D1F] border border-amber-300 rounded-lg bg-white outline-none focus:border-[#0071E3]"
+                                />
+                                <button
+                                  onClick={() => commitMissingField(dec.id, f.key)}
+                                  disabled={isSavingThis || !(missingFieldValues[compositeKey] || "").trim()}
+                                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-[11px] font-semibold rounded-lg cursor-pointer shrink-0 transition-colors"
+                                >
+                                  {isSavingThis ? "Saving..." : "Save"}
+                                </button>
+                              </div>
+                              {missingError && <p className="text-[10px] text-red-600">{missingError}</p>}
+                            </div>
+                          );
+                        }
+
                         const isEditingThis = editingField === compositeKey;
                         const isSavingThis = savingFieldKey === compositeKey;
 
@@ -475,9 +556,7 @@ export function DocumentReviewPanel({
                                 {editFieldError && <p className="text-[10px] text-red-600">{editFieldError}</p>}
                               </div>
                             ) : (
-                              <p className="font-mono font-extrabold text-[#1D1D1F] text-[12px] break-words mt-0.5">
-                                {f.value || <span className="italic font-normal text-amber-700">Not Extracted</span>}
-                              </p>
+                              <p className="font-mono font-extrabold text-[#1D1D1F] text-[12px] break-words mt-0.5">{f.value}</p>
                             )}
                           </div>
                         );
@@ -525,8 +604,26 @@ export function DocumentReviewPanel({
                 </div>
               );
             })}
-            {decisions.length === 0 && (
+            {reviewableDecisions.length === 0 && mechanicalDecisions.length === 0 && (
               <div className="p-8 text-center text-[#86868B]">No agent checks yet for this document.</div>
+            )}
+
+            {mechanicalDecisions.length > 0 && (
+              <div className="p-3 rounded-xl bg-[#F0F0F2] border border-[#E5E5EA] space-y-1.5">
+                <p className="text-[10px] font-bold uppercase text-[#86868B] tracking-wide">
+                  Automated processing ({mechanicalDecisions.length}) — nothing to review
+                </p>
+                <div className="space-y-1">
+                  {mechanicalDecisions.map((dec) => (
+                    <div key={dec.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
+                      <span className="text-[#1D1D1F] font-semibold truncate">{decisionGroupLabel(dec)}</span>
+                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
+                        {dec.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         ) : activeTab === "DOC" ? (

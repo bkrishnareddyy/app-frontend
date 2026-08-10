@@ -8,10 +8,6 @@ import {
   shipmentResolutionStatus,
   ShipmentResolutionError,
 } from "@/modules/shipments/resolveShipment";
-import {
-  DocumentIntakeAgent,
-  DocumentType,
-} from "@/modules/intake/documentIntakeAgent";
 import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
 import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
 
@@ -106,54 +102,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     });
   }
 
-  // Map doc type string to enum if provided
-  let docTypeOverride: DocumentType | undefined = undefined;
-  if (rawDocType && rawDocType !== "AUTO_DETECT") {
-    const formatted = rawDocType.toUpperCase().replace(/\s+/g, "_");
-    if (
-      ["COMMERCIAL_INVOICE", "BILL_OF_LADING", "PACKING_LIST", "CERTIFICATE_OF_ORIGIN"].includes(
-        formatted
-      )
-    ) {
-      docTypeOverride = formatted as DocumentType;
-    }
-  }
-
-  const agentInput = {
-    accountId,
-    userId,
-    shipmentId: targetShipmentId,
-    fileName: file.name,
-    fileUrl: storageResult.url,
-    fileBuffer,
-    mimeType: file.type || "application/pdf",
-    docTypeOverride,
-  };
-
-  // Step 4: Execute Document Intake Agent & Document Intelligence Agent for synchronous real-time inspection
-  const intakeResult = await DocumentIntakeAgent.execute(agentInput);
-
-  let intelligenceResult: unknown = null;
-  try {
-    const { DocumentIntelligenceAgent } = await import("@/modules/agents/documentIntelligenceAgent");
-    intelligenceResult = await DocumentIntelligenceAgent.execute({
-      accountId,
-      userId,
-      shipmentId: targetShipmentId,
-      packetId: intakeResult.packetId,
-      fileBuffer,
-      fileName: file.name,
-      mimeType: file.type || "application/pdf",
-      docTypeCode: intakeResult.classifications[0]?.docTypeCode,
-    });
-  } catch (err: unknown) {
-    console.warn(
-      "DocumentIntelligenceAgent execution on upload error:",
-      err instanceof Error ? err.message : err
-    );
-  }
-
-  // Step 5: Dispatch Event to PG Queue and trigger background pipeline worker execution
+  // Step 4: Dispatch Event to PG Queue and trigger background pipeline worker execution.
+  // Document Intake and Document Intelligence used to also run synchronously here
+  // "for real-time inspection" before the background pipeline ran the same two
+  // steps again a moment later -- nothing in the client ever read the synchronous
+  // result (it was only ever returned in the response body, unused), so it existed
+  // purely to write a duplicate AgentDecision row per upload for both agents.
   const job = await PgQueue.enqueueJob({
     accountId,
     userId,
@@ -189,8 +143,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     shipmentId: targetShipmentId,
     orchestration: "Dispatched to Qubere Autonomous Multi-Agent Pipeline (10 Agents)",
     storage: storageResult,
-    intakeResult,
-    intelligenceResult,
     pipelineResult: { status: "processing", shipmentId: targetShipmentId },
   });
 }, { permission: "documents.create" });
