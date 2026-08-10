@@ -52,7 +52,8 @@ export interface DocumentRow {
   fileName: string;
   status: string;
   createdAt: Date;
-  shipmentId: string;
+  /** Null once the document is detached from its shipment. */
+  shipmentId: string | null;
   shipmentNumber: string | null;
 }
 
@@ -185,7 +186,10 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       kind: "document",
       title: document.fileName,
       reason: `Document status is ${document.status}`,
-      href: `/app/shipments/${document.shipmentId}`,
+      // A detached document has no shipment to link to, so send the user to the console.
+      href: document.shipmentId
+        ? `/app/shipments/${document.shipmentId}`
+        : "/app/documents",
       priority,
       createdAt: document.createdAt,
       shipmentNumber: document.shipmentNumber,

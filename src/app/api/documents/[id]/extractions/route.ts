@@ -188,7 +188,8 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     await DocumentIntelligenceAgent.execute({
       accountId: ctx.accountId,
       userId: ctx.userId,
-      shipmentId: doc.shipmentId,
+      // A detached document has no shipment but can still be re-extracted.
+      shipmentId: doc.shipmentId ?? "",
       packetId: `pkt_ondemand_${doc.id.slice(0, 8)}`,
       fileBuffer,
       fileName: doc.fileName,

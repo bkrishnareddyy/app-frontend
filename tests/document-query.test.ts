@@ -18,6 +18,7 @@ describe("document query parsing", () => {
       docType: null,
       status: null,
       clientId: null,
+      shipmentId: null,
       sort: "createdAt",
       direction: "desc",
       page: 1,
@@ -30,6 +31,12 @@ describe("document query parsing", () => {
     expect(parsed.search).toBeNull();
     expect(parsed.docType).toBeNull();
     expect(parsed.status).toBeNull();
+  });
+
+  it("maps the unattached sentinel to a null shipmentId so detached documents stay reachable", () => {
+    expect(buildDocumentWhere("acc_1", q("shipmentId=UNATTACHED")).shipmentId).toBeNull();
+    expect(buildDocumentWhere("acc_1", q("shipmentId=shp_1")).shipmentId).toBe("shp_1");
+    expect("shipmentId" in buildDocumentWhere("acc_1", q(""))).toBe(false);
   });
 
   it("caps pageSize so a client cannot request the whole table", () => {

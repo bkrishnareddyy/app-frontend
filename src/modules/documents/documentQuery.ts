@@ -18,6 +18,8 @@ export interface DocumentQuery {
   status: string | null;
   /** A client id, or `UNASSIGNED` for documents whose shipment carries no client. */
   clientId: string | null;
+  /** A shipment id, or `UNATTACHED` for documents not attached to any shipment. */
+  shipmentId: string | null;
   sort: DocumentSortColumn;
   direction: SortDirection;
   page: number;
@@ -26,6 +28,12 @@ export interface DocumentQuery {
 
 /** Sentinel for "no client", which is a real filter and not the absence of one. */
 export const UNASSIGNED_CLIENT = "UNASSIGNED";
+
+/**
+ * Sentinel for "detached". Detaching a document nulls its shipmentId but keeps the
+ * row and its extraction, so these documents must stay reachable in the console.
+ */
+export const UNATTACHED_SHIPMENT = "UNATTACHED";
 
 function positiveInt(raw: string | null, fallback: number, max: number): number {
   if (raw === null) return fallback;
@@ -51,6 +59,7 @@ export function parseDocumentQuery(params: URLSearchParams): DocumentQuery {
     docType: trimmed(params.get("docType")),
     status: trimmed(params.get("status")),
     clientId: trimmed(params.get("clientId")),
+    shipmentId: trimmed(params.get("shipmentId")),
     sort,
     direction:
       requestedDirection === "asc" || requestedDirection === "desc"
@@ -94,6 +103,7 @@ export interface DocumentWhere {
   accountId: string;
   docType?: string;
   status?: string;
+  shipmentId?: string | null;
   shipment?: { clientId: string | null };
   OR?: Array<Record<string, unknown>>;
 }
@@ -107,6 +117,11 @@ export function buildDocumentWhere(accountId: string, query: DocumentQuery): Doc
 
   if (query.docType) where.docType = query.docType;
   if (query.status) where.status = query.status;
+
+  if (query.shipmentId) {
+    where.shipmentId =
+      query.shipmentId === UNATTACHED_SHIPMENT ? null : query.shipmentId;
+  }
 
   // Client lives on the shipment, so the document is filtered through it.
   if (query.clientId) {

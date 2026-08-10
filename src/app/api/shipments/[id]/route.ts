@@ -1,64 +1,48 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
+import { AgentDependencyOrchestrator } from "@/modules/agents/agentDependencyOrchestrator";
+import { FactAuditService } from "@/modules/audit/factAuditService";
+import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment/shipmentPartyService";
 import { z } from "zod";
 
-const paramsSchema = z.object({ id: z.string().min(1) });
+const paramsSchema = z.object({
+  id: z.string().min(1),
+});
 
 export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
-  const whereClause: Prisma.ShipmentWhereInput = {
-    accountId: ctx.accountId,
-    OR: [{ id }, { shipmentNumber: id }],
-    deletedAt: null,
-  };
+  try {
+    // Ownership is proved here so the canonical loader is never reached with a foreign id.
+    const owned = await db.shipment.findFirst({
+      where: { id, accountId: ctx.accountId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!owned) {
+      return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+    }
 
-  if (ctx.roleNames.includes("PLANNER")) {
-    whereClause.assignedBrokerId = ctx.userId;
-  }
-
-  const shipment = await db.shipment.findFirst({
-    where: whereClause,
-    include: {
-      documents: true,
-      lineItems: true,
-      agentDecisions: true,
-      customsFilings: {
-        include: { responses: true },
-      },
-    },
-  });
-
-  if (!shipment) {
+    const canonical = await CanonicalShipmentService.getCanonicalState(id);
+    return NextResponse.json(canonical);
+  } catch (err: unknown) {
+    console.error("Failed to load canonical shipment state:", err);
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
-
-  return NextResponse.json({ shipment });
 });
 
-// Require OWNER or ADMIN role to modify shipments — a custom "Enterprise
-// Admin" check combining accountType + roleName, distinct from the
-// OWNER-role wildcard that authorizeRequest's `permission` option grants,
-// so it stays a manual check rather than a `permission` string.
 export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
-  const isEnterpriseAdmin =
-    ctx.accountType === "ENTERPRISE" &&
-    (ctx.roleNames.includes("ADMIN") || ctx.roleNames.includes("OWNER"));
-
   const body = await req.json();
-  const { assignedBrokerId, shipmentNumber, lineItems, clientId } = body;
+  const { lineItems, clientId, parties, countryOfOrigin, incoterm } = body;
 
-  // Fetch the current shipment to ensure it belongs to the active account
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
   });
@@ -67,211 +51,110 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
 
-  // Planners may tag the Client on shipments assigned to them (e.g. correcting
-  // a blank/wrong customer tag) without full Enterprise Admin rights; every
-  // other field stays Admin/Owner-only.
-  const isAssignedPlanner =
-    ctx.roleNames.includes("PLANNER") && shipment.assignedBrokerId === ctx.userId;
-
-  const onlyEditingClient =
-    clientId !== undefined &&
-    assignedBrokerId === undefined &&
-    shipmentNumber === undefined &&
-    lineItems === undefined;
-
-  if (!isEnterpriseAdmin && !(onlyEditingClient && isAssignedPlanner)) {
-    return NextResponse.json(
-      { error: "Forbidden: Only Enterprise Admins can edit shipments" },
-      { status: 403 }
-    );
-  }
-
-  // Check if new broker exists in this account (if specified)
-  if (assignedBrokerId) {
-    const membership = await db.accountMembership.findFirst({
-      where: { accountId: ctx.accountId, userId: assignedBrokerId, status: "ACTIVE" },
-    });
-    if (!membership) {
-      return NextResponse.json(
-        { error: "Invalid broker assignment: User is not an active member of this account" },
-        { status: 400 }
-      );
-    }
-  }
-
-  // Check if the client exists in this account (if specified)
-  if (clientId) {
-    const client = await db.client.findFirst({
-      where: { id: clientId, accountId: ctx.accountId },
-    });
-    if (!client) {
-      return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
-    }
-  }
-
-  // Validate uniqueness of shipmentNumber if changing it
-  if (shipmentNumber && shipmentNumber.trim() !== shipment.shipmentNumber) {
-    if (typeof shipmentNumber !== "string" || shipmentNumber.trim() === "") {
-      return NextResponse.json({ error: "Invalid shipmentNumber" }, { status: 400 });
-    }
-
-    const existing = await db.shipment.findFirst({
-      where: {
-        accountId: ctx.accountId,
-        shipmentNumber: shipmentNumber.trim(),
-        id: { not: id },
-        deletedAt: null,
-      },
+  // Handle Country of Origin update
+  if (countryOfOrigin !== undefined && countryOfOrigin !== shipment.countryOfOrigin) {
+    await FactAuditService.logChangeEvent({
+      shipmentId: id,
+      userId: ctx.userId,
+      changeType: "USER_FIELD_UPDATE",
+      field: "countryOfOrigin",
+      // A missing prior value is recorded as unknown, never as an invented country.
+      previousValue: shipment.countryOfOrigin,
+      newValue: countryOfOrigin,
+      reason: "User manual update",
     });
 
-    if (existing) {
-      return NextResponse.json(
-        { error: "A shipment with this number already exists in your account" },
-        { status: 400 }
-      );
-    }
+    await db.shipment.update({
+      where: { id },
+      data: { countryOfOrigin },
+    });
+
+    // Also update all line items for consistency if present
+    await db.shipmentLineItem.updateMany({
+      where: { shipmentId: id },
+      data: { countryOfOrigin },
+    });
+
+    // Trigger selective dependency-aware agent execution
+    await AgentDependencyOrchestrator.processEvent({
+      shipmentId: id,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      triggerEvent: "USER_FIELD_UPDATED",
+      payload: { field: "countryOfOrigin", newValue: countryOfOrigin },
+    });
   }
 
-  // Build update payload
-  const updateData: Prisma.ShipmentUncheckedUpdateInput = {};
-  if (assignedBrokerId !== undefined) {
-    updateData.assignedBrokerId = assignedBrokerId || null;
-  }
-  if (shipmentNumber !== undefined) {
-    updateData.shipmentNumber = shipmentNumber.trim();
-  }
-  if (clientId !== undefined) {
-    updateData.clientId = clientId || null;
+  // Handle Incoterm update
+  if (incoterm && incoterm !== shipment.incoterm) {
+    await db.shipment.update({
+      where: { id },
+      data: { incoterm },
+    });
+
+    await AgentDependencyOrchestrator.processEvent({
+      shipmentId: id,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      triggerEvent: "USER_FIELD_UPDATED",
+      payload: { field: "incoterm", newValue: incoterm },
+    });
   }
 
-  // Update shipment
-  const updatedShipment = await db.shipment.update({
-    where: { id },
-    data: updateData,
-  });
-
-  // Update or create line items if specified
-  if (lineItems && Array.isArray(lineItems)) {
+  // Handle Line Items inline updates
+  if (Array.isArray(lineItems) && lineItems.length > 0) {
     for (const item of lineItems) {
       if (item.id) {
-        await db.shipmentLineItem.update({
-          where: { id: item.id, shipmentId: id },
-          data: {
-            lineNumber: item.lineNumber !== undefined ? Number(item.lineNumber) : undefined,
-            description: item.description !== undefined ? item.description : undefined,
-            htsCode: item.htsCode !== undefined ? item.htsCode.trim() : undefined,
-            countryOfOrigin: item.countryOfOrigin !== undefined ? item.countryOfOrigin.trim() : undefined,
-            quantity: item.quantity !== undefined ? Number(item.quantity) : undefined,
-            unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) : undefined,
-            totalValue: item.totalValue !== undefined ? Number(item.totalValue) : undefined,
-            status: item.status !== undefined ? item.status : undefined,
-          },
+        // Scoped to this shipment so an id from another tenant cannot be edited.
+        const existingItem = await db.shipmentLineItem.findFirst({
+          where: { id: item.id, shipmentId: id, accountId: ctx.accountId },
+          select: { id: true },
         });
-      } else {
-        await db.shipmentLineItem.create({
-          data: {
-            shipmentId: id,
-            accountId: ctx.accountId,
-            lineNumber: item.lineNumber !== undefined ? Number(item.lineNumber) : 2,
-            description: item.description !== undefined ? item.description : "Electronic Controller",
-            quantity: item.quantity !== undefined ? Number(item.quantity) : 20,
-            unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) : 15.50,
-            totalValue: item.totalValue !== undefined ? Number(item.totalValue) : 310.00,
-            htsCode: item.htsCode !== undefined ? item.htsCode.trim() : "8481.80.5090",
-            countryOfOrigin: item.countryOfOrigin !== undefined ? item.countryOfOrigin.trim() : "Germany",
-            status: item.status !== undefined ? item.status : "Valid",
-          },
+        if (existingItem) {
+          await db.shipmentLineItem.update({
+            where: { id: item.id },
+            data: {
+              htsCode: item.htsCode !== undefined ? item.htsCode : undefined,
+              countryOfOrigin: item.countryOfOrigin !== undefined ? item.countryOfOrigin : undefined,
+              htsConfidence: 100,
+            },
+          });
+        }
+      }
+    }
+
+    // Trigger selective agent execution for HTS/CoO edits
+    await AgentDependencyOrchestrator.processEvent({
+      shipmentId: id,
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      triggerEvent: "USER_FIELD_UPDATED",
+      payload: { field: "lineItem.countryOfOrigin", lineItems },
+    });
+  }
+
+  // Handle Client update
+  if (clientId !== undefined) {
+    await db.shipment.update({
+      where: { id },
+      data: { clientId: clientId || null },
+    });
+  }
+
+  // Handle Shipment Parties update
+  if (Array.isArray(parties)) {
+    for (const party of parties) {
+      if (party.legalEntityId && party.role) {
+        await ShipmentPartyService.assignParty({
+          shipmentId: id,
+          legalEntityId: party.legalEntityId,
+          role: party.role as ShipmentPartyRole,
+          source: "USER",
         });
       }
-
-      await createAuditLog({
-        accountId: ctx.accountId,
-        userId: ctx.userId,
-        action: "lineItem.update",
-        entity: "ShipmentLineItem",
-        entityId: item.id || "new-item",
-        metadata: {
-          shipmentId: id,
-          htsCode: item.htsCode,
-          countryOfOrigin: item.countryOfOrigin,
-          quantity: item.quantity,
-        },
-        success: true,
-      });
     }
   }
 
-  // Cascade broker assignment change to related ExceptionItems and ComplianceFindings if it was updated
-  if (assignedBrokerId !== undefined && assignedBrokerId !== shipment.assignedBrokerId) {
-    // Cascade assignment to related exception items (assignedToUserId)
-    await db.exceptionItem.updateMany({
-      where: { shipmentId: id, accountId: ctx.accountId },
-      data: { assignedToUserId: assignedBrokerId || null },
-    });
-
-    // Cascade assignment to related compliance findings (assignedToUserId)
-    const filings = await db.customsFiling.findMany({
-      where: { shipmentId: id, accountId: ctx.accountId },
-      select: { id: true },
-    });
-    const filingIds = filings.map((f) => f.id);
-    if (filingIds.length > 0) {
-      await db.complianceFinding.updateMany({
-        where: { filingId: { in: filingIds }, accountId: ctx.accountId },
-        data: { assignedToUserId: assignedBrokerId || null },
-      });
-    }
-  }
-
-  // Log rename event if shipmentNumber changed
-  if (shipmentNumber !== undefined && shipmentNumber.trim() !== shipment.shipmentNumber) {
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "shipment.rename",
-      entity: "Shipment",
-      entityId: id,
-      metadata: {
-        previousNumber: shipment.shipmentNumber,
-        newNumber: shipmentNumber.trim(),
-      },
-      success: true,
-    });
-  }
-
-  // Log assign event if broker changed
-  if (assignedBrokerId !== undefined && assignedBrokerId !== shipment.assignedBrokerId) {
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "shipment.assign",
-      entity: "Shipment",
-      entityId: id,
-      metadata: {
-        shipmentNumber: updatedShipment.shipmentNumber,
-        previousBrokerId: shipment.assignedBrokerId,
-        newBrokerId: assignedBrokerId || "Unassigned",
-      },
-      success: true,
-    });
-  }
-
-  // Log client tag event if client changed
-  if (clientId !== undefined && clientId !== shipment.clientId) {
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: "shipment.setClient",
-      entity: "Shipment",
-      entityId: id,
-      metadata: {
-        shipmentNumber: updatedShipment.shipmentNumber,
-        previousClientId: shipment.clientId,
-        newClientId: clientId || "None",
-      },
-      success: true,
-    });
-  }
-
-  return NextResponse.json({ shipment: updatedShipment });
+  const updatedCanonical = await CanonicalShipmentService.getCanonicalState(id);
+  return NextResponse.json(updatedCanonical);
 });

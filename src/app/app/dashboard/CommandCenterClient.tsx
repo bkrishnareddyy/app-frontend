@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Users,
   Plus,
+  DollarSign,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import {
@@ -193,6 +194,16 @@ export function CommandCenterClient({
   // instead of showing a 0% that looks like a real reading.
   const avgReadiness = averageOfKnown(filteredShipments.map((s) => s.readinessScore));
 
+  // Value tied up in shipments that are not ready to file yet. Unscored
+  // shipments are excluded rather than assumed at risk.
+  const notReadyShipments = filteredShipments.filter(
+    (s) => s.readinessScore !== null && s.readinessScore < 85
+  );
+  const clearedShipments = filteredShipments.filter(
+    (s) => s.readinessScore !== null && s.readinessScore >= 85
+  );
+  const valueAtRisk = notReadyShipments.reduce((sum, s) => sum + (s.totalValue ?? 0), 0);
+
   const reviewRequiredDecisions = filteredDecisions.filter(
     (d) => d.status === "Review Required" || d.status === "Needs Review"
   ).length;
@@ -367,11 +378,11 @@ export function CommandCenterClient({
       )}
 
       {/* Top KPI Metric Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7 gap-4">
         {/* 1. Overall Readiness Gauge */}
         <Link
           href="/app/shipments"
-          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-[#0071E3] hover:shadow-md transition-all cursor-pointer group block"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
         >
           <div className="flex items-center justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-[#0071E3]">
             <span className="font-semibold leading-tight">{t.dashboard.kpiAvgReadiness}</span>
@@ -491,6 +502,30 @@ export function CommandCenterClient({
           <div className="min-h-8 w-full mt-2 py-1 bg-slate-50 rounded-lg border border-[#E5E5EA] flex items-center justify-between gap-1 px-2 text-[11px] text-[#86868B] font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
             <span className="truncate">100% Audit Settled</span>
             <ChevronRight className="w-3 h-3 shrink-0" />
+          </div>
+        </Link>
+
+        {/* 7. Value at Risk */}
+        <Link
+          href="/app/shipments"
+          className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
+        >
+          <div className="flex items-center justify-between gap-2 text-xs text-[#86868B] mb-2 group-hover:text-red-600">
+            <span className="font-semibold leading-tight">Value at Risk</span>
+            <DollarSign className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-2xl font-extrabold text-[#1D1D1F]">
+            {notReadyShipments.length === 0 && clearedShipments.length === 0
+              ? NOT_CALCULATED
+              : displayCurrency(valueAtRisk)}
+          </p>
+          <div className="flex items-center justify-between mt-2 gap-2">
+            <span className="text-[10px] text-[#86868B]">
+              {notReadyShipments.length} not ready to file
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+              {clearedShipments.length} cleared
+            </span>
           </div>
         </Link>
       </div>

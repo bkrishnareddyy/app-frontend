@@ -7,8 +7,10 @@ import {
   Sparkles,
   ChevronRight,
 } from "lucide-react";
+import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
 import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { ShipmentExceptionsSection } from "./ShipmentExceptionsSection";
+import { CanonicalFactsSection } from "./CanonicalFactsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
 import { DocumentViewerControls } from "./DocumentViewerControls";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
@@ -31,11 +33,12 @@ import {
 
 export default async function ShipmentWorkspacePage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ docId?: string }>;
+  searchParams: Promise<{ docId?: string; view?: string }>;
 }) {
   const params = await props.params;
   const searchParams = await props.searchParams;
   const docId = searchParams.docId;
+
   const context = await getAccountContext();
   if (!context) return null;
 
@@ -72,6 +75,9 @@ export default async function ShipmentWorkspacePage(props: {
   });
 
   if (!shipment) notFound();
+
+  // Safe to load by id alone: the query above already proved account ownership.
+  const { facts } = await CanonicalShipmentService.getCanonicalState(shipment.id);
 
   // The pipeline stepper reports logged runs. An agent that never ran has no row.
   const agentRuns = await db.agentExecutionLog.findMany({
@@ -143,8 +149,6 @@ export default async function ShipmentWorkspacePage(props: {
     context.accountType === "ENTERPRISE" &&
     (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
 
-  // Planners may tag the Client on shipments assigned to them; every other
-  // field on this page stays Enterprise Admin-only.
   const canEditClient =
     isEnterpriseAdmin ||
     (context.roleNames.includes("PLANNER") && shipment.assignedBrokerId === context.userId);
@@ -571,7 +575,14 @@ export default async function ShipmentWorkspacePage(props: {
         reconciliationIssues={shipment.reconciliationIssues}
       />
 
-      {/* 5. Customs filing */}
+      {/* 5. Canonical facts and provenance */}
+      <CanonicalFactsSection
+        shipmentId={shipment.id}
+        facts={facts}
+        currentCountryOfOrigin={shipment.countryOfOrigin}
+      />
+
+      {/* 6. Customs filing */}
       <section
         id="customs-filing"
         aria-labelledby="customs-filing-heading"

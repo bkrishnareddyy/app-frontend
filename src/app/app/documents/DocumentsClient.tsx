@@ -33,7 +33,7 @@ interface DocumentRow {
   pageCount: number | null;
   confidence: number | null;
   createdAt: string;
-  shipmentId: string;
+  shipmentId: string | null;
   shipmentNumber: string | null;
   clientId: string | null;
   clientName: string | null;
@@ -66,8 +66,11 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [docType, setDocType] = useState("");
+  const [status, setStatus] = useState("");
   const [clientId, setClientId] = useState("");
   const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
+  const [shipmentId, setShipmentId] = useState("");
+  const [shipments, setShipments] = useState<Array<{ id: string; ref: string }>>([]);
   const [sort, setSort] = useState<DocumentSortColumn>("createdAt");
   const [direction, setDirection] = useState<SortDirection>("desc");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -95,7 +98,9 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
         });
         if (search) params.set("search", search);
         if (docType) params.set("docType", docType);
+        if (status) params.set("status", status);
         if (clientId) params.set("clientId", clientId);
+        if (shipmentId) params.set("shipmentId", shipmentId);
 
         const res = await fetch(`/api/documents?${params.toString()}`, { signal: controller.signal });
         if (!res.ok) {
@@ -116,7 +121,7 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
     })();
 
     return () => controller.abort();
-  }, [page, pageSize, search, docType, clientId, sort, direction, reloadToken]);
+  }, [page, pageSize, search, docType, status, clientId, shipmentId, sort, direction, reloadToken]);
 
   // The filter only offers clients that exist, so it cannot produce an empty view by itself.
   useEffect(() => {
@@ -131,6 +136,26 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
         setClients(data.clients ?? []);
       } catch {
         // A missing client list degrades the filter, not the document table.
+      }
+    })();
+
+    return () => controller.abort();
+  }, []);
+
+  // Detached documents keep a null shipmentId, so the list needs an explicit option for them.
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/shipments?pageSize=100", { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (controller.signal.aborted) return;
+        const rows: Array<{ id: string; shipmentNumber?: string | null }> = data.shipments ?? [];
+        setShipments(rows.map((s) => ({ id: s.id, ref: s.shipmentNumber ?? s.id })));
+      } catch {
+        // A missing shipment list degrades the filter, not the document table.
       }
     })();
 
@@ -218,6 +243,41 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            aria-label="Filter by shipment"
+            value={shipmentId}
+            onChange={(e) => {
+              setShipmentId(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+          >
+            <option value="">All Shipments</option>
+            <option value="UNATTACHED">Unattached</option>
+            {shipments.map((shp) => (
+              <option key={shp.id} value={shp.id}>
+                {shp.ref}
+              </option>
+            ))}
+          </select>
+
+          <select
+            aria-label="Filter by status"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+          >
+            <option value="">All Statuses</option>
+            {Object.keys(STATUS_STYLE).map((value) => (
+              <option key={value} value={value}>
+                {value}
               </option>
             ))}
           </select>
@@ -324,12 +384,15 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
                     </td>
 
                     <td className="py-3.5 px-3 xl:px-4 font-mono text-xs text-[#0071E3] whitespace-nowrap">
-                      {doc.shipmentNumber ? (
+                      {doc.shipmentId && doc.shipmentNumber ? (
                         <Link href={`/app/shipments/${doc.shipmentId}`} className="hover:underline">
                           {doc.shipmentNumber}
                         </Link>
                       ) : (
-                        <span className="text-[#86868B]">{NOT_CALCULATED}</span>
+                        // A detached document is a known state, not a missing value.
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
+                          Unattached
+                        </span>
                       )}
                     </td>
 

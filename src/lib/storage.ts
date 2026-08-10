@@ -14,6 +14,12 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/png",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+  "application/xml",
+  "text/xml",
 ]);
 
 // QPR-004: Configurable file size limit (default 50 MB).

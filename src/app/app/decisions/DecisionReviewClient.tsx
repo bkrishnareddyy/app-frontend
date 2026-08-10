@@ -423,6 +423,29 @@ export function DecisionReviewClient({
     );
   };
 
+  // Scoped to a shipment with genuinely zero decisions -- show a clean
+  // empty state instead of falling through to render an unrelated
+  // shipment's decision, which is the bug this scoping fixed.
+    if (initialShipmentId && decisions.length === 0) {
+    return (
+      <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
+        <div className="bg-white p-12 rounded-3xl border border-[#E5E5EA] text-center space-y-3">
+          <Scale className="w-10 h-10 text-[#86868B] mx-auto opacity-50" />
+          <h3 className="text-sm font-bold text-[#1D1D1F]">No AI decisions yet for this shipment</h3>
+          <p className="text-xs text-[#86868B] max-w-sm mx-auto">
+            Agent decisions will appear here once this shipment&apos;s documents have been processed.
+          </p>
+          <Link
+            href={`/app/shipments/${initialShipmentId}`}
+            className="inline-block text-xs font-semibold text-[#0071E3] hover:underline"
+          >
+            ← Back to Shipment
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
       {requestedDecisionMissing && (
@@ -434,6 +457,26 @@ export function DecisionReviewClient({
           queue below is showing everything else.
         </div>
       )}
+
+      {/* Makes it clear the queue is scoped to one shipment rather than the whole account. */}
+      {initialShipmentId && (
+        <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-2.5 text-xs text-blue-900">
+          <div className="flex items-center space-x-2">
+            <Scale className="w-3.5 h-3.5 text-[#0071E3] shrink-0" />
+            <span>
+              Showing decisions for{" "}
+              <Link href={`/app/shipments/${initialShipmentId}`} className="font-bold hover:underline">
+                this shipment
+              </Link>{" "}
+              only ({decisions.length})
+            </span>
+          </div>
+          <Link href="/app/decisions" className="font-semibold text-[#0071E3] hover:underline shrink-0">
+            View All Decisions →
+          </Link>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs">
         <div>
