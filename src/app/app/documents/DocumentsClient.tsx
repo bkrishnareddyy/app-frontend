@@ -35,6 +35,8 @@ interface DocumentRow {
   createdAt: string;
   shipmentId: string;
   shipmentNumber: string | null;
+  clientId: string | null;
+  clientName: string | null;
   extractedFieldCount: number;
 }
 
@@ -64,6 +66,8 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [docType, setDocType] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
   const [sort, setSort] = useState<DocumentSortColumn>("createdAt");
   const [direction, setDirection] = useState<SortDirection>("desc");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -91,6 +95,7 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
         });
         if (search) params.set("search", search);
         if (docType) params.set("docType", docType);
+        if (clientId) params.set("clientId", clientId);
 
         const res = await fetch(`/api/documents?${params.toString()}`, { signal: controller.signal });
         if (!res.ok) {
@@ -111,7 +116,26 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
     })();
 
     return () => controller.abort();
-  }, [page, pageSize, search, docType, sort, direction, reloadToken]);
+  }, [page, pageSize, search, docType, clientId, sort, direction, reloadToken]);
+
+  // The filter only offers clients that exist, so it cannot produce an empty view by itself.
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/clients", { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (controller.signal.aborted) return;
+        setClients(data.clients ?? []);
+      } catch {
+        // A missing client list degrades the filter, not the document table.
+      }
+    })();
+
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -180,6 +204,24 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
             <option value="Certificate of Origin">Certificate of Origin</option>
           </select>
 
+          <select
+            aria-label="Filter by client"
+            value={clientId}
+            onChange={(e) => {
+              setClientId(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3]"
+          >
+            <option value="">All Clients</option>
+            <option value="UNASSIGNED">No Client</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </select>
+
           <button
             onClick={fetchDocuments}
             disabled={isLoading}
@@ -230,6 +272,7 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
                   direction={direction}
                   onSort={applySort}
                 />
+                <th scope="col" className="py-3 px-3 xl:px-4 whitespace-nowrap">Client</th>
                 {/* Extraction is a field count plus a model score; only the score is a column. */}
                 <SortableHeaderButton
                   column="confidence"
@@ -251,7 +294,7 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
             <tbody className="divide-y divide-[#E5E5EA]">
               {documents.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#86868B]">
+                  <td colSpan={8} className="py-12 text-center text-[#86868B]">
                     <FileText className="w-8 h-8 mx-auto text-[#86868B]/40 mb-2" />
                     <p className="font-semibold text-sm text-[#1D1D1F]">
                       {isLoading ? "Loading documents…" : "No documents match this view"}
@@ -298,6 +341,16 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
                       >
                         {doc.status}
                       </span>
+                    </td>
+
+                    <td className="py-3.5 px-3 xl:px-4 whitespace-nowrap">
+                      {doc.clientId ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                          {doc.clientName}
+                        </span>
+                      ) : (
+                        <span className="text-[#86868B]">{NOT_CALCULATED}</span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-3 xl:px-4 text-[#86868B] whitespace-nowrap">

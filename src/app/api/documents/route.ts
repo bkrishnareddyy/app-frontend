@@ -31,7 +31,13 @@ export async function GET(req: Request) {
           confidence: true,
           createdAt: true,
           shipmentId: true,
-          shipment: { select: { shipmentNumber: true } },
+          shipment: {
+            select: {
+              shipmentNumber: true,
+              clientId: true,
+              client: { select: { name: true } },
+            },
+          },
           _count: { select: { extractionFields: true } },
         },
         orderBy: buildDocumentOrderBy(query),
@@ -51,6 +57,8 @@ export async function GET(req: Request) {
         createdAt: doc.createdAt,
         shipmentId: doc.shipmentId,
         shipmentNumber: doc.shipment?.shipmentNumber ?? null,
+        clientId: doc.shipment?.clientId ?? null,
+        clientName: doc.shipment?.client?.name ?? null,
         extractedFieldCount: doc._count.extractionFields,
       })),
       page: query.page,

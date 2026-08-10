@@ -38,7 +38,12 @@ const SHIPMENT_SORT: SortSpec<ShipmentSortColumn> = {
 export interface ShipmentQuery extends TableQuery<ShipmentSortColumn> {
   status: string | null;
   health: string | null;
+  /** A client id, or `UNASSIGNED` for shipments that carry no client. */
+  client: string | null;
 }
+
+/** Sentinel for "no client", which is a real filter and not the absence of one. */
+export const UNASSIGNED_CLIENT = "UNASSIGNED";
 
 function trimmed(raw: string | null): string | null {
   const value = raw?.trim();
@@ -55,6 +60,7 @@ export function parseShipmentQuery(params: URLSearchParams): ShipmentQuery {
     }),
     status: trimmed(params.get("status")),
     health: trimmed(params.get("health")),
+    client: trimmed(params.get("client")),
   };
 }
 
@@ -65,6 +71,7 @@ export interface ShipmentWhere {
   deletedAt: null;
   status?: string;
   healthStatus?: string;
+  clientId?: string | null;
   OR?: Array<Record<string, Insensitive>>;
 }
 
@@ -77,6 +84,9 @@ export function buildShipmentWhere(accountId: string, query: ShipmentQuery): Shi
 
   if (query.status) where.status = query.status;
   if (query.health) where.healthStatus = query.health;
+  if (query.client) {
+    where.clientId = query.client === UNASSIGNED_CLIENT ? null : query.client;
+  }
 
   if (query.search) {
     const contains: Insensitive = { contains: query.search, mode: "insensitive" };

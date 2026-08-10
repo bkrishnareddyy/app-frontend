@@ -17,6 +17,7 @@ describe("document query parsing", () => {
       search: null,
       docType: null,
       status: null,
+      clientId: null,
       sort: "createdAt",
       direction: "desc",
       page: 1,
@@ -80,5 +81,13 @@ describe("document where clause", () => {
     expect(where.docType).toBe("Commercial Invoice");
     expect(where.status).toBe("Received");
     expect(where.OR).toHaveLength(3);
+  });
+
+  it("filters by the client on the parent shipment", () => {
+    expect(buildDocumentWhere("acct_a", q("clientId=cli_1")).shipment).toEqual({ clientId: "cli_1" });
+  });
+
+  it("treats UNASSIGNED as a filter for shipments with no client", () => {
+    expect(buildDocumentWhere("acct_a", q("clientId=UNASSIGNED")).shipment).toEqual({ clientId: null });
   });
 });

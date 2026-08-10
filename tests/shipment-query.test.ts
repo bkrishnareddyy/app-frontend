@@ -14,6 +14,7 @@ const query = (overrides: Partial<ShipmentQuery> = {}): ShipmentQuery => ({
   search: null,
   status: null,
   health: null,
+  client: null,
   sort: "createdAt",
   direction: "desc",
   page: 1,
@@ -98,10 +99,22 @@ describe("buildShipmentWhere", () => {
     expect(where.healthStatus).toBe("Critical");
   });
 
+  it("filters by client id", () => {
+    expect(buildShipmentWhere("acct_1", query({ client: "cli_1" })).clientId).toBe("cli_1");
+  });
+
+  it("treats UNASSIGNED as a filter for shipments with no client", () => {
+    // null is the filter here, so `in` distinguishes it from an absent filter.
+    const where = buildShipmentWhere("acct_1", query({ client: "UNASSIGNED" }));
+    expect("clientId" in where).toBe(true);
+    expect(where.clientId).toBeNull();
+  });
+
   it("omits a filter that was not supplied", () => {
     const where = buildShipmentWhere("acct_1", query());
     expect("status" in where).toBe(false);
     expect("healthStatus" in where).toBe(false);
+    expect("clientId" in where).toBe(false);
   });
 
   it("cannot be widened by an accountId query parameter", () => {

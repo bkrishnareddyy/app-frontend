@@ -25,12 +25,14 @@ import { SortableHeader } from "@/components/table/SortableHeader";
 import { TablePagination } from "@/components/table/TablePagination";
 import { SavedViews } from "@/components/table/SavedViews";
 import { ColumnChooser } from "@/components/table/ColumnChooser";
+import { ClientFilter } from "@/components/table/ClientFilter";
 
 const BASE_PATH = "/app/shipments";
 
 type ShipmentColumnId =
   | "shipmentNumber"
   | "importerName"
+  | "client"
   | "entryType"
   | "portOfEntry"
   | "readinessScore"
@@ -41,6 +43,7 @@ type ShipmentColumnId =
 const SHIPMENT_COLUMNS: ReadonlyArray<ColumnSpec<ShipmentColumnId>> = [
   { id: "shipmentNumber", label: "Shipment #", sortable: true },
   { id: "importerName", label: "Importer of Record", sortable: true },
+  { id: "client", label: "Client" },
   { id: "entryType", label: "Entry Type / PO" },
   { id: "portOfEntry", label: "Port & Mode", sortable: true },
   // Readiness is computed per row rather than read from the stored column, so
@@ -113,10 +116,17 @@ export default async function ShipmentsConsolePage(props: {
         },
         exceptionItems: { select: { status: true, severity: true } },
         assignedBroker: { select: { firstName: true, lastName: true, email: true } },
+        client: { select: { id: true, name: true } },
       },
     }),
     db.shipment.count({ where }),
   ]);
+
+  const clients = await db.client.findMany({
+    where: { accountId: ctx.accountId },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 
   // KPIs cover the whole workspace, so a search does not silently shrink them.
   const allForCounts = await db.shipment.findMany({
@@ -260,6 +270,7 @@ export default async function ShipmentsConsolePage(props: {
                 {query.health ? <input type="hidden" name="health" value={query.health} /> : null}
               </form>
 
+              <ClientFilter clients={clients} />
               <ColumnChooser columns={columnSpecs} label="shipment" />
             </div>
           </div>
@@ -320,6 +331,11 @@ export default async function ShipmentsConsolePage(props: {
                     basePath={BASE_PATH}
                   />
                 ) : null}
+                {shows("client") ? (
+                  <th scope="col" className="px-3 xl:px-4 py-3.5 whitespace-nowrap">
+                    Client
+                  </th>
+                ) : null}
                 {shows("entryType") ? (
                   <th scope="col" className="px-3 xl:px-4 py-3.5 whitespace-nowrap">
                     Entry Type / PO
@@ -373,11 +389,11 @@ export default async function ShipmentsConsolePage(props: {
                   <td colSpan={columns.length + 1} className="px-3 xl:px-4 py-12 text-center text-[#6E6E73]">
                     <Package className="w-8 h-8 mx-auto text-[#86868B] mb-2 stroke-1" aria-hidden="true" />
                     <p className="font-semibold text-sm text-[#1D1D1F]">
-                      {search || query.status || query.health
+                      {search || query.status || query.health || query.client
                         ? "No shipments match this view"
                         : "No shipments found"}
                     </p>
-                    {search || query.status || query.health ? (
+                    {search || query.status || query.health || query.client ? (
                       <Link href={BASE_PATH} className="text-xs mt-1 inline-block text-[#0071E3] hover:underline">
                         Clear filters
                       </Link>
@@ -418,6 +434,18 @@ export default async function ShipmentsConsolePage(props: {
                         <td className="px-3 xl:px-4 py-4">
                           <div className="font-semibold text-[#1D1D1F]">{shp.importerName}</div>
                           <div className="text-xs text-[#6E6E73]">{displayText(shp.countryOfExport)}</div>
+                        </td>
+                      ) : null}
+
+                      {shows("client") ? (
+                        <td className="px-3 xl:px-4 py-4 whitespace-nowrap">
+                          {shp.client ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                              {shp.client.name}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[#6E6E73]">{NOT_PROVIDED}</span>
+                          )}
                         </td>
                       ) : null}
 

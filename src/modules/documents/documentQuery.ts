@@ -16,11 +16,16 @@ export interface DocumentQuery {
   search: string | null;
   docType: string | null;
   status: string | null;
+  /** A client id, or `UNASSIGNED` for documents whose shipment carries no client. */
+  clientId: string | null;
   sort: DocumentSortColumn;
   direction: SortDirection;
   page: number;
   pageSize: number;
 }
+
+/** Sentinel for "no client", which is a real filter and not the absence of one. */
+export const UNASSIGNED_CLIENT = "UNASSIGNED";
 
 function positiveInt(raw: string | null, fallback: number, max: number): number {
   if (raw === null) return fallback;
@@ -45,6 +50,7 @@ export function parseDocumentQuery(params: URLSearchParams): DocumentQuery {
     search: trimmed(params.get("search")),
     docType: trimmed(params.get("docType")),
     status: trimmed(params.get("status")),
+    clientId: trimmed(params.get("clientId")),
     sort,
     direction:
       requestedDirection === "asc" || requestedDirection === "desc"
@@ -88,6 +94,7 @@ export interface DocumentWhere {
   accountId: string;
   docType?: string;
   status?: string;
+  shipment?: { clientId: string | null };
   OR?: Array<Record<string, unknown>>;
 }
 
@@ -100,6 +107,13 @@ export function buildDocumentWhere(accountId: string, query: DocumentQuery): Doc
 
   if (query.docType) where.docType = query.docType;
   if (query.status) where.status = query.status;
+
+  // Client lives on the shipment, so the document is filtered through it.
+  if (query.clientId) {
+    where.shipment = {
+      clientId: query.clientId === UNASSIGNED_CLIENT ? null : query.clientId,
+    };
+  }
 
   if (query.search) {
     where.OR = [
