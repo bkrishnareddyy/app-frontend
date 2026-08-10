@@ -1,6 +1,7 @@
 "use client";
 
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
+import { documentViewUrl } from "@/lib/documentUrl";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -222,9 +223,9 @@ export function DecisionReviewClient({
     }
   };
 
-  const getProxyUrl = (url: string) => {
+  const getProxyUrl = (url: string, documentId: string) => {
     if (!url || url === "#") return "#";
-    if (url.includes("vercel-storage.com")) return `/api/documents/proxy?url=${encodeURIComponent(url)}`;
+    if (url.includes("vercel-storage.com")) return documentViewUrl(documentId);
     return url;
   };
 
@@ -388,7 +389,7 @@ export function DecisionReviewClient({
                 documentId={primaryDoc.id}
                 fileName={primaryDoc.fileName}
                 shipmentNumber={selectedGroup.shipmentNumber}
-                proxyUrl={primaryDoc.fileUrl ? getProxyUrl(primaryDoc.fileUrl) : undefined}
+                proxyUrl={primaryDoc.fileUrl ? getProxyUrl(primaryDoc.fileUrl, primaryDoc.id) : undefined}
                 decisions={selectedGroup.decisions}
                 notesByDecision={notesByDecision}
                 onNotesChange={(id, val) => setNotesByDecision((prev) => ({ ...prev, [id]: val }))}
