@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { RateParser } from "./rateParser";
+import { Prisma } from "@prisma/client";
 import crypto from "crypto";
 
 export interface HtsRawItem {
@@ -63,14 +64,23 @@ export class HtsIngestionService {
       },
     });
 
-    // Ingest nodes hierarchically
+    // Build every row in memory first, with pre-generated IDs, so all of
+    // it can go in via batched createMany() instead of one row at a time.
+    // The original one-create-per-row loop took 60+ seconds for a single
+    // 2-chapter (382 item) test batch -- the full ~20k+ item US schedule
+    // would have taken well over an hour, making this unusable for a
+    // scheduled job with any realistic timeout.
+    const nodeRows: Prisma.HtsNodeCreateManyInput[] = [];
+    const dutyRateRows: Prisma.HtsDutyRateCreateManyInput[] = [];
+    const unitRows: Prisma.HtsUnitCreateManyInput[] = [];
+
     let rowNumber = 1;
     for (const item of input.items) {
       const rawCode = (item.htsno || "").replace(/[^0-9]/g, "");
       const displayCode = item.htsno_display || item.htsno || "";
       const description = item.description || "";
       const isSuperior = Boolean(item.superior) || !rawCode;
-      
+
       let codeLevel = 2;
       if (rawCode.length >= 10) codeLevel = 10;
       else if (rawCode.length >= 8) codeLevel = 8;
@@ -84,96 +94,93 @@ export class HtsIngestionService {
       const tariffLine8 = rawCode.length >= 8 ? rawCode.substring(0, 8) : null;
       const statisticalSuffix10 = rawCode.length >= 10 ? rawCode.substring(8, 10) : null;
 
-      const node = await db.htsNode.create({
-        data: {
-          releaseId: release.id,
-          sourceRowNumber: rowNumber++,
-          indentLevel: isSuperior ? 0 : 1,
-          htsNumberDisplay: displayCode,
-          htsNumberNormalized: rawCode,
-          codeLevel,
-          description,
-          fullDescription: description,
-          isSuperiorHeading: isSuperior,
-          isClassifiable: !isSuperior && rawCode.length >= 8,
-          chapter,
-          heading,
-          subheading6,
-          tariffLine8,
-          statisticalSuffix10,
-        },
+      const nodeId = crypto.randomUUID();
+      nodeRows.push({
+        id: nodeId,
+        releaseId: release.id,
+        sourceRowNumber: rowNumber++,
+        indentLevel: isSuperior ? 0 : 1,
+        htsNumberDisplay: displayCode,
+        htsNumberNormalized: rawCode,
+        codeLevel,
+        description,
+        fullDescription: description,
+        isSuperiorHeading: isSuperior,
+        isClassifiable: !isSuperior && rawCode.length >= 8,
+        chapter,
+        heading,
+        subheading6,
+        tariffLine8,
+        statisticalSuffix10,
       });
 
-      // Parse duty rates
       if (item.general) {
-        const parsedGeneral = RateParser.parse(item.general, "General");
-        await db.htsDutyRate.create({
-          data: {
-            htsNodeId: node.id,
-            rateColumn: "General",
-            rawRateText: parsedGeneral.rawRateText,
-            rateType: parsedGeneral.rateType,
-            adValoremPercent: parsedGeneral.adValoremPercent,
-            specificAmount: parsedGeneral.specificAmount,
-            specificUnit: parsedGeneral.specificUnit,
-            currency: parsedGeneral.currency,
-            isFree: parsedGeneral.isFree,
-            parseStatus: parsedGeneral.parseStatus,
-          },
+        const p = RateParser.parse(item.general, "General");
+        dutyRateRows.push({
+          htsNodeId: nodeId,
+          rateColumn: "General",
+          rawRateText: p.rawRateText,
+          rateType: p.rateType,
+          adValoremPercent: p.adValoremPercent,
+          specificAmount: p.specificAmount,
+          specificUnit: p.specificUnit,
+          currency: p.currency,
+          isFree: p.isFree,
+          parseStatus: p.parseStatus,
         });
       }
 
       if (item.special) {
-        const parsedSpecial = RateParser.parse(item.special, "Special");
-        await db.htsDutyRate.create({
-          data: {
-            htsNodeId: node.id,
-            rateColumn: "Special",
-            rawRateText: parsedSpecial.rawRateText,
-            rateType: parsedSpecial.rateType,
-            adValoremPercent: parsedSpecial.adValoremPercent,
-            specificAmount: parsedSpecial.specificAmount,
-            specificUnit: parsedSpecial.specificUnit,
-            currency: parsedSpecial.currency,
-            isFree: parsedSpecial.isFree,
-            parseStatus: parsedSpecial.parseStatus,
-          },
+        const p = RateParser.parse(item.special, "Special");
+        dutyRateRows.push({
+          htsNodeId: nodeId,
+          rateColumn: "Special",
+          rawRateText: p.rawRateText,
+          rateType: p.rateType,
+          adValoremPercent: p.adValoremPercent,
+          specificAmount: p.specificAmount,
+          specificUnit: p.specificUnit,
+          currency: p.currency,
+          isFree: p.isFree,
+          parseStatus: p.parseStatus,
         });
       }
 
       if (item.other) {
-        const parsedColumn2 = RateParser.parse(item.other, "Column 2");
-        await db.htsDutyRate.create({
-          data: {
-            htsNodeId: node.id,
-            rateColumn: "Column 2",
-            rawRateText: parsedColumn2.rawRateText,
-            rateType: parsedColumn2.rateType,
-            adValoremPercent: parsedColumn2.adValoremPercent,
-            specificAmount: parsedColumn2.specificAmount,
-            specificUnit: parsedColumn2.specificUnit,
-            currency: parsedColumn2.currency,
-            isFree: parsedColumn2.isFree,
-            parseStatus: parsedColumn2.parseStatus,
-          },
+        const p = RateParser.parse(item.other, "Column 2");
+        dutyRateRows.push({
+          htsNodeId: nodeId,
+          rateColumn: "Column 2",
+          rawRateText: p.rawRateText,
+          rateType: p.rateType,
+          adValoremPercent: p.adValoremPercent,
+          specificAmount: p.specificAmount,
+          specificUnit: p.specificUnit,
+          currency: p.currency,
+          isFree: p.isFree,
+          parseStatus: p.parseStatus,
         });
       }
 
-      // Units
       if (item.units && Array.isArray(item.units)) {
         let seq = 1;
         for (const u of item.units) {
           if (u) {
-            await db.htsUnit.create({
-              data: {
-                htsNodeId: node.id,
-                sequence: seq++,
-                unitCode: u,
-              },
-            });
+            unitRows.push({ htsNodeId: nodeId, sequence: seq++, unitCode: u });
           }
         }
       }
+    }
+
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < nodeRows.length; i += BATCH_SIZE) {
+      await db.htsNode.createMany({ data: nodeRows.slice(i, i + BATCH_SIZE) });
+    }
+    for (let i = 0; i < dutyRateRows.length; i += BATCH_SIZE) {
+      await db.htsDutyRate.createMany({ data: dutyRateRows.slice(i, i + BATCH_SIZE) });
+    }
+    for (let i = 0; i < unitRows.length; i += BATCH_SIZE) {
+      await db.htsUnit.createMany({ data: unitRows.slice(i, i + BATCH_SIZE) });
     }
 
     return release;

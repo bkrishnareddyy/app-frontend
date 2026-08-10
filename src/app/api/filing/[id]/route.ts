@@ -3,7 +3,8 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { computeFilingTariff } from "@/lib/tariff/dutyEngine";
+import { computeFilingTariff, DutyRateInput } from "@/lib/tariff/dutyEngine";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -83,8 +84,18 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   const primaryCOO = snapshot ? (snapshot.shipment.countryOfOrigin || snapshot.shipment.countryOfExport || "USA") : (lineItems[0]?.countryOfOrigin || filing.shipment.countryOfExport || "USA");
   const primaryHTS = lineItems[0]?.htsCode || "8481.80.5090";
 
+  // Ground each line item's duty rate in the real ingested HTS Master
+  // Release data instead of computing every line at a flat 2.8% guess.
+  const htsCodesMap: Record<string, DutyRateInput> = {};
+  for (const item of lineItems) {
+    if (!item.htsCode || htsCodesMap[item.htsCode]) continue;
+    const normalized = String(item.htsCode).replace(/[^0-9]/g, "");
+    const node = normalized ? await HtsNodeRepository.findByNormalizedCode(normalized) : null;
+    htsCodesMap[item.htsCode] = HtsNodeRepository.toDutyRateInput(node);
+  }
+
   // Standardized Duty Breakdown computed via Tariff Engine
-  const tariffResult = computeFilingTariff(lineItems);
+  const tariffResult = computeFilingTariff(lineItems, htsCodesMap);
   const dutyBreakdown = filing.dutyBreakdown || tariffResult.dutyBreakdown;
 
   // Documents with enriched OCR & AI extraction metadata

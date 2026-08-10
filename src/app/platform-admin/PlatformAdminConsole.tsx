@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
-import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Loader2, Search } from "lucide-react";
+import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Loader2, Search, Globe2 } from "lucide-react";
+import { HtsAdminPanel, HtsAdminData } from "./HtsAdminPanel";
 
 interface AccountItem {
   id: string;
@@ -16,10 +17,12 @@ interface AccountItem {
 
 interface PlatformAdminConsoleProps {
   accounts: AccountItem[];
+  htsAdmin: HtsAdminData;
 }
 
-export function PlatformAdminConsole({ accounts }: PlatformAdminConsoleProps) {
+export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsoleProps) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"accounts" | "hts">("accounts");
   const [companyName, setCompanyName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -84,6 +87,32 @@ export function PlatformAdminConsole({ accounts }: PlatformAdminConsoleProps) {
         </div>
       )}
 
+      {/* Tab Switcher */}
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={() => setActiveTab("accounts")}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
+            activeTab === "accounts" ? "bg-[#0071E3] text-white" : "bg-white border border-[#E5E5EA] text-[#86868B] hover:text-[#1D1D1F]"
+          }`}
+        >
+          <Shield className="w-3.5 h-3.5" />
+          <span>Accounts</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("hts")}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
+            activeTab === "hts" ? "bg-[#0071E3] text-white" : "bg-white border border-[#E5E5EA] text-[#86868B] hover:text-[#1D1D1F]"
+          }`}
+        >
+          <Globe2 className="w-3.5 h-3.5" />
+          <span>HS / HTS Master Data</span>
+        </button>
+      </div>
+
+      {activeTab === "hts" && <HtsAdminPanel data={htsAdmin} />}
+
+      {activeTab === "accounts" && (
+        <>
       {/* Provision Enterprise Account Section */}
       <div className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
         <h2 className="text-lg font-bold text-[#1D1D1F] mb-1 flex items-center space-x-2">
@@ -211,6 +240,8 @@ export function PlatformAdminConsole({ accounts }: PlatformAdminConsoleProps) {
           </table>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

@@ -20,44 +20,45 @@ model Account {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  memberships           AccountMembership[]
-  roles                 Role[]
-  invitations           Invitation[]
-  auditLogs             AuditLog[]
-  idempotencyRecords    IdempotencyRecord[]
-  shipments             Shipment[]
-  shipmentDocuments     ShipmentDocument[]
-  shipmentLineItems     ShipmentLineItem[]
-  agentDecisions        AgentDecision[]
-  customsFilings        CustomsFiling[]
-  customsResponses      CustomsResponse[]
-  importersOfRecord     ImporterOfRecord[]
-  bonds                 Bond[]
-  powersOfAttorney      PowerOfAttorney[]
-  exceptionItems        ExceptionItem[]
-  landedCostScenarios   LandedCostScenario[]
-  refundOpportunities   RefundOpportunity[]
-  postSummaryCorrections PostSummaryCorrection[]
-  exportShipments       ExportShipment[]
-  exportDocuments       ExportDocument[]
-  exportLineItems       ExportLineItem[]
-  drawbackClaims        DrawbackClaim[]
-  complianceAuditRecords ComplianceAuditRecord[]
-  reconciliationIssues   ReconciliationIssue[]
-  canonicalProducts      CanonicalProduct[]
-  complianceFindings     ComplianceFinding[]
-  supplierRiskScores     SupplierRiskScore[]
-  brokerMetrics          BrokerMetrics[]
+  memberships             AccountMembership[]
+  roles                   Role[]
+  invitations             Invitation[]
+  auditLogs               AuditLog[]
+  idempotencyRecords      IdempotencyRecord[]
+  shipments               Shipment[]
+  shipmentDocuments       ShipmentDocument[]
+  shipmentLineItems       ShipmentLineItem[]
+  agentDecisions          AgentDecision[]
+  customsFilings          CustomsFiling[]
+  customsResponses        CustomsResponse[]
+  importersOfRecord       ImporterOfRecord[]
+  bonds                   Bond[]
+  powersOfAttorney        PowerOfAttorney[]
+  exceptionItems          ExceptionItem[]
+  fieldApprovals          FieldApproval[]
+  landedCostScenarios     LandedCostScenario[]
+  refundOpportunities     RefundOpportunity[]
+  postSummaryCorrections  PostSummaryCorrection[]
+  exportShipments         ExportShipment[]
+  exportDocuments         ExportDocument[]
+  exportLineItems         ExportLineItem[]
+  drawbackClaims          DrawbackClaim[]
+  complianceAuditRecords  ComplianceAuditRecord[]
+  reconciliationIssues    ReconciliationIssue[]
+  canonicalProducts       CanonicalProduct[]
+  complianceFindings      ComplianceFinding[]
+  supplierRiskScores      SupplierRiskScore[]
+  brokerMetrics           BrokerMetrics[]
   valuationAssistsRecords ValuationAssistsRecord[]
-  auditTimelines         AuditTimeline[]
-  screeningLogs          ScreeningLog[]
-  agentExecutionLogs     AgentExecutionLog[]
-  shipmentStateRecords   ShipmentStateRecord[]
-  pipelineJobs           PipelineJob[]
-  classificationCases    ClassificationCase[]
-  caseDocuments          CaseDocument[]
-  clients                Client[]
-  legalEntities          LegalEntity[]
+  auditTimelines          AuditTimeline[]
+  screeningLogs           ScreeningLog[]
+  agentExecutionLogs      AgentExecutionLog[]
+  shipmentStateRecords    ShipmentStateRecord[]
+  pipelineJobs            PipelineJob[]
+  classificationCases     ClassificationCase[]
+  caseDocuments           CaseDocument[]
+  clients                 Client[]
+  legalEntities           LegalEntity[]
 
   @@index([type])
   @@index([slug])
@@ -71,22 +72,22 @@ model User {
   email               String    @unique
   firstName           String?
   lastName            String?
-  brokerLicenseNumber String?   // License number for licensed customs brokers
+  brokerLicenseNumber String? // License number for licensed customs brokers
   deletedAt           DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  ownedAccounts       Account[]               @relation("AccountOwner")
-  createdInvitations  Invitation[]            @relation("InvitationCreator")
-  platformRoles       PlatformUserRole[]
-  memberships         AccountMembership[]
-  auditLogs           AuditLog[]
-  reviewedDecisions   AgentDecision[]         @relation("DecisionReviewer")
-  assignedShipments   Shipment[]              @relation("ShipmentBroker")
-  assignedExceptions  ExceptionItem[]         @relation("ExceptionAssignee")
-  assignedFindings    ComplianceFinding[]     @relation("FindingAssignee")
-  createdScenarios    LandedCostScenario[]    @relation("ScenarioCreator")
-  createdPSCs         PostSummaryCorrection[] @relation("PSCCreator")
+  ownedAccounts        Account[]               @relation("AccountOwner")
+  createdInvitations   Invitation[]            @relation("InvitationCreator")
+  platformRoles        PlatformUserRole[]
+  memberships          AccountMembership[]
+  auditLogs            AuditLog[]
+  reviewedDecisions    AgentDecision[]         @relation("DecisionReviewer")
+  assignedShipments    Shipment[]              @relation("ShipmentBroker")
+  assignedExceptions   ExceptionItem[]         @relation("ExceptionAssignee")
+  assignedFindings     ComplianceFinding[]     @relation("FindingAssignee")
+  createdScenarios     LandedCostScenario[]    @relation("ScenarioCreator")
+  createdPSCs          PostSummaryCorrection[] @relation("PSCCreator")
   shipmentChangeEvents ShipmentChangeEvent[]
 
   @@index([clerkUserId])
@@ -116,16 +117,16 @@ model PlatformUserRole {
 }
 
 model AccountMembership {
-  id        String    @id @default(cuid())
+  id        String                  @id @default(cuid())
   accountId String
-  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account   Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
   userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   roles     AccountMembershipRole[]
-  status    String    @default("ACTIVE") // ACTIVE, INACTIVE, DISABLED
+  status    String                  @default("ACTIVE") // ACTIVE, INACTIVE, DISABLED
   deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
 
   @@unique([accountId, userId])
   @@index([userId])
@@ -150,9 +151,9 @@ model AccountMembershipRole {
 
 model Role {
   id          String   @id @default(cuid())
-  accountId   String?  // NULL for system default roles (OWNER, ADMIN, MEMBER, VIEWER), or specific account ID for custom roles
+  accountId   String? // NULL for system default roles (OWNER, ADMIN, MEMBER, VIEWER), or specific account ID for custom roles
   account     Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name        String   // OWNER, ADMIN, MEMBER, VIEWER, or Custom Role Name
+  name        String // OWNER, ADMIN, MEMBER, VIEWER, or Custom Role Name
   description String?
   isSystem    Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -253,15 +254,15 @@ model Shipment {
   id                 String            @id @default(cuid())
   accountId          String
   account            Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  shipmentNumber     String            // e.g. SHP-2026-004872
-  importerName       String            // e.g. ABC Manufacturing India Pvt Ltd
+  shipmentNumber     String // e.g. SHP-2026-004872
+  importerName       String // e.g. ABC Manufacturing India Pvt Ltd
   importerOfRecordId String?
   importerOfRecord   ImporterOfRecord? @relation(fields: [importerOfRecordId], references: [id], onDelete: SetNull)
   clientId           String?
   client             Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
   assignedBrokerId   String?
   assignedBroker     User?             @relation("ShipmentBroker", fields: [assignedBrokerId], references: [id], onDelete: SetNull)
-  poReference        String?           // e.g. PO-778899
+  poReference        String? // e.g. PO-778899
   entryType          String?
   incoterm           String?
   portOfEntry        String?
@@ -279,9 +280,9 @@ model Shipment {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  masterShipmentId   String?
-  masterShipment     Shipment?         @relation("MasterHouseRelation", fields: [masterShipmentId], references: [id], onDelete: SetNull)
-  houseShipments     Shipment[]        @relation("MasterHouseRelation")
+  masterShipmentId String?
+  masterShipment   Shipment?  @relation("MasterHouseRelation", fields: [masterShipmentId], references: [id], onDelete: SetNull)
+  houseShipments   Shipment[] @relation("MasterHouseRelation")
 
   documents               ShipmentDocument[]
   lineItems               ShipmentLineItem[]
@@ -296,6 +297,7 @@ model Shipment {
   changeEvents            ShipmentChangeEvent[]
   eventLogs               ShipmentEventLog[]
   agentExecutionRecords   AgentExecutionRecord[]
+  fieldApprovals          FieldApproval[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -305,30 +307,32 @@ model Shipment {
 }
 
 model ShipmentDocument {
-  id         String    @id @default(cuid())
+  id            String    @id @default(cuid())
   // Nullable: a document can be detached from its shipment (keeping the
   // row and extractedJson intact) and later reattached to a different
   // shipment without redoing AI vision extraction.
-  shipmentId String?
-  shipment   Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
-  accountId  String
-  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  docType    String   // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin
-  fileName   String   // e.g. INV-45678.pdf
-  pageCount  Int      @default(2)
-  fileUrl    String?
-  checksum   String?  // SHA-256 hash for duplicate detection
-  version    String   @default("1.0")
-  confidence Int      @default(95)
-  status        String   @default("Received") // Received, Missing, Review Required
-  required      Boolean  @default(true)
-  extractedJson String?  @db.Text
-  rawContent    String?  @db.Text
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  shipmentId    String?
+  shipment      Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  accountId     String
+  account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  docType       String // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin
+  fileName      String // e.g. INV-45678.pdf
+  pageCount     Int       @default(2)
+  fileUrl       String?
+  checksum      String? // SHA-256 hash for duplicate detection
+  version       String    @default("1.0")
+  confidence    Int       @default(95)
+  status        String    @default("Received") // Received, Missing, Review Required
+  required      Boolean   @default(true)
+  extractedJson String?   @db.Text
+  rawContent    String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   extractionFields ExtractionField[]
   parseVersions    DocumentParseVersion[]
+  exceptionItems   ExceptionItem[]
+  fieldApprovals   FieldApproval[]
 
   @@index([shipmentId])
   @@index([accountId])
@@ -342,19 +346,19 @@ model ShipmentLineItem {
   account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   lineNumber      Int
   partNumber      String?
-  description     String   // e.g. Stainless Steel Valve 1/2" NPT, 316 Grade
+  description     String // e.g. Stainless Steel Valve 1/2" NPT, 316 Grade
   quantity        Int
   unitPrice       Decimal
   totalValue      Decimal
-  countryOfOrigin String   // e.g. Germany, China
-  htsCode         String   // e.g. 8481.80.5090
+  countryOfOrigin String // e.g. Germany, China
+  htsCode         String // e.g. 8481.80.5090
   htsConfidence   Int      @default(97)
   eccnCode        String?  @default("EAR99")
   status          String   @default("Valid") // Valid, Review Required, Issue
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  origins        OriginDetermination[]
+  origins         OriginDetermination[]
   drawbackMatches DrawbackMatch[]
   pgaRequirements PgaRequirement[]
 
@@ -363,30 +367,30 @@ model ShipmentLineItem {
 }
 
 model AgentDecision {
-  id                  String    @id @default(cuid())
+  id                  String   @id @default(cuid())
   shipmentId          String
-  shipment            Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipment            Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   accountId           String
-  account             Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  agentName           String    // Document Intake Agent, Document Intelligence Agent, Product Intelligence Agent, Classification Agent, Origin Agent, Valuation Agent, Compliance Agent, Filing Readiness Agent, Customs Filing Agent, Response Management Agent
+  account             Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  agentName           String // Document Intake Agent, Document Intelligence Agent, Product Intelligence Agent, Classification Agent, Origin Agent, Valuation Agent, Compliance Agent, Filing Readiness Agent, Customs Filing Agent, Response Management Agent
   agentIcon           String?
-  status              String    @default("Review Required") // Completed, Review Required, Attention, In Progress, Pending, Approved
-  confidence          Int       @default(76)
-  decisionSummary     String    // e.g. 2 line items need review
-  purpose             String?   // e.g. Determine correct HS/HTS classification for all line items
-  dataSources         String[]  // e.g. Documents, Product Master, Historical Shipments, Tariff Rulings
-  regulations         String[]  // e.g. US HTS 2025, General Rules of Interpretation (GRI 1 & 6)
-  modelVersion        String?   @default("Qubere-Taxo-v2.3")
-  currentHtsCode      String?   // e.g. 8481.80.5090
-  proposedHtsCode     String?   // e.g. 8537.10.2030
-  proposedDescription String?  // e.g. Electronic Boards & Controllers
-  rulesApplied        String[]  // e.g. GRI 1, GRI 6
-  evidenceItems       Json?     // Array of supporting evidence objects
+  status              String   @default("Review Required") // Completed, Review Required, Attention, In Progress, Pending, Approved
+  confidence          Int      @default(76)
+  decisionSummary     String // e.g. 2 line items need review
+  purpose             String? // e.g. Determine correct HS/HTS classification for all line items
+  dataSources         String[] // e.g. Documents, Product Master, Historical Shipments, Tariff Rulings
+  regulations         String[] // e.g. US HTS 2025, General Rules of Interpretation (GRI 1 & 6)
+  modelVersion        String?  @default("Qubere-Taxo-v2.3")
+  currentHtsCode      String? // e.g. 8481.80.5090
+  proposedHtsCode     String? // e.g. 8537.10.2030
+  proposedDescription String? // e.g. Electronic Boards & Controllers
+  rulesApplied        String[] // e.g. GRI 1, GRI 6
+  evidenceItems       Json? // Array of supporting evidence objects
   humanNotes          String?
   reviewedByUserId    String?
-  reviewedByUser      User?     @relation("DecisionReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  reviewedByUser      User?    @relation("DecisionReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   originDeterminations OriginDetermination[]
 
@@ -405,17 +409,17 @@ model CustomsFiling {
   importerOfRecord   ImporterOfRecord? @relation(fields: [importerOfRecordId], references: [id], onDelete: SetNull)
   bondId             String?
   bond               Bond?             @relation(fields: [bondId], references: [id], onDelete: SetNull)
-  entryNumber        String            // e.g. 5901-26-004872
+  entryNumber        String // e.g. 5901-26-004872
   authority          String            @default("US Customs (CBP)")
   entryType          String            @default("Consumption Entry")
   filingType         String            @default("ABI - Automated")
   filingStatus       String            @default("Filed") // Draft, Filed, Accepted, Released, Closed
   paymentStatus      String            @default("Paid") // Pending, Paid, Deferred
-  totalValue         Decimal             @default(17750.00)
-  totalDuties        Decimal             @default(2850.00)
-  totalTaxes         Decimal             @default(13100.00)
-  totalAmount        Decimal             @default(16250.00)
-  dutyBreakdown      Json?             // Array of itemized duty fee objects
+  totalValue         Decimal           @default(17750.00)
+  totalDuties        Decimal           @default(2850.00)
+  totalTaxes         Decimal           @default(13100.00)
+  totalAmount        Decimal           @default(16250.00)
+  dutyBreakdown      Json? // Array of itemized duty fee objects
   version            Int               @default(1)
   submittedAt        DateTime          @default(now())
   releasedAt         DateTime?
@@ -443,9 +447,9 @@ model CustomsResponse {
   filing      CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
   accountId   String
   account     Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  code        String        // ACK, RFRA, AOC, RELE
-  title       String        // e.g. ACK - Acceptance, RFRA - Additional Info Request
-  description String        // e.g. Customs has accepted your entry
+  code        String // ACK, RFRA, AOC, RELE
+  title       String // e.g. ACK - Acceptance, RFRA - Additional Info Request
+  description String // e.g. Customs has accepted your entry
   status      String        @default("Accepted") // Accepted, Responded, In Process, Released
   receivedAt  DateTime      @default(now())
   createdAt   DateTime      @default(now())
@@ -457,10 +461,10 @@ model CustomsResponse {
 
 model RegulatoryUpdate {
   id                     String   @id @default(cuid())
-  title                  String   // e.g. U.S. CBP Updates Section 301 Tariff Exclusions
-  description            String   // e.g. Extension of exclusions for certain products from China.
-  jurisdiction           String   // e.g. United States, European Union, India, Australia
-  category               String   // Tariffs & Duties, Product Regulations, Trade Policy, Compliance & Reporting, Sanctions & Restrictions
+  title                  String // e.g. U.S. CBP Updates Section 301 Tariff Exclusions
+  description            String // e.g. Extension of exclusions for certain products from China.
+  jurisdiction           String // e.g. United States, European Union, India, Australia
+  category               String // Tariffs & Duties, Product Regulations, Trade Policy, Compliance & Reporting, Sanctions & Restrictions
   impactLevel            String   @default("High") // High, Medium, Low
   effectiveDate          DateTime
   affectedShipmentsCount Int      @default(27)
@@ -480,32 +484,9 @@ model RegulatoryUpdate {
 // PHASE 2 NEW DOMAIN ENTITIES
 // -----------------------------------------------------------------------------
 
-model HTSCode {
-  id                       String   @id @default(cuid())
-  htsCode10                 String   @unique
-  description              String
-  chapterNumber            String
-  headingNumber            String
-  subheadingNumber         String
-  unitOfQuantity           String?  @default("PCS")
-  generalDutyRate          String   @default("Free")
-  specialRatePrograms      Json?    // { "USMCA": "Free", "KORUS": "2.5%" }
-  column2DutyRate          String?  @default("35%")
-  section301Applicable     Boolean  @default(false)
-  section301AdditionalRate Decimal?   @default(0.0)
-  section232Applicable     Boolean  @default(false)
-  section232AdditionalRate Decimal?   @default(0.0)
-  effectiveDate            DateTime @default(now())
-  expirationDate           DateTime?
-  sourceRevision           String   @default("HTSUS 2026 Rev 1")
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
-
-  scenarioLineItems LandedCostScenarioLineItem[]
-
-  @@index([htsCode10])
-  @@index([chapterNumber])
-}
+// HTSCode (legacy, near-empty seed table) removed -- real HTS data lives in
+// HtsNode/HtsDutyRate (29k+ ingested nodes, 50k+ parsed duty rate rows).
+// LandedCostScenarioLineItem.htsCode now points there instead.
 
 model TradeAgreement {
   id            String   @id @default(cuid())
@@ -526,7 +507,7 @@ model OriginDetermination {
   tradeAgreement          TradeAgreement   @relation(fields: [tradeAgreementId], references: [id], onDelete: Cascade)
   qualifies               Boolean          @default(true)
   criterion               String           @default("Criterion A (Wholly Obtained)")
-  regionalValueContentPct Decimal?           @default(65.0)
+  regionalValueContentPct Decimal?         @default(65.0)
   calculationMethod       String           @default("net cost") // net cost | transaction value
   agentDecisionId         String?
   agentDecision           AgentDecision?   @relation(fields: [agentDecisionId], references: [id], onDelete: SetNull)
@@ -542,7 +523,7 @@ model LandedCostScenario {
   id              String   @id @default(cuid())
   accountId       String
   account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name            String   // e.g. Foxconn Sourcing Shift: China vs Vietnam
+  name            String // e.g. Foxconn Sourcing Shift: China vs Vietnam
   originCountry   String   @default("China")
   destinationPort String   @default("Port of Long Beach (2709)")
   incoterm        String   @default("CIF")
@@ -564,15 +545,15 @@ model LandedCostScenarioLineItem {
   scenario           LandedCostScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
   description        String
   htsCodeId          String
-  htsCode            HTSCode            @relation(fields: [htsCodeId], references: [id])
+  htsCode            HtsNode            @relation(fields: [htsCodeId], references: [id])
   unitValue          Decimal
   quantity           Int
-  freightCost        Decimal              @default(0.0)
-  insuranceCost      Decimal              @default(0.0)
+  freightCost        Decimal            @default(0.0)
+  insuranceCost      Decimal            @default(0.0)
   dutyRateOverride   Decimal?
-  computedDuty       Decimal              @default(0.0)
-  computedFees       Decimal              @default(0.0)
-  computedLandedCost Decimal              @default(0.0)
+  computedDuty       Decimal            @default(0.0)
+  computedFees       Decimal            @default(0.0)
+  computedLandedCost Decimal            @default(0.0)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -586,10 +567,10 @@ model RefundOpportunity {
   account               Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   filingId              String
   filing                CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
-  opportunityType       String        // overpayment | retroactive_exclusion | classification_error
+  opportunityType       String // overpayment | retroactive_exclusion | classification_error
   estimatedRefundAmount Decimal
   confidence            Int           @default(92)
-  basis                 Json          // Rule/Comparison details
+  basis                 Json // Rule/Comparison details
   status                String        @default("Identified") // Identified | Dismissed | ConvertedToPSC
   identifiedAt          DateTime      @default(now())
 
@@ -649,7 +630,7 @@ model ExportDocument {
   exportShipment   ExportShipment @relation(fields: [exportShipmentId], references: [id], onDelete: Cascade)
   accountId        String
   account          Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  docType          String         // Export Declaration, Air Waybill, Shipper's Letter of Instruction
+  docType          String // Export Declaration, Air Waybill, Shipper's Letter of Instruction
   fileName         String
   fileUrl          String?
   status           String         @default("Verified")
@@ -679,18 +660,18 @@ model ExportLineItem {
 }
 
 model DrawbackClaim {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   accountId          String
-  account            Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  claimType          String   @default("unused_merchandise") // manufacturing | unused_merchandise | rejected_merchandise
-  status             String   @default("Draft") // Draft | Filed | Accepted | Paid
+  account            Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  claimType          String    @default("unused_merchandise") // manufacturing | unused_merchandise | rejected_merchandise
+  status             String    @default("Draft") // Draft | Filed | Accepted | Paid
   totalRefundClaimed Decimal
-  cbpClaimNumber     String?  @default("DBK-2026-9901")
-  version            Int      @default(1)
+  cbpClaimNumber     String?   @default("DBK-2026-9901")
+  version            Int       @default(1)
   filedAt            DateTime?
   paidAt             DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   matches DrawbackMatch[]
 
@@ -723,7 +704,7 @@ model ComplianceAuditRecord {
   filing         CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
   auditType      String        @default("reasonable_care_checklist")
   overallResult  String        @default("Pass") // Pass | Fail | NeedsReview
-  checklistItems Json          // Array of [{ item, result, evidence }]
+  checklistItems Json // Array of [{ item, result, evidence }]
   riskScore      Int           @default(15)
   runByAgentName String        @default("Qubere Audit Agent")
   runAt          DateTime      @default(now())
@@ -772,9 +753,9 @@ model Client {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  shipments        Shipment[]
+  shipments         Shipment[]
   importersOfRecord ImporterOfRecord[]
-  legalEntities    LegalEntity[]
+  legalEntities     LegalEntity[]
 
   @@index([accountId])
   @@index([accountId, status])
@@ -787,7 +768,7 @@ model Bond {
   bondType       String    @default("continuous") // continuous | single_transaction
   suretyName     String    @default("Roanoke Insurance Group")
   bondNumber     String    @unique
-  bondAmount     Decimal     @default(50000.0)
+  bondAmount     Decimal   @default(50000.0)
   effectiveDate  DateTime  @default(now())
   expirationDate DateTime?
   status         String    @default("Active") // Active | Expired | Revoked
@@ -823,15 +804,15 @@ model PowerOfAttorney {
 // -----------------------------------------------------------------------------
 
 model LegalEntity {
-  id                String          @id @default(cuid())
+  id                String   @id @default(cuid())
   accountId         String
-  account           Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   clientId          String?
-  client            Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  client            Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
   legalName         String
   tradeName         String?
-  entityType        String          @default("US_CORPORATION")
-  country           String          @default("US")
+  entityType        String   @default("US_CORPORATION")
+  country           String   @default("US")
   addressLine1      String?
   addressLine2      String?
   city              String?
@@ -839,12 +820,12 @@ model LegalEntity {
   postalCode        String?
   taxIdentifier     String?
   taxIdentifierType String?
-  status            String          @default("ACTIVE")
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  status            String   @default("ACTIVE")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  customsProfiles   CustomsProfile[]
-  shipmentParties   ShipmentParty[]
+  customsProfiles CustomsProfile[]
+  shipmentParties ShipmentParty[]
 
   @@index([accountId])
   @@index([clientId])
@@ -926,38 +907,75 @@ model ShipmentChangeEvent {
 }
 
 model ExceptionItem {
-  id               String         @id @default(cuid())
+  id               String            @id @default(cuid())
   accountId        String
-  account          Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account          Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
   shipmentId       String?
-  shipment         Shipment?      @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  shipment         Shipment?         @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
   filingId         String?
-  filing           CustomsFiling? @relation(fields: [filingId], references: [id], onDelete: SetNull)
+  filing           CustomsFiling?    @relation(fields: [filingId], references: [id], onDelete: SetNull)
+  // Set when this exception is about one specific field on one specific
+  // uploaded document (e.g. "Exporter Name missing on Invoice.pdf"), so the
+  // Exceptions panel can group by source document instead of showing a flat
+  // list. Null for shipment-level exceptions (e.g. missing Importer of Record).
+  documentId       String?
+  document         ShipmentDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  fieldKey         String? // "exporterName" | "importerName" | "originCountry", set together with documentId
   code             String?
-  category         String?        // MISSING_DATA | CONFLICT | VALIDATION | COMPLIANCE | DOCUMENT | CLASSIFICATION | VALUATION | FILING
-  type             String         // missing_document | data_mismatch | broker_hold | compliance_flag
-  severity         String         @default("Medium") // High | Medium | Low | Critical
+  category         String? // MISSING_DATA | CONFLICT | VALIDATION | COMPLIANCE | DOCUMENT | CLASSIFICATION | VALUATION | FILING
+  type             String // missing_document | data_mismatch | broker_hold | compliance_flag
+  severity         String            @default("Medium") // High | Medium | Low | Critical
   description      String
-  status           String         @default("Open") // Open | InProgress | Resolved
-  blocking         Boolean        @default(false)
+  status           String            @default("Open") // Open | InProgress | Resolved
+  blocking         Boolean           @default(false)
   requiredAction   String?
   sourceAgent      String?
-  version          Int            @default(1)
+  version          Int               @default(1)
   assignedToUserId String?
-  assignedToUser   User?          @relation("ExceptionAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  createdAt        DateTime       @default(now())
+  assignedToUser   User?             @relation("ExceptionAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime          @default(now())
   resolvedAt       DateTime?
   resolvedBy       String?
+  // Human-readable snapshot of who resolved this, taken at resolve time --
+  // resolvedBy stores the userId (or "SYSTEM" for auto-resolves), this is
+  // what's actually safe to render directly in the UI without a join.
+  resolvedByName   String?
+  resolutionNote   String?
 
   @@index([accountId])
   @@index([status])
+  @@index([documentId, fieldKey])
+}
+
+// Provenance record for "who confirmed this field's value, and when" --
+// written both when a user fills in a genuinely missing field (resolving an
+// ExceptionItem) and when a user just clicks Approve on a value the agent
+// already extracted correctly (no ExceptionItem involved in that case, since
+// nothing was ever wrong). Kept separate from ExceptionItem so routine
+// approvals of already-correct fields don't inflate open-exception counts
+// shown elsewhere (dashboard, decisions page).
+model FieldApproval {
+  id               String            @id @default(cuid())
+  accountId        String
+  account          Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId       String
+  shipment         Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  documentId       String?
+  document         ShipmentDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  fieldKey         String // "exporterName" | "importerName" | "originCountry"
+  value            String
+  approvedByUserId String
+  approvedByName   String
+  approvedAt       DateTime          @default(now())
+
+  @@index([shipmentId, fieldKey])
 }
 
 model ShipmentEventLog {
   id          String   @id @default(cuid())
   shipmentId  String
   shipment    Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  eventType   String   // SHIPMENT_CREATED, DOCUMENT_UPLOADED, RECONCILIATION_REQUESTED, etc.
+  eventType   String // SHIPMENT_CREATED, DOCUMENT_UPLOADED, RECONCILIATION_REQUESTED, etc.
   payload     Json?
   triggeredBy String   @default("SYSTEM")
   createdAt   DateTime @default(now())
@@ -967,22 +985,27 @@ model ShipmentEventLog {
 }
 
 model AgentExecutionRecord {
-  id                 String    @id @default(cuid())
-  shipmentId         String
-  shipment           Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  agentName          String
-  triggerEvent       String?
-  invokedBy          String?   @default("SYSTEM")
-  nextStep           String?
-  status             String    @default("COMPLETED") // RUNNING, COMPLETED, FAILED
-  durationMs         Int?
-  modelVersion       String?   @default("gemini-3.6-flash")
-  error              String?
-  startedAt          DateTime  @default(now())
-  completedAt        DateTime?
+  id           String    @id @default(cuid())
+  shipmentId   String
+  shipment     Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  agentName    String
+  triggerEvent String?
+  invokedBy    String?   @default("SYSTEM")
+  nextStep     String?
+  status       String    @default("COMPLETED") // RUNNING, COMPLETED, FAILED
+  durationMs   Int?
+  modelVersion String?   @default("gemini-3.6-flash")
+  error        String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  // Groups every agent step fired by one orchestration call into a single
+  // invocation for the Agent Executions waterfall view -- without this,
+  // rows from the same run are indistinguishable from unrelated ones.
+  runId        String?
 
   @@index([shipmentId])
   @@index([agentName])
+  @@index([runId])
 }
 
 model RegulatoryUpdateImpact {
@@ -1002,11 +1025,11 @@ model ExtractionField {
   id         String           @id @default(cuid())
   documentId String
   document   ShipmentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  fieldName  String           // e.g. invoiceNumber, invoiceDate, totalValue, htsCandidate
+  fieldName  String // e.g. invoiceNumber, invoiceDate, totalValue, htsCandidate
   value      String
   confidence Int              @default(95)
   pageNumber Int              @default(1)
-  bbox       Json?            // { x: 120, y: 340, width: 200, height: 24 }
+  bbox       Json? // { x: 120, y: 340, width: 200, height: 24 }
   source     String           @default("OCR_AI_AGENT")
   createdAt  DateTime         @default(now())
 
@@ -1015,37 +1038,37 @@ model ExtractionField {
 }
 
 model ReconciliationIssue {
-  id               String   @id @default(cuid())
-  shipmentId       String
-  shipment         Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  accountId        String
-  account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  severity         String   @default("Warning") // Info | Warning | Critical
-  field            String   // quantity | weight | country | totalValue | container
-  expectedValue    String
-  actualValue      String
-  sourceDocuments  String[] // e.g. ["Commercial Invoice", "Packing List"]
-  status           String   @default("Open") // Open | Resolved | Ignored
-  createdAt        DateTime @default(now())
-  resolvedAt       DateTime?
+  id              String    @id @default(cuid())
+  shipmentId      String
+  shipment        Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  severity        String    @default("Warning") // Info | Warning | Critical
+  field           String // quantity | weight | country | totalValue | container
+  expectedValue   String
+  actualValue     String
+  sourceDocuments String[] // e.g. ["Commercial Invoice", "Packing List"]
+  status          String    @default("Open") // Open | Resolved | Ignored
+  createdAt       DateTime  @default(now())
+  resolvedAt      DateTime?
 
   @@index([shipmentId])
   @@index([accountId])
 }
 
 model CanonicalProduct {
-  id             String         @id @default(cuid())
-  accountId      String
-  account        Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  canonicalName  String         // e.g. Stainless Steel Hydraulic Valve 1/2 NPT
-  sku            String?
-  partNumber     String?
-  manufacturer   String?
+  id              String   @id @default(cuid())
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  canonicalName   String // e.g. Stainless Steel Hydraulic Valve 1/2 NPT
+  sku             String?
+  partNumber      String?
+  manufacturer    String?
   countryOfOrigin String?
-  htsCode        String?
-  dutyRate       String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  htsCode         String?
+  dutyRate        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   aliases ProductAlias[]
 
@@ -1056,7 +1079,7 @@ model ProductAlias {
   id                 String           @id @default(cuid())
   canonicalProductId String
   canonicalProduct   CanonicalProduct @relation(fields: [canonicalProductId], references: [id], onDelete: Cascade)
-  aliasName          String           // e.g. "iPhone 16 Pro Max 256GB Black" or "iPhone Pro Max"
+  aliasName          String // e.g. "iPhone 16 Pro Max 256GB Black" or "iPhone Pro Max"
   source             String           @default("Invoice")
   matchConfidence    Int              @default(94)
   createdAt          DateTime         @default(now())
@@ -1065,35 +1088,35 @@ model ProductAlias {
 }
 
 model PgaRequirement {
-  id               String           @id @default(cuid())
+  id                 String           @id @default(cuid())
   shipmentLineItemId String
-  shipmentLineItem ShipmentLineItem @relation(fields: [shipmentLineItemId], references: [id], onDelete: Cascade)
-  agency           String           // FDA | EPA | FCC | USDA | CPSC
-  reason           String           // e.g. Radiation emitting device / Wireless transmitter
-  requiredFiling   String           // e.g. Form FCC 740 / Equipment Authorization
-  missingPermits   String[]
-  holdRisk         String           @default("Medium") // High | Medium | Low
-  createdAt        DateTime         @default(now())
+  shipmentLineItem   ShipmentLineItem @relation(fields: [shipmentLineItemId], references: [id], onDelete: Cascade)
+  agency             String // FDA | EPA | FCC | USDA | CPSC
+  reason             String // e.g. Radiation emitting device / Wireless transmitter
+  requiredFiling     String // e.g. Form FCC 740 / Equipment Authorization
+  missingPermits     String[]
+  holdRisk           String           @default("Medium") // High | Medium | Low
+  createdAt          DateTime         @default(now())
 
   @@index([shipmentLineItemId])
 }
 
 model ComplianceFinding {
-  id             String        @id @default(cuid())
-  accountId      String
-  account        Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  filingId       String
-  filing         CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
-  rule           String        // e.g. Valuation Variance, HTS Override, Missing Assists
-  severity       String        @default("Warning") // Info | Warning | High | Critical
-  description    String
-  recommendation String
-  status         String        @default("Open") // Open | Investigating | Resolved | AcceptedRisk | Closed
-  confidence     Int           @default(92)
+  id               String        @id @default(cuid())
+  accountId        String
+  account          Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  filingId         String
+  filing           CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+  rule             String // e.g. Valuation Variance, HTS Override, Missing Assists
+  severity         String        @default("Warning") // Info | Warning | High | Critical
+  description      String
+  recommendation   String
+  status           String        @default("Open") // Open | Investigating | Resolved | AcceptedRisk | Closed
+  confidence       Int           @default(92)
   assignedToUserId String?
-  assignedToUser   User?       @relation("FindingAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  createdAt      DateTime      @default(now())
-  resolvedAt     DateTime?
+  assignedToUser   User?         @relation("FindingAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now())
+  resolvedAt       DateTime?
 
   @@index([accountId])
   @@index([filingId])
@@ -1101,54 +1124,54 @@ model ComplianceFinding {
 }
 
 model SupplierRiskScore {
-  id                     String   @id @default(cuid())
-  accountId              String
-  account                Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  supplierName           String
-  supplierId             String?
-  score                  Int      @default(15) // 0 - 100 risk score
-  riskLevel              String   @default("Low") // Low | Medium | High | Critical
-  violationHistoryCount  Int      @default(0)
-  missingDocsCount       Int      @default(0)
-  pgaIssuesCount         Int      @default(0)
-  classificationIssuesCount Int   @default(0)
-  lastUpdated            DateTime @default(now())
+  id                        String   @id @default(cuid())
+  accountId                 String
+  account                   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  supplierName              String
+  supplierId                String?
+  score                     Int      @default(15) // 0 - 100 risk score
+  riskLevel                 String   @default("Low") // Low | Medium | High | Critical
+  violationHistoryCount     Int      @default(0)
+  missingDocsCount          Int      @default(0)
+  pgaIssuesCount            Int      @default(0)
+  classificationIssuesCount Int      @default(0)
+  lastUpdated               DateTime @default(now())
 
   @@index([accountId])
   @@index([supplierName])
 }
 
 model BrokerMetrics {
-  id               String   @id @default(cuid())
-  accountId        String
-  account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  brokerName       String
-  entriesProcessed Int      @default(142)
-  accuracyPct      Decimal    @default(98.5)
-  overrideRatePct  Decimal    @default(2.1)
-  correctionRatePct Decimal   @default(0.7)
-  avgReviewTimeMin Int      @default(18)
-  rejectedCount    Int      @default(1)
-  lastUpdated      DateTime @default(now())
+  id                String   @id @default(cuid())
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  brokerName        String
+  entriesProcessed  Int      @default(142)
+  accuracyPct       Decimal  @default(98.5)
+  overrideRatePct   Decimal  @default(2.1)
+  correctionRatePct Decimal  @default(0.7)
+  avgReviewTimeMin  Int      @default(18)
+  rejectedCount     Int      @default(1)
+  lastUpdated       DateTime @default(now())
 
   @@index([accountId])
   @@index([brokerName])
 }
 
 model ValuationAssistsRecord {
-  id                   String        @id @default(cuid())
-  accountId            String
-  account              Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  filingId             String        @unique
-  filing               CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
-  declaredValue        Decimal
-  transferPricingMatch Boolean       @default(true)
-  freightIncluded      Boolean       @default(true)
-  insuranceIncluded    Boolean       @default(true)
-  potentialAssists     Json?         // [{ assistType: "tooling", estimatedValue: 5000, declared: false }]
-  relatedPartyTransaction Boolean    @default(false)
-  status               String        @default("Verified")
-  createdAt            DateTime      @default(now())
+  id                      String        @id @default(cuid())
+  accountId               String
+  account                 Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  filingId                String        @unique
+  filing                  CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+  declaredValue           Decimal
+  transferPricingMatch    Boolean       @default(true)
+  freightIncluded         Boolean       @default(true)
+  insuranceIncluded       Boolean       @default(true)
+  potentialAssists        Json? // [{ assistType: "tooling", estimatedValue: 5000, declared: false }]
+  relatedPartyTransaction Boolean       @default(false)
+  status                  String        @default("Verified")
+  createdAt               DateTime      @default(now())
 
   @@index([accountId])
 }
@@ -1159,7 +1182,7 @@ model AuditTimeline {
   account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   filingId  String
   filing    CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
-  event     String        // e.g. Entry Ingested, Valuation Checked, Audit Finding Raised, Reasonable Care Verified
+  event     String // e.g. Entry Ingested, Valuation Checked, Audit Finding Raised, Reasonable Care Verified
   actor     String        @default("System Audit Agent")
   metadata  Json?
   timestamp DateTime      @default(now())
@@ -1170,13 +1193,13 @@ model AuditTimeline {
 
 model DeniedPartyWatchlist {
   id            String    @id @default(cuid())
-  listSource    String    // OFAC_SDN | BIS_ENTITY_LIST | UN_SANCTIONS | EU_SANCTIONS | UK_HMT
+  listSource    String // OFAC_SDN | BIS_ENTITY_LIST | UN_SANCTIONS | EU_SANCTIONS | UK_HMT
   entityName    String
-  entityType    String    // Individual | Organization | Vessel
+  entityType    String // Individual | Organization | Vessel
   country       String
-  program       String?   // SDNTK | RUSSIA-EO14024 | COUNTER-NARCOTICS
+  program       String? // SDNTK | RUSSIA-EO14024 | COUNTER-NARCOTICS
   addresses     Json?
-  listVersion   String?   // E.g., "2026-08-08"
+  listVersion   String? // E.g., "2026-08-08"
   publishDate   DateTime? // Release date of source file
   effectiveDate DateTime  @default(now())
   createdAt     DateTime  @default(now())
@@ -1190,12 +1213,12 @@ model ScreeningLog {
   accountId    String
   account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   targetName   String
-  targetType   String    // Shipper | Consignee | Broker | Carrier | Manufacturer
-  matchStatus  String    // PASSED | FLAGGED | BLOCKED
+  targetType   String // Shipper | Consignee | Broker | Carrier | Manufacturer
+  matchStatus  String // PASSED | FLAGGED | BLOCKED
   matchScore   Int       @default(0) // 0-100 fuzzy match score
   matchedParty String?
   listSource   String?
-  listVersion  String?   // Logged list version at moment of screening
+  listVersion  String? // Logged list version at moment of screening
   publishDate  DateTime? // Logged list publish date
   screenedAt   DateTime  @default(now())
 
@@ -1207,20 +1230,20 @@ model EmbargoRule {
   id          String   @id @default(cuid())
   countryCode String   @unique // CU, IR, KP, SY, UFLPA_XINJIANG
   countryName String
-  regime      String   // Comprehensive Sanctions | UFLPA Forced Labor | Selective Controls
+  regime      String // Comprehensive Sanctions | UFLPA Forced Labor | Selective Controls
   restriction String
   authority   String   @default("US OFAC / CBP UFLPA")
   createdAt   DateTime @default(now())
 }
 
 model TradeBenchmark {
-  id              String   @id @default(cuid())
-  htsCode10       String   @unique
-  industryAvgDuty Decimal    @default(3.5)
+  id               String   @id @default(cuid())
+  htsCode10        String   @unique
+  industryAvgDuty  Decimal  @default(3.5)
   avgDeclaredPrice Decimal
-  topOriginCountry String  @default("China")
+  topOriginCountry String   @default("China")
   totalUSVolumeVal Decimal
-  lastUpdated     DateTime @default(now())
+  lastUpdated      DateTime @default(now())
 
   @@index([htsCode10])
 }
@@ -1232,7 +1255,7 @@ model AgentExecutionLog {
   shipmentId     String
   agentName      String
   stepNumber     Int
-  status         String   // Completed | Review Required | Attention | BLOCKED
+  status         String // Completed | Review Required | Attention | BLOCKED
   summary        String
   confidence     Json?
   aiProviderUsed String
@@ -1240,73 +1263,79 @@ model AgentExecutionLog {
   inputSnapshot  Json?
   outputSnapshot Json?
   timestamp      DateTime @default(now())
+  // Groups every step of one ComplianceWorkflowEngine.executePipeline() call
+  // into a single invocation for the Agent Executions waterfall view.
+  runId          String?
+  triggerEvent   String?
+  invokedBy      String?
+  durationMs     Int?
 
   @@index([accountId])
   @@index([shipmentId])
   @@index([agentName])
+  @@index([runId])
 }
 
 model ShipmentStateRecord {
-  id               String   @id @default(cuid())
-  accountId        String
-  account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  shipmentId       String   @unique
-  lifecycleStatus  String   // COMPLETED | BLOCKED | REVIEW_REQUIRED
-  userActionStatus String   // ACTION_REQUIRED | NONE
-  completenessScore Int     @default(0)
-  complianceStatus String   // CLEARED | BLOCKED_DEPENDENCY
-  readinessScore   Int      @default(0)
-  blockersCount    Int      @default(0)
-  snapshotData     Json
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                String   @id @default(cuid())
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId        String   @unique
+  lifecycleStatus   String // COMPLETED | BLOCKED | REVIEW_REQUIRED
+  userActionStatus  String // ACTION_REQUIRED | NONE
+  completenessScore Int      @default(0)
+  complianceStatus  String // CLEARED | BLOCKED_DEPENDENCY
+  readinessScore    Int      @default(0)
+  blockersCount     Int      @default(0)
+  snapshotData      Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([accountId])
   @@index([shipmentId])
 }
-
 
 // ============================================================================
 // PIPELINE QUEUE & ORCHESTRATION (Postgres Queue)
 // ============================================================================
 
 model PipelineJob {
-  id             String    @id @default(cuid())
-  accountId      String
-  userId         String
-  shipmentId     String
-  status         String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
-  currentStep    Int       @default(1)
-  totalSteps     Int       @default(10)
-  priority       Int       @default(0) // Higher number = higher priority
-  state          Json      @default("{}") // The AgentState object
-  errorMessage   String?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  lockedAt       DateTime? // Used by worker to detect stalled jobs
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  accountId    String
+  userId       String
+  shipmentId   String
+  status       String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  currentStep  Int       @default(1)
+  totalSteps   Int       @default(10)
+  priority     Int       @default(0) // Higher number = higher priority
+  state        Json      @default("{}") // The AgentState object
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  lockedAt     DateTime? // Used by worker to detect stalled jobs
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   stepExecutions PipelineStepExecution[]
-  shipment       Shipment  @relation(fields: [shipmentId], references: [id])
-  account        Account   @relation(fields: [accountId], references: [id])
+  shipment       Shipment                @relation(fields: [shipmentId], references: [id])
+  account        Account                 @relation(fields: [accountId], references: [id])
 
   @@index([status, priority, createdAt])
   @@index([shipmentId])
 }
 
 model PipelineStepExecution {
-  id           String      @id @default(cuid())
+  id           String    @id @default(cuid())
   jobId        String
   stepNumber   Int
   agentName    String
-  status       String      // SUCCESS, FAILED, SKIPPED, REVIEW_REQUIRED
-  startedAt    DateTime    @default(now())
+  status       String // SUCCESS, FAILED, SKIPPED, REVIEW_REQUIRED
+  startedAt    DateTime  @default(now())
   completedAt  DateTime?
-  output       Json?       // The output returned by the agent
+  output       Json? // The output returned by the agent
   errorMessage String?
-  
-  job          PipelineJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  job PipelineJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId, stepNumber])
 }
@@ -1316,19 +1345,25 @@ model PipelineStepExecution {
 // ============================================================================
 
 model HtsRelease {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
+  // ISO 3166-1 alpha-2 country this tariff schedule belongs to (e.g. "US"
+  // for HTSUS). Schema groundwork for eventually ingesting other
+  // countries' schedules alongside the US one -- the ingestion pipeline
+  // and search/lookup services are still US-only for now; this field just
+  // makes the data model ready to be scoped by country when that's built.
+  country             String    @default("US")
   editionYear         Int
   revisionNumber      Int
   releaseName         String
   effectiveFrom       DateTime
   publishedAt         DateTime?
   sourceUrl           String
-  sourceFormat        String   // JSON, CSV, PDF
+  sourceFormat        String // JSON, CSV, PDF
   sha256              String
   rawObjectKey        String?
-  retrievedAt         DateTime @default(now())
-  validationStatus    String   // PENDING, VALIDATED, FAILED
-  publicationStatus   String   @default("DRAFT") // DRAFT, PUBLISHED, SUPERSEDED, ROLLED_BACK
+  retrievedAt         DateTime  @default(now())
+  validationStatus    String // PENDING, VALIDATED, FAILED
+  publicationStatus   String    @default("DRAFT") // DRAFT, PUBLISHED, SUPERSEDED, ROLLED_BACK
   supersedesReleaseId String?
 
   nodes          HtsNode[]
@@ -1339,37 +1374,39 @@ model HtsRelease {
   @@index([publicationStatus])
   @@index([effectiveFrom])
   @@index([sha256])
+  @@index([country])
 }
 
 model HtsNode {
-  id                   String   @id @default(cuid())
-  releaseId            String
-  sourceRowNumber      Int
-  parentId             String?
-  indentLevel          Int
-  htsNumberDisplay     String
-  htsNumberNormalized  String
-  codeLevel            Int      // 2 (Chapter), 4 (Heading), 6 (Subheading), 8 (Tariff Line), 10 (Stat Suffix)
-  description          String
-  fullDescription      String
-  isSuperiorHeading    Boolean  @default(false)
-  isClassifiable       Boolean  @default(true)
-  chapter              String
-  heading              String
-  subheading6          String?
-  tariffLine8          String?
-  statisticalSuffix10  String?
+  id                  String  @id @default(cuid())
+  releaseId           String
+  sourceRowNumber     Int
+  parentId            String?
+  indentLevel         Int
+  htsNumberDisplay    String
+  htsNumberNormalized String
+  codeLevel           Int // 2 (Chapter), 4 (Heading), 6 (Subheading), 8 (Tariff Line), 10 (Stat Suffix)
+  description         String
+  fullDescription     String
+  isSuperiorHeading   Boolean @default(false)
+  isClassifiable      Boolean @default(true)
+  chapter             String
+  heading             String
+  subheading6         String?
+  tariffLine8         String?
+  statisticalSuffix10 String?
 
-  release        HtsRelease      @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-  parent         HtsNode?        @relation("HtsNodeHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children       HtsNode[]       @relation("HtsNodeHierarchy")
-  dutyRates      HtsDutyRate[]
-  units          HtsUnit[]
-  noteLinks      HtsNoteLink[]
-  oldChanges     HtsChange[]     @relation("HtsChangeOld")
-  newChanges     HtsChange[]     @relation("HtsChangeNew")
-  proposals      ClassificationProposal[]
-  decisions      ClassificationDecision[]
+  release           HtsRelease                   @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  parent            HtsNode?                     @relation("HtsNodeHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children          HtsNode[]                    @relation("HtsNodeHierarchy")
+  dutyRates         HtsDutyRate[]
+  units             HtsUnit[]
+  noteLinks         HtsNoteLink[]
+  oldChanges        HtsChange[]                  @relation("HtsChangeOld")
+  newChanges        HtsChange[]                  @relation("HtsChangeNew")
+  proposals         ClassificationProposal[]
+  decisions         ClassificationDecision[]
+  scenarioLineItems LandedCostScenarioLineItem[]
 
   @@index([releaseId])
   @@index([htsNumberNormalized])
@@ -1378,18 +1415,18 @@ model HtsNode {
 }
 
 model HtsDutyRate {
-  id                String   @id @default(cuid())
-  htsNodeId         String
-  rateColumn        String   // General, Special, Column 2
-  programCode       String?  // GSP, USMCA, etc.
-  rawRateText       String
-  rateType          String?  // Free, AdValorem, Specific, Compound, Unparsed
-  adValoremPercent  Float?
-  specificAmount    Float?
-  specificUnit      String?
-  currency          String   @default("USD")
-  isFree            Boolean  @default(false)
-  parseStatus       String   @default("PARSED") // PARSED, UNPARSED_FALLBACK, MANUAL_VERIFIED
+  id               String  @id @default(cuid())
+  htsNodeId        String
+  rateColumn       String // General, Special, Column 2
+  programCode      String? // GSP, USMCA, etc.
+  rawRateText      String
+  rateType         String? // Free, AdValorem, Specific, Compound, Unparsed
+  adValoremPercent Float?
+  specificAmount   Float?
+  specificUnit     String?
+  currency         String  @default("USD")
+  isFree           Boolean @default(false)
+  parseStatus      String  @default("PARSED") // PARSED, UNPARSED_FALLBACK, MANUAL_VERIFIED
 
   node HtsNode @relation(fields: [htsNodeId], references: [id], onDelete: Cascade)
 
@@ -1398,9 +1435,9 @@ model HtsDutyRate {
 }
 
 model HtsUnit {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   htsNodeId String
-  sequence  Int     @default(1)
+  sequence  Int    @default(1)
   unitCode  String
 
   node HtsNode @relation(fields: [htsNodeId], references: [id], onDelete: Cascade)
@@ -1411,7 +1448,7 @@ model HtsUnit {
 model LegalDocument {
   id               String    @id @default(cuid())
   releaseId        String
-  documentType     String    // GeneralNote, SectionNote, ChapterNote, AdditionalUSNote
+  documentType     String // GeneralNote, SectionNote, ChapterNote, AdditionalUSNote
   title            String
   sourceUrl        String?
   effectiveFrom    DateTime
@@ -1428,7 +1465,7 @@ model LegalDocument {
 }
 
 model LegalFragment {
-  id               String   @id @default(cuid())
+  id               String  @id @default(cuid())
   legalDocumentId  String
   citation         String
   text             String
@@ -1454,15 +1491,15 @@ model HtsNoteLink {
 }
 
 model HtsChange {
-  id                String   @id @default(cuid())
-  fromReleaseId     String
-  toReleaseId       String
-  oldHtsNodeId      String?
-  newHtsNodeId      String?
-  changeType        String   // ADDED, REMOVED, RENUMBERED, DESCRIPTION_CHANGED, RATE_CHANGED
-  changedFields     Json
-  sourceActionUrl   String?
-  reviewStatus      String   @default("PENDING")
+  id              String  @id @default(cuid())
+  fromReleaseId   String
+  toReleaseId     String
+  oldHtsNodeId    String?
+  newHtsNodeId    String?
+  changeType      String // ADDED, REMOVED, RENUMBERED, DESCRIPTION_CHANGED, RATE_CHANGED
+  changedFields   Json
+  sourceActionUrl String?
+  reviewStatus    String  @default("PENDING")
 
   fromRelease HtsRelease @relation("HtsChangeFrom", fields: [fromReleaseId], references: [id])
   toRelease   HtsRelease @relation("HtsChangeTo", fields: [toReleaseId], references: [id])
@@ -1477,19 +1514,19 @@ model HtsChange {
 // ============================================================================
 
 model Ruling {
-  id                       String    @id @default(cuid())
-  rulingNumber             String    @unique
-  sourceProvider           String    @default("CBP_CROSS")
-  sourceUrl                String?
-  issuedAt                 DateTime
-  office                   String?
-  rulingType               String    @default("HQ") // HQ, NY
-  title                    String
-  rawObjectKey             String?
-  checksum                 String?
-  publicationStatus        String    @default("PUBLISHED")
-  modifiedOrRevokedStatus  String    @default("EFFECTIVE")
-  lastVerifiedAt           DateTime  @default(now())
+  id                      String   @id @default(cuid())
+  rulingNumber            String   @unique
+  sourceProvider          String   @default("CBP_CROSS")
+  sourceUrl               String?
+  issuedAt                DateTime
+  office                  String?
+  rulingType              String   @default("HQ") // HQ, NY
+  title                   String
+  rawObjectKey            String?
+  checksum                String?
+  publicationStatus       String   @default("PUBLISHED")
+  modifiedOrRevokedStatus String   @default("EFFECTIVE")
+  lastVerifiedAt          DateTime @default(now())
 
   fragments     RulingFragment[]
   htsReferences RulingHtsReference[]
@@ -1503,7 +1540,7 @@ model Ruling {
 model RulingFragment {
   id               String  @id @default(cuid())
   rulingId         String
-  fragmentType     String  // Facts, Issue, Holding, Analysis
+  fragmentType     String // Facts, Issue, Holding, Analysis
   text             String
   citationLocation String?
 
@@ -1513,9 +1550,9 @@ model RulingFragment {
 }
 
 model RulingHtsReference {
-  rulingId          String
-  htsNumberDisplay  String
-  relationType      String @default("CLASSIFIED_AS")
+  rulingId         String
+  htsNumberDisplay String
+  relationType     String @default("CLASSIFIED_AS")
 
   ruling Ruling @relation(fields: [rulingId], references: [id], onDelete: Cascade)
 
@@ -1539,27 +1576,27 @@ model RulingRelationship {
 // ============================================================================
 
 model ClassificationCase {
-  id                      String    @id @default(cuid())
-  accountId               String
-  externalReference       String?
-  status                  String    @default("DRAFT") // DRAFT, AWAITING_DOCUMENTS, NEEDS_INFORMATION, QUEUED, PROCESSING, PROPOSED, HUMAN_REVIEW_REQUIRED, APPROVED, REJECTED, SUPERSEDED, FAILED, CANCELLED
-  priority                String    @default("MEDIUM")
-  assigneeUserId          String?
-  requestedByUserId       String
-  jurisdiction            String    @default("US")
-  classificationAsOfDate  DateTime  @default(now())
-  htsReleaseId            String?
-  dueAt                   DateTime?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  rowVersion              Int       @default(1)
+  id                     String    @id @default(cuid())
+  accountId              String
+  externalReference      String?
+  status                 String    @default("DRAFT") // DRAFT, AWAITING_DOCUMENTS, NEEDS_INFORMATION, QUEUED, PROCESSING, PROPOSED, HUMAN_REVIEW_REQUIRED, APPROVED, REJECTED, SUPERSEDED, FAILED, CANCELLED
+  priority               String    @default("MEDIUM")
+  assigneeUserId         String?
+  requestedByUserId      String
+  jurisdiction           String    @default("US")
+  classificationAsOfDate DateTime  @default(now())
+  htsReleaseId           String?
+  dueAt                  DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  rowVersion             Int       @default(1)
 
-  account          Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  subjects         ClassificationSubject[]
-  documents        CaseDocument[]
-  extractedFacts   ExtractedFact[]
-  runs             ClassificationRun[]
-  decisions        ClassificationDecision[]
+  account        Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  subjects       ClassificationSubject[]
+  documents      CaseDocument[]
+  extractedFacts ExtractedFact[]
+  runs           ClassificationRun[]
+  decisions      ClassificationDecision[]
 
   @@index([accountId])
   @@index([status])
@@ -1567,14 +1604,14 @@ model ClassificationCase {
 }
 
 model ClassificationSubject {
-  id                       String   @id @default(cuid())
+  id                       String  @id @default(cuid())
   caseId                   String
   canonicalProductId       String?
   rawDescription           String
-  structuredAttributesJson Json     @default("{}")
+  structuredAttributesJson Json    @default("{}")
   countryOfOrigin          String?
   intendedUse              String?
-  completenessScore        Int      @default(0)
+  completenessScore        Int     @default(0)
 
   case ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
@@ -1582,7 +1619,7 @@ model ClassificationSubject {
 }
 
 model CaseDocument {
-  id               String   @id @default(cuid())
+  id               String @id @default(cuid())
   caseId           String
   accountId        String
   objectKey        String
@@ -1590,9 +1627,9 @@ model CaseDocument {
   detectedMimeType String
   sha256           String
   byteSize         Int
-  malwareStatus    String   @default("PASSED")
-  processingStatus String   @default("PENDING")
-  retentionClass   String   @default("STANDARD")
+  malwareStatus    String @default("PASSED")
+  processingStatus String @default("PENDING")
+  retentionClass   String @default("STANDARD")
 
   case           ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
   account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -1603,42 +1640,42 @@ model CaseDocument {
 }
 
 model ExtractedFact {
-  id                   String    @id @default(cuid())
-  caseId               String
-  documentId           String?
-  factType             String
-  normalizedValueJson  Json
-  rawValue             String
-  confidence           Float
-  page                 Int?
-  regionJson           Json?
-  modelVersion         String
-  verificationStatus   String    @default("UNVERIFIED") // UNVERIFIED, VERIFIED, CORRECTED
-  verifiedByUserId     String?
+  id                  String  @id @default(cuid())
+  caseId              String
+  documentId          String?
+  factType            String
+  normalizedValueJson Json
+  rawValue            String
+  confidence          Float
+  page                Int?
+  regionJson          Json?
+  modelVersion        String
+  verificationStatus  String  @default("UNVERIFIED") // UNVERIFIED, VERIFIED, CORRECTED
+  verifiedByUserId    String?
 
   case     ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  document CaseDocument?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  document CaseDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([caseId])
   @@index([factType])
 }
 
 model ClassificationRun {
-  id                   String    @id @default(cuid())
-  caseId               String
-  status               String    @default("RUNNING") // RUNNING, COMPLETED, FAILED
-  idempotencyKey       String?
-  htsReleaseId         String
-  promptVersion        String
-  modelProvider        String
-  modelVersion         String
-  rulesEngineVersion   String
+  id                    String    @id @default(cuid())
+  caseId                String
+  status                String    @default("RUNNING") // RUNNING, COMPLETED, FAILED
+  idempotencyKey        String?
+  htsReleaseId          String
+  promptVersion         String
+  modelProvider         String
+  modelVersion          String
+  rulesEngineVersion    String
   retrievalIndexVersion String
-  startedAt            DateTime  @default(now())
-  completedAt          DateTime?
-  tokenUsageJson       Json?
-  costAmount           Float?
-  failureCode          String?
+  startedAt             DateTime  @default(now())
+  completedAt           DateTime?
+  tokenUsageJson        Json?
+  costAmount            Float?
+  failureCode           String?
 
   case      ClassificationCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
   proposals ClassificationProposal[]
@@ -1648,36 +1685,36 @@ model ClassificationRun {
 }
 
 model ClassificationProposal {
-  id                    String   @id @default(cuid())
-  runId                 String
-  proposedHtsNodeId     String
-  rank                  Int
-  calibratedConfidence  Float
-  confidenceBand        String   // HIGH, MEDIUM, LOW
-  recommendationStatus  String   // PROPOSED, NEEDS_INFORMATION, HUMAN_REVIEW_REQUIRED
-  summary               String
-  missingFactsJson      Json     @default("[]")
-  createdAt             DateTime @default(now())
+  id                   String   @id @default(cuid())
+  runId                String
+  proposedHtsNodeId    String
+  rank                 Int
+  calibratedConfidence Float
+  confidenceBand       String // HIGH, MEDIUM, LOW
+  recommendationStatus String // PROPOSED, NEEDS_INFORMATION, HUMAN_REVIEW_REQUIRED
+  summary              String
+  missingFactsJson     Json     @default("[]")
+  createdAt            DateTime @default(now())
 
-  run            ClassificationRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
-  proposedNode   HtsNode              @relation(fields: [proposedHtsNodeId], references: [id])
-  griSteps       GriAnalysisStep[]
-  evidenceItems  ProposalEvidence[]
-  decisions      ClassificationDecision[]
+  run           ClassificationRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  proposedNode  HtsNode                  @relation(fields: [proposedHtsNodeId], references: [id])
+  griSteps      GriAnalysisStep[]
+  evidenceItems ProposalEvidence[]
+  decisions     ClassificationDecision[]
 
   @@index([runId])
   @@index([proposedHtsNodeId])
 }
 
 model GriAnalysisStep {
-  id                      String  @id @default(cuid())
+  id                      String @id @default(cuid())
   proposalId              String
   sequence                Int
-  griRule                 String  // GRI 1, GRI 2a, GRI 2b, GRI 3a, GRI 3b, GRI 3c, GRI 4, GRI 5a, GRI 5b, GRI 6
+  griRule                 String // GRI 1, GRI 2a, GRI 2b, GRI 3a, GRI 3b, GRI 3c, GRI 4, GRI 5a, GRI 5b, GRI 6
   question                String
   conclusion              String
-  outcome                 String  // APPLIED, NOT_APPLICABLE, PASSED_TO_NEXT
-  deterministicChecksJson Json    @default("{}")
+  outcome                 String // APPLIED, NOT_APPLICABLE, PASSED_TO_NEXT
+  deterministicChecksJson Json   @default("{}")
 
   proposal ClassificationProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 
@@ -1685,16 +1722,16 @@ model GriAnalysisStep {
 }
 
 model ProposalEvidence {
-  id                 String  @id @default(cuid())
-  proposalId         String
-  evidenceType       String  // HTS_NOTE, CROSS_RULING, SPEC_SHEET, PAST_DECISION
-  sourceEntityId     String?
-  sourceReleaseId    String?
-  sourceUrl          String?
-  citation           String
-  quotedFragment     String
-  relevanceScore     Float
-  supportsOrConflicts String  // SUPPORTS, CONFLICTS
+  id                  String  @id @default(cuid())
+  proposalId          String
+  evidenceType        String // HTS_NOTE, CROSS_RULING, SPEC_SHEET, PAST_DECISION
+  sourceEntityId      String?
+  sourceReleaseId     String?
+  sourceUrl           String?
+  citation            String
+  quotedFragment      String
+  relevanceScore      Float
+  supportsOrConflicts String // SUPPORTS, CONFLICTS
 
   proposal ClassificationProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 
@@ -1705,7 +1742,7 @@ model ClassificationDecision {
   id                   String    @id @default(cuid())
   caseId               String
   proposalId           String?
-  decisionStatus       String    // APPROVED, REJECTED, OVERRIDDEN
+  decisionStatus       String // APPROVED, REJECTED, OVERRIDDEN
   approvedHtsNodeId    String
   reviewerUserId       String
   rationale            String
@@ -1724,18 +1761,18 @@ model ClassificationDecision {
 }
 
 model Fact {
-  id                 String            @id @default(cuid())
-  shipmentId         String
-  shipment           Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  field              String            // e.g. "countryOfOrigin"
-  value              String            // e.g. "VN"
-  normalizedValue    String?
-  sourceType         String            // e.g. "EXTRACTED", "USER_ENTERED", "AGENT_PROPOSED"
-  confidence         Float?            // e.g. 98.5
-  documentId         String?           // Optional link to ShipmentDocument
-  documentPage       Int?              // Optional page number
-  metadata           Json?             // Stores the dynamic JSON blob for fields not modeled as columns
-  createdAt          DateTime          @default(now())
+  id              String   @id @default(cuid())
+  shipmentId      String
+  shipment        Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  field           String // e.g. "countryOfOrigin"
+  value           String // e.g. "VN"
+  normalizedValue String?
+  sourceType      String // e.g. "EXTRACTED", "USER_ENTERED", "AGENT_PROPOSED"
+  confidence      Float? // e.g. 98.5
+  documentId      String? // Optional link to ShipmentDocument
+  documentPage    Int? // Optional page number
+  metadata        Json? // Stores the dynamic JSON blob for fields not modeled as columns
+  createdAt       DateTime @default(now())
 
   @@index([shipmentId])
   @@index([field])
@@ -1745,7 +1782,7 @@ model FilingSnapshot {
   id           String        @id @default(cuid())
   filingId     String        @unique
   filing       CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
-  snapshotData Json          // Immutable JSON representation of all shipment, parties, and line item facts
+  snapshotData Json // Immutable JSON representation of all shipment, parties, and line item facts
   createdAt    DateTime      @default(now())
 
   @@index([filingId])

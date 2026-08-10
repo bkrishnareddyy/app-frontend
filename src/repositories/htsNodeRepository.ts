@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import type { DutyRateInput } from "@/lib/tariff/dutyEngine";
 
 export interface HtsSearchFilters {
   q?: string;
@@ -79,6 +80,23 @@ export class HtsNodeRepository {
         },
       },
     });
+  }
+
+  /**
+   * Adapts a real HtsNode (with dutyRates loaded) into the shape
+   * dutyEngine.ts needs. Section 301/232 fields are always reported as
+   * inapplicable/zero -- there is no real trade-remedy data ingested
+   * anywhere, so this is an honest "not tracked", not a computed zero.
+   */
+  static toDutyRateInput(node: Prisma.HtsNodeGetPayload<{ include: { dutyRates: true } }> | null): DutyRateInput {
+    const general = node?.dutyRates.find((r) => r.rateColumn === "General");
+    return {
+      generalDutyRate: general?.rawRateText ?? null,
+      section301Applicable: false,
+      section301AdditionalRate: 0,
+      section232Applicable: false,
+      section232AdditionalRate: 0,
+    };
   }
 
   /**

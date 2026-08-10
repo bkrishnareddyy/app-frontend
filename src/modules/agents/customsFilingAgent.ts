@@ -3,7 +3,7 @@ import { createAuditLog } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
 
 export interface ACEResponsePayload {
-  status: "ACCEPTED" | "REJECTED" | "DOCS_REQUIRED" | "BLOCKED";
+  status: "ACCEPTED" | "REJECTED" | "DOCS_REQUIRED" | "BLOCKED" | "NOT_SUBMITTED";
   cbpEntryNumber: string | null;
   cbpActionCode: string;
   transmittedAt: string;
@@ -21,6 +21,13 @@ export interface CustomsFilingInput {
   readyForTransmission?: boolean;
   entryType?: string;
   portCode?: string;
+  // Only an explicit, user-authorized "file this entry" action may set this
+  // true. Without it, this agent must never simulate a completed CBP
+  // transmission -- it previously fired automatically on every document
+  // upload whenever the shipment's data merely looked complete, silently
+  // writing a fabricated CBP entry number and "Accepted"/"Released" status
+  // into the database with no user awareness or consent.
+  authorized?: boolean;
 }
 
 export interface CustomsFilingOutput {
@@ -42,25 +49,35 @@ export class CustomsFilingAgent {
     let debugError: string | undefined = undefined;
 
     const timestamp = new Date().toISOString();
-    const isReady =
+    const dataReady =
       input.readyForTransmission !== false &&
       typeof input.enteredValue === "number" &&
       input.enteredValue > 0;
 
-    if (!isReady) {
-      const aceResponse: ACEResponsePayload = {
-        status: "BLOCKED",
-        cbpEntryNumber: null,
-        cbpActionCode: "BLOCKED - INCOMPLETE ENTRY PACKET (19 CFR § 141.86)",
-        transmittedAt: timestamp,
-        filerCode: "QBR",
-        portCode: input.portCode || "3501",
-        rejectionReason:
-          "Transmission blocked: Missing mandatory Commercial Invoice and transaction valuation data.",
-      };
+    if (!dataReady || !input.authorized) {
+      const aceResponse: ACEResponsePayload = dataReady
+        ? {
+            status: "NOT_SUBMITTED",
+            cbpEntryNumber: null,
+            cbpActionCode: "AWAITING AUTHORIZATION",
+            transmittedAt: timestamp,
+            filerCode: "QBR",
+            portCode: input.portCode || "3501",
+          }
+        : {
+            status: "BLOCKED",
+            cbpEntryNumber: null,
+            cbpActionCode: "BLOCKED - INCOMPLETE ENTRY PACKET (19 CFR § 141.86)",
+            transmittedAt: timestamp,
+            filerCode: "QBR",
+            portCode: input.portCode || "3501",
+            rejectionReason:
+              "Transmission blocked: Missing mandatory Commercial Invoice and transaction valuation data.",
+          };
 
-      const reasoningChain =
-        "ACE ABI EDI transmission BLOCKED: Mandatory customs entry documents (Commercial Invoice) missing. Filer code QBR prevented from submitting incomplete entry to CBP per 19 CFR § 141.86.";
+      const reasoningChain = dataReady
+        ? "Entry data is complete, but no CBP transmission has occurred. Filing requires an explicit, authorized filing action -- it is never triggered automatically by document upload or reattach."
+        : "ACE ABI EDI transmission BLOCKED: Mandatory customs entry documents (Commercial Invoice) missing. Filer code QBR prevented from submitting incomplete entry to CBP per 19 CFR § 141.86.";
 
       let agentDecisionId = "dec_fallback_filing";
       try {
@@ -72,11 +89,13 @@ export class CustomsFilingAgent {
             agentIcon: "Send",
             status: "Needs Review",
             confidence: 0,
-            decisionSummary: "CBP Transmission BLOCKED: Missing Commercial Invoice & Entry Pricing.",
+            decisionSummary: dataReady
+              ? "Entry data ready; awaiting explicit filing authorization. Nothing has been transmitted to CBP."
+              : "CBP Transmission BLOCKED: Missing Commercial Invoice & Entry Pricing.",
             purpose: "CBP ACE ABI EDIFACT entry summary transmission (demo simulation)",
             dataSources: [aiProvider],
             regulations: ["19 CFR § 141.86", "19 U.S.C. § 1484"],
-            proposedDescription: "ACE Transmission BLOCKED (Incomplete Entry)",
+            proposedDescription: dataReady ? "ACE Transmission NOT SUBMITTED (Awaiting Authorization)" : "ACE Transmission BLOCKED (Incomplete Entry)",
             rulesApplied: ["CBP ABI Pre-Transmission Mandatory Document Check"],
           },
         });

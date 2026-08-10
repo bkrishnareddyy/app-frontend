@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { ProviderMetadata } from "@/lib/providers";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { HtsSearchService } from "@/modules/hts/htsSearchService";
 
 export interface ClassificationInput {
   productDescription: string;
@@ -24,22 +26,32 @@ export class ClassificationService {
   static async classifyProduct(accountId: string, userId: string, input: ClassificationInput) {
     const normDesc = input.productDescription.trim().toLowerCase();
 
-    // Retrieve candidates from DB HTS Master
-    const candidates = await db.hTSCode.findMany({
-      where: {
-        OR: [
-          { description: { contains: normDesc.split(" ")[0], mode: "insensitive" } },
-          { htsCode10: { contains: normDesc.split(" ")[0] } },
-        ],
-      },
-      take: 5,
+    // Retrieve candidates from the real ingested HTS Master Release data
+    // (HtsNode/HtsDutyRate), not the legacy near-empty HTSCode table.
+    const { items: candidateNodes } = await HtsNodeRepository.searchNodes({
+      q: normDesc.split(" ")[0],
+      level: 10,
+      limit: 5,
     });
+    const candidates = candidateNodes.map((c) => ({
+      htsCode10: c.htsNumberDisplay,
+      description: c.description,
+      ...HtsNodeRepository.toDutyRateInput(c),
+    }));
+
+    // Cite the actual currently-published HTS release instead of a
+    // hardcoded "2026 Revision 1" that may not match what's really ingested.
+    const activeReleaseId = await HtsSearchService.resolveReleaseId();
+    const activeRelease = activeReleaseId ? await db.htsRelease.findUnique({ where: { id: activeReleaseId } }) : null;
+    const datasetVersion = activeRelease?.releaseName || "No HTS release currently published";
 
     const citedSources: ClassificationSourceCitation[] = [
       {
-        identifier: "HTSUS-2026-REV1",
-        title: "Harmonized Tariff Schedule of the United States (2026 Revision 1)",
-        effectiveDate: "2026-01-01",
+        identifier: activeRelease ? activeRelease.id : "NONE",
+        title: activeRelease
+          ? `Harmonized Tariff Schedule of the United States (${activeRelease.releaseName})`
+          : "No published HTS release available",
+        effectiveDate: activeRelease?.effectiveFrom.toISOString().slice(0, 10) || "N/A",
         retrievalDate: new Date().toISOString(),
         excerpt: "General Rules of Interpretation (GRI 1 & GRI 6) applied to product specification.",
       },
@@ -53,7 +65,7 @@ export class ClassificationService {
         citedSources,
         metadata: {
           providerName: "QubereHtsMasterProvider",
-          datasetVersion: "HTSUS 2026 Rev 1",
+          datasetVersion,
           retrievedAt: new Date().toISOString(),
           completenessStatus: "DATA_UNAVAILABLE",
         } as ProviderMetadata,
@@ -84,7 +96,7 @@ export class ClassificationService {
           confidence: requiresReview ? 75 : 95,
           decisionSummary: `Classification proposal for ${input.productDescription}: HTS ${primaryMatch.htsCode10}`,
           purpose: "Hierarchical heading analysis and legal source citation",
-          dataSources: ["HTSUS 2026 Rev 1"],
+          dataSources: [datasetVersion],
           regulations: ["GRI 1", "GRI 6"],
           currentHtsCode: "0000.00.0000",
           proposedHtsCode: primaryMatch.htsCode10,
@@ -116,7 +128,7 @@ export class ClassificationService {
       citedSources,
       metadata: {
         providerName: "QubereHtsMasterProvider",
-        datasetVersion: primaryMatch.sourceRevision || "HTSUS 2026 Rev 1",
+        datasetVersion,
         retrievedAt: new Date().toISOString(),
         completenessStatus: "COMPLETE",
       } as ProviderMetadata,

@@ -70,7 +70,7 @@ export class CanonicalShipmentService {
         },
         agentExecutionRecords: {
           orderBy: { startedAt: "desc" },
-          take: 20,
+          take: 100,
         },
       },
     });
@@ -78,6 +78,17 @@ export class CanonicalShipmentService {
     if (!shipment) {
       throw new Error(`Shipment with ID ${shipmentId} not found`);
     }
+
+    // AgentExecutionLog (written by the full 10-agent ComplianceWorkflowEngine
+    // pipeline that actually runs on document upload) has no Prisma relation
+    // to Shipment -- it only relates to Account, with shipmentId as a bare
+    // field -- so it can't be pulled in via the include{} above and needs its
+    // own query.
+    const agentExecutionLogs = await db.agentExecutionLog.findMany({
+      where: { shipmentId },
+      orderBy: { timestamp: "desc" },
+      take: 200,
+    });
 
     // 1. Calculate multi-dimensional metrics
     const metrics = this.calculateMetrics(shipment);
@@ -88,6 +99,7 @@ export class CanonicalShipmentService {
     return {
       shipment,
       metrics,
+      agentExecutionLogs,
       facts,
     };
   }

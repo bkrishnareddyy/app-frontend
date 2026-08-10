@@ -1,18 +1,30 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { validatePathParams } from "@/lib/api/validation";
+import { validatePathParams, parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { calculateMPF, calculateHMF } from "@/lib/tariff/dutyEngine";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
+const bodySchema = z.object({
+  description: z.string().optional(),
+  htsCode10: z.string().min(1, "htsCode10 is required — a real HTS code, not a fallback default"),
+  unitValue: z.number().positive(),
+  quantity: z.number().int().positive(),
+  freightCost: z.number().optional(),
+  insuranceCost: z.number().optional(),
+  dutyRateOverride: z.number().optional(),
+});
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
 
-  const body = await req.json();
-  const { description, htsCode10, unitValue, quantity, freightCost, insuranceCost, dutyRateOverride } = body;
+  const bodyVal = await parseAndValidateBody(req, bodySchema, requestId);
+  if ("response" in bodyVal) return bodyVal.response;
+  const { description, htsCode10, unitValue, quantity, freightCost, insuranceCost, dutyRateOverride } = bodyVal.data;
 
   const scenario = await db.landedCostScenario.findFirst({
     where: { id, accountId: ctx.accountId },
@@ -22,44 +34,39 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
   }
 
-  let hts = await db.hTSCode.findFirst({
-    where: { htsCode10: htsCode10 || "8481.80.5090" },
-  });
-
-  if (!hts) {
-    hts = await db.hTSCode.create({
-      data: {
-        htsCode10: htsCode10 || "8481.80.5090",
-        description: description || "Default Valve Appliance",
-        chapterNumber: "84",
-        headingNumber: "8481",
-        subheadingNumber: "8481.80",
-        generalDutyRate: "2.8%",
-      },
-    });
+  // Looks up the real ingested HTS Master Release data (HtsNode/HtsDutyRate)
+  // -- this used to silently fall back to a hardcoded "8481.80.5090" /
+  // "Default Valve Appliance" / 2.8% rate, and would fabricate a brand-new
+  // HTSCode row if the code wasn't found. Now: a real code is required, and
+  // an unresolvable code is a 404, not a fabricated fallback.
+  const normalizedCode = htsCode10.replace(/[^0-9]/g, "");
+  const node = normalizedCode ? await HtsNodeRepository.findByNormalizedCode(normalizedCode) : null;
+  if (!node) {
+    return NextResponse.json({ error: `HTS code "${htsCode10}" was not found in the HTS Master Release data` }, { status: 404 });
   }
+  const dutyRateInput = HtsNodeRepository.toDutyRateInput(node);
 
   // Calculate duty and landed cost
   const baseDutyRate = dutyRateOverride !== undefined
     ? dutyRateOverride / 100
-    : parseFloat(hts.generalDutyRate.replace("%", "")) / 100 || 0.028;
+    : (dutyRateInput.generalDutyRate ? parseFloat(dutyRateInput.generalDutyRate.replace("%", "")) / 100 : NaN) || 0.028;
 
-  const section301Rate = hts.section301Applicable ? (Number(hts.section301AdditionalRate) || 0) / 100 : 0.0;
-  const section232Rate = hts.section232Applicable ? (Number(hts.section232AdditionalRate) || 0) / 100 : 0.0;
+  const section301Rate = dutyRateInput.section301Applicable ? (Number(dutyRateInput.section301AdditionalRate) || 0) / 100 : 0.0;
+  const section232Rate = dutyRateInput.section232Applicable ? (Number(dutyRateInput.section232AdditionalRate) || 0) / 100 : 0.0;
 
   const totalDutyRate = baseDutyRate + section301Rate + section232Rate;
-  const totalCustomsValue = (unitValue || 100) * (quantity || 1);
+  const totalCustomsValue = unitValue * quantity;
   const computedDuty = Math.round((totalCustomsValue * totalDutyRate) * 100) / 100;
-  const computedFees = Math.round((totalCustomsValue * 0.003464 + totalCustomsValue * 0.00125) * 100) / 100; // MPF + HMF
+  const computedFees = Math.round((calculateMPF(totalCustomsValue) + calculateHMF(totalCustomsValue, true)) * 100) / 100;
   const computedLandedCost = totalCustomsValue + (freightCost || 0) + (insuranceCost || 0) + computedDuty + computedFees;
 
   const lineItem = await db.landedCostScenarioLineItem.create({
     data: {
       scenarioId: id,
-      description: description || hts.description,
-      htsCodeId: hts.id,
-      unitValue: unitValue || 100,
-      quantity: quantity || 1,
+      description: description || node.description,
+      htsCodeId: node.id,
+      unitValue,
+      quantity,
       freightCost: freightCost || 0.0,
       insuranceCost: insuranceCost || 0.0,
       dutyRateOverride,

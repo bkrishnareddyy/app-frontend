@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { calculateMPF, calculateHMF } from "@/lib/tariff/dutyEngine";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -15,7 +17,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     where: { id, accountId: ctx.accountId },
     include: {
       lineItems: {
-        include: { htsCode: true },
+        include: { htsCode: { include: { dutyRates: true } } },
       },
     },
   });
@@ -26,23 +28,23 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
 
   const lineCalculations = scenario.lineItems.map((item) => {
     const customsValue = Number(item.unitValue) * Number(item.quantity);
-    const hts = item.htsCode;
+    const hts = HtsNodeRepository.toDutyRateInput(item.htsCode);
     const baseDutyRate = item.dutyRateOverride !== null && item.dutyRateOverride !== undefined
       ? Number(item.dutyRateOverride) / 100
-      : parseFloat(hts.generalDutyRate.replace("%", "")) / 100 || 0.028;
+      : (hts.generalDutyRate ? parseFloat(hts.generalDutyRate.replace("%", "")) / 100 : NaN) || 0.028;
 
     const sec301Rate = hts.section301Applicable ? (Number(hts.section301AdditionalRate) || 0) / 100 : 0.0;
     const sec232Rate = hts.section232Applicable ? (Number(hts.section232AdditionalRate) || 0) / 100 : 0.0;
     const effectiveRate = baseDutyRate + sec301Rate + sec232Rate;
 
     const duty = Math.round((customsValue * effectiveRate) * 100) / 100;
-    const fees = Math.round((customsValue * 0.003464 + customsValue * 0.00125) * 100) / 100;
+    const fees = Math.round((calculateMPF(customsValue) + calculateHMF(customsValue, true)) * 100) / 100;
     const landedCost = customsValue + (item.freightCost ? Number(item.freightCost) : 0) + (item.insuranceCost ? Number(item.insuranceCost) : 0) + duty + fees;
 
     return {
       id: item.id,
       description: item.description,
-      htsCode: hts.htsCode10,
+      htsCode: item.htsCode.htsNumberDisplay,
       customsValue,
       baseDutyRate: `${(baseDutyRate * 100).toFixed(1)}%`,
       section301Rate: `${(sec301Rate * 100).toFixed(1)}%`,

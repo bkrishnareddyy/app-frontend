@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { AgentState, MultiDimensionalConfidence } from "./agentState";
 import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
 import { ShipmentPartyService } from "@/modules/shipment/shipmentPartyService";
+import { ExceptionService } from "@/modules/exceptions/exception.service";
 
 export const DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT = `
 ROLE
@@ -808,6 +809,17 @@ INSTRUCTIONS:
               });
             }
           }
+
+          // Keep this document's field exceptions in sync with what was
+          // actually extracted -- opens one per still-missing expected
+          // field, auto-resolves any that are now present.
+          await ExceptionService.syncDocumentFieldExceptions({
+            accountId: input.accountId,
+            shipmentId: input.shipmentId,
+            documentId: docToUpdate.id,
+            fileName: input.fileName || docToUpdate.fileName,
+            fields: { exporterName, importerName, originCountry },
+          });
         }
       }
     } catch (err) {

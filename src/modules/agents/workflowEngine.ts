@@ -26,6 +26,10 @@ export interface PipelineOrchestrationInput {
   fileBuffer?: Buffer;
   mimeType?: string;
   docTypeOverride?: string;
+  // Human label + machine trigger code recorded on every AgentExecutionLog
+  // row this run produces, for the Agent Executions waterfall view.
+  triggerEvent?: string;
+  invokedBy?: string;
 }
 
 export interface PipelineOrchestrationOutput {
@@ -503,7 +507,13 @@ export class ComplianceWorkflowEngine {
     state: AgentState;
     output: PipelineOrchestrationOutput;
   }> {
-    const state = new AgentState(input.accountId, input.userId, input.shipmentId);
+    const state = new AgentState(
+      input.accountId,
+      input.userId,
+      input.shipmentId,
+      input.triggerEvent || "DOCUMENT_UPLOADED",
+      input.invokedBy || (input.fileName ? `Document Upload — ${input.fileName}` : "Document Upload")
+    );
 
     // Execute registered agent steps in order
     for (const step of this.steps) {
@@ -518,6 +528,7 @@ export class ComplianceWorkflowEngine {
           confidence: 0,
           aiProviderUsed: "SYSTEM_GATE",
           decisionId: `dec_skipped_${Date.now()}_${step.stepNumber}`,
+          durationMs: 0,
         });
         continue;
       }
@@ -542,6 +553,7 @@ export class ComplianceWorkflowEngine {
         confidence: result.confidence as any,
         aiProviderUsed: result.aiProviderUsed,
         decisionId: result.decisionId,
+        durationMs,
       });
     }
 

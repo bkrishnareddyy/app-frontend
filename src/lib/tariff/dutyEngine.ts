@@ -1,4 +1,18 @@
-import { HTSCode, ShipmentLineItem } from "@prisma/client";
+import { ShipmentLineItem } from "@prisma/client";
+
+// Decoupled from any specific HTS table's Prisma type -- callers build this
+// shape from whatever real HTS rate source they're using (the real ingested
+// HtsNode/HtsDutyRate data via HtsNodeRepository.toDutyRateInput()).
+// Section 301/232 fields default to inapplicable/zero since there is no
+// real trade-remedy data source ingested; that's an honest "unknown", not a
+// computed zero.
+export interface DutyRateInput {
+  generalDutyRate?: string | null;
+  section301Applicable?: boolean | null;
+  section301AdditionalRate?: number | null;
+  section232Applicable?: boolean | null;
+  section232AdditionalRate?: number | null;
+}
 
 export interface LineItemDutyResult {
   customsValue: number;
@@ -48,7 +62,7 @@ export function calculateHMF(customsValue: number, isOcean: boolean = true): num
 
 export function calculateLineItemDuty(
   lineItem: Partial<ShipmentLineItem>,
-  htsCode?: Partial<HTSCode> | null
+  htsCode?: DutyRateInput | null
 ): LineItemDutyResult {
   const customsValue = Math.round(((Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0))) * 100) / 100;
 
@@ -89,7 +103,7 @@ export function calculateLineItemDuty(
 
 export function computeFilingTariff(
   lineItems: Array<Partial<ShipmentLineItem>>,
-  htsCodesMap: Record<string, Partial<HTSCode>> = {}
+  htsCodesMap: Record<string, DutyRateInput> = {}
 ): TariffEngineResult {
   let totalCustomsValue = 0;
   let totalBaseDuty = 0;

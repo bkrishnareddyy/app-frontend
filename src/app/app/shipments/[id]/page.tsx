@@ -24,6 +24,8 @@ import { ExceptionsDrawer } from "./ExceptionsDrawer";
 import { LineItemsTable } from "./LineItemsTable";
 import { CanonicalFactsSection } from "./CanonicalFactsSection";
 import { PreFilingReadiness } from "./PreFilingReadiness";
+import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
+import { buildAgentInvocations } from "./agentInvocations";
 
 export default async function ShipmentWorkspacePage(props: {
   params: Promise<{ id: string }>;
@@ -49,9 +51,14 @@ export default async function ShipmentWorkspacePage(props: {
 
   // Load canonical state and multi-dimensional metrics from CanonicalShipmentService
   const canonical = await CanonicalShipmentService.getCanonicalState(shipment.id);
-  const { metrics, facts } = canonical;
+  const { metrics, facts, agentExecutionLogs } = canonical;
   const fullShipment = canonical.shipment;
   const documents = fullShipment.documents || [];
+
+  // Merges AgentExecutionRecord (selective re-runs) and AgentExecutionLog
+  // (the real 10-agent upload pipeline) into one waterfall-ready list --
+  // see agentInvocations.ts for why these two tables exist separately.
+  const agentInvocations = buildAgentInvocations(fullShipment.agentExecutionRecords || [], agentExecutionLogs || []);
 
   // Load display line items
   let displayLineItems = (fullShipment.lineItems || []).map((item: any) => ({
@@ -91,6 +98,69 @@ export default async function ShipmentWorkspacePage(props: {
     : [];
 
   const activeExceptions = fullShipment.exceptionItems || [];
+
+  // Real per-field approval provenance ("who confirmed this value, and
+  // when") -- see FieldApproval in schema.prisma. Ordered desc so the first
+  // entry found for a given key (whether keyed by fieldKey alone or by
+  // documentId+fieldKey) is always the latest.
+  const fieldApprovals = await db.fieldApproval.findMany({
+    where: { shipmentId: shipment.id },
+    orderBy: { approvedAt: "desc" },
+  });
+  const latestApprovalByField: Record<string, { name: string; approvedAt: string }> = {};
+  const approvalByDocField = new Map<string, { name: string; approvedAt: string }>();
+  for (const fa of fieldApprovals) {
+    const snapshot = { name: fa.approvedByName, approvedAt: fa.approvedAt.toISOString() };
+    if (!latestApprovalByField[fa.fieldKey]) latestApprovalByField[fa.fieldKey] = snapshot;
+    const docKey = `${fa.documentId}:${fa.fieldKey}`;
+    if (!approvalByDocField.has(docKey)) approvalByDocField.set(docKey, snapshot);
+  }
+
+  // "What fields do we expect from this document, and did we get them" --
+  // built from the same tradeMetadata Document Intelligence already
+  // extracts and persists (documentIntelligenceAgent.ts), cross-referenced
+  // with real FieldApproval provenance. Passed to ExceptionsDrawer so the
+  // Exceptions panel can group by source document instead of showing a flat
+  // list of exceptions that all happen to point at the same file.
+  const FIELD_REVIEW_LABELS: Record<string, string> = {
+    exporterName: "Exporter Name",
+    importerName: "Importer / Consignee Name",
+    originCountry: "Country of Origin",
+  };
+  const documentFieldSummaries = documents
+    .filter((d: any) => Boolean(d.extractedJson))
+    .map((d: any) => {
+      let tradeMetadata: any = {};
+      try {
+        tradeMetadata = JSON.parse(d.extractedJson).tradeMetadata || {};
+      } catch (e) {}
+
+      const fields = Object.keys(FIELD_REVIEW_LABELS).map((key) => {
+        const value: string | null = tradeMetadata[key] || null;
+        const approval = approvalByDocField.get(`${d.id}:${key}`);
+        const status: "MISSING" | "CONFIRMED" | "NEEDS_REVIEW" = !value
+          ? "MISSING"
+          : approval
+          ? "CONFIRMED"
+          : "NEEDS_REVIEW";
+        return {
+          key,
+          label: FIELD_REVIEW_LABELS[key],
+          value,
+          status,
+          approvedByName: approval?.name,
+          approvedAt: approval?.approvedAt,
+        };
+      });
+
+      return {
+        documentId: d.id as string,
+        fileName: d.fileName as string,
+        confirmedCount: fields.filter((f) => f.status === "CONFIRMED").length,
+        totalCount: fields.length,
+        fields,
+      };
+    });
 
   // Importer display can fall back from the legal Importer of Record down
   // to the (unrelated, business-relationship) Client, then the free-text
@@ -286,6 +356,18 @@ export default async function ShipmentWorkspacePage(props: {
       d.fileName.toLowerCase().includes("waybill")
   );
   const docEvidenceUrl = (doc: any) => (doc ? `/app/shipments/${shipment.id}?view=workspace&docId=${doc.id}` : undefined);
+  // For categories whose "evidence" is a live database field rather than an
+  // uploaded document -- links into the tab/section that actually renders it.
+  const filingAnchorUrl = (anchor: string) => `/app/shipments/${shipment.id}?view=filing#${anchor}`;
+  const workspaceAnchorUrl = (anchor: string) => `/app/shipments/${shipment.id}?view=workspace#${anchor}`;
+  // Surfaces real human-approval provenance (see FieldApproval, and the new
+  // field-review flow in ExceptionsDrawer) directly in a category's evidence
+  // panel, instead of the evidence only ever showing where the raw agent
+  // extraction came from.
+  const approvedByRow = (fieldKey: string, label: string) => {
+    const approval = latestApprovalByField[fieldKey];
+    return approval ? [{ label, value: `${approval.name} · ${new Date(approval.approvedAt).toLocaleDateString()}` }] : [];
+  };
 
   // 4. Required Documents
   const hasInvoice = Boolean(invoiceDoc);
@@ -355,7 +437,7 @@ export default async function ShipmentWorkspacePage(props: {
       }
     } catch (e) {}
   }
-  let qtyStatus: "Ready" | "Blocked" | "Needs Information" = "Ready";
+  let qtyStatus: "Ready" | "Blocked" | "Needs Review" | "Needs Information" = "Ready";
   let qtyResult = "Reconciled";
   let qtyDetails = "Invoice commercial quantities match packing list package counts.";
   let qtyActionRequired = "";
@@ -370,6 +452,15 @@ export default async function ShipmentWorkspacePage(props: {
     qtyResult = `${qtyInvoice} PCS vs ${qtyPacking} PCS`;
     qtyDetails = `Quantity mismatch detected across documents. Commercial Invoice declares ${qtyInvoice} PCS, but Packing List declares ${qtyPacking} PCS.`;
     qtyActionRequired = "Resolve invoice vs packing list quantity mismatch. Select the correct count or upload corrected files.";
+  } else if (!hasInv || !hasPack) {
+    // Documents are attached, but not one of each type needed to actually
+    // reconcile quantities -- there is nothing to compare, so this can't be
+    // reported as "Reconciled."
+    qtyStatus = "Needs Review";
+    const missingType = !hasInv && !hasPack ? "Commercial Invoice and Packing List" : !hasInv ? "Commercial Invoice" : "Packing List";
+    qtyResult = `Reconciliation unverified — ${missingType} not identified`;
+    qtyDetails = `Quantity reconciliation requires both a Commercial Invoice and a Packing List with extracted data. ${missingType} could not be identified among the attached documents, so no comparison could be made.`;
+    qtyActionRequired = `Attach or correctly classify the ${missingType} so quantities can be reconciled.`;
   }
 
   // 7. Customs Value & Commercial Terms
@@ -477,26 +568,19 @@ export default async function ShipmentWorkspacePage(props: {
   }
 
   // 10. Duties, Fees, Bond & Payment
-  let dutyStatus: "Ready" | "Needs Review" | "Needs Information" = "Ready";
-  let dutyResult = "Duties & MPF estimated";
-  let dutyDetails = "Customs duties, harbor maintenance fees (HMF), and merchandise processing fees (MPF) estimated successfully.";
-  let dutyActionRequired = "";
-
-  if (displayLineItems.length === 0) {
-    dutyStatus = "Needs Information";
-    dutyResult = "Duties cannot be estimated";
-    dutyDetails = "Duties, taxes, and fees cannot be calculated without line item prices and quantities.";
-    dutyActionRequired = "Upload Commercial Invoice to estimate duties.";
-  } else if (qtyStatus === "Blocked" || qtyStatus === "Needs Information") {
-    dutyStatus = "Needs Review";
-    dutyResult = "Recalculate after quantity correction";
-    dutyDetails = "Duties cannot be finalized while commercial quantities are in conflict or missing.";
-    dutyActionRequired = "Resolve quantity mismatch blockers to finalize duty estimates.";
-  }
+  // There is no real duty calculation engine wired to shipment line items --
+  // ShipmentLineItem has no duty field, and CustomsFiling.totalDuties only
+  // exists after a shipment has already been filed (the very thing this
+  // ribbon gates). So this category can never honestly report a computed
+  // number pre-filing; it can only report that the calculation hasn't run.
+  const dutyStatus: "Needs Information" = "Needs Information";
+  const dutyResult = "Not yet calculated";
+  const dutyDetails = "Customs duties, harbor maintenance fees (HMF), and merchandise processing fees (MPF) are not calculated pre-filing. No duty computation is currently wired to this shipment's line items.";
+  const dutyActionRequired = "Duty estimation is not yet available for this shipment; final duties will be assessed by CBP after filing.";
 
   // 11. Final Review & Filing Authorization
   const isBlocked = importerStatus === "Blocked" || qtyStatus === "Blocked";
-  const hasReviews = merchandiseStatus === "Needs Review" || pgaStatus === "Needs Review" || dutyStatus === "Needs Review";
+  const hasReviews = merchandiseStatus === "Needs Review" || pgaStatus === "Needs Review";
   const hasMissingInfo =
     importerStatus === "Needs Information" ||
     shipmentStatus === "Needs Information" ||
@@ -516,8 +600,8 @@ export default async function ShipmentWorkspacePage(props: {
 
   if (!isBlocked && !hasReviews && !hasMissingInfo) {
     finalStatus = "Ready";
-    finalResult = "Attestation ready";
-    finalDetails = "Pre-filing validations completed. Licensed broker review and importer attestation are ready for signature.";
+    finalResult = "Ready to File";
+    finalDetails = "All 10 preceding compliance categories are cleared. Licensed broker review and importer attestation are ready for signature.";
     finalActionRequired = "Review and sign the filing authorization declaration.";
   }
 
@@ -533,9 +617,19 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: importerActionRequired,
       source: "Importer Profile Database",
       timestamp: shipment.updatedAt.toISOString(),
-      // No evidence link here -- this data is already one click away via
-      // the Filing Data tab, so a per-category "Evidence" button pointing
-      // at the same tab would be pure redundancy, not new value.
+      evidence:
+        importerStatus === "Ready"
+          ? {
+              sourceName: "Importer of Record Entity",
+              fields: [
+                { label: "CBP Importer #", value: importerOfRecord?.cbpImporterNumber || "N/A" },
+                { label: "POA Status", value: poaStatusDisplay },
+                { label: "Bond Type", value: bondTypeDisplay || "N/A" },
+              ],
+              documentUrl: filingAnchorUrl("importer-of-record-card"),
+              documentName: "Importer of Record Entity — Filing Data",
+            }
+          : undefined,
     },
     {
       id: "shipment",
@@ -581,6 +675,8 @@ export default async function ShipmentWorkspacePage(props: {
                 { label: "Shipper / Exporter", value: extractedShipper || "N/A" },
                 { label: "Consignee", value: extractedConsignee || "N/A" },
                 { label: "Notify Party", value: extractedNotifyParty || "N/A" },
+                ...approvedByRow("exporterName", "Exporter Approved By"),
+                ...approvedByRow("importerName", "Importer Approved By"),
               ],
               documentUrl: docEvidenceUrl(bolDoc),
               documentName: bolDoc.fileName,
@@ -624,9 +720,18 @@ export default async function ShipmentWorkspacePage(props: {
       source: "HTS Master Release Database",
       timestamp: shipment.updatedAt.toISOString(),
       questionnaire: htsQuestionnaire.length > 0 ? htsQuestionnaire : undefined,
-      // No evidence link here -- Verified Line Items is already a
-      // full-width section one click away via the Operational Workspace
-      // tab, so this would just redirect to something already visible.
+      evidence:
+        merchandiseStatus === "Ready"
+          ? {
+              sourceName: "Verified Line Items",
+              fields: [
+                { label: "Line Items", value: `${displayLineItems.length} Lines` },
+                { label: "Avg. Classification Confidence", value: `${metrics.classificationConfidenceScore}%` },
+              ],
+              documentUrl: workspaceAnchorUrl("extracted-line-items-section"),
+              documentName: "Verified Line Items — Operational Workspace",
+            }
+          : undefined,
     },
     {
       id: "quantity",
@@ -691,7 +796,10 @@ export default async function ShipmentWorkspacePage(props: {
         originStatus === "Ready" && cooDoc
           ? {
               sourceName: "Certificate of Origin",
-              fields: [{ label: "Country of Origin", value: shipment.countryOfOrigin || "N/A" }],
+              fields: [
+                { label: "Country of Origin", value: shipment.countryOfOrigin || "N/A" },
+                ...approvedByRow("originCountry", "Approved By"),
+              ],
               documentUrl: docEvidenceUrl(cooDoc),
               documentName: cooDoc.fileName,
             }
@@ -708,6 +816,19 @@ export default async function ShipmentWorkspacePage(props: {
       actionRequired: pgaActionRequired,
       source: "CBP PGA cross-reference rules engine",
       timestamp: shipment.updatedAt.toISOString(),
+      evidence:
+        pgaStatus === "Ready"
+          ? {
+              sourceName: "PGA Cross-Reference Screening",
+              fields: [
+                { label: "Line Items Screened", value: `${displayLineItems.length} Lines` },
+                { label: "HTS Codes Checked", value: displayLineItems.map((li: any) => li.htsCode).filter(Boolean).join(", ") || "N/A" },
+                { label: "Result", value: "No PGA-restricted HTS prefixes matched" },
+              ],
+              documentUrl: workspaceAnchorUrl("extracted-line-items-section"),
+              documentName: "Verified Line Items — Operational Workspace",
+            }
+          : undefined,
     },
     {
       id: "duties",
@@ -852,6 +973,7 @@ export default async function ShipmentWorkspacePage(props: {
             exceptionItems={activeExceptions}
             lineItems={displayLineItems}
             missingDocumentTypes={missingDocTypes}
+            documentFieldSummaries={documentFieldSummaries}
           />
         </div>
 
@@ -888,7 +1010,7 @@ export default async function ShipmentWorkspacePage(props: {
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Agent Executions & Audit Log ({fullShipment.agentExecutionRecords?.length || 0})</span>
+            <span>Agent Executions & Audit Log ({agentInvocations.length})</span>
           </Link>
         </div>
       </div>
@@ -930,7 +1052,7 @@ export default async function ShipmentWorkspacePage(props: {
               </div>
             </div>
 
-            <div className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm space-y-4">
+            <div id="importer-of-record-card" className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm space-y-4">
               <h3 className="text-xs font-extrabold text-[#1D1D1F] uppercase tracking-wider flex items-center space-x-2">
                 <Building2 className="w-4 h-4 text-[#0071E3]" />
                 <span>Importer of Record Entity</span>
@@ -1213,76 +1335,18 @@ export default async function ShipmentWorkspacePage(props: {
           <div>
             <h3 className="text-lg font-bold text-[#1D1D1F] flex items-center space-x-2">
               <Layers className="w-5 h-5 text-[#0071E3]" />
-              <span>Durable Agent Execution Records & Execution Trace</span>
+              <span>Agent Execution Runs</span>
             </h3>
             <p className="text-xs text-[#86868B] mt-0.5">
-              Selective agent dependency executions and timing provenance stored in PostgreSQL.
+              Every agent run on this shipment, grouped by invocation. Expand a run to see the per-agent waterfall.
             </p>
           </div>
 
           <div className="space-y-4">
             <h4 className="text-xs font-extrabold uppercase text-[#86868B] tracking-wider">
-              Agent Execution Audit Trace ({fullShipment.agentExecutionRecords?.length || 0})
+              Run History ({agentInvocations.length})
             </h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-[#1D1D1F]">
-                <thead className="bg-[#F5F5F7] border-b border-[#E5E5EA] uppercase font-bold text-[#86868B]">
-                  <tr>
-                    <th className="px-4 py-3">Agent Name</th>
-                    <th className="px-4 py-3">Invoked By</th>
-                    <th className="px-4 py-3">Start Time</th>
-                    <th className="px-4 py-3">Processing Time</th>
-                    <th className="px-4 py-3">Next Step</th>
-                    <th className="px-4 py-3">End Time</th>
-                    <th className="px-4 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E5EA]">
-                  {(fullShipment.agentExecutionRecords || []).map((rec: any) => (
-                    <tr key={rec.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-bold text-[#0071E3] flex items-center space-x-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-[#0071E3]" />
-                        <span>{rec.agentName}</span>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-[#1D1D1F]">
-                        {rec.invokedBy || rec.triggerEvent || "SYSTEM"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-[#86868B]">
-                        {rec.startedAt ? new Date(rec.startedAt).toLocaleTimeString() : "—"}
-                      </td>
-                      <td className="px-4 py-3 font-mono font-bold text-[#1D1D1F]">
-                        {rec.durationMs ? `${rec.durationMs}ms` : "< 1ms"}
-                      </td>
-                      <td className="px-4 py-3 text-[#86868B] font-medium flex items-center space-x-1">
-                        <ArrowRight className="w-3 h-3 text-[#0071E3]" />
-                        <span>{rec.nextStep || "Filing Readiness Verification"}</span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-[#86868B]">
-                        {rec.completedAt ? new Date(rec.completedAt).toLocaleTimeString() : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                            rec.status === "COMPLETED"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-red-50 text-red-700 border-red-200"
-                          }`}
-                        >
-                          {rec.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {(!fullShipment.agentExecutionRecords || fullShipment.agentExecutionRecords.length === 0) && (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-[#86868B]">
-                        No selective agent executions recorded yet. Edit a field or upload a document to trigger independent agents.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <AgentExecutionTimeline invocations={agentInvocations} />
           </div>
         </div>
       )}

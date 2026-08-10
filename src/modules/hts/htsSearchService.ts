@@ -12,14 +12,18 @@ export interface SearchOptions {
 
 export class HtsSearchService {
   /**
-   * Resolves the effective HTS release ID for a given asOfDate or current active release.
+   * Resolves the effective HTS release ID for a given asOfDate or current
+   * active release, scoped to a country (default "US" -- the only country
+   * actually ingested today; the ingestion pipeline itself is still
+   * US-only, this scoping is groundwork for when that changes).
    */
-  static async resolveReleaseId(asOfDate?: Date | string): Promise<string | undefined> {
+  static async resolveReleaseId(asOfDate?: Date | string, country: string = "US"): Promise<string | undefined> {
     try {
       if (asOfDate) {
         const targetDate = new Date(asOfDate);
         const active = await db.htsRelease.findFirst({
           where: {
+            country,
             effectiveFrom: { lte: targetDate },
             publicationStatus: { in: ["PUBLISHED", "SUPERSEDED"] },
           },
@@ -29,7 +33,7 @@ export class HtsSearchService {
       }
 
       const current = await db.htsRelease.findFirst({
-        where: { publicationStatus: "PUBLISHED" },
+        where: { country, publicationStatus: "PUBLISHED" },
         orderBy: { effectiveFrom: "desc" },
       });
 

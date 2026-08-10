@@ -105,6 +105,11 @@ NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/app/dashboard
 DATABASE_URL="postgresql://postgres.cqrhojmrdbrfrgtkurzj:[PASSWORD]@aws-1-us-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10"
 # DIRECT_URL uses Port 5432 (Session Mode) for Prisma Migrations & CLI commands
 DIRECT_URL="postgresql://postgres.cqrhojmrdbrfrgtkurzj:[PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+
+# Scheduled job authentication (see "Scheduled Jobs" below).
+# Optional locally; required in production so /api/cron/* endpoints can't
+# be triggered by anyone who finds the URL.
+CRON_SECRET=
 ```
 
 ### 3. Install Dependencies
@@ -131,6 +136,29 @@ npx tsx scripts/seed-clerk-users.ts
 npm run dev
 ```
 Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+
+---
+
+## ⏰ Scheduled Jobs
+
+### HTS Master Data Nightly Refresh
+`GET /api/cron/hts-refresh` checks USITC for changes to the US Harmonized Tariff Schedule and stages a new release if the content has actually changed.
+
+- **Schedule**: nightly, defined in `vercel.json` (`0 8 * * *`, i.e. 8am UTC). On Vercel this runs automatically once deployed. On other hosts, you need your own scheduler (e.g. a system cron, GitHub Actions on a schedule) making an authenticated `GET` request to this endpoint on the same cadence — `vercel.json`'s `crons` block only takes effect on Vercel.
+- **Source**: fetches the real USITC export API (`https://hts.usitc.gov/reststop/exportList`) chapter by chapter (01–99), since a single request spanning the whole schedule is rejected by that API.
+- **Change detection**: the fetched content is checksummed (SHA-256) and compared against the currently published release. If nothing changed, the run is a no-op (`status: "NO_CHANGE"`). This means it's safe to run nightly even when USITC hasn't published anything new.
+- **Never auto-publishes**: a genuinely new revision is staged as `DRAFT` only — never automatically made live. Duty rates from this data feed real filing calculations (`/api/filing`), so a change to legally-binding tariff data goes through a human review-and-publish step: `POST /api/v1/admin/hts/releases/[releaseId]/publish`.
+- **Auth**: set `CRON_SECRET` in production; the endpoint requires `Authorization: Bearer <CRON_SECRET>` when that env var is set (Vercel Cron sends this header automatically once `CRON_SECRET` is configured in your Vercel project).
+- **Runtime**: configured with `maxDuration = 300` (seconds) — the chapter-by-chapter fetch plus batched DB inserts for the full schedule (~20k+ line items) takes roughly 2–3 minutes end to end.
+
+To trigger it manually (e.g. to test), call the endpoint directly with the correct bearer token:
+```bash
+curl -X GET "https://<your-deployment>/api/cron/hts-refresh" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+### Sanctions Watchlist Sync
+`scripts/nightly-watchlist-sync.ts` exists in the repo but is **not currently wired to any scheduler** — running it today requires invoking it manually (`npx tsx scripts/nightly-watchlist-sync.ts`). It also currently seeds hardcoded example OFAC/BIS entries rather than fetching from a real sanctions list source. Treat it as a stub, not a working scheduled job.
 
 ---
 

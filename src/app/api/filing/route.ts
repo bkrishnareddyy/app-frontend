@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { computeFilingTariff } from "@/lib/tariff/dutyEngine";
+import { computeFilingTariff, DutyRateInput } from "@/lib/tariff/dutyEngine";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
@@ -291,8 +292,18 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
 
+  // Ground each line item's duty rate in the real ingested HTS Master
+  // Release data instead of computing every line at a flat 2.8% guess.
+  const htsCodesMap: Record<string, DutyRateInput> = {};
+  for (const item of shipment.lineItems) {
+    if (!item.htsCode || htsCodesMap[item.htsCode]) continue;
+    const normalized = item.htsCode.replace(/[^0-9]/g, "");
+    const node = normalized ? await HtsNodeRepository.findByNormalizedCode(normalized) : null;
+    htsCodesMap[item.htsCode] = HtsNodeRepository.toDutyRateInput(node);
+  }
+
   // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine
-  const tariffResult = computeFilingTariff(shipment.lineItems);
+  const tariffResult = computeFilingTariff(shipment.lineItems, htsCodesMap);
   const calculatedValue = tariffResult.totalCustomsValue > 0 ? tariffResult.totalCustomsValue : 17750.0;
   const calculatedDuty = tariffResult.totalDuty;
   const calculatedTaxes = 0;

@@ -59,6 +59,7 @@ export interface AgentStateHistoryEntry {
   confidence: number | MultiDimensionalConfidence;
   aiProviderUsed: string;
   decisionId: string;
+  durationMs?: number;
 }
 
 /**
@@ -71,6 +72,11 @@ export class AgentState {
   public readonly shipmentId: string;
   public packetId: string = "";
   public readonly createdAt: string = new Date().toISOString();
+  // Groups every step of this pipeline run into a single invocation for the
+  // Agent Executions waterfall view.
+  public readonly runId: string = `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  public readonly triggerEvent: string;
+  public readonly invokedBy: string;
 
   // Shared state accumulators
   public history: AgentStateHistoryEntry[] = [];
@@ -90,10 +96,12 @@ export class AgentState {
   public filingOutput?: CustomsFilingOutput;
   public responseOutput?: ResponseManagementOutput;
 
-  constructor(accountId: string, userId: string, shipmentId: string) {
+  constructor(accountId: string, userId: string, shipmentId: string, triggerEvent = "DOCUMENT_UPLOADED", invokedBy = "Document Upload") {
     this.accountId = accountId;
     this.userId = userId;
     this.shipmentId = shipmentId;
+    this.triggerEvent = triggerEvent;
+    this.invokedBy = invokedBy;
   }
 
   public recordAgentExecution(entry: AgentStateHistoryEntry) {
@@ -123,22 +131,34 @@ export class AgentState {
         },
       });
 
-      // Write execution logs
+      // Write execution logs. Each row is its own try/catch: a single
+      // failing insert (e.g. a stale Prisma Client rejecting a new column)
+      // must not silently erase every other step's audit record along with
+      // it -- that previously happened because the whole loop shared one
+      // try/catch with the rest of this method.
       for (const entry of this.history) {
-        await db.agentExecutionLog.create({
-          data: {
-            accountId: this.accountId,
-            shipmentId: this.shipmentId,
-            agentName: entry.agentName,
-            stepNumber: entry.stepNumber,
-            status: entry.status,
-            summary: entry.summary,
-            confidence: entry.confidence as any,
-            aiProviderUsed: entry.aiProviderUsed,
-            decisionId: entry.decisionId,
-            timestamp: new Date(entry.timestamp),
-          },
-        });
+        try {
+          await db.agentExecutionLog.create({
+            data: {
+              accountId: this.accountId,
+              shipmentId: this.shipmentId,
+              agentName: entry.agentName,
+              stepNumber: entry.stepNumber,
+              status: entry.status,
+              summary: entry.summary,
+              confidence: entry.confidence as any,
+              aiProviderUsed: entry.aiProviderUsed,
+              decisionId: entry.decisionId,
+              timestamp: new Date(entry.timestamp),
+              runId: this.runId,
+              triggerEvent: this.triggerEvent,
+              invokedBy: this.invokedBy,
+              durationMs: entry.durationMs,
+            },
+          });
+        } catch (err) {
+          console.error(`[AgentState] Failed to persist execution log for ${entry.agentName} (run ${this.runId}):`, err);
+        }
       }
 
       // Upsert canonical shipment state record

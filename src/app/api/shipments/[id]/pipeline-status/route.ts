@@ -35,6 +35,8 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
         accountId: ctx.accountId,
         userId: ctx.userId,
         shipmentId: id,
+        triggerEvent: "PIPELINE_AUTO_HEAL",
+        invokedBy: "System Auto-Heal (stuck job retry)",
       });
       await PgQueue.completeJob(job.id, pipelineOut);
       await db.pipelineJob.update({
