@@ -50,7 +50,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "work", labelKey: "myWork", href: "/app/work", icon: "inbox" },
       { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
-      { id: "clients", labelKey: "clients", href: "/app/clients", icon: "clients" },
       { id: "documents", labelKey: "tradeDocuments", href: "/app/documents", icon: "documents" },
       { id: "decisions", labelKey: "decisions", href: "/app/decisions", icon: "decisions" },
       { id: "exceptions", labelKey: "exceptions", href: "/app/exceptions", icon: "exceptions" },
@@ -95,6 +94,7 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ACCOUNT_ADMIN_ROLES,
         permission: "settings.manage",
       },
+      { id: "clients", labelKey: "clients", href: "/app/clients", icon: "clients" },
     ],
   },
   {
