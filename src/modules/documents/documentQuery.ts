@@ -20,6 +20,8 @@ export interface DocumentQuery {
   clientId: string | null;
   /** A shipment id, or `UNATTACHED` for documents not attached to any shipment. */
   shipmentId: string | null;
+  /** User ids whose shipments' documents to show; empty means every assignee. */
+  assignedBrokerIds: string[];
   sort: DocumentSortColumn;
   direction: SortDirection;
   page: number;
@@ -47,6 +49,11 @@ function trimmed(raw: string | null): string | null {
   return value ? value : null;
 }
 
+function idList(raw: string | null): string[] {
+  if (!raw) return [];
+  return [...new Set(raw.split(",").map((v) => v.trim()).filter(Boolean))];
+}
+
 export function parseDocumentQuery(params: URLSearchParams): DocumentQuery {
   const requestedSort = trimmed(params.get("sort"));
   const sort = DOCUMENT_SORT_COLUMNS.includes(requestedSort as DocumentSortColumn)
@@ -60,6 +67,7 @@ export function parseDocumentQuery(params: URLSearchParams): DocumentQuery {
     status: trimmed(params.get("status")),
     clientId: trimmed(params.get("clientId")),
     shipmentId: trimmed(params.get("shipmentId")),
+    assignedBrokerIds: idList(params.get("assignedBrokerIds")),
     sort,
     direction:
       requestedDirection === "asc" || requestedDirection === "desc"
@@ -104,7 +112,7 @@ export interface DocumentWhere {
   docType?: string;
   status?: string;
   shipmentId?: string | null;
-  shipment?: { clientId: string | null };
+  shipment?: { clientId?: string | null; assignedBrokerId?: { in: string[] } };
   OR?: Array<Record<string, unknown>>;
 }
 
@@ -123,11 +131,16 @@ export function buildDocumentWhere(accountId: string, query: DocumentQuery): Doc
       query.shipmentId === UNATTACHED_SHIPMENT ? null : query.shipmentId;
   }
 
-  // Client lives on the shipment, so the document is filtered through it.
+  // Client and assignee both live on the shipment, so the document is filtered through it.
   if (query.clientId) {
     where.shipment = {
+      ...where.shipment,
       clientId: query.clientId === UNASSIGNED_CLIENT ? null : query.clientId,
     };
+  }
+
+  if (query.assignedBrokerIds.length > 0) {
+    where.shipment = { ...where.shipment, assignedBrokerId: { in: query.assignedBrokerIds } };
   }
 
   if (query.search) {

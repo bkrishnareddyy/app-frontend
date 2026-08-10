@@ -17,6 +17,7 @@ import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { SortableHeaderButton } from "@/components/table/SortableHeaderButton";
 import Link from "next/link";
 import { documentViewUrl } from "@/lib/documentUrl";
+import { cn } from "@/lib/utils";
 import { displayDate, displayNumber, displayPercent, NOT_CALCULATED } from "@/lib/honest";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useDialogFocus } from "@/lib/useDialogFocus";
@@ -37,11 +38,22 @@ interface DocumentRow {
   shipmentNumber: string | null;
   clientId: string | null;
   clientName: string | null;
+  assignedBrokerId: string | null;
   extractedFieldCount: number;
+}
+
+interface TeamMember {
+  userId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
 }
 
 interface DocumentsClientProps {
   accountName: string;
+  currentUserId: string;
+  /** Empty unless the viewer may scope the console to other people's shipments. */
+  teamMembers: TeamMember[];
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -58,7 +70,7 @@ function isPdfFile(name: string) {
   return /\.pdf$/i.test(name);
 }
 
-export function DocumentsClient({ accountName }: DocumentsClientProps) {
+export function DocumentsClient({ accountName, currentUserId, teamMembers }: DocumentsClientProps) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -71,6 +83,8 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
   const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
   const [shipmentId, setShipmentId] = useState("");
   const [shipments, setShipments] = useState<Array<{ id: string; ref: string }>>([]);
+  // Assignment lives on the parent shipment; empty means every assignee.
+  const [assignedBrokerIds, setAssignedBrokerIds] = useState<string[]>([]);
   const [sort, setSort] = useState<DocumentSortColumn>("createdAt");
   const [direction, setDirection] = useState<SortDirection>("desc");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -101,6 +115,7 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
         if (status) params.set("status", status);
         if (clientId) params.set("clientId", clientId);
         if (shipmentId) params.set("shipmentId", shipmentId);
+        if (assignedBrokerIds.length > 0) params.set("assignedBrokerIds", assignedBrokerIds.join(","));
 
         const res = await fetch(`/api/documents?${params.toString()}`, { signal: controller.signal });
         if (!res.ok) {
@@ -121,7 +136,7 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
     })();
 
     return () => controller.abort();
-  }, [page, pageSize, search, docType, status, clientId, shipmentId, sort, direction, reloadToken]);
+  }, [page, pageSize, search, docType, status, clientId, shipmentId, assignedBrokerIds, sort, direction, reloadToken]);
 
   // The filter only offers clients that exist, so it cannot produce an empty view by itself.
   useEffect(() => {
@@ -211,6 +226,61 @@ export function DocumentsClient({ accountName }: DocumentsClientProps) {
             className="w-full pl-9 pr-4 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] transition-colors"
           />
         </div>
+
+        {teamMembers.length > 0 && (
+          <div className="flex items-center space-x-2 w-full sm:w-auto">
+            <div className="flex items-center p-1 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA]">
+              <button
+                type="button"
+                aria-pressed={assignedBrokerIds.length === 0}
+                onClick={() => {
+                  setAssignedBrokerIds([]);
+                  setPage(1);
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer",
+                  assignedBrokerIds.length === 0 ? "bg-white text-[#1D1D1F] shadow-2xs" : "text-[#86868B]"
+                )}
+              >
+                Everyone
+              </button>
+              <button
+                type="button"
+                aria-pressed={assignedBrokerIds.length === 1 && assignedBrokerIds[0] === currentUserId}
+                onClick={() => {
+                  setAssignedBrokerIds([currentUserId]);
+                  setPage(1);
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer",
+                  assignedBrokerIds.length === 1 && assignedBrokerIds[0] === currentUserId
+                    ? "bg-white text-[#1D1D1F] shadow-2xs"
+                    : "text-[#86868B]"
+                )}
+              >
+                Assigned to me
+              </button>
+            </div>
+
+            <select
+              aria-label="Filter by assignee"
+              value={assignedBrokerIds.length === 1 ? assignedBrokerIds[0] : ""}
+              onChange={(e) => {
+                setAssignedBrokerIds(e.target.value ? [e.target.value] : []);
+                setPage(1);
+              }}
+              className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+            >
+              <option value="">All Assignees</option>
+              {teamMembers.map((member) => (
+                <option key={member.userId} value={member.userId}>
+                  {[member.firstName, member.lastName].filter(Boolean).join(" ") || member.email}
+                  {member.userId === currentUserId ? " (Me)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end">
           <select

@@ -19,6 +19,7 @@ describe("document query parsing", () => {
       status: null,
       clientId: null,
       shipmentId: null,
+      assignedBrokerIds: [],
       sort: "createdAt",
       direction: "desc",
       page: 1,
@@ -37,6 +38,15 @@ describe("document query parsing", () => {
     expect(buildDocumentWhere("acc_1", q("shipmentId=UNATTACHED")).shipmentId).toBeNull();
     expect(buildDocumentWhere("acc_1", q("shipmentId=shp_1")).shipmentId).toBe("shp_1");
     expect("shipmentId" in buildDocumentWhere("acc_1", q(""))).toBe(false);
+  });
+
+  it("scopes documents by assignee through the parent shipment without losing the client filter", () => {
+    expect(q("assignedBrokerIds=u_1,%20u_2,,u_1").assignedBrokerIds).toEqual(["u_1", "u_2"]);
+
+    const where = buildDocumentWhere("acc_1", q("assignedBrokerIds=u_1&clientId=cli_1"));
+    expect(where.shipment).toEqual({ clientId: "cli_1", assignedBrokerId: { in: ["u_1"] } });
+
+    expect(buildDocumentWhere("acc_1", q("")).shipment).toBeUndefined();
   });
 
   it("caps pageSize so a client cannot request the whole table", () => {

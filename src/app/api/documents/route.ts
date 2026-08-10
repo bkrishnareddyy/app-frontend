@@ -35,6 +35,7 @@ export async function GET(req: Request) {
             select: {
               shipmentNumber: true,
               clientId: true,
+              assignedBrokerId: true,
               client: { select: { name: true } },
             },
           },
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
         shipmentNumber: doc.shipment?.shipmentNumber ?? null,
         clientId: doc.shipment?.clientId ?? null,
         clientName: doc.shipment?.client?.name ?? null,
+        assignedBrokerId: doc.shipment?.assignedBrokerId ?? null,
         extractedFieldCount: doc._count.extractionFields,
       })),
       page: query.page,
