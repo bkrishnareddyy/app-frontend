@@ -3,17 +3,36 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { Building2, Globe, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog } from "lucide-react";
-import { ManageAccountModal } from "./ManageAccountModal";
+import { Building2, Globe, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, type LucideIcon } from "lucide-react";
+import { ManageAccountModal, type ManageAccountPanelItem, type PanelItemId } from "./ManageAccountModal";
+import { accountAdminItems } from "@/lib/navigation";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 interface HeaderProps {
   tenantName?: string;
   userName?: string;
   isPlatformAdmin?: boolean;
+  roleNames?: string[];
 }
 
-export function Header({ tenantName = "Acme Corporation", userName = "User", isPlatformAdmin = false }: HeaderProps) {
+const PANEL_META: Record<PanelItemId, { icon: LucideIcon; description: string; endpoint: string }> = {
+  account: { icon: Building, description: "Company details & preferences", endpoint: "/api/admin/account" },
+  users: { icon: Users, description: "Members, roles & invitations", endpoint: "/api/admin/users" },
+  roles: { icon: ShieldCheck, description: "Role definitions & permission grants", endpoint: "/api/admin/roles" },
+  settings: { icon: Settings2, description: "Configuration & audit log", endpoint: "/api/admin/settings" },
+  clients: { icon: Contact2, description: "Manage your customer portfolio", endpoint: "/api/clients" },
+};
+
+function isPanelItemId(id: string): id is PanelItemId {
+  return id in PANEL_META;
+}
+
+export function Header({
+  tenantName = "Acme Corporation",
+  userName = "User",
+  isPlatformAdmin = false,
+  roleNames = ["OWNER"],
+}: HeaderProps) {
   const router = useRouter();
   const { t } = useLanguage();
   const { user } = useUser();
@@ -21,16 +40,23 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isManageAccountOpen, setIsManageAccountOpen] = useState(false);
 
-  const manageAccountItems = [
-    { name: t.nav.accountProfile, href: "/app/admin", icon: Building, description: "Company details & preferences" },
-    { name: t.nav.userManagement, href: "/app/admin/users", icon: Users, description: "Members, roles & invitations" },
-    { name: t.nav.rolesPermissions, href: "/app/admin/roles", icon: ShieldCheck, description: "Role definitions & permission grants" },
-    { name: t.nav.settingsAudit, href: "/app/admin/settings", icon: Settings2, description: "Configuration & audit log" },
-    { name: t.nav.clients, href: "/app/clients", icon: Contact2, description: "Manage your customer portfolio" },
-    ...(isPlatformAdmin
-      ? [{ name: "Qubere Console", href: "/platform-admin", icon: Shield, description: "Platform admin tools" }]
-      : []),
-  ];
+  const labels = t.nav as Record<string, string>;
+
+  const manageAccountItems: ManageAccountPanelItem[] = accountAdminItems({
+    roleNames,
+    permissions: [],
+    isPlatformAdmin,
+  })
+    .filter((item) => isPanelItemId(item.id))
+    .map((item) => {
+      const id = item.id as PanelItemId;
+      const meta = PANEL_META[id];
+      return { id, name: labels[item.labelKey] ?? item.labelKey, icon: meta.icon, description: meta.description, endpoint: meta.endpoint };
+    });
+
+  const externalItems = isPlatformAdmin
+    ? [{ name: "Qubere Console", href: "/platform-admin", icon: Shield, description: "Cross-tenant platform administration" }]
+    : [];
 
   const menuActions = [
     { label: "Manage Account", icon: Settings2, onClick: () => setIsManageAccountOpen(true) },
@@ -137,7 +163,9 @@ export function Header({ tenantName = "Acme Corporation", userName = "User", isP
       <ManageAccountModal
         isOpen={isManageAccountOpen}
         onClose={() => setIsManageAccountOpen(false)}
+        accountName={tenantName}
         items={manageAccountItems}
+        externalItems={externalItems}
       />
     </header>
   );

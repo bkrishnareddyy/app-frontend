@@ -33,7 +33,12 @@ export default async function AppLayout({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Header tenantName={context.accountName} userName={displayName} isPlatformAdmin={context.isPlatformAdmin} />
+        <Header
+          tenantName={context.accountName}
+          userName={displayName}
+          isPlatformAdmin={context.isPlatformAdmin}
+          roleNames={context.roleNames}
+        />
         <main className="flex-1 p-8 overflow-y-auto">{children}</main>
       </div>
     </div>

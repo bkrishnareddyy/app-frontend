@@ -53,9 +53,11 @@ interface ClientItem {
 
 interface ClientsTableProps {
   clients: ClientItem[];
+  /** Called after any successful mutation, in addition to router.refresh(), so embedders that don't rely on the route's server data (e.g. a modal fetching client-side) can refresh their own copy. */
+  onSaved?: () => void;
 }
 
-export function ClientsTable({ clients }: ClientsTableProps) {
+export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [contactName, setContactName] = useState("");
@@ -94,6 +96,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
         setContactEmail("");
         setContactPhone("");
         router.refresh();
+        onSaved?.();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to add client" });
       }
@@ -137,6 +140,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
         setCbpImporterNumber("");
         setAddEntityModalClient(null);
         router.refresh();
+        onSaved?.();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to create legal entity" });
       }

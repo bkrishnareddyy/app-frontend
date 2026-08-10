@@ -1,22 +1,10 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ShieldCheck, TriangleAlert, Users } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { getAccountContext, hasPermission } from "@/lib/auth";
-import { db } from "@/lib/db";
-import {
-  PERMISSION_CATALOGUE,
-  SYSTEM_ROLES,
-  catalogueCoverage,
-  findPermission,
-  roleGrantGap,
-  type SystemRole,
-} from "@/lib/permissions";
+import { getRolesPermissionsData } from "@/lib/admin/rolesData";
+import { RolesPermissionsPanel } from "./RolesPermissionsPanel";
 
 export const dynamic = "force-dynamic";
-
-function isSystemRole(name: string): name is SystemRole {
-  return (SYSTEM_ROLES as readonly string[]).includes(name.toUpperCase());
-}
 
 export default async function AdminRolesPage() {
   const context = await getAccountContext();
@@ -34,153 +22,7 @@ export default async function AdminRolesPage() {
     );
   }
 
-  const [roles, permissionRows, membershipRoles] = await Promise.all([
-    db.role.findMany({
-      where: { OR: [{ accountId: context.accountId }, { accountId: null }] },
-      include: { rolePermissions: { include: { permission: true } } },
-      orderBy: [{ isSystem: "desc" }, { name: "asc" }],
-    }),
-    db.permission.findMany({ select: { name: true } }),
-    // Counted through this account's memberships: a system role row is shared
-    // across accounts, so its own relation count would include other tenants.
-    db.accountMembershipRole.findMany({
-      where: { accountMembership: { accountId: context.accountId } },
-      select: { roleId: true },
-    }),
-  ]);
+  const data = await getRolesPermissionsData(context);
 
-  const holders = new Map<string, number>();
-  for (const row of membershipRoles) {
-    holders.set(row.roleId, (holders.get(row.roleId) ?? 0) + 1);
-  }
-
-  const coverage = catalogueCoverage(permissionRows.map((p) => p.name));
-
-  return (
-    <div className="space-y-8 max-w-6xl mx-auto">
-      <div>
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[#0071E3] text-xs font-semibold mb-3">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Roles & Permissions</span>
-        </div>
-        <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">Role Definitions</h1>
-        <p className="text-[#86868B] text-sm mt-1">
-          What each role in {context.accountName} is allowed to do. Grants are read-only here —
-          assign roles to people from{" "}
-          <Link href="/app/admin/users" className="font-semibold text-[#0071E3]">
-            User Management
-          </Link>
-          .
-        </p>
-      </div>
-
-      {coverage.missing.length > 0 && (
-        <div role="status" className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
-          <p className="font-semibold">
-            {coverage.missing.length} of {coverage.total} catalogued permissions have no row in the
-            database.
-          </p>
-          <p className="mt-1">
-            No role can hold them, so every gate on them denies everyone except OWNER and platform
-            admins — regardless of how roles are configured. Missing:{" "}
-            <span className="font-mono">{coverage.missing.join(", ")}</span>
-          </p>
-        </div>
-      )}
-
-      {coverage.unknown.length > 0 && (
-        <div role="status" className="rounded-2xl bg-white border border-[#E5E5EA] p-4 text-sm text-[#6E6E73]">
-          Permission rows that are no longer in the catalogue:{" "}
-          <span className="font-mono">{coverage.unknown.join(", ")}</span>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        {roles.map((role) => {
-          const granted = role.rolePermissions.map((rp) => rp.permission.name).sort();
-          const gap = isSystemRole(role.name) ? roleGrantGap(role.name.toUpperCase(), granted) : null;
-          const memberCount = holders.get(role.id) ?? 0;
-
-          return (
-            <section key={role.id} className="rounded-2xl bg-white border border-[#E5E5EA] p-5 space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-lg font-bold text-[#1D1D1F]">{role.name}</h2>
-                <span className="px-2 py-0.5 rounded-full border border-[#E5E5EA] text-[11px] font-semibold text-[#6E6E73]">
-                  {role.accountId === null ? "System" : "Custom"}
-                </span>
-                <span className="inline-flex items-center gap-1 text-xs text-[#86868B]">
-                  <Users className="w-3.5 h-3.5" aria-hidden="true" />
-                  {memberCount} {memberCount === 1 ? "member" : "members"} in this account
-                </span>
-              </div>
-
-              {role.description && <p className="text-sm text-[#6E6E73]">{role.description}</p>}
-
-              {granted.length === 0 ? (
-                <p className="text-sm text-[#86868B]">
-                  This role holds no permissions. Members who only hold it can read what the app shows
-                  them and nothing more.
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {granted.map((name) => (
-                    <li key={name} className="flex flex-wrap items-baseline gap-2 text-sm">
-                      <span className="font-mono text-xs text-[#1D1D1F]">{name}</span>
-                      <span className="text-[#86868B]">
-                        {findPermission(name)?.description ?? "Not in the catalogue."}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {gap && gap.missing.length > 0 && (
-                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
-                  <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
-                  <span>
-                    Not granted the catalogue defaults for {gap.roleName}:{" "}
-                    <span className="font-mono">{gap.missing.join(", ")}</span>
-                  </span>
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
-
-      <section className="rounded-2xl bg-white border border-[#E5E5EA] p-5 space-y-3">
-        <h2 className="text-lg font-bold text-[#1D1D1F]">Permission catalogue</h2>
-        <p className="text-sm text-[#6E6E73]">
-          Every permission this application gates on, and the roles that receive it when the
-          catalogue is synced. {coverage.seeded} of {coverage.total} exist in the database.
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs font-semibold uppercase tracking-wider text-[#86868B]">
-                <th className="py-2 pr-4">Permission</th>
-                <th className="py-2 pr-4">Category</th>
-                <th className="py-2 pr-4">Default roles</th>
-                <th className="py-2">What it allows</th>
-              </tr>
-            </thead>
-            <tbody>
-              {PERMISSION_CATALOGUE.map((permission) => (
-                <tr key={permission.name} className="border-t border-[#E5E5EA] align-top">
-                  <td className="py-2 pr-4 font-mono text-xs text-[#1D1D1F] whitespace-nowrap">
-                    {permission.name}
-                  </td>
-                  <td className="py-2 pr-4 text-[#6E6E73] whitespace-nowrap">{permission.category}</td>
-                  <td className="py-2 pr-4 text-[#6E6E73] whitespace-nowrap">
-                    {permission.defaultRoles.join(", ")}
-                  </td>
-                  <td className="py-2 text-[#6E6E73]">{permission.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  );
+  return <RolesPermissionsPanel accountName={context.accountName} {...data} />;
 }

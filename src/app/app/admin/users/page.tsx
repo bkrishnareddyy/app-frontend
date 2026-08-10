@@ -1,7 +1,6 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { UserManagementTable } from "./UserManagementTable";
-import { Users } from "lucide-react";
+import { UserManagementPanel } from "./UserManagementPanel";
 
 export default async function AdminUsersPage() {
   const context = await getAccountContext();
@@ -36,23 +35,11 @@ export default async function AdminUsersPage() {
   }));
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
-      <div>
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[#0071E3] text-xs font-semibold mb-3">
-          <Users className="w-3.5 h-3.5" />
-          <span>Account Members & Access</span>
-        </div>
-        <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">User Management</h1>
-        <p className="text-[#86868B] text-sm mt-1">
-          Manage account members, assign roles, and send invitations for {context.accountName}. Members can hold multiple roles at once.
-        </p>
-      </div>
-
-      <UserManagementTable
-        members={formattedMembers}
-        currentUserId={context.userId}
-        availableRoles={availableRoles.map((r) => r.name)}
-      />
-    </div>
+    <UserManagementPanel
+      accountName={context.accountName}
+      members={formattedMembers}
+      currentUserId={context.userId}
+      availableRoles={availableRoles.map((r) => r.name)}
+    />
   );
 }

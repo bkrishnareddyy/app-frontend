@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import { Users, UserPlus, UserX, UserCheck, Eye, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
-interface MemberItem {
+export interface MemberItem {
   membershipId: string;
   userId: string;
   email: string;
@@ -24,9 +24,11 @@ interface UserManagementTableProps {
   // account's own custom roles (e.g. PLANNER) -- not a fixed set, so this
   // is queried by the server rather than hardcoded here.
   availableRoles: string[];
+  /** Called after any successful mutation, in addition to router.refresh(), so embedders that don't rely on the route's server data (e.g. a modal fetching client-side) can refresh their own copy. */
+  onSaved?: () => void;
 }
 
-export function UserManagementTable({ members, currentUserId, availableRoles }: UserManagementTableProps) {
+export function UserManagementTable({ members, currentUserId, availableRoles, onSaved }: UserManagementTableProps) {
   const router = useRouter();
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState(availableRoles.find((r) => r !== "OWNER") ?? availableRoles[0] ?? "");
@@ -53,6 +55,7 @@ export function UserManagementTable({ members, currentUserId, availableRoles }: 
         setMessage({ type: "success", text: `Invitation sent to ${inviteEmail} as ${inviteRole}.` });
         setInviteEmail("");
         router.refresh();
+        onSaved?.();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to send invitation" });
       }
@@ -90,6 +93,7 @@ export function UserManagementTable({ members, currentUserId, availableRoles }: 
       if (res.ok) {
         setMessage({ type: "success", text: `Updated roles to ${nextRoleNames.join(", ")}. Audit log generated.` });
         router.refresh();
+        onSaved?.();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to update user roles." });
       }
@@ -117,6 +121,7 @@ export function UserManagementTable({ members, currentUserId, availableRoles }: 
       if (res.ok) {
         setMessage({ type: "success", text: `User membership status set to ${nextStatus}.` });
         router.refresh();
+        onSaved?.();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to update status." });
       }
