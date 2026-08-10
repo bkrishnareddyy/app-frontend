@@ -177,13 +177,13 @@ export function ExceptionsDrawer({
 
   return (
     <>
-      <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4 animate-in fade-in duration-200">
-        <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3 text-xs">
+      <div className="bg-white p-6 rounded-2xl border border-border shadow-2xs space-y-4 animate-in fade-in duration-200">
+        <div className="flex items-center justify-between border-b border-border pb-3 text-xs">
           <div className="flex items-center space-x-4">
             <button
               onClick={() => setActiveTab("ALL")}
               className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "ALL" ? "text-[#0071E3] border-b-2 border-[#0071E3]" : "text-[#86868B] hover:text-[#1D1D1F]"
+                activeTab === "ALL" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
               }`}
             >
               Exceptions ({totalCount})
@@ -191,7 +191,7 @@ export function ExceptionsDrawer({
             <button
               onClick={() => setActiveTab("MISSING")}
               className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "MISSING" ? "text-[#0071E3] border-b-2 border-[#0071E3]" : "text-[#86868B] hover:text-[#1D1D1F]"
+                activeTab === "MISSING" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
               }`}
             >
               Missing Data ({missingCount})
@@ -199,7 +199,7 @@ export function ExceptionsDrawer({
             <button
               onClick={() => setActiveTab("CONFLICTS")}
               className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "CONFLICTS" ? "text-[#0071E3] border-b-2 border-[#0071E3]" : "text-[#86868B] hover:text-[#1D1D1F]"
+                activeTab === "CONFLICTS" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
               }`}
             >
               Conflicts ({conflictsCount})
@@ -207,7 +207,7 @@ export function ExceptionsDrawer({
             <button
               onClick={() => setActiveTab("VALIDATION")}
               className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "VALIDATION" ? "text-[#0071E3] border-b-2 border-[#0071E3]" : "text-[#86868B] hover:text-[#1D1D1F]"
+                activeTab === "VALIDATION" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
               }`}
             >
               Validation ({validationCount})
@@ -215,7 +215,7 @@ export function ExceptionsDrawer({
             <button
               onClick={() => setActiveTab("WARNINGS")}
               className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "WARNINGS" ? "text-[#0071E3] border-b-2 border-[#0071E3]" : "text-[#86868B] hover:text-[#1D1D1F]"
+                activeTab === "WARNINGS" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
               }`}
             >
               Warnings ({warnings.length})
@@ -223,7 +223,7 @@ export function ExceptionsDrawer({
           </div>
           <Link
             href={`/app/decisions?shipmentId=${shipmentId}`}
-            className="text-xs font-semibold text-[#0071E3] hover:underline"
+            className="text-xs font-semibold text-brand hover:underline"
           >
             View All Exceptions
           </Link>
@@ -231,7 +231,7 @@ export function ExceptionsDrawer({
 
         {documentFieldSummaries.length > 0 && (
           <div className="space-y-2">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#86868B]">Document Field Review</p>
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-ink-muted">Document Field Review</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {documentFieldSummaries.map((doc) => {
                 const allConfirmed = doc.confirmedCount === doc.totalCount;
@@ -239,7 +239,7 @@ export function ExceptionsDrawer({
                   <button
                     key={doc.documentId}
                     onClick={() => setReviewingDoc(doc)}
-                    className="text-left p-4 rounded-xl border border-[#E5E5EA] bg-[#F9F9FB] hover:border-[#0071E3] transition-all duration-200 flex items-center justify-between space-x-3 cursor-pointer"
+                    className="text-left p-4 rounded-xl border border-border bg-[#F9F9FB] hover:border-brand transition-all duration-200 flex items-center justify-between space-x-3 cursor-pointer"
                   >
                     <div className="flex items-center space-x-3 min-w-0">
                       <div
@@ -250,13 +250,13 @@ export function ExceptionsDrawer({
                         {allConfirmed ? <CheckCircle2 className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-[#1D1D1F] truncate">{doc.fileName}</p>
-                        <p className="text-[10px] text-[#86868B]">
+                        <p className="text-xs font-bold text-ink truncate">{doc.fileName}</p>
+                        <p className="text-[10px] text-ink-muted">
                           {doc.confirmedCount} of {doc.totalCount} fields confirmed
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-[#86868B] shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />
                   </button>
                 );
               })}
@@ -266,30 +266,30 @@ export function ExceptionsDrawer({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {filtered.map((ex: any) => (
-            <div key={ex.id} className="p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-2 hover:border-[#0071E3] transition-all duration-200">
-              <div className="flex items-start space-x-2 text-xs font-bold text-[#1D1D1F]">
+            <div key={ex.id} className="p-4 rounded-xl bg-surface-muted border border-border space-y-2 hover:border-brand transition-all duration-200">
+              <div className="flex items-start space-x-2 text-xs font-bold text-ink">
                 <span className="shrink-0">{ex.icon}</span>
                 <span className="min-w-0 break-words">{ex.title}</span>
               </div>
-              <p className="text-[11px] text-[#86868B] leading-relaxed">{ex.desc}</p>
+              <p className="text-[11px] text-ink-muted leading-relaxed">{ex.desc}</p>
               {ex.actionType === "UPLOAD_DIRECT" ? (
                 <button
                   onClick={() => window.dispatchEvent(new Event("qubere:open-upload-modal"))}
-                  className="text-xs font-semibold text-[#0071E3] hover:underline text-left pt-1 block w-full cursor-pointer"
+                  className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
                 >
                   {ex.actionText}
                 </button>
               ) : ex.actionType ? (
                 <button
                   onClick={() => setSelectedException(ex)}
-                  className="text-xs font-semibold text-[#0071E3] hover:underline text-left pt-1 block w-full cursor-pointer"
+                  className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
                 >
                   {ex.actionText}
                 </button>
               ) : (
                 <Link
                   href={ex.actionHref || "#"}
-                  className="inline-block text-xs font-semibold text-[#0071E3] hover:underline pt-1"
+                  className="inline-block text-xs font-semibold text-brand hover:underline pt-1"
                 >
                   {ex.actionText}
                 </Link>
@@ -297,7 +297,7 @@ export function ExceptionsDrawer({
             </div>
           ))}
           {filtered.length === 0 && (
-            <div className="col-span-full py-8 text-center text-[#86868B] text-xs">
+            <div className="col-span-full py-8 text-center text-ink-muted text-xs">
               No exceptions found under this category.
             </div>
           )}

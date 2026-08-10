@@ -17,6 +17,9 @@ import {
   Plus,
   FileText,
 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input, Label } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 
 interface CustomsProfileItem {
   id: string;
@@ -172,69 +175,62 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
       )}
 
       {/* Add Client Form */}
-      <div className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
-        <h3 className="text-sm font-bold text-[#1D1D1F] uppercase tracking-wider mb-4 flex items-center space-x-2">
-          <UserPlus className="w-4 h-4 text-[#0071E3]" />
+      <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm">
+        <h3 className="text-sm font-bold text-ink uppercase tracking-wider mb-4 flex items-center space-x-2">
+          <UserPlus className="w-4 h-4 text-brand" />
           <span>Add Client</span>
         </h3>
 
         <form onSubmit={handleCreateClient} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="lg:col-span-2">
-            <label className="block text-xs font-bold text-[#1D1D1F] mb-1">Client Name</label>
-            <input
+            <Label className="block mb-1 font-bold">Client Name</Label>
+            <Input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Target Corporation"
               required
-              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-xs focus:outline-none focus:border-[#0071E3]"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-[#1D1D1F] mb-1">Contact Person</label>
-            <input
+            <Label className="block mb-1 font-bold">Contact Person</Label>
+            <Input
               type="text"
               value={contactName}
               onChange={(e) => setContactName(e.target.value)}
               placeholder="Sarah Miller"
-              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-xs focus:outline-none focus:border-[#0071E3]"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-[#1D1D1F] mb-1">Email</label>
-            <input
+            <Label className="block mb-1 font-bold">Email</Label>
+            <Input
               type="email"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
               placeholder="sarah@target.com"
-              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-xs focus:outline-none focus:border-[#0071E3]"
             />
           </div>
           <div className="flex items-end">
-            <button
-              type="submit"
-              disabled={createLoading}
-              className="w-full py-2.5 px-4 bg-[#0071E3] text-white text-xs font-bold rounded-xl hover:bg-[#0071E3]/90 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
+            <Button type="submit" disabled={createLoading} className="w-full">
               {createLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
               <span>Add Client</span>
-            </button>
+            </Button>
           </div>
         </form>
       </div>
 
       {/* Clients & Legal Entities Table */}
-      <div className="apple-card rounded-3xl border border-[#E5E5EA] bg-white shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-[#E5E5EA]">
-          <h3 className="text-lg font-bold text-[#1D1D1F] flex items-center space-x-2">
-            <Contact2 className="w-5 h-5 text-[#0071E3]" />
+      <div className="apple-card rounded-3xl border border-border bg-white shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-border">
+          <h3 className="text-lg font-bold text-ink flex items-center space-x-2">
+            <Contact2 className="w-5 h-5 text-brand" />
             <span>Clients & Domain Entities ({clients.length})</span>
           </h3>
         </div>
 
-        <div className="divide-y divide-[#E5E5EA]">
+        <div className="divide-y divide-border">
           {clients.length === 0 && (
-            <div className="p-10 text-center text-[#86868B] text-sm">
+            <div className="p-10 text-center text-ink-muted text-sm">
               No clients yet. Add your first commercial client above.
             </div>
           )}
@@ -246,20 +242,20 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                 {/* Main Client Row */}
                 <div
                   onClick={() => setExpandedClientId(isExpanded ? null : c.id)}
-                  className="p-5 flex items-center justify-between hover:bg-[#F5F5F7]/60 cursor-pointer select-none transition-colors"
+                  className="p-5 flex items-center justify-between hover:bg-surface-muted/60 cursor-pointer select-none transition-colors"
                 >
                   <div className="flex items-center space-x-3">
-                    <button className="text-[#86868B]">
+                    <button className="text-ink-muted">
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </button>
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-bold text-[#1D1D1F] text-base">{c.name}</span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-50 text-[#0071E3] border border-blue-100">
+                        <span className="font-bold text-ink text-base">{c.name}</span>
+                        <Badge variant="info" className="font-extrabold">
                           {c.legalEntities.length} Legal {c.legalEntities.length === 1 ? "Entity" : "Entities"}
-                        </span>
+                        </Badge>
                       </div>
-                      <p className="text-xs text-[#86868B] mt-0.5">
+                      <p className="text-xs text-ink-muted mt-0.5">
                         {c.contactName || c.contactEmail ? (
                           <span>
                             Contact: {c.contactName} {c.contactEmail ? `(${c.contactEmail})` : ""}
@@ -271,40 +267,42 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-6 text-xs text-[#86868B]">
+                  <div className="flex items-center space-x-6 text-xs text-ink-muted">
                     <div className="flex items-center space-x-1.5 font-medium">
-                      <Package className="w-3.5 h-3.5 text-[#0071E3]" />
+                      <Package className="w-3.5 h-3.5 text-brand" />
                       <span>{c.shipmentCount} Shipments</span>
                     </div>
 
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         setAddEntityModalClient(c);
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-white border border-[#E5E5EA] text-[#0071E3] font-bold text-xs hover:bg-[#F5F5F7] transition-all flex items-center space-x-1.5 shadow-2xs"
+                      className="rounded-xl text-brand"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add Legal Entity</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
                 {/* Expanded Legal Entities & Customs Profiles Section */}
                 {isExpanded && (
-                  <div className="bg-[#F5F5F7]/40 p-6 border-t border-[#E5E5EA] space-y-4">
+                  <div className="bg-surface-muted/40 p-6 border-t border-border space-y-4">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#86868B] flex items-center space-x-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-[#0071E3]" />
+                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-ink-muted flex items-center space-x-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-brand" />
                         <span>Legal Entities & Customs Profiles under {c.name}</span>
                       </h4>
-                      <span className="text-[11px] text-[#86868B]">
-                        Domain Rule: <strong className="text-[#1D1D1F]">Client ≠ Importer of Record</strong>
+                      <span className="text-[11px] text-ink-muted">
+                        Domain Rule: <strong className="text-ink">Client ≠ Importer of Record</strong>
                       </span>
                     </div>
 
                     {c.legalEntities.length === 0 ? (
-                      <div className="p-4 rounded-2xl bg-white border border-[#E5E5EA] text-center text-xs text-[#86868B]">
+                      <div className="p-4 rounded-2xl bg-white border border-border text-center text-xs text-ink-muted">
                         No legal entities registered yet for {c.name}. Click <strong>Add Legal Entity</strong> to attach a legal organization (e.g. Target USA Inc.) and CBP importer number.
                       </div>
                     ) : (
@@ -312,15 +310,15 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                         {c.legalEntities.map((le) => (
                           <div
                             key={le.id}
-                            className="p-4 rounded-2xl bg-white border border-[#E5E5EA] shadow-2xs space-y-3"
+                            className="p-4 rounded-2xl bg-white border border-border shadow-2xs space-y-3"
                           >
                             <div className="flex items-start justify-between">
                               <div>
-                                <h5 className="font-bold text-[#1D1D1F] text-sm flex items-center space-x-1.5">
+                                <h5 className="font-bold text-ink text-sm flex items-center space-x-1.5">
                                   <span>{le.legalName}</span>
                                 </h5>
                                 {le.tradeName && (
-                                  <p className="text-[11px] text-[#86868B]">DBA / Trade: {le.tradeName}</p>
+                                  <p className="text-[11px] text-ink-muted">DBA / Trade: {le.tradeName}</p>
                                 )}
                               </div>
                               <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-slate-100 text-slate-700">
@@ -328,20 +326,20 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                               </span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2 text-xs text-[#86868B] pt-2 border-t border-[#F5F5F7]">
+                            <div className="grid grid-cols-2 gap-2 text-xs text-ink-muted pt-2 border-t border-surface-muted">
                               <div>
-                                <span className="block text-[10px] font-bold text-[#86868B] uppercase">Country</span>
-                                <span className="font-medium text-[#1D1D1F]">{le.country}</span>
+                                <span className="block text-[10px] font-bold text-ink-muted uppercase">Country</span>
+                                <span className="font-medium text-ink">{le.country}</span>
                               </div>
                               <div>
-                                <span className="block text-[10px] font-bold text-[#86868B] uppercase">Tax Identifier</span>
-                                <span className="font-mono text-[#1D1D1F]">{le.taxIdentifier || "Not specified"}</span>
+                                <span className="block text-[10px] font-bold text-ink-muted uppercase">Tax Identifier</span>
+                                <span className="font-mono text-ink">{le.taxIdentifier || "Not specified"}</span>
                               </div>
                             </div>
 
                             {/* Customs Profiles */}
-                            <div className="pt-2 border-t border-[#F5F5F7]">
-                              <span className="text-[10px] font-extrabold text-[#86868B] uppercase tracking-wider block mb-1.5 flex items-center space-x-1">
+                            <div className="pt-2 border-t border-surface-muted">
+                              <span className="text-[10px] font-extrabold text-ink-muted uppercase tracking-wider block mb-1.5 flex items-center space-x-1">
                                 <ShieldCheck className="w-3 h-3 text-emerald-600" />
                                 <span>CBP Customs Profile</span>
                               </span>
@@ -349,23 +347,23 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                                 le.customsProfiles.map((cp) => (
                                   <div
                                     key={cp.id}
-                                    className="p-2 rounded-xl bg-[#F5F5F7] text-xs flex items-center justify-between"
+                                    className="p-2 rounded-xl bg-surface-muted text-xs flex items-center justify-between"
                                   >
                                     <div className="space-y-0.5">
-                                      <span className="font-mono font-bold text-[#0071E3]">
+                                      <span className="font-mono font-bold text-brand">
                                         CBP Importer #{cp.cbpImporterNumber || "Pending Assignment"}
                                       </span>
-                                      <div className="text-[10px] text-[#86868B]">
+                                      <div className="text-[10px] text-ink-muted">
                                         POA Status: {cp.powerOfAttorneyStatus}
                                       </div>
                                     </div>
-                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <Badge variant="success" className="text-[9px]">
                                       Active
-                                    </span>
+                                    </Badge>
                                   </div>
                                 ))
                               ) : (
-                                <p className="text-[11px] text-[#86868B] italic">No Customs Profile assigned</p>
+                                <p className="text-[11px] text-ink-muted italic">No Customs Profile assigned</p>
                               )}
                             </div>
                           </div>
@@ -383,17 +381,17 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
       {/* Add Legal Entity Modal */}
       {addEntityModalClient && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-[#E5E5EA] max-w-lg w-full p-6 shadow-2xl space-y-6">
-            <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-4">
+          <div className="bg-white rounded-3xl border border-border max-w-lg w-full p-6 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
-                <h3 className="text-lg font-bold text-[#1D1D1F]">Add Legal Entity</h3>
-                <p className="text-xs text-[#86868B] mt-0.5">
+                <h3 className="text-lg font-bold text-ink">Add Legal Entity</h3>
+                <p className="text-xs text-ink-muted mt-0.5">
                   Register a legal entity and customs identity for <strong>{addEntityModalClient.name}</strong>.
                 </p>
               </div>
               <button
                 onClick={() => setAddEntityModalClient(null)}
-                className="text-[#86868B] hover:text-[#1D1D1F] font-bold text-sm"
+                className="text-ink-muted hover:text-ink font-bold text-sm"
               >
                 ✕
               </button>
@@ -401,67 +399,62 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
 
             <form onSubmit={handleCreateLegalEntity} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-[#1D1D1F] mb-1">Legal Company Name *</label>
-                <input
+                <Label className="block mb-1 font-bold">Legal Company Name *</Label>
+                <Input
                   type="text"
                   value={legalName}
                   onChange={(e) => setLegalName(e.target.value)}
                   placeholder="Target USA Inc."
                   required
-                  className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[#1D1D1F] mb-1">Trade Name / DBA (Optional)</label>
-                <input
+                <Label className="block mb-1 font-bold">Trade Name / DBA (Optional)</Label>
+                <Input
                   type="text"
                   value={tradeName}
                   onChange={(e) => setTradeName(e.target.value)}
                   placeholder="Target Brands"
-                  className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#1D1D1F] mb-1">Tax ID / EIN</label>
-                  <input
+                  <Label className="block mb-1 font-bold">Tax ID / EIN</Label>
+                  <Input
                     type="text"
                     value={taxIdentifier}
                     onChange={(e) => setTaxIdentifier(e.target.value)}
                     placeholder="12-3456789"
-                    className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] font-mono focus:outline-none focus:border-[#0071E3]"
+                    className="font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-[#1D1D1F] mb-1">CBP Importer #</label>
-                  <input
+                  <Label className="block mb-1 font-bold">CBP Importer #</Label>
+                  <Input
                     type="text"
                     value={cbpImporterNumber}
                     onChange={(e) => setCbpImporterNumber(e.target.value)}
                     placeholder="12-345678900"
-                    className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] font-mono focus:outline-none focus:border-[#0071E3]"
+                    className="font-mono"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-[#E5E5EA]">
-                <button
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-border">
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => setAddEntityModalClient(null)}
-                  className="px-4 py-2 text-xs font-bold text-[#86868B] hover:text-[#1D1D1F]"
+                  className="px-4 py-2"
                 >
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addEntityLoading}
-                  className="px-5 py-2.5 bg-[#0071E3] text-white text-xs font-bold rounded-xl hover:bg-[#0071E3]/90 transition-all flex items-center space-x-2 disabled:opacity-50"
-                >
+                </Button>
+                <Button type="submit" disabled={addEntityLoading}>
                   {addEntityLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   <span>Save Legal Entity</span>
-                </button>
+                </Button>
               </div>
             </form>
           </div>

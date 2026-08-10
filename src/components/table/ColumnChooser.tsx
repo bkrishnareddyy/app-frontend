@@ -65,7 +65,7 @@ export function ColumnChooser<TId extends string>({ columns, label }: ColumnChoo
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
         aria-haspopup="true"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3]"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <Columns3 className="w-3.5 h-3.5" aria-hidden="true" />
         <span>Columns</span>
@@ -75,9 +75,9 @@ export function ColumnChooser<TId extends string>({ columns, label }: ColumnChoo
       </button>
 
       {isOpen ? (
-        <div className="absolute right-0 z-20 mt-1.5 w-56 rounded-xl border border-[#E5E5EA] bg-white p-2 shadow-lg">
+        <div className="absolute right-0 z-20 mt-1.5 w-56 rounded-xl border border-border bg-white p-2 shadow-lg">
           <fieldset>
-            <legend className="px-1.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">
+            <legend className="px-1.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
               Visible columns
             </legend>
             {columns.map((column) => {
@@ -86,8 +86,8 @@ export function ColumnChooser<TId extends string>({ columns, label }: ColumnChoo
               return (
                 <label
                   key={column.id}
-                  className={`flex items-center gap-2 px-1.5 py-1.5 rounded-lg text-xs text-[#1D1D1F] ${
-                    isLast ? "opacity-60" : "hover:bg-[#F5F5F7] cursor-pointer"
+                  className={`flex items-center gap-2 px-1.5 py-1.5 rounded-lg text-xs text-ink ${
+                    isLast ? "opacity-60" : "hover:bg-surface-muted cursor-pointer"
                   }`}
                 >
                   <input
@@ -95,7 +95,7 @@ export function ColumnChooser<TId extends string>({ columns, label }: ColumnChoo
                     checked={checked}
                     disabled={isLast}
                     onChange={() => toggle(column.id)}
-                    className="accent-[#0071E3]"
+                    className="accent-brand"
                   />
                   <span>{column.label}</span>
                 </label>

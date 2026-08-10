@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatDate } from "@/lib/utils";
-import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Loader2, Search, Globe2, Rocket } from "lucide-react";
+import { formatDate, cn } from "@/lib/utils";
+import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Search, Globe2, Rocket } from "lucide-react";
 import { HtsAdminPanel, HtsAdminData } from "./HtsAdminPanel";
 import { DeploymentsPanel } from "./DeploymentsPanel";
+import { Button } from "@/components/ui/Button";
+import { Input, Label, FormField } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 
 interface AccountItem {
   id: string;
@@ -93,7 +96,7 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
         <button
           onClick={() => setActiveTab("accounts")}
           className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
-            activeTab === "accounts" ? "bg-[#0071E3] text-white" : "bg-white border border-[#E5E5EA] text-[#86868B] hover:text-[#1D1D1F]"
+            activeTab === "accounts" ? "bg-brand text-white" : "bg-white border border-border text-ink-muted hover:text-ink"
           }`}
         >
           <Shield className="w-3.5 h-3.5" />
@@ -102,7 +105,7 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
         <button
           onClick={() => setActiveTab("hts")}
           className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
-            activeTab === "hts" ? "bg-[#0071E3] text-white" : "bg-white border border-[#E5E5EA] text-[#86868B] hover:text-[#1D1D1F]"
+            activeTab === "hts" ? "bg-brand text-white" : "bg-white border border-border text-ink-muted hover:text-ink"
           }`}
         >
           <Globe2 className="w-3.5 h-3.5" />
@@ -111,7 +114,7 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
         <button
           onClick={() => setActiveTab("deployments")}
           className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
-            activeTab === "deployments" ? "bg-[#0071E3] text-white" : "bg-white border border-[#E5E5EA] text-[#86868B] hover:text-[#1D1D1F]"
+            activeTab === "deployments" ? "bg-brand text-white" : "bg-white border border-border text-ink-muted hover:text-ink"
           }`}
         >
           <Rocket className="w-3.5 h-3.5" />
@@ -126,89 +129,82 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
       {activeTab === "accounts" && (
         <>
       {/* Provision Enterprise Account Section */}
-      <div className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
-        <h2 className="text-lg font-bold text-[#1D1D1F] mb-1 flex items-center space-x-2">
+      <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm">
+        <h2 className="text-lg font-bold text-ink mb-1 flex items-center space-x-2">
           <Building2 className="w-5 h-5 text-amber-600" />
           <span>Provision Enterprise Customer Account</span>
         </h2>
-        <p className="text-xs text-[#86868B] mb-6">
+        <p className="text-xs text-ink-muted mb-6">
           Controlled administrative creation of customer company environments and Tenant Owner invitations.
         </p>
 
         <form onSubmit={handleCreateEnterpriseAccount} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-[#1D1D1F] uppercase tracking-wider mb-1.5">
-              Company Name
-            </label>
-            <input
+          <FormField>
+            <Label className="font-bold uppercase tracking-wider">Company Name</Label>
+            <Input
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               placeholder="e.g. Acme Imports Corp"
               required
-              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
+              className="px-4 text-sm transition-colors focus:ring-0"
             />
-          </div>
+          </FormField>
 
-          <div>
-            <label className="block text-xs font-bold text-[#1D1D1F] uppercase tracking-wider mb-1.5">
-              Tenant Owner Email
-            </label>
-            <input
+          <FormField>
+            <Label className="font-bold uppercase tracking-wider">Tenant Owner Email</Label>
+            <Input
               type="email"
               value={ownerEmail}
               onChange={(e) => setOwnerEmail(e.target.value)}
               placeholder="owner@acme.com"
               required
-              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
+              className="px-4 text-sm transition-colors focus:ring-0"
             />
-          </div>
+          </FormField>
 
           <div className="flex items-end">
-            <button
+            <Button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-full text-sm shadow-md shadow-amber-600/20 flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
+              loading={loading}
+              className="w-full bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-600/20 rounded-full text-sm"
             >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <UserPlus className="w-4 h-4" />
-              )}
+              {!loading && <UserPlus className="w-4 h-4" />}
               <span>Create Enterprise Account</span>
-            </button>
+            </Button>
           </div>
         </form>
       </div>
 
       {/* Platform Accounts List */}
-      <div className="apple-card rounded-3xl border border-[#E5E5EA] bg-white shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-[#E5E5EA] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="apple-card rounded-3xl border border-border bg-white shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-[#1D1D1F] flex items-center space-x-2">
+            <h2 className="text-lg font-bold text-ink flex items-center space-x-2">
               <Shield className="w-5 h-5 text-amber-600" />
               <span>All Platform Accounts</span>
             </h2>
-            <p className="text-xs text-[#86868B] mt-0.5">
+            <p className="text-xs text-ink-muted mt-0.5">
               Total {accounts.length} accounts provisioned across system.
             </p>
           </div>
 
           <div className="relative">
-            <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-3" />
-            <input
+            <Search className="w-4 h-4 text-ink-muted absolute left-3 top-3" />
+            <Input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search accounts..."
-              className="pl-9 pr-4 py-2 bg-[#F5F5F7] border border-[#E5E5EA] rounded-full text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] w-64"
+              className="pl-9 pr-4 py-2 rounded-full w-64 focus:ring-0"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-[#1D1D1F]">
-            <thead className="bg-[#F5F5F7] border-b border-[#E5E5EA] text-xs uppercase font-bold text-[#86868B]">
+          <table className="w-full text-left text-sm text-ink">
+            <thead className="bg-surface-muted border-b border-border text-xs uppercase font-bold text-ink-muted">
               <tr>
                 <th className="px-6 py-4">Account Name & ID</th>
                 <th className="px-6 py-4">Type</th>
@@ -217,33 +213,34 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
                 <th className="px-6 py-4">Created Date</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5EA]">
+            <tbody className="divide-y divide-border">
               {filteredAccounts.map((acc) => (
                 <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4">
-                    <div className="font-bold text-[#1D1D1F]">{acc.name}</div>
-                    <div className="text-xs font-mono text-[#86868B]">{acc.id}</div>
+                    <div className="font-bold text-ink">{acc.name}</div>
+                    <div className="text-xs font-mono text-ink-muted">{acc.id}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-bold font-mono border ${
+                    <Badge
+                      className={cn(
+                        "font-mono normal-case text-sm",
                         acc.type === "ENTERPRISE"
                           ? "bg-amber-50 text-amber-700 border-amber-200"
                           : "bg-purple-50 text-purple-700 border-purple-200"
-                      }`}
+                      )}
                     >
                       {acc.type}
-                    </span>
+                    </Badge>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <Badge variant="success" className="font-medium normal-case text-xs">
                       {acc.status}
-                    </span>
+                    </Badge>
                   </td>
-                  <td className="px-6 py-4 text-xs font-mono text-[#1D1D1F]">
+                  <td className="px-6 py-4 text-xs font-mono text-ink">
                     {acc.memberCount} Members
                   </td>
-                  <td className="px-6 py-4 text-xs text-[#86868B]">
+                  <td className="px-6 py-4 text-xs text-ink-muted">
                     {formatDate(acc.createdAt)}
                   </td>
                 </tr>

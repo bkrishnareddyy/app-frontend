@@ -32,13 +32,13 @@ export function TablePagination({
   const nextHref = tableHref(basePath, params, { page: page + 1 });
 
   const buttonClass =
-    "inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3]";
+    "inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
   const disabledClass =
-    "inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[#E5E5EA] bg-[#F5F5F7] text-xs font-semibold text-[#86868B] cursor-not-allowed";
+    "inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-surface-muted text-xs font-semibold text-ink-muted cursor-not-allowed";
 
   return (
     <nav
-      className="flex items-center justify-between gap-4 px-3 xl:px-4 py-3.5 border-t border-[#E5E5EA]"
+      className="flex items-center justify-between gap-4 px-3 xl:px-4 py-3.5 border-t border-border"
       aria-label={`${label} pagination`}
     >
       <p className="text-xs text-[#6E6E73]">

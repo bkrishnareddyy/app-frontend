@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useDialogFocus } from "@/lib/useDialogFocus";
 import { Code2, X, CheckCircle2, Clock, Server, Copy, Check } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 
 interface ApiEndpoint {
   method: "GET" | "POST" | "PATCH" | "DELETE";
@@ -364,24 +365,24 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
         aria-modal="true"
         aria-labelledby="api-directory-title"
         tabIndex={-1}
-        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-4xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
+        className="bg-white rounded-3xl border border-border shadow-2xl max-w-4xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-4 shrink-0">
+        <div className="flex items-center justify-between border-b border-border pb-4 shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#0071E3] text-white flex items-center justify-center shadow-md shadow-[#0071E3]/20">
+            <div className="w-10 h-10 rounded-2xl bg-brand text-white flex items-center justify-center shadow-md shadow-brand/20">
               <Code2 className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="api-directory-title" className="text-lg font-extrabold text-[#1D1D1F] tracking-tight">Qubere Trade API Directory</h2>
-              <p className="text-xs text-[#86868B]">Complete REST API endpoints across all 8 enterprise product lines</p>
+              <h2 id="api-directory-title" className="text-lg font-extrabold text-ink tracking-tight">Qubere Trade API Directory</h2>
+              <p className="text-xs text-ink-muted">Complete REST API endpoints across all 8 enterprise product lines</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
             aria-label="Close API directory"
-            className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
+            className="p-1.5 rounded-full hover:bg-surface-muted text-ink-muted hover:text-ink transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -389,13 +390,13 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
 
         {/* Tab Switcher & Filters */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center bg-[#F5F5F7] p-1 rounded-2xl border border-[#E5E5EA] text-xs font-bold w-full sm:w-auto">
+          <div className="flex items-center bg-surface-muted p-1 rounded-2xl border border-border text-xs font-bold w-full sm:w-auto">
             <button
               onClick={() => { setActiveTab("READY"); setSelectedTag("ALL"); }}
               className={`px-4 py-2 rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
                 activeTab === "READY"
-                  ? "bg-white text-[#0071E3] shadow-xs"
-                  : "text-[#86868B] hover:text-[#1D1D1F]"
+                  ? "bg-white text-brand shadow-xs"
+                  : "text-ink-muted hover:text-ink"
               }`}
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
@@ -407,7 +408,7 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
               className={`px-4 py-2 rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
                 activeTab === "IN_PROGRESS"
                   ? "bg-white text-purple-600 shadow-xs"
-                  : "text-[#86868B] hover:text-[#1D1D1F]"
+                  : "text-ink-muted hover:text-ink"
               }`}
             >
               <Clock className="w-4 h-4 text-amber-500" />
@@ -423,8 +424,8 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
                 onClick={() => setSelectedTag(tag)}
                 className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer whitespace-nowrap ${
                   selectedTag === tag
-                    ? "bg-[#0071E3] text-white border-[#0071E3]"
-                    : "bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA] hover:text-[#1D1D1F]"
+                    ? "bg-brand text-white border-brand"
+                    : "bg-surface-muted text-ink-muted border-border hover:text-ink"
                 }`}
               >
                 {tag}
@@ -438,7 +439,7 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
           {currentList.map((api, idx) => (
             <div
               key={idx}
-              className="p-3.5 rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-1.5 hover:border-[#0071E3] transition-all"
+              className="p-3.5 rounded-2xl bg-surface-muted border border-border space-y-1.5 hover:border-brand transition-all"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 font-mono text-xs">
@@ -447,44 +448,41 @@ export function ApiStatusDrawer({ isOpen, onClose }: ApiStatusDrawerProps) {
                       api.method === "GET"
                         ? "bg-emerald-100 text-emerald-800"
                         : api.method === "POST"
-                        ? "bg-blue-100 text-[#0071E3]"
+                        ? "bg-blue-100 text-brand"
                         : "bg-purple-100 text-purple-800"
                     }`}
                   >
                     {api.method}
                   </span>
-                  <span className="font-bold text-[#1D1D1F]">{api.path}</span>
+                  <span className="font-bold text-ink">{api.path}</span>
                   <button
                     onClick={() => handleCopy(api.path)}
-                    className="p-1 text-[#86868B] hover:text-[#0071E3] transition-colors cursor-pointer"
+                    className="p-1 text-ink-muted hover:text-brand transition-colors cursor-pointer"
                   >
                     {copiedPath === api.path ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
 
-                <span className="text-sm font-bold px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] text-[#0071E3]">
+                <span className="text-sm font-bold px-2.5 py-0.5 rounded-full bg-white border border-border text-brand">
                   {api.tag}
                 </span>
               </div>
 
-              <p className="text-xs font-bold text-[#1D1D1F]">{api.name}</p>
-              <p className="text-xs text-[#86868B] leading-relaxed">{api.description}</p>
+              <p className="text-xs font-bold text-ink">{api.name}</p>
+              <p className="text-xs text-ink-muted leading-relaxed">{api.description}</p>
             </div>
           ))}
         </div>
 
         {/* Footer */}
-        <div className="pt-3 border-t border-[#E5E5EA] flex items-center justify-between shrink-0 text-xs text-[#86868B]">
+        <div className="pt-3 border-t border-border flex items-center justify-between shrink-0 text-xs text-ink-muted">
           <span className="flex items-center space-x-1.5">
-            <Server className="w-3.5 h-3.5 text-[#0071E3]" />
-            <span>Base URL: <strong className="text-[#1D1D1F]">https://app.qubere.ai</strong></span>
+            <Server className="w-3.5 h-3.5 text-brand" />
+            <span>Base URL: <strong className="text-ink">https://app.qubere.ai</strong></span>
           </span>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white font-semibold rounded-xl text-xs transition-all shadow-xs cursor-pointer"
-          >
+          <Button onClick={onClose} className="px-4 py-2">
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </div>

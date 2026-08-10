@@ -7,12 +7,12 @@ export default function CompliancePlaceholderPage() {
         <Scale className="w-8 h-8" />
       </div>
       <div>
-        <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">Compliance Rules & Tariff Engine</h1>
-        <p className="text-[#86868B] text-sm mt-2 max-w-md mx-auto">
+        <h1 className="text-3xl font-extrabold text-ink tracking-tight">Compliance Rules & Tariff Engine</h1>
+        <p className="text-ink-muted text-sm mt-2 max-w-md mx-auto">
           AI-driven Harmonized System (HS) classification, sanction list screening, and duty minimization rules will be introduced in Phase 2.
         </p>
       </div>
-      <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-white border border-[#E5E5EA] text-xs text-[#86868B] font-mono shadow-2xs">
+      <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-white border border-border text-xs text-ink-muted font-mono shadow-2xs">
         <Sparkles className="w-4 h-4 text-indigo-600" />
         <span>Module Status: Scheduled for Phase 2 Deployment</span>
       </div>

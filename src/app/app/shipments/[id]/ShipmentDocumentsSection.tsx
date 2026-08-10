@@ -5,6 +5,8 @@ import { CheckCircle2, AlertCircle, Plus, Upload, FileText, Unlink, Loader2, X, 
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 
 interface DocumentItem {
   id: string;
@@ -22,6 +24,8 @@ interface ShipmentDocumentsSectionProps {
   originStatus?: string;
   selectedDocId?: string;
 }
+
+const DETACH_TITLE_ID = "detach-document-title";
 
 export function ShipmentDocumentsSection({
   shipmentId,
@@ -118,18 +122,19 @@ export function ShipmentDocumentsSection({
 
   return (
     <>
-      <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4">
+      <div className="bg-white p-5 rounded-2xl border border-border shadow-2xs space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D1D1F] min-w-0 break-words">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ink min-w-0 break-words">
             DOCUMENTS ({documents.length} uploaded)
           </h3>
-          <button
+          <Button
+            size="sm"
             onClick={() => setIsModalOpen(true)}
-            className="px-3 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1 shrink-0 whitespace-nowrap cursor-pointer"
+            className="rounded-xl py-1.5 gap-1 shrink-0 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Document</span>
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-2">
@@ -141,10 +146,10 @@ export function ShipmentDocumentsSection({
               <Link
                 key={doc.id}
                 href={`?docId=${doc.id}`}
-                className={`p-3 rounded-xl block border flex items-center justify-between text-xs transition-colors hover:border-[#0071E3] ${
-                  isSelected 
-                    ? "bg-blue-50/50 border-[#0071E3] shadow-2xs" 
-                    : "bg-[#F5F5F7] border-[#E5E5EA]"
+                className={`p-3 rounded-xl block border flex items-center justify-between text-xs transition-colors hover:border-brand ${
+                  isSelected
+                    ? "bg-blue-50/50 border-brand shadow-2xs"
+                    : "bg-surface-muted border-border"
                 }`}
               >
                 <div className="flex items-start space-x-2.5 min-w-0 pr-2">
@@ -154,8 +159,8 @@ export function ShipmentDocumentsSection({
                     <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                   )}
                   <div className="min-w-0">
-                    <p className="font-bold text-[#1D1D1F] break-words">{doc.docType}</p>
-                    <p className="text-[10px] text-[#86868B] break-words">
+                    <p className="font-bold text-ink break-words">{doc.docType}</p>
+                    <p className="text-[10px] text-ink-muted break-words">
                       {doc.fileName} ({doc.pageCount || 1} pages)
                     </p>
                   </div>
@@ -174,7 +179,7 @@ export function ShipmentDocumentsSection({
                     onClick={(e) => requestDetach(doc.id, doc.fileName, e)}
                     disabled={detachingId === doc.id}
                     title="Detach from this shipment"
-                    className="p-1 rounded-lg hover:bg-red-50 text-[#86868B] hover:text-red-600 transition-colors cursor-pointer disabled:opacity-50"
+                    className="p-1 rounded-lg hover:bg-red-50 text-ink-muted hover:text-red-600 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {detachingId === doc.id ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -190,75 +195,74 @@ export function ShipmentDocumentsSection({
 
         {/* Missing-required-document actions now live in the unified
             Exceptions panel at the top of the page, not duplicated here. */}
-        <p className="text-[11px] text-[#86868B] px-1">
+        <p className="text-[11px] text-ink-muted px-1">
           {receivedCount}/{totalRequired} required document types on file
         </p>
       </div>
 
       {docPendingDetach && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setDocPendingDetach(null)}
+        <Modal
+          isOpen={Boolean(docPendingDetach)}
+          onClose={() => setDocPendingDetach(null)}
+          titleId={DETACH_TITLE_ID}
+          closeDisabled={detachingId === docPendingDetach.id}
+          className="max-w-md"
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-md w-full p-6 space-y-5"
-          >
-            <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
-                  <Unlink className="w-4 h-4" />
-                </div>
-                <h3 className="text-base font-extrabold text-[#1D1D1F]">Detach Document</h3>
+          <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
+                <Unlink className="w-4 h-4" />
               </div>
-              <button
-                onClick={() => setDocPendingDetach(null)}
-                className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <h3 id={DETACH_TITLE_ID} className="text-base font-extrabold text-ink">Detach Document</h3>
             </div>
-
-            <p className="text-sm text-[#1D1D1F] truncate font-semibold">{docPendingDetach.fileName}</p>
-
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-start space-x-2">
-              <Files className="w-4 h-4 text-[#0071E3] shrink-0 mt-0.5" />
-              <span>
-                This will remove the document from this shipment. If you detach, you'll still find the document under{" "}
-                <strong>Trade Documents</strong> as unattached, and can reattach it to any shipment later — nothing is deleted.
-              </span>
-            </div>
-
-            <p className="text-xs text-[#86868B]">Do you wish to continue?</p>
-
-            <div className="flex items-center justify-end space-x-3 pt-1">
-              <button
-                onClick={() => setDocPendingDetach(null)}
-                disabled={detachingId === docPendingDetach.id}
-                className="px-4 py-2.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-semibold rounded-xl transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDetach}
-                disabled={detachingId === docPendingDetach.id}
-                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-2 transition-all"
-              >
-                {detachingId === docPendingDetach.id ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Detaching...</span>
-                  </>
-                ) : (
-                  <>
-                    <Unlink className="w-4 h-4" />
-                    <span>Detach Document</span>
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              onClick={() => setDocPendingDetach(null)}
+              className="p-1.5 rounded-full hover:bg-surface-muted text-ink-muted hover:text-ink transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
+
+          <p className="text-sm text-ink truncate font-semibold">{docPendingDetach.fileName}</p>
+
+          <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-start space-x-2">
+            <Files className="w-4 h-4 text-brand shrink-0 mt-0.5" />
+            <span>
+              This will remove the document from this shipment. If you detach, you'll still find the document under{" "}
+              <strong>Trade Documents</strong> as unattached, and can reattach it to any shipment later — nothing is deleted.
+            </span>
+          </div>
+
+          <p className="text-xs text-ink-muted">Do you wish to continue?</p>
+
+          <div className="flex items-center justify-end space-x-3 pt-1">
+            <Button
+              variant="secondary"
+              onClick={() => setDocPendingDetach(null)}
+              disabled={detachingId === docPendingDetach.id}
+              className="shadow-none"
+            >
+              Cancel
+            </Button>
+            <button
+              onClick={confirmDetach}
+              disabled={detachingId === docPendingDetach.id}
+              className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-2 transition-all"
+            >
+              {detachingId === docPendingDetach.id ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Detaching...</span>
+                </>
+              ) : (
+                <>
+                  <Unlink className="w-4 h-4" />
+                  <span>Detach Document</span>
+                </>
+              )}
+            </button>
+          </div>
+        </Modal>
       )}
 
       <DocumentUploadModal

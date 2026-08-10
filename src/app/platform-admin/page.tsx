@@ -3,24 +3,26 @@ import { db } from "@/lib/db";
 import { PlatformAdminConsole } from "./PlatformAdminConsole";
 import { ShieldAlert, Shield } from "lucide-react";
 import Link from "next/link";
+import { buttonVariants } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
 
 export default async function PlatformAdminPage() {
   const context = await getAccountContext();
 
   if (!context || !context.isPlatformAdmin) {
     return (
-      <div className="min-h-screen bg-[#F5F5F7] text-[#1D1D1F] flex items-center justify-center p-6">
+      <div className="min-h-screen bg-surface-muted text-ink flex items-center justify-center p-6">
         <div className="apple-card p-8 rounded-3xl border border-red-200 bg-white max-w-md text-center space-y-4 shadow-sm">
           <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mx-auto">
             <ShieldAlert className="w-6 h-6" />
           </div>
-          <h1 className="text-xl font-extrabold text-[#1D1D1F]">Platform Admin Access Restricted</h1>
-          <p className="text-sm text-[#86868B]">
+          <h1 className="text-xl font-extrabold text-ink">Platform Admin Access Restricted</h1>
+          <p className="text-sm text-ink-muted">
             You do not have Qubere Platform Administrator privileges required to access this area.
           </p>
           <Link
             href="/app/dashboard"
-            className="inline-block px-5 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-full text-xs font-semibold shadow-md shadow-[#0071E3]/20"
+            className={cn(buttonVariants({ variant: "primary", size: "lg" }), "text-xs py-2.5 shadow-md shadow-brand/20")}
           >
             Return to App Dashboard
           </Link>
@@ -95,24 +97,27 @@ export default async function PlatformAdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] text-[#1D1D1F] p-8 selection:bg-[#0071E3]/20 selection:text-[#0071E3]">
+    <div className="min-h-screen bg-surface-muted text-ink p-8 selection:bg-brand/20 selection:text-brand">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E5EA] pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
           <div>
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold mb-3">
               <Shield className="w-3.5 h-3.5 text-amber-600" />
               <span>Internal Qubere Platform Administration</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">Platform Admin Console</h1>
-            <p className="text-[#86868B] text-sm mt-1">
+            <h1 className="text-3xl font-extrabold text-ink tracking-tight">Platform Admin Console</h1>
+            <p className="text-ink-muted text-sm mt-1">
               Global customer account provisioning, platform monitoring, and enterprise invitations.
             </p>
           </div>
 
           <Link
             href="/app/dashboard"
-            className="px-4 py-2 bg-white hover:bg-slate-50 text-[#1D1D1F] border border-[#E5E5EA] rounded-full text-xs font-semibold self-start sm:self-auto shadow-2xs"
+            className={cn(
+              buttonVariants({ variant: "secondary", size: "md" }),
+              "rounded-full py-2 shadow-2xs hover:bg-slate-50 self-start sm:self-auto"
+            )}
           >
             ← Back to App Console
           </Link>

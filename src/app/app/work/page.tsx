@@ -62,7 +62,7 @@ const PRIORITY_LABELS: Record<WorkPriority, string> = {
 const PRIORITY_STYLES: Record<WorkPriority, string> = {
   critical: "bg-red-50 text-red-700 border-red-200",
   high: "bg-amber-50 text-amber-800 border-amber-200",
-  normal: "bg-[#F5F5F7] text-[#6E6E73] border-[#E5E5EA]",
+  normal: "bg-surface-muted text-[#6E6E73] border-border",
 };
 
 export default async function MyWorkPage(props: {
@@ -251,8 +251,8 @@ export default async function MyWorkPage(props: {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[#1D1D1F]">My Work</h1>
-        <p className="text-sm text-[#86868B] mt-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">My Work</h1>
+        <p className="text-sm text-ink-muted mt-1">
           Everything in {context.accountName} that is waiting on a person, oldest first. Items
           assigned to you are raised a level and listed before the rest.
         </p>
@@ -275,19 +275,19 @@ export default async function MyWorkPage(props: {
             ["Assigned to me", mineCount, null],
           ] as const
         ).map(([label, value]) => (
-          <div key={label} className="rounded-2xl bg-white border border-[#E5E5EA] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#86868B]">{label}</p>
-            <p className="text-2xl font-extrabold text-[#1D1D1F] mt-1">{value}</p>
+          <div key={label} className="rounded-2xl bg-white border border-border p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">{label}</p>
+            <p className="text-2xl font-extrabold text-ink mt-1">{value}</p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-2xl bg-white border border-[#E5E5EA] p-4 space-y-3">
+      <div className="rounded-2xl bg-white border border-border p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Link
             href={buildHref({ mine: filter.assignedToMe ? null : "1" })}
             className={`px-3 py-1.5 rounded-full border ${
-              filter.assignedToMe ? "border-[#0071E3] text-[#0071E3]" : "border-[#E5E5EA] text-[#6E6E73]"
+              filter.assignedToMe ? "border-brand text-brand" : "border-border text-[#6E6E73]"
             }`}
           >
             Assigned to me ({mineCount})
@@ -298,8 +298,8 @@ export default async function MyWorkPage(props: {
               href={buildHref({ priority: filter.priority === priority ? null : priority })}
               className={`px-3 py-1.5 rounded-full border ${
                 filter.priority === priority
-                  ? "border-[#0071E3] text-[#0071E3]"
-                  : "border-[#E5E5EA] text-[#6E6E73]"
+                  ? "border-brand text-brand"
+                  : "border-border text-[#6E6E73]"
               }`}
             >
               {PRIORITY_LABELS[priority]} ({priorityCounts[priority]})
@@ -313,14 +313,14 @@ export default async function MyWorkPage(props: {
               key={kind}
               href={buildHref({ kind: filter.kind === kind ? null : kind })}
               className={`px-3 py-1.5 rounded-full border ${
-                filter.kind === kind ? "border-[#0071E3] text-[#0071E3]" : "border-[#E5E5EA] text-[#6E6E73]"
+                filter.kind === kind ? "border-brand text-brand" : "border-border text-[#6E6E73]"
               }`}
             >
               {KIND_LABELS[kind]} ({kindCounts[kind]})
             </Link>
           ))}
           {hasFilter && (
-            <Link href="/app/work" className="px-3 py-1.5 text-sm font-semibold text-[#0071E3]">
+            <Link href="/app/work" className="px-3 py-1.5 text-sm font-semibold text-brand">
               Clear
             </Link>
           )}
@@ -328,8 +328,8 @@ export default async function MyWorkPage(props: {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl bg-white border border-[#E5E5EA] p-10 text-center">
-          <Inbox className="w-8 h-8 mx-auto text-[#86868B]" aria-hidden="true" />
+        <div className="rounded-2xl bg-white border border-border p-10 text-center">
+          <Inbox className="w-8 h-8 mx-auto text-ink-muted" aria-hidden="true" />
           <p className="mt-3 text-sm text-[#6E6E73]">
             {hasFilter
               ? "Nothing in the queue matches these filters."
@@ -344,14 +344,14 @@ export default async function MyWorkPage(props: {
               <li key={item.id}>
                 <Link
                   href={item.href}
-                  className="flex items-start gap-4 rounded-2xl bg-white border border-[#E5E5EA] p-4 hover:border-[#0071E3] transition-colors"
+                  className="flex items-start gap-4 rounded-2xl bg-white border border-border p-4 hover:border-brand transition-colors"
                 >
-                  <span className="mt-0.5 shrink-0 text-[#86868B]">
+                  <span className="mt-0.5 shrink-0 text-ink-muted">
                     <Icon className="w-5 h-5" aria-hidden="true" />
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-[#1D1D1F]">{item.title}</span>
+                      <span className="text-sm font-semibold text-ink">{item.title}</span>
                       <span
                         className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${
                           PRIORITY_STYLES[item.priority]
@@ -360,7 +360,7 @@ export default async function MyWorkPage(props: {
                         {PRIORITY_LABELS[item.priority]}
                       </span>
                       {item.assignedToMe && (
-                        <span className="px-2 py-0.5 rounded-full border border-[#0071E3] text-[11px] font-semibold text-[#0071E3]">
+                        <span className="px-2 py-0.5 rounded-full border border-brand text-[11px] font-semibold text-brand">
                           Yours
                         </span>
                       )}
@@ -368,12 +368,12 @@ export default async function MyWorkPage(props: {
                     <span className="block text-sm text-[#6E6E73] mt-1 line-clamp-2" title={item.reason}>
                       {item.reason}
                     </span>
-                    <span className="block text-xs text-[#86868B] mt-1">
+                    <span className="block text-xs text-ink-muted mt-1">
                       {item.shipmentNumber ? `${item.shipmentNumber} · ` : ""}
                       Waiting since {displayDate(item.createdAt)}
                     </span>
                   </span>
-                  <ChevronRight className="w-4 h-4 shrink-0 text-[#86868B] mt-1" aria-hidden="true" />
+                  <ChevronRight className="w-4 h-4 shrink-0 text-ink-muted mt-1" aria-hidden="true" />
                 </Link>
               </li>
             );
@@ -390,7 +390,7 @@ export default async function MyWorkPage(props: {
             {filter.page > 1 && (
               <Link
                 href={buildHref({ page: String(filter.page - 1) }, true)}
-                className="px-3 py-1.5 rounded-xl border border-[#E5E5EA] font-semibold"
+                className="px-3 py-1.5 rounded-xl border border-border font-semibold"
               >
                 Previous
               </Link>
@@ -398,7 +398,7 @@ export default async function MyWorkPage(props: {
             {filter.page < pages && (
               <Link
                 href={buildHref({ page: String(filter.page + 1) }, true)}
-                className="px-3 py-1.5 rounded-xl border border-[#E5E5EA] font-semibold"
+                className="px-3 py-1.5 rounded-xl border border-border font-semibold"
               >
                 Next
               </Link>

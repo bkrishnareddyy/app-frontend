@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Save, CheckCircle2, AlertCircle, Loader2, Shield, Globe, Languages } from "lucide-react";
 import { COUNTRIES, useLanguage, Locale } from "@/lib/i18n/LanguageContext";
+import { Button } from "@/components/ui/Button";
+import { Input, Select, Label } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 
 interface AccountAdminFormProps {
   account: {
@@ -76,122 +79,113 @@ export function AccountAdminForm({ account, userRole, onSaved }: AccountAdminFor
 
       {/* Read-only Metadata Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-4 bg-white border border-[#E5E5EA] rounded-2xl shadow-xs">
-          <span className="text-xs font-bold text-[#86868B] uppercase tracking-wider block mb-1">
+        <div className="p-4 bg-white border border-border rounded-2xl shadow-xs">
+          <span className="text-xs font-bold text-ink-muted uppercase tracking-wider block mb-1">
             Account ID
           </span>
-          <p className="font-mono text-xs text-[#1D1D1F] select-all">{account.id}</p>
+          <p className="font-mono text-xs text-ink select-all">{account.id}</p>
         </div>
 
-        <div className="p-4 bg-white border border-[#E5E5EA] rounded-2xl shadow-xs">
-          <span className="text-xs font-bold text-[#86868B] uppercase tracking-wider block mb-1">
+        <div className="p-4 bg-white border border-border rounded-2xl shadow-xs">
+          <span className="text-xs font-bold text-ink-muted uppercase tracking-wider block mb-1">
             Account Type
           </span>
-          <span className="inline-block text-xs font-bold font-mono px-2.5 py-0.5 rounded-full bg-blue-50 text-[#0071E3] uppercase border border-blue-100">
+          <Badge variant="info" className="font-mono normal-case">
             {account.type}
-          </span>
+          </Badge>
         </div>
       </div>
 
       {/* Country & Language Localization Preference (New Profile Section) */}
-      <div className="space-y-4 apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
-        <h3 className="text-sm font-bold text-[#1D1D1F] uppercase tracking-wider mb-2 flex items-center space-x-2">
-          <Globe className="w-4 h-4 text-[#0071E3]" />
+      <div className="space-y-4 apple-card p-6 rounded-3xl border border-border bg-white shadow-sm">
+        <h3 className="text-sm font-bold text-ink uppercase tracking-wider mb-2 flex items-center space-x-2">
+          <Globe className="w-4 h-4 text-brand" />
           <span>Country & Language Localization</span>
         </h3>
-        <p className="text-xs text-[#86868B] mb-4">
+        <p className="text-xs text-ink-muted mb-4">
           Select your primary operating country. Qubere automatically adapts interface localization, language defaults, and regional customs regulations.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-[#1D1D1F] mb-1.5">Operating Country & Region</label>
-            <select
+            <Label className="block mb-1.5">Operating Country & Region</Label>
+            <Select
               value={country.code}
               onChange={(e) => setCountryByCode(e.target.value)}
-              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
+              className="text-sm"
             >
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.flag} {c.name} — {c.languageName}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#1D1D1F] mb-1.5 flex items-center space-x-1.5">
-              <Languages className="w-3.5 h-3.5 text-[#0071E3]" />
+            <Label className="block mb-1.5 flex items-center space-x-1.5">
+              <Languages className="w-3.5 h-3.5 text-brand" />
               <span>Interface Language</span>
-            </label>
-            <select
+            </Label>
+            <Select
               value={locale}
               onChange={(e) => setLocale(e.target.value as Locale)}
-              className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
+              className="text-sm"
             >
               <option value="en">🇺🇸 English (United States)</option>
               <option value="es">🇲🇽 / 🇪🇸 Español (Spanish)</option>
-            </select>
+            </Select>
           </div>
         </div>
 
-        <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-100 flex items-center space-x-3 text-xs text-[#0071E3]">
+        <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-100 flex items-center space-x-3 text-xs text-brand">
           <span className="text-xl">{country.flag}</span>
           <div>
-            <p className="font-extrabold text-[#1D1D1F]">
+            <p className="font-extrabold text-ink">
               Active Region: {country.name} ({country.languageName})
             </p>
-            <p className="text-[11px] text-[#86868B] mt-0.5">
-              Customs & Tariff Authority: <strong className="text-[#0071E3]">{country.regionalTariffAuthority}</strong>
+            <p className="text-[11px] text-ink-muted mt-0.5">
+              Customs & Tariff Authority: <strong className="text-brand">{country.regionalTariffAuthority}</strong>
             </p>
           </div>
         </div>
       </div>
 
       {/* Editable Fields */}
-      <div className="space-y-4 apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm">
-        <h3 className="text-sm font-bold text-[#1D1D1F] uppercase tracking-wider mb-4 flex items-center space-x-2">
-          <Building2 className="w-4 h-4 text-[#0071E3]" />
+      <div className="space-y-4 apple-card p-6 rounded-3xl border border-border bg-white shadow-sm">
+        <h3 className="text-sm font-bold text-ink uppercase tracking-wider mb-4 flex items-center space-x-2">
+          <Building2 className="w-4 h-4 text-brand" />
           <span>Account Attributes</span>
         </h3>
 
         <div>
-          <label className="block text-xs font-bold text-[#1D1D1F] mb-1.5">Account / Workspace Name</label>
-          <input
-            type="text"
+          <Label className="block mb-1.5">Account / Workspace Name</Label>
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
+            className="text-sm"
           />
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-[#1D1D1F] mb-1.5 flex items-center space-x-1.5">
-            <Shield className="w-3.5 h-3.5 text-[#86868B]" />
+          <Label className="block mb-1.5 flex items-center space-x-1.5">
+            <Shield className="w-3.5 h-3.5 text-ink-muted" />
             <span>Account Operational Status</span>
-          </label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="w-full px-4 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-[#1D1D1F] text-sm focus:outline-none focus:border-[#0071E3] transition-colors"
-          >
+          </Label>
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="text-sm">
             <option value="ACTIVE">ACTIVE (Operational)</option>
             <option value="INACTIVE">INACTIVE (Maintenance)</option>
             <option value="SUSPENDED">SUSPENDED (Restricted Access)</option>
-          </select>
+          </Select>
         </div>
       </div>
 
       <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-6 py-3 bg-[#0071E3] hover:bg-[#0077ED] text-white font-semibold rounded-full text-sm shadow-md shadow-[#0071E3]/20 flex items-center space-x-2 transition-all disabled:opacity-50 cursor-pointer"
-        >
+        <Button type="submit" disabled={loading} size="lg" className="shadow-md shadow-brand/20">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           <span>Save Profile Preferences</span>
-        </button>
+        </Button>
       </div>
     </form>
   );

@@ -152,8 +152,8 @@ export default async function ExceptionsPage(props: {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[#1D1D1F]">Exceptions</h1>
-        <p className="text-sm text-[#86868B] mt-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Exceptions</h1>
+        <p className="text-sm text-ink-muted mt-1">
           Every stored exception in {context.accountName}, including intake that arrived without a
           shipment to file it against.
         </p>
@@ -172,7 +172,7 @@ export default async function ExceptionsPage(props: {
       {unassignedCount > 0 && !unassignedOnly && (
         <div
           role="status"
-          className="rounded-2xl bg-white border border-[#E5E5EA] p-4 text-sm text-[#1D1D1F] flex items-center justify-between gap-4"
+          className="rounded-2xl bg-white border border-border p-4 text-sm text-ink flex items-center justify-between gap-4"
         >
           <span>
             {unassignedCount} open {unassignedCount === 1 ? "exception has" : "exceptions have"} no
@@ -180,14 +180,14 @@ export default async function ExceptionsPage(props: {
           </span>
           <Link
             href={href({ unassigned: "1" })}
-            className="shrink-0 text-sm font-semibold text-[#0071E3] hover:underline"
+            className="shrink-0 text-sm font-semibold text-brand hover:underline"
           >
             Show them
           </Link>
         </div>
       )}
 
-      <div className="rounded-2xl bg-white border border-[#E5E5EA] p-4 space-y-4">
+      <div className="rounded-2xl bg-white border border-border p-4 space-y-4">
         <form action="/app/exceptions" method="get" className="flex flex-wrap items-end gap-3">
           {/* A GET form replaces the whole query string, so the chips and sort state
               have to ride along or searching silently clears them. */}
@@ -196,7 +196,7 @@ export default async function ExceptionsPage(props: {
             return value ? <input key={key} type="hidden" name={key} value={value} /> : null;
           })}
           <div className="flex-1 min-w-[220px]">
-            <label htmlFor="exception-search" className="block text-xs font-semibold text-[#86868B] mb-1">
+            <label htmlFor="exception-search" className="block text-xs font-semibold text-ink-muted mb-1">
               Search description or type
             </label>
             <input
@@ -204,18 +204,18 @@ export default async function ExceptionsPage(props: {
               name="q"
               type="search"
               defaultValue={query.search ?? ""}
-              className="w-full h-10 px-3 rounded-xl border border-[#E5E5EA] text-sm"
+              className="w-full h-10 px-3 rounded-xl border border-border text-sm"
             />
           </div>
           <div>
-            <label htmlFor="exception-status" className="block text-xs font-semibold text-[#86868B] mb-1">
+            <label htmlFor="exception-status" className="block text-xs font-semibold text-ink-muted mb-1">
               Status
             </label>
             <select
               id="exception-status"
               name="status"
               defaultValue={rawStatus}
-              className="h-10 px-3 rounded-xl border border-[#E5E5EA] text-sm bg-white"
+              className="h-10 px-3 rounded-xl border border-border text-sm bg-white"
             >
               <option value="open">Open</option>
               <option value="all">All</option>
@@ -227,14 +227,14 @@ export default async function ExceptionsPage(props: {
             </select>
           </div>
           <div>
-            <label htmlFor="exception-severity" className="block text-xs font-semibold text-[#86868B] mb-1">
+            <label htmlFor="exception-severity" className="block text-xs font-semibold text-ink-muted mb-1">
               Severity
             </label>
             <select
               id="exception-severity"
               name="severity"
               defaultValue={severityFilter ?? ""}
-              className="h-10 px-3 rounded-xl border border-[#E5E5EA] text-sm bg-white"
+              className="h-10 px-3 rounded-xl border border-border text-sm bg-white"
             >
               <option value="">Any</option>
               {SEVERITIES.map((severity) => (
@@ -246,12 +246,12 @@ export default async function ExceptionsPage(props: {
           </div>
           <button
             type="submit"
-            className="h-10 px-4 rounded-xl bg-[#0071E3] text-white text-sm font-semibold"
+            className="h-10 px-4 rounded-xl bg-brand text-white text-sm font-semibold"
           >
             Search
           </button>
           {hasFilter && (
-            <Link href="/app/exceptions" className="h-10 px-3 flex items-center text-sm font-semibold text-[#0071E3]">
+            <Link href="/app/exceptions" className="h-10 px-3 flex items-center text-sm font-semibold text-brand">
               Clear
             </Link>
           )}
@@ -261,7 +261,7 @@ export default async function ExceptionsPage(props: {
           <Link
             href={href({ mine: mineOnly ? null : "1" })}
             className={`px-3 py-1.5 rounded-full border ${
-              mineOnly ? "border-[#0071E3] text-[#0071E3]" : "border-[#E5E5EA] text-[#6E6E73]"
+              mineOnly ? "border-brand text-brand" : "border-border text-[#6E6E73]"
             }`}
           >
             Assigned to me
@@ -269,7 +269,7 @@ export default async function ExceptionsPage(props: {
           <Link
             href={href({ unassigned: unassignedOnly ? null : "1" })}
             className={`px-3 py-1.5 rounded-full border ${
-              unassignedOnly ? "border-[#0071E3] text-[#0071E3]" : "border-[#E5E5EA] text-[#6E6E73]"
+              unassignedOnly ? "border-brand text-brand" : "border-border text-[#6E6E73]"
             }`}
           >
             No shipment attached
@@ -278,8 +278,8 @@ export default async function ExceptionsPage(props: {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl bg-white border border-[#E5E5EA] p-10 text-center">
-          <Inbox className="w-8 h-8 mx-auto text-[#86868B]" aria-hidden="true" />
+        <div className="rounded-2xl bg-white border border-border p-10 text-center">
+          <Inbox className="w-8 h-8 mx-auto text-ink-muted" aria-hidden="true" />
           <p className="mt-3 text-sm text-[#6E6E73]">
             {hasFilter
               ? "No exception matches these filters."
@@ -301,10 +301,10 @@ export default async function ExceptionsPage(props: {
                 key={row.id}
                 id={row.id === requestedId ? "requested-exception" : undefined}
                 className={`rounded-2xl bg-white border p-5 space-y-2 ${
-                  row.id === requestedId ? "border-[#0071E3]" : "border-[#E5E5EA]"
+                  row.id === requestedId ? "border-brand" : "border-border"
                 }`}
               >
-                <div className="flex items-center gap-2 text-sm font-bold text-[#1D1D1F]">
+                <div className="flex items-center gap-2 text-sm font-bold text-ink">
                   <Icon
                     className={`w-4 h-4 shrink-0 ${severe ? "text-red-500" : "text-amber-500"}`}
                     aria-hidden="true"
@@ -312,7 +312,7 @@ export default async function ExceptionsPage(props: {
                   <span>
                     {row.severity} · {row.type.replace(/_/g, " ")}
                   </span>
-                  <span className="ml-auto text-xs font-semibold uppercase tracking-wider text-[#86868B]">
+                  <span className="ml-auto text-xs font-semibold uppercase tracking-wider text-ink-muted">
                     {exceptionStatusLabel(row.status)}
                   </span>
                 </div>
@@ -322,25 +322,25 @@ export default async function ExceptionsPage(props: {
                 <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-[#6E6E73]">
                   <div className="flex gap-1">
                     <dt>Opened</dt>
-                    <dd className="text-[#1D1D1F]">{displayDate(row.createdAt)}</dd>
+                    <dd className="text-ink">{displayDate(row.createdAt)}</dd>
                   </div>
                   {row.resolvedAt && (
                     <div className="flex gap-1">
                       <dt>Closed</dt>
-                      <dd className="text-[#1D1D1F]">{displayDate(row.resolvedAt)}</dd>
+                      <dd className="text-ink">{displayDate(row.resolvedAt)}</dd>
                     </div>
                   )}
                   <div className="flex gap-1">
                     <dt>Assigned to</dt>
-                    <dd className="text-[#1D1D1F]">{assignee ?? "Nobody"}</dd>
+                    <dd className="text-ink">{assignee ?? "Nobody"}</dd>
                   </div>
                   <div className="flex gap-1">
                     <dt>Shipment</dt>
-                    <dd className="text-[#1D1D1F]">
+                    <dd className="text-ink">
                       {row.shipment ? (
                         <Link
                           href={`/app/shipments/${row.shipment.id}#exceptions`}
-                          className="font-semibold text-[#0071E3] hover:underline"
+                          className="font-semibold text-brand hover:underline"
                         >
                           {row.shipment.shipmentNumber}
                         </Link>
@@ -357,7 +357,7 @@ export default async function ExceptionsPage(props: {
                       <dd>
                         <Link
                           href={`/app/filing?filingId=${encodeURIComponent(row.filingId)}`}
-                          className="font-semibold text-[#0071E3] hover:underline"
+                          className="font-semibold text-brand hover:underline"
                         >
                           Open filing
                         </Link>
@@ -394,7 +394,7 @@ export default async function ExceptionsPage(props: {
             {query.page > 1 && (
               <Link
                 href={tableHref("/app/exceptions", params, { page: query.page - 1 })}
-                className="font-semibold text-[#0071E3]"
+                className="font-semibold text-brand"
               >
                 Previous
               </Link>
@@ -402,7 +402,7 @@ export default async function ExceptionsPage(props: {
             {query.page < pages && (
               <Link
                 href={tableHref("/app/exceptions", params, { page: query.page + 1 })}
-                className="font-semibold text-[#0071E3]"
+                className="font-semibold text-brand"
               >
                 Next
               </Link>

@@ -46,7 +46,7 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
 
   if (invocations.length === 0) {
     return (
-      <div className="px-4 py-8 text-center text-[#86868B] text-xs">
+      <div className="px-4 py-8 text-center text-ink-muted text-xs">
         No agent runs recorded yet. Upload a document or edit a field to trigger the agent pipeline.
       </div>
     );
@@ -60,17 +60,17 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
         const waterfallSpan = Math.max(inv.totalDurationMs, 1);
 
         return (
-          <div key={inv.runId} className="rounded-2xl border border-[#E5E5EA] bg-white overflow-hidden">
+          <div key={inv.runId} className="rounded-2xl border border-border bg-white overflow-hidden">
             <button
               type="button"
               onClick={() => setExpandedRunId(isExpanded ? null : inv.runId)}
-              className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-[#F5F5F7] transition-colors text-left"
+              className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-surface-muted transition-colors text-left"
             >
               <div className="flex items-center space-x-3 min-w-0">
-                <Sparkles className="w-4 h-4 text-[#0071E3] shrink-0" />
+                <Sparkles className="w-4 h-4 text-brand shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-[#1D1D1F] truncate">{inv.invokedBy}</p>
-                  <p className="text-[10px] text-[#86868B] font-medium flex items-center space-x-1.5 mt-0.5">
+                  <p className="text-xs font-bold text-ink truncate">{inv.invokedBy}</p>
+                  <p className="text-[10px] text-ink-muted font-medium flex items-center space-x-1.5 mt-0.5">
                     <Clock className="w-3 h-3" />
                     <span>{formatTimestamp(inv.startedAt)}</span>
                     <span>&middot;</span>
@@ -85,12 +85,12 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
                   {style.icon}
                   <span>{style.label}</span>
                 </span>
-                {isExpanded ? <ChevronUp className="w-4 h-4 text-[#86868B]" /> : <ChevronDown className="w-4 h-4 text-[#86868B]" />}
+                {isExpanded ? <ChevronUp className="w-4 h-4 text-ink-muted" /> : <ChevronDown className="w-4 h-4 text-ink-muted" />}
               </div>
             </button>
 
             {isExpanded && (
-              <div className="border-t border-[#E5E5EA] bg-[#FAFAFC] px-4 py-4 space-y-2.5">
+              <div className="border-t border-border bg-[#FAFAFC] px-4 py-4 space-y-2.5">
                 {inv.steps.map((step, idx) => {
                   const stepStyle = STATUS_STYLES[step.status];
                   const offsetMs = new Date(step.startedAt).getTime() - new Date(inv.startedAt).getTime();
@@ -99,15 +99,15 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
 
                   return (
                     <div key={step.id} className="flex items-center space-x-3">
-                      <span className="w-5 h-5 rounded-full bg-white border border-[#E5E5EA] text-[10px] font-bold text-[#1D1D1F] inline-flex items-center justify-center shrink-0">
+                      <span className="w-5 h-5 rounded-full bg-white border border-border text-[10px] font-bold text-ink inline-flex items-center justify-center shrink-0">
                         {idx + 1}
                       </span>
                       <div className="min-w-[190px] max-w-[190px] shrink-0">
-                        <p className="text-[11px] font-bold text-[#1D1D1F] truncate" title={step.agentName}>
+                        <p className="text-[11px] font-bold text-ink truncate" title={step.agentName}>
                           {step.agentName}
                         </p>
                         {step.summary && (
-                          <p className="text-[9px] text-[#86868B] truncate" title={step.summary}>
+                          <p className="text-[9px] text-ink-muted truncate" title={step.summary}>
                             {step.summary}
                           </p>
                         )}
@@ -127,7 +127,7 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
                           title={`${formatDuration(step.durationMs)}`}
                         />
                       </div>
-                      <span className="text-[10px] font-mono font-bold text-[#1D1D1F] w-14 text-right shrink-0">
+                      <span className="text-[10px] font-mono font-bold text-ink w-14 text-right shrink-0">
                         {formatDuration(step.durationMs)}
                       </span>
                       <span className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border ${stepStyle.badge}`}>

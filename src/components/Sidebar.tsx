@@ -105,7 +105,7 @@ export function Sidebar({
         aria-label="Open navigation"
         aria-expanded={mobileOpen}
         aria-controls="primary-navigation"
-        className="lg:hidden fixed top-3 left-3 z-50 w-10 h-10 rounded-xl bg-white border border-[#E5E5EA] shadow-sm flex items-center justify-center text-[#1D1D1F]"
+        className="lg:hidden fixed top-3 left-3 z-50 w-10 h-10 rounded-xl bg-white border border-border shadow-sm flex items-center justify-center text-ink"
       >
         <Menu className="w-5 h-5" />
       </button>
@@ -122,23 +122,23 @@ export function Sidebar({
         id="primary-navigation"
         aria-label="Primary"
         className={cn(
-          "bg-[#F5F5F7] border-r border-[#E5E5EA] flex flex-col h-screen z-40 transition-transform duration-200",
+          "bg-surface-muted border-r border-border flex flex-col h-screen z-40 transition-transform duration-200",
           "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
           collapsed ? "w-20" : "w-64"
         )}
       >
-        <div className="h-16 px-4 flex items-center justify-between border-b border-[#E5E5EA]">
+        <div className="h-16 px-4 flex items-center justify-between border-b border-border">
           <Link
             href="/app/work"
             onClick={() => setMobileOpen(false)}
             className="flex items-center space-x-3 group min-w-0"
           >
-            <div className="w-9 h-9 shrink-0 rounded-xl bg-[#0071E3] flex items-center justify-center text-white shadow-md shadow-[#0071E3]/20 group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 shrink-0 rounded-xl bg-brand flex items-center justify-center text-white shadow-md shadow-brand/20 group-hover:scale-105 transition-transform">
               <ShieldCheck className="w-5 h-5" />
             </div>
             {!collapsed && (
-              <span className="block text-xl font-bold tracking-tight text-[#1D1D1F] truncate min-w-0">
+              <span className="block text-xl font-bold tracking-tight text-ink truncate min-w-0">
                 Qubere
               </span>
             )}
@@ -147,7 +147,7 @@ export function Sidebar({
             type="button"
             onClick={() => setMobileOpen(false)}
             aria-label="Close navigation"
-            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[#86868B] hover:bg-white"
+            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-ink-muted hover:bg-white"
           >
             <X className="w-4 h-4" />
           </button>
@@ -176,7 +176,7 @@ export function Sidebar({
                 <p
                   className={cn(
                     "px-3 text-[11px] font-bold uppercase tracking-wider mb-2",
-                    section.id === "platform" ? "text-amber-600" : "text-[#86868B]"
+                    section.id === "platform" ? "text-amber-600" : "text-ink-muted"
                   )}
                 >
                   {labels[section.labelKey] ?? section.labelKey}
@@ -201,15 +201,15 @@ export function Sidebar({
                         isActive && isPlatform &&
                           "bg-amber-500/10 text-amber-700 shadow-sm border border-amber-500/20 font-semibold",
                         isActive && !isPlatform &&
-                          "bg-white text-[#0071E3] shadow-sm border border-[#E5E5EA] font-semibold",
+                          "bg-white text-brand shadow-sm border border-border font-semibold",
                         !isActive && isPlatform && "text-amber-800 hover:text-amber-900 hover:bg-amber-50/50",
-                        !isActive && !isPlatform && "text-[#1D1D1F] hover:text-[#0071E3] hover:bg-white/60"
+                        !isActive && !isPlatform && "text-ink hover:text-brand hover:bg-white/60"
                       )}
                     >
                       <Icon
                         className={cn(
                           "w-4 h-4 shrink-0",
-                          isPlatform ? "text-amber-600" : isActive ? "text-[#0071E3]" : "text-[#86868B]"
+                          isPlatform ? "text-amber-600" : isActive ? "text-brand" : "text-ink-muted"
                         )}
                       />
                       {!collapsed && <span className="truncate">{label}</span>}
@@ -221,18 +221,18 @@ export function Sidebar({
           ))}
         </div>
 
-        <div className="p-3 border-t border-[#E5E5EA] bg-white/40">
+        <div className="p-3 border-t border-border bg-white/40">
           {!collapsed && (
-            <div className="px-2 pb-2 text-xs text-[#86868B]">
-              <p className="font-semibold text-[#1D1D1F]">Qubere AI Trade Platform</p>
-              <p className="text-[11px] text-[#86868B]">{dataModeFooterLabel(dataMode)}</p>
+            <div className="px-2 pb-2 text-xs text-ink-muted">
+              <p className="font-semibold text-ink">Qubere AI Trade Platform</p>
+              <p className="text-[11px] text-ink-muted">{dataModeFooterLabel(dataMode)}</p>
             </div>
           )}
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-            className="hidden lg:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-[#86868B] hover:text-[#0071E3] hover:bg-white transition-colors"
+            className="hidden lg:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-ink-muted hover:text-brand hover:bg-white transition-colors"
           >
             {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             {!collapsed && <span>Collapse</span>}
