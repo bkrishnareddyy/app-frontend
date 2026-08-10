@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Loader2, Search, Globe2 } from "lucide-react";
 import { HtsAdminPanel, HtsAdminData } from "./HtsAdminPanel";
+import { VersionPill } from "@/components/VersionPill";
 
 interface AccountItem {
   id: string;
@@ -88,7 +89,8 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
       )}
 
       {/* Tab Switcher */}
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
         <button
           onClick={() => setActiveTab("accounts")}
           className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
@@ -107,6 +109,9 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
           <Globe2 className="w-3.5 h-3.5" />
           <span>HS / HTS Master Data</span>
         </button>
+        </div>
+
+        <VersionPill />
       </div>
 
       {activeTab === "hts" && <HtsAdminPanel data={htsAdmin} />}
