@@ -129,6 +129,13 @@ export function canAccessNavItem(access: NavAccess, item: NavItem): boolean {
   return !item.roles;
 }
 
+/** The administration section's items, filtered by access -- regardless of hiddenFromSidebar, since this backs the header's Manage Account menu rather than the sidebar. */
+export function accountAdminItems(access: NavAccess, sections: NavSection[] = NAV_SECTIONS): NavItem[] {
+  const section = sections.find((s) => s.id === "administration");
+  if (!section) return [];
+  return section.items.filter((item) => canAccessNavItem(access, item));
+}
+
 export function visibleNavigation(access: NavAccess, sections: NavSection[] = NAV_SECTIONS): NavSection[] {
   return sections
     .filter((section) => !section.hiddenFromSidebar)

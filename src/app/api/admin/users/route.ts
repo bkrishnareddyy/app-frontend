@@ -16,6 +16,39 @@ const updateUserSchema = z.object({
   roleName: z.string().min(1, "roleName is required"),
 });
 
+export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
+  const memberships = await db.accountMembership.findMany({
+    where: { accountId: ctx.accountId },
+    include: { user: true, roles: { include: { role: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Roles are per-account (custom roles like PLANNER) plus system-wide ones
+  // (OWNER) -- not a fixed OWNER/ADMIN/MEMBER/VIEWER set, so the assignable
+  // list must be queried rather than hardcoded.
+  const availableRoles = await db.role.findMany({
+    where: { OR: [{ accountId: ctx.accountId }, { accountId: null }] },
+    orderBy: { name: "asc" },
+  });
+
+  return NextResponse.json({
+    accountName: ctx.accountName,
+    currentUserId: ctx.userId,
+    availableRoles: availableRoles.map((r) => r.name),
+    members: memberships.map((m) => ({
+      membershipId: m.id,
+      userId: m.user.id,
+      email: m.user.email,
+      firstName: m.user.firstName,
+      lastName: m.user.lastName,
+      status: m.status,
+      createdAt: m.createdAt.toISOString(),
+      roleNames: m.roles.map((mr) => mr.role.name),
+    })),
+    requestId,
+  });
+}, { permission: "users.manage" });
+
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, updateUserSchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;

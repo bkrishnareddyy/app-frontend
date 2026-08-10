@@ -14,9 +14,11 @@ interface AccountAdminFormProps {
     createdAt: string;
   };
   userRole: string;
+  /** Called after a successful save, in addition to router.refresh(), so embedders that don't rely on the route's server data (e.g. a modal fetching client-side) can refresh their own copy. */
+  onSaved?: () => void;
 }
 
-export function AccountAdminForm({ account, userRole }: AccountAdminFormProps) {
+export function AccountAdminForm({ account, userRole, onSaved }: AccountAdminFormProps) {
   const router = useRouter();
   const [name, setName] = useState(account.name);
   const [status, setStatus] = useState(account.status);
@@ -41,6 +43,7 @@ export function AccountAdminForm({ account, userRole }: AccountAdminFormProps) {
       if (res.ok) {
         setMessage({ type: "success", text: "Account profile and country preferences saved. Audit log created." });
         router.refresh();
+        onSaved?.();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to update account" });
       }

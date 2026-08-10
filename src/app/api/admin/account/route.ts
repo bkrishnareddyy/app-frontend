@@ -3,6 +3,21 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 
+export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
+  return NextResponse.json({
+    accountName: ctx.accountName,
+    userRole: ctx.roleNames.join(", "),
+    account: {
+      id: ctx.account.id,
+      name: ctx.account.name,
+      type: ctx.account.type,
+      status: ctx.account.status,
+      createdAt: ctx.account.createdAt.toISOString(),
+    },
+    requestId,
+  });
+}, { permission: "account.manage" });
+
 export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
   const { name, status } = body;
