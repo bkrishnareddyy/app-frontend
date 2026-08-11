@@ -43,7 +43,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     throw error;
   }
 
-  const contentDisposition = `inline; filename="${encodeURIComponent(document.fileName)}"`;
+  const contentDisposition = buildContentDisposition(document.fileName);
 
   if (origin === null) {
     return streamLocalFile(document.fileUrl, contentDisposition);
@@ -77,6 +77,18 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     },
   });
 });
+
+/**
+ * A plain `filename="..."` param is read as Latin-1 by RFC 6266, so a
+ * percent-encoded non-ASCII name (e.g. "invoice_café.pdf") used to render
+ * literally as "invoice_caf%C3%A9.pdf" on download. `filename*=UTF-8''...`
+ * is what actually carries the real name; the plain param is kept only as an
+ * ASCII-safe fallback for the few clients that don't read the extended one.
+ */
+function buildContentDisposition(fileName: string): string {
+  const asciiFallback = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+  return `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
 
 /** Serves a locally stored upload, confined to the uploads directory. */
 async function streamLocalFile(fileUrl: string, contentDisposition: string) {

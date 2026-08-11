@@ -17,9 +17,10 @@ import {
 } from "lucide-react";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
 import { Badge } from "@/components/ui/Badge";
+import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
-import { DocumentViewerControls } from "./DocumentViewerControls";
+import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
 import { ShipmentClientEditor } from "./ShipmentClientEditor";
 import { ExceptionsDrawer } from "./ExceptionsDrawer";
@@ -531,25 +532,10 @@ export default async function ShipmentWorkspacePage(props: {
   // ShipmentDocumentsSection does, so its "Missing required" callout and
   // the Exceptions panel above always agree instead of being two
   // independently-computed, silently-diverging checks.
-  const requiredDocTypes = ["Commercial Invoice", "Packing List", "Bill of Lading"];
-  if (originStatus !== "Not Applicable") requiredDocTypes.push("Certificate of Origin");
-
-  const isDocReceived = (d: any) =>
-    d.status !== "Missing" &&
-    Boolean(d.fileUrl || d.status === "Received" || d.status === "Processed" || d.status === "Review Required" || d.status === "Completed");
-
-  const missingDocTypes = requiredDocTypes.filter((req) => {
-    return !documents.some((d: any) => {
-      if (!isDocReceived(d)) return false;
-      const type = (d.docType || "").toLowerCase();
-      const name = (d.fileName || "").toLowerCase();
-      if (req === "Commercial Invoice") return type.includes("invoice") || name.includes("invoice");
-      if (req === "Packing List") return type.includes("packing") || name.includes("packing");
-      if (req === "Bill of Lading") return type.includes("lading") || type.includes("transport") || name.includes("lading") || name.includes("instructions") || name.includes("waybill");
-      if (req === "Certificate of Origin") return type.includes("origin") || type.includes("coo") || name.includes("origin") || name.includes("coo");
-      return false;
-    });
-  });
+  const { requiredTypes: requiredDocTypes, missingTypes: missingDocTypes } = checkRequiredDocumentTypes(
+    documents,
+    originStatus !== "Not Applicable"
+  );
 
   // 9. Admissibility, PGA & Trade Restrictions
   let pgaStatus: "Ready" | "Needs Review" | "Needs Information" = "Ready";
@@ -1225,25 +1211,20 @@ export default async function ShipmentWorkspacePage(props: {
                   return (
                     <div className="flex flex-col justify-between h-full space-y-4">
                       <div>
-                        {/* Viewer Controls */}
-                        <div className="flex items-center justify-between pb-3 border-b border-border text-xs">
-                          <DocumentViewerControls
+                        {/* Document type, name, and tabbed preview / key-value / raw JSON */}
+                        <div className="h-[620px] flex flex-col border-b border-border pb-4 overflow-hidden">
+                          <DocumentReviewPanel
                             documentId={primaryDoc.id}
-                            fileName={primaryDoc.fileName}
+                            fileName={primaryDoc.fileName || "Trade Document"}
+                            docType={
+                              !primaryDoc.docType || primaryDoc.docType === "AUTO_DETECT"
+                                ? "Commercial Invoice"
+                                : primaryDoc.docType
+                            }
                             fileUrl={primaryDoc.fileUrl}
                             proxyUrl={proxyUrl}
                             shipmentNumber={shipment.shipmentNumber}
-                          >
-                            <div className="flex items-center space-x-2 min-w-0 group-hover:opacity-90">
-                              <FileText className="w-4 h-4 text-brand shrink-0" />
-                              <span className="font-bold text-ink truncate group-hover:underline">
-                                {primaryDoc.fileName || "Trade Document"}
-                              </span>
-                              <span className="text-ink-muted text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-surface-muted">
-                                {!primaryDoc.docType || primaryDoc.docType === "AUTO_DETECT" ? "Commercial Invoice" : primaryDoc.docType}
-                              </span>
-                            </div>
-                          </DocumentViewerControls>
+                          />
                         </div>
 
                         {/* Document Metadata Details */}
@@ -1257,14 +1238,6 @@ export default async function ShipmentWorkspacePage(props: {
                             )}
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <p className="text-[10px] text-ink-muted uppercase font-bold">Uploaded File Name</p>
-                              <p className="font-bold text-ink truncate">{primaryDoc.fileName}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-ink-muted uppercase font-bold">Document Type</p>
-                              <p className="font-bold text-ink">{primaryDoc.docType || "Commercial Invoice / Trade Document"}</p>
-                            </div>
                             <div>
                               <p className="text-[10px] text-ink-muted uppercase font-bold">Page Count</p>
                               <p className="font-mono text-ink">{primaryDoc.pageCount ? `${primaryDoc.pageCount} Pages` : "1 Page"}</p>

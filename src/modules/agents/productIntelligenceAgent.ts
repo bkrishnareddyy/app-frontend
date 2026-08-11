@@ -26,6 +26,8 @@ export interface ProductIntelligenceInput {
     lineNumber: number;
     sku?: string;
     description: string;
+    /** From the shipment's accumulated context, when known -- manufacturing conventions vary enough by country to sharpen material/finish inference. */
+    countryOfOrigin?: string | null;
   }>;
 }
 
@@ -185,7 +187,8 @@ export class ProductIntelligenceAgent {
         try {
           const prompt = `${PRODUCT_INTELLIGENCE_SYSTEM_PROMPT}
 
-Raw Description: "${desc}"`;
+Raw Description: "${desc}"
+${item.countryOfOrigin ? `Country of Origin (from shipment context, if it informs typical material/finish conventions): "${item.countryOfOrigin}"` : ""}`;
 
           const response = await this.aiClient.models.generateContent({
             model: process.env.GEMINI_MODEL || "gemini-3.6-flash",

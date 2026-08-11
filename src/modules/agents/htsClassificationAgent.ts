@@ -49,7 +49,17 @@ export interface HTSClassificationInput {
     rawDescription: string;
     enrichedDescription?: string;
     essentialCharacter?: string;
+    // The rest of what Product Intelligence discovered -- previously dropped
+    // before reaching this agent, even though material composition in
+    // particular drives GRI 1 chapter/heading selection directly.
+    materialComposition?: string | null;
+    endUse?: string | null;
+    finish?: string | null;
+    carbonContentPercentage?: number | null;
+    casNumber?: string | null;
   }>;
+  /** From the shipment's accumulated context, when known. */
+  countryOfOrigin?: string | null;
 }
 
 export interface HTSClassificationOutput {
@@ -238,7 +248,13 @@ export class HTSClassificationAgent {
 
 Product Description: "${item.rawDescription}"
 ${item.enrichedDescription ? `Enriched Description: "${item.enrichedDescription}"` : ""}
-${item.essentialCharacter ? `Essential Character: "${item.essentialCharacter}"` : ""}
+${item.essentialCharacter ? `Essential Character (GRI 3(b)): "${item.essentialCharacter}"` : ""}
+${item.materialComposition ? `Material Composition: "${item.materialComposition}"` : ""}
+${item.endUse ? `End Use: "${item.endUse}"` : ""}
+${item.finish ? `Finish: "${item.finish}"` : ""}
+${item.carbonContentPercentage != null ? `Carbon Content: ${item.carbonContentPercentage}%` : ""}
+${item.casNumber ? `CAS Number: "${item.casNumber}"` : ""}
+${input.countryOfOrigin ? `Country of Origin (from shipment context): "${input.countryOfOrigin}"` : ""}
 
 DB Candidate HTS codes (use as reference, override if wrong):
 ${candidateContext}`;
@@ -347,53 +363,53 @@ ${candidateContext}`;
 
     const reasoningChain = `Classified ${results.length} line item(s). Overall confidence: ${overallConfidence}%. AI provider: ${aiProvider}.${debugError ? " Note: fallback used due to extraction error." : ""}`;
 
+    // One AgentDecision per line item, not one for the whole batch -- a
+    // shipment with N line items used to get only line 1 into the review
+    // queue (results[0]), so approving it could never touch lines 2+. Each
+    // decision carries its own lineNumber so decisions/route.ts can target
+    // the exact ShipmentLineItem it's about.
     let agentDecisionId: string | null = null;
-    try {
-      const agentDecision = await db.agentDecision.create({
-        data: {
-          accountId: input.accountId,
-          shipmentId: input.shipmentId,
-          agentName: "HTS Classification Agent",
-          agentIcon: "BookOpen",
-          status: requiresReview ? "Needs Review" : "Approved",
-          confidence: overallConfidence,
-          decisionSummary: `Classification for ${input.productProfiles[0]?.rawDescription}: HTS ${results[0]?.htsCode} (Confidence: ${overallConfidence}%).`,
-          purpose: "10-Digit HTS code resolution via Gemini legal reasoning and CBP CROSS ruling lookup",
-          dataSources: ["HTSUS 2026 Rev 1", "CBP CROSS Rulings Database", aiProvider],
-          regulations: ["19 U.S.C. § 1202", "GRI 1-6"],
-          // No existing classification is read here, so there is no current code.
-          currentHtsCode: null,
-          proposedHtsCode: results[0]?.htsCode,
-          proposedDescription: results[0]?.htsDescription,
-          rulesApplied: ["GRI 1-6 Legal Verification", "HTSUS Chapter/Section Note Analysis"],
-          evidenceItems: { results, reasoningChain } as unknown as Prisma.InputJsonValue,
-        },
-      });
-      agentDecisionId = agentDecision.id;
-    } catch (err) {
-      debugError = logAgentError(
-        "HTS Classification Agent",
-        input.shipmentId,
-        "DB agentDecision create",
-        err
-      );
-    }
-
-    if (agentDecisionId) {
+    for (const result of results) {
+      const lineRequiresReview = result.confidence < 70;
       try {
+        const agentDecision = await db.agentDecision.create({
+          data: {
+            accountId: input.accountId,
+            shipmentId: input.shipmentId,
+            agentName: "HTS Classification Agent",
+            agentIcon: "BookOpen",
+            status: lineRequiresReview ? "Needs Review" : "Approved",
+            confidence: result.confidence,
+            lineNumber: result.lineNumber,
+            decisionSummary: `Classification for line ${result.lineNumber} (${result.productDescription}): HTS ${result.htsCode} (Confidence: ${result.confidence}%).`,
+            purpose: "10-Digit HTS code resolution via Gemini legal reasoning and CBP CROSS ruling lookup",
+            dataSources: ["HTSUS 2026 Rev 1", "CBP CROSS Rulings Database", aiProvider],
+            regulations: ["19 U.S.C. § 1202", "GRI 1-6"],
+            // No existing classification is read here, so there is no current code.
+            currentHtsCode: null,
+            proposedHtsCode: result.htsCode,
+            proposedDescription: result.htsDescription,
+            rulesApplied: ["GRI 1-6 Legal Verification", "HTSUS Chapter/Section Note Analysis"],
+            evidenceItems: { result, reasoningChain } as unknown as Prisma.InputJsonValue,
+          },
+        });
+        agentDecisionId = agentDecisionId ?? agentDecision.id;
+
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
           action: "AGENT_EXECUTION_COMPLETED",
           entity: "AGENT_DECISION",
-          entityId: agentDecisionId,
-          metadata: { agentName: "HTS Classification Agent", classificationsCount: results.length, overallConfidence },
+          entityId: agentDecision.id,
+          metadata: { agentName: "HTS Classification Agent", lineNumber: result.lineNumber, confidence: result.confidence },
+        }).catch((err) => {
+          debugError = logAgentError("HTS Classification Agent", input.shipmentId, "createAuditLog", err);
         });
       } catch (err) {
         debugError = logAgentError(
           "HTS Classification Agent",
           input.shipmentId,
-          "createAuditLog",
+          `DB agentDecision create (line ${result.lineNumber})`,
           err
         );
       }

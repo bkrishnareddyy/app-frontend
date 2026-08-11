@@ -5,8 +5,10 @@ import { parseAndValidateBody, validatePathParams } from "@/lib/api/validation";
 import { createAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
-import { ShipmentPartyService } from "@/modules/shipment/shipmentPartyService";
+import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment/shipmentPartyService";
 import { ExceptionService, DOCUMENT_FIELD_LABELS } from "@/modules/exceptions/exception.service";
+import { FactAuditService } from "@/modules/audit/factAuditService";
+import { FactService } from "@/modules/shipment/factService";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1), documentId: z.string().min(1) });
@@ -35,9 +37,30 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
     if (!shipment) return buildErrorResponse(404, "NOT_FOUND", "Shipment not found", undefined, requestId);
     if (!document) return buildErrorResponse(404, "NOT_FOUND", "Document not found", undefined, requestId);
 
+    const resolverName = [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || ctx.email;
+
+    // Approving/editing a field review is a user action on the curated
+    // record -- versioned and audited the same way any other manual edit
+    // is, whichever field it targets.
     if (fieldKey === "originCountry") {
-      await db.shipment.update({ where: { id: shipmentId }, data: { countryOfOrigin: value } });
+      await FactAuditService.logChangeEvent({
+        shipmentId,
+        userId: ctx.userId,
+        changeType: "USER_FIELD_UPDATE",
+        field: "countryOfOrigin",
+        previousValue: shipment.countryOfOrigin,
+        newValue: value,
+        reason: action === "EDIT" ? "Corrected via field review" : "Approved via field review",
+      });
+      await db.shipment.update({ where: { id: shipmentId }, data: { countryOfOrigin: value, version: { increment: 1 } } });
+      await FactService.record({ shipmentId, field: "countryOfOrigin", value, sourceType: "USER_ENTERED", documentId });
     } else {
+      const role: ShipmentPartyRole = fieldKey === "importerName" ? "IMPORTER_OF_RECORD" : "EXPORTER";
+      const previousParty = await db.shipmentParty.findFirst({
+        where: { shipmentId, role },
+        include: { legalEntity: { select: { legalName: true } } },
+      });
+
       const resolvedEntity = await EntityResolutionService.findOrCreateEntity(ctx.accountId, value);
       if (!resolvedEntity) {
         return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", "Could not resolve a legal entity for that name", undefined, requestId);
@@ -45,14 +68,24 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
       await ShipmentPartyService.assignParty({
         shipmentId,
         legalEntityId: resolvedEntity.id,
-        role: fieldKey === "importerName" ? "IMPORTER_OF_RECORD" : "EXPORTER",
+        role,
         source: "USER",
         confidence: 1.0,
         isVerified: true,
       });
-    }
 
-    const resolverName = [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || ctx.email;
+      await FactAuditService.logChangeEvent({
+        shipmentId,
+        userId: ctx.userId,
+        changeType: "PARTY_ASSIGNED",
+        field: fieldKey,
+        previousValue: previousParty?.legalEntity.legalName ?? null,
+        newValue: value,
+        reason: action === "EDIT" ? "Corrected via field review" : "Approved via field review",
+      });
+      await db.shipment.update({ where: { id: shipmentId }, data: { version: { increment: 1 } } });
+      await FactService.record({ shipmentId, field: fieldKey, value, sourceType: "USER_ENTERED", documentId });
+    }
 
     await db.fieldApproval.create({
       data: {

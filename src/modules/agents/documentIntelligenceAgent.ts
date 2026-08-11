@@ -744,6 +744,19 @@ INSTRUCTIONS:
             invoiceSubtotal: invoiceSubtotal || null,
             invoiceNumber: invoiceNumber || null,
             invoiceDate: invoiceDate || null,
+            // Gemini's structured response (captured above as `tradeMetadata`)
+            // already extracts these -- they were being computed and then
+            // thrown away right here instead of persisted, which is why
+            // fields like Port of Loading never showed up anywhere despite
+            // being correctly read off the document.
+            hsHtsCode: tradeMetadata?.hsHtsCode || null,
+            poNumber: tradeMetadata?.poNumber || null,
+            portOfLoading: tradeMetadata?.portOfLoading || null,
+            portOfDischarge: tradeMetadata?.portOfDischarge || null,
+            carrier: tradeMetadata?.carrier || null,
+            transportDocumentNumber: tradeMetadata?.transportDocumentNumber || null,
+            totalWeight: tradeMetadata?.totalWeight || null,
+            totalQuantity: tradeMetadata?.totalQuantity || null,
           },
           lineItems,
           validations: validations || [],

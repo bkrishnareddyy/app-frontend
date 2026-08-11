@@ -1,6 +1,7 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { computeReadinessScore } from "@/lib/shipmentReadiness";
+import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { CommandCenterClient } from "./CommandCenterClient";
 
 export default async function CommandCenterPage() {
@@ -78,6 +79,12 @@ export default async function CommandCenterPage() {
       (a, b) => Number(b.totalValue) - Number(a.totalValue)
     )[0];
     const totalValue = s.lineItems.reduce((sum, li) => sum + Number(li.totalValue), 0);
+    // Same "required document types" definition as the shipment detail page
+    // (Certificate of Origin only required when a preferential-tariff HTS
+    // code is present), so My Work's Pending column always agrees with it.
+    const includeCertificateOfOrigin =
+      s.documents.length === 0 || s.lineItems.some((li) => li.htsCode?.startsWith("02"));
+    const docCheck = checkRequiredDocumentTypes(s.documents, includeCertificateOfOrigin);
     return {
       id: s.id,
       shipmentNumber: s.shipmentNumber,
@@ -99,6 +106,11 @@ export default async function CommandCenterPage() {
             lastName: s.assignedBroker.lastName,
           }
         : null,
+      estimatedArrival: s.estimatedArrival ? s.estimatedArrival.toISOString() : null,
+      requiredDocTypes: docCheck.requiredTypes,
+      missingDocTypes: docCheck.missingTypes,
+      receivedDocCount: docCheck.receivedCount,
+      totalRequiredDocs: docCheck.totalRequired,
     };
   });
 

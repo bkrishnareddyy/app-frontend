@@ -47,7 +47,12 @@ export const ACTIVE_ACCOUNT_COOKIE = "qubere_active_account_id";
 
 function generateSlug(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return base || "workspace";
+  // An all-non-Latin name (e.g. a name written entirely in CJK/Arabic/
+  // Cyrillic script) strips down to nothing here -- falling back to the
+  // literal "workspace" would silently collide every such account onto the
+  // same base slug. The caller's own uniqueness loop still numbers
+  // collisions, but the fallback itself should not be a shared constant.
+  return base || `workspace-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 async function loadAccountContext(): Promise<AccountContext | null> {

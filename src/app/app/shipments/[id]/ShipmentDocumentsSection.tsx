@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 
 interface DocumentItem {
   id: string;
@@ -84,41 +85,14 @@ export function ShipmentDocumentsSection({
     }
   };
 
-  const requiredTypes = ["Commercial Invoice", "Packing List", "Bill of Lading"];
-  if (originStatus !== "Not Applicable") {
-    requiredTypes.push("Certificate of Origin");
-  }
-
   const isDocReceived = (d: DocumentItem) =>
     d.status !== "Missing" &&
     Boolean(d.fileUrl || d.status === "Received" || d.status === "Processed" || d.status === "Review Required" || d.status === "Completed");
 
-  const satisfiedTypes = requiredTypes.filter(req => {
-    return documents.some(d => {
-      if (!isDocReceived(d)) return false;
-      const type = (d.docType || "").toLowerCase();
-      const name = (d.fileName || "").toLowerCase();
-      
-      if (req === "Commercial Invoice") {
-        return type.includes("invoice") || name.includes("invoice");
-      }
-      if (req === "Packing List") {
-        return type.includes("packing") || name.includes("packing");
-      }
-      if (req === "Bill of Lading") {
-        return type.includes("lading") || type.includes("transport") || name.includes("lading") || name.includes("instructions") || name.includes("waybill");
-      }
-      if (req === "Certificate of Origin") {
-        return type.includes("origin") || type.includes("coo") || name.includes("origin") || name.includes("coo");
-      }
-      return false;
-    });
-  });
-
-  const receivedCount = satisfiedTypes.length;
-  const totalRequired = requiredTypes.length;
-  const missingCount = totalRequired - receivedCount;
-  const missingTypes = requiredTypes.filter(req => !satisfiedTypes.includes(req));
+  const { receivedCount, totalRequired } = checkRequiredDocumentTypes(
+    documents,
+    originStatus !== "Not Applicable"
+  );
 
   return (
     <>

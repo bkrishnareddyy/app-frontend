@@ -1,6 +1,6 @@
 /**
- * How to present an AgentDecision for review, and which values on it a
- * broker can correct.
+ * How to present an AgentDecision for review, and which values a broker can
+ * correct.
  *
  * Three categories, by how much a decision actually has to show a human:
  *
@@ -8,16 +8,25 @@
  *   entry summary ready to file). No value to check, nothing to correct --
  *   there is nothing to ask the user, so it should not render as a
  *   reviewable line at all.
- * - FIELDS: the agent extracts (or is supposed to extract) named values --
- *   HTS code, exporter name, country of origin. Each field is either
- *   present (show it, let the broker correct it) or missing (ask the
- *   broker to provide it). Only two agent shapes are structured enough to
- *   do this safely today: HTS Classification's `proposedHtsCode` column,
- *   and Document Intelligence's flat `evidenceItems` object.
- * - NARRATIVE: real compliance judgment (origin qualification, appraised
- *   value, a compliance audit) with no structured field behind it yet --
- *   the decisionSummary sentence *is* the content. Shown as plain text,
- *   still fully reviewable (approve/reject/re-evaluate), just not editable.
+ * - FIELDS: the agent proposes one specific, well-defined value with its own
+ *   database column -- today that's only HTS Classification's
+ *   `proposedHtsCode`. Present or not, it's rendered as a single
+ *   correctable field belonging to that decision.
+ * - NARRATIVE: everything else (Document Intelligence, Origin, Valuation,
+ *   Compliance, Product Intelligence) -- real content, but no
+ *   decision-scoped field to edit. Shown as plain text, still fully
+ *   reviewable (approve/reject/re-evaluate), just not editable here.
+ *
+ * Document Intelligence used to be a FIELDS decision, reading extracted
+ * values out of its own `evidenceItems` copy. It isn't anymore: a shipment
+ * can have several Document Intelligence decisions for the same document
+ * (a real upload, a reattach event, a manual re-run), each with its own
+ * independent, possibly-stale copy of the same facts, and evidenceItems only
+ * ever carried 6 of the ~17 fields the agent actually extracts. The
+ * document itself (ShipmentDocument.extractedJson.tradeMetadata) is the one
+ * place with a single, current, complete copy -- see
+ * `documentTradeFields` below, which is document-scoped rather than
+ * decision-scoped and is rendered once per document, not once per decision.
  *
  * Shared between the API route (to apply an edit) and the UI (to render
  * fields and choose a category) so the two can't drift apart.
@@ -36,22 +45,35 @@ interface DecisionLike {
   agentName?: string | null;
   proposedHtsCode?: string | null;
   currentHtsCode?: string | null;
-  evidenceItems?: unknown;
 }
-
-const DOCUMENT_INTELLIGENCE_FIELDS: Array<{ key: string; label: string }> = [
-  { key: "exporterName", label: "Exporter Name" },
-  { key: "importerName", label: "Importer Name" },
-  { key: "originCountry", label: "Country of Origin" },
-  { key: "currency", label: "Currency" },
-  { key: "invoiceSubtotal", label: "Invoice Subtotal" },
-  { key: "incoterm", label: "Incoterm" },
-];
 
 // Agent names (with " Agent" already stripped, see decisionGroupLabel) that
 // are pure pipeline plumbing -- pass/fail infrastructure with no compliance
 // judgment and nothing a broker can correct.
 const MECHANICAL_CHECKS = new Set(["Document Intake", "Filing Readiness", "Customs Filing", "Response"]);
+
+// Mirrors EDITABLE_TRADE_METADATA_FIELDS in
+// src/app/api/documents/[id]/extractions/route.ts -- keep the two in sync,
+// since that route is the only place these edits are persisted.
+export const DOCUMENT_TRADE_FIELDS: Array<{ key: string; label: string }> = [
+  { key: "exporterName", label: "Exporter Name" },
+  { key: "importerName", label: "Importer Name" },
+  { key: "originCountry", label: "Country of Origin" },
+  { key: "destinationCountry", label: "Destination Country" },
+  { key: "incoterm", label: "Incoterm" },
+  { key: "currency", label: "Currency" },
+  { key: "invoiceSubtotal", label: "Invoice Subtotal" },
+  { key: "invoiceNumber", label: "Invoice Number" },
+  { key: "invoiceDate", label: "Invoice Date" },
+  { key: "hsHtsCode", label: "HS/HTS Code" },
+  { key: "poNumber", label: "PO Number" },
+  { key: "portOfLoading", label: "Port of Loading" },
+  { key: "portOfDischarge", label: "Port of Discharge" },
+  { key: "carrier", label: "Carrier" },
+  { key: "transportDocumentNumber", label: "Transport Document Number" },
+  { key: "totalWeight", label: "Total Weight" },
+  { key: "totalQuantity", label: "Total Quantity" },
+];
 
 function agentBaseName(decision: DecisionLike): string {
   return String(decision.agentName || "").replace(/\s*Agent$/i, "").trim();
@@ -67,35 +89,18 @@ function isHtsAgent(decision: DecisionLike): boolean {
   );
 }
 
-function flatEvidence(decision: DecisionLike): Record<string, unknown> | null {
-  const items = decision.evidenceItems;
-  if (!items || typeof items !== "object" || Array.isArray(items)) return null;
-  return items as Record<string, unknown>;
-}
-
-/**
- * True only for the Document Intelligence shape specifically -- checked by
- * agent name (evidenceItems being "a flat object" isn't enough on its own,
- * since Product Intelligence's {profiles, reasoningChain} is also flat).
- */
-function documentIntelligenceEvidence(decision: DecisionLike): Record<string, unknown> | null {
-  if (!agentBaseName(decision).includes("Document Intelligence")) return null;
-  return flatEvidence(decision);
-}
-
 /** Which of the three review treatments this decision gets. */
 export function reviewCategory(decision: DecisionLike): ReviewCategory {
   if (isHtsAgent(decision)) return "FIELDS";
-  if (documentIntelligenceEvidence(decision)) return "FIELDS";
   if (MECHANICAL_CHECKS.has(agentBaseName(decision))) return "MECHANICAL";
   return "NARRATIVE";
 }
 
 /**
- * Every field this decision is expected to carry, present or not -- present
- * fields are reviewable/correctable, missing ones are a prompt asking the
- * broker to provide the value. Only called for FIELDS-category decisions;
- * returns [] otherwise.
+ * The field(s) this decision itself is expected to carry, present or not.
+ * Only HTS Classification qualifies today -- everything else's field data
+ * lives on the document, see `documentTradeFields`. Only called for
+ * FIELDS-category decisions; returns [] otherwise.
  */
 export function editableFieldsFor(decision: DecisionLike): EditableField[] {
   if (isHtsAgent(decision)) {
@@ -106,21 +111,12 @@ export function editableFieldsFor(decision: DecisionLike): EditableField[] {
     const value = raw && raw !== "UNCLASSIFIABLE" ? raw : null;
     return [{ key: "proposedHtsCode", label: "HTS Code", value, status: value ? "PRESENT" : "MISSING" }];
   }
-
-  const evidence = documentIntelligenceEvidence(decision);
-  if (!evidence) return [];
-
-  return DOCUMENT_INTELLIGENCE_FIELDS.map((f) => {
-    const raw = evidence[f.key];
-    const present = raw !== undefined && raw !== null && raw !== "";
-    return { key: f.key, label: f.label, value: present ? String(raw) : null, status: present ? "PRESENT" : "MISSING" };
-  });
+  return [];
 }
 
-/** Human label for the group these fields (or this narrative) sit under. */
+/** Human label for the group this decision's field (or narrative) sits under. */
 export function decisionGroupLabel(decision: DecisionLike): string {
   if (isHtsAgent(decision)) return "HTS Classification";
-  if (documentIntelligenceEvidence(decision)) return "Extracted Document Fields";
   return agentBaseName(decision) || "Check";
 }
 
@@ -131,31 +127,32 @@ export function readEditableValue(decision: DecisionLike, key: string): string |
 
 /**
  * The Prisma update payload for writing `value` to `key` on this decision, or
- * null if `key` isn't an editable field on it (present or missing) --
- * callers must reject the request rather than silently drop an edit nobody
- * can see landed.
+ * null if `key` isn't an editable field on it -- callers must reject the
+ * request rather than silently drop an edit nobody can see landed.
  */
-export function buildEditUpdate(
-  decision: DecisionLike,
-  key: string,
-  value: string
-): { proposedHtsCode: string } | { evidenceItems: Record<string, unknown> } | null {
+export function buildEditUpdate(decision: DecisionLike, key: string, value: string): { proposedHtsCode: string } | null {
   if (key === "proposedHtsCode" && isHtsAgent(decision)) {
     return { proposedHtsCode: value };
   }
-
-  const evidence = documentIntelligenceEvidence(decision);
-  const field = DOCUMENT_INTELLIGENCE_FIELDS.find((f) => f.key === key);
-  if (evidence && field) {
-    // Preserve the original value's type where the edit still parses as one,
-    // since invoiceSubtotal is stored (and likely read elsewhere) as a number.
-    const previous = evidence[field.key];
-    const nextValue: unknown =
-      typeof previous === "number" && value.trim() !== "" && !Number.isNaN(Number(value))
-        ? Number(value)
-        : value;
-    return { evidenceItems: { ...evidence, [field.key]: nextValue } };
-  }
-
   return null;
+}
+
+/**
+ * The document-level fields Document Intelligence extracts, present or not,
+ * read from ShipmentDocument.extractedJson.tradeMetadata -- the document's
+ * single canonical copy, not any one decision's. Rendered once per
+ * document, independent of how many Document Intelligence decisions exist
+ * for it.
+ */
+export function documentTradeFields(tradeMetadata: unknown): EditableField[] {
+  const source =
+    tradeMetadata && typeof tradeMetadata === "object" && !Array.isArray(tradeMetadata)
+      ? (tradeMetadata as Record<string, unknown>)
+      : {};
+
+  return DOCUMENT_TRADE_FIELDS.map((f) => {
+    const raw = source[f.key];
+    const present = raw !== undefined && raw !== null && raw !== "";
+    return { key: f.key, label: f.label, value: present ? String(raw) : null, status: present ? "PRESENT" : "MISSING" };
+  });
 }
