@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Clock, Loader2, Sparkles, XCircle } from "lucide-react";
 import type { AgentInvocation } from "./agentInvocations";
 
@@ -41,8 +41,69 @@ const STATUS_STYLES: Record<AgentInvocation["status"], { badge: string; label: s
   },
 };
 
-export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvocation[] }) {
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(invocations[0]?.runId || null);
+// Poll every 3s while a run is active, 30s otherwise (cheap keep-alive to catch
+// new runs that start while the tab is open).
+const POLL_INTERVAL_ACTIVE_MS = 3000;
+const POLL_INTERVAL_IDLE_MS = 30000;
+
+export function AgentExecutionTimeline({
+  invocations: initialInvocations,
+  shipmentId,
+}: {
+  invocations: AgentInvocation[];
+  shipmentId: string;
+}) {
+  const [invocations, setInvocations] = useState<AgentInvocation[]>(initialInvocations);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(initialInvocations[0]?.runId || null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
+
+  // Sync if the server re-renders with fresh props (e.g. router.refresh() after pipeline completes).
+  useEffect(() => {
+    setInvocations(initialInvocations);
+  }, [initialInvocations]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/shipments/${shipmentId}/agent-executions`);
+        if (cancelledRef.current) return;
+        if (res.ok) {
+          const data: { invocations: AgentInvocation[] } = await res.json();
+          if (cancelledRef.current) return;
+          setInvocations((prev) => {
+            // Auto-expand the newest run if it is brand-new.
+            const newestRunId = data.invocations[0]?.runId;
+            if (newestRunId && !prev.some((i) => i.runId === newestRunId)) {
+              setExpandedRunId(newestRunId);
+            }
+            return data.invocations;
+          });
+        }
+      } catch {
+        // network error — keep polling
+      }
+
+      if (cancelledRef.current) return;
+
+      // Determine next interval based on whether any run is still active.
+      setInvocations((current) => {
+        const hasActive = current.some((i) => i.status === "RUNNING");
+        timerRef.current = setTimeout(poll, hasActive ? POLL_INTERVAL_ACTIVE_MS : POLL_INTERVAL_IDLE_MS);
+        return current;
+      });
+    };
+
+    // Start immediately so we catch runs that began right as the page loaded.
+    poll();
+
+    return () => {
+      cancelledRef.current = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [shipmentId]);
 
   if (invocations.length === 0) {
     return (
