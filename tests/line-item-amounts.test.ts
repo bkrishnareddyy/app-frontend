@@ -36,6 +36,27 @@ describe("a line item's extended amount", () => {
   });
 });
 
+describe("line ordering", () => {
+  // The canonical shipment include fetched lineItems with no orderBy, so Postgres
+  // returned them in heap order -- which shifts as the reconciler fills fields in
+  // on existing rows -- and the table rendered an invoice's lines scrambled.
+  // The table sorts defensively because one source is a database relation and the
+  // other is whatever order a model emitted items in.
+  it("renders ascending by line number whatever order the caller passed", () => {
+    const scrambled = [{ lineNumber: 12 }, { lineNumber: 3 }, { lineNumber: 47 }, { lineNumber: 1 }];
+    const ordered = [...scrambled].sort((a, b) => a.lineNumber - b.lineNumber);
+    expect(ordered.map((r) => r.lineNumber)).toEqual([1, 3, 12, 47]);
+  });
+
+  it("orders numerically, not as text", () => {
+    // A lexicographic sort puts line 10 before line 2, which is exactly the kind
+    // of wrong order an operator would notice against the paper document.
+    const rows = [{ lineNumber: 2 }, { lineNumber: 10 }, { lineNumber: 1 }];
+    expect([...rows].sort((a, b) => a.lineNumber - b.lineNumber).map((r) => r.lineNumber)).toEqual([1, 2, 10]);
+    expect([...rows].sort((a, b) => String(a.lineNumber).localeCompare(String(b.lineNumber))).map((r) => r.lineNumber)).toEqual([1, 10, 2]);
+  });
+});
+
 describe("formatting an extended amount", () => {
   it("renders the document's own currency, not dollars", () => {
     const amount = extendedAmount({ quantity: 2, unitPrice: null, totalValue: 596 });

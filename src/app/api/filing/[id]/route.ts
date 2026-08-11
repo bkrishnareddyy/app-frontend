@@ -24,7 +24,10 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
       shipment: {
         include: {
           documents: true,
-          lineItems: true,
+          // Ordered because the reads below treat lineItems[0] as the filing's
+          // primary line: unordered rows made the declared primary HTS and
+          // country of origin whichever line Postgres happened to return first.
+          lineItems: { orderBy: { lineNumber: "asc" } },
           agentDecisions: true,
         },
       },

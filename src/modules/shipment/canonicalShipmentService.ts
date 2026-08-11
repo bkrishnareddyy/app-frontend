@@ -17,7 +17,11 @@ const canonicalInclude = {
     include: { parseVersions: true },
     orderBy: { createdAt: "desc" },
   },
-  lineItems: true,
+  // Ordered explicitly: without it Postgres returns rows in whatever order it
+  // finds them, which shifts as the reconciler fills fields in on existing rows,
+  // so an invoice's lines came back scrambled. Line numbering is the operator's
+  // reference back to the paper document and has to match it.
+  lineItems: { orderBy: { lineNumber: "asc" as const } },
   agentDecisions: true,
   changeEvents: {
     include: {

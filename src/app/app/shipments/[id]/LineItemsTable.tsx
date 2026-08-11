@@ -103,6 +103,12 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
     }
   };
 
+  // Sorted for display regardless of what the caller passed. One source is a
+  // database relation and the other is the order a model happened to emit items
+  // in, and neither guarantees ascending lines. Sorted here so a fix is not
+  // needed once per call site.
+  const orderedLineItems = [...lineItems].sort((a, b) => a.lineNumber - b.lineNumber);
+
   return (
     <div className="mt-4 space-y-2">
       <div className="flex items-center justify-between text-xs font-bold text-[#1D1D1F]">
@@ -133,7 +139,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5EA]">
-              {lineItems.map((item) => {
+              {orderedLineItems.map((item) => {
                 const isEditing = editingItemId === item.id;
                 return (
                   <tr key={item.id} className="hover:bg-[#F5F5F7]/30 transition-colors">
