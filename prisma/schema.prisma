@@ -956,7 +956,10 @@ model DocumentParseVersion {
   accountId String?
   account   Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  /// Parser provider identifier, e.g. IBM_DOCLING, MOCK_PARSER, GEMINI_VISION.
+  /// What produced this row: IBM_DOCLING or MOCK_PARSER for a parse run,
+  /// GEMINI_VISION for an extraction read off the document image, or
+  /// GEMINI_PARSED_CONTEXT for one read off a parser's rendered context (whose
+  /// upstream parser is then named in parserName).
   parserProvider String?
   /// Parser name as the provider reported it. Null when it reports none.
   parserName     String?

@@ -129,6 +129,30 @@ describe("extraction write precedence", () => {
     );
   });
 
+  it("distinguishes a run over parsed context from a run over the image", async () => {
+    // This agent runs twice per upload, once each way. Labelling both
+    // GEMINI_VISION left two rows nothing could tell apart -- including their
+    // stored confidence, which describes a different act of reading in each case.
+    dbMock.shipmentDocument.updateMany.mockResolvedValue({ count: 1 });
+    await DocumentIntelligenceAgent.execute({ ...baseInput(), documentContext: PARSED_CONTEXT });
+
+    const data = dbMock.documentParseVersion.create.mock.calls[0][0].data;
+    expect(data.parserProvider).toBe("GEMINI_PARSED_CONTEXT");
+    // And which parser produced that context, so the lineage is traceable.
+    expect(data.parserName).toBe("IBM_DOCLING");
+  });
+
+  it("records no upstream parser for a run that read the image", async () => {
+    dbMock.shipmentDocument.updateMany.mockResolvedValue({ count: 1 });
+    await DocumentIntelligenceAgent.execute(baseInput());
+
+    const data = dbMock.documentParseVersion.create.mock.calls[0][0].data;
+    expect(data.parserProvider).toBe("GEMINI_VISION");
+    // No parser stood between the model and the page, and naming one would be
+    // a lineage claim that never happened.
+    expect(data.parserName).toBeNull();
+  });
+
   it("never writes the document row with an unconditional update", async () => {
     // `update` cannot express the guard, so its presence would reintroduce the
     // race even if the guard exists elsewhere.

@@ -884,10 +884,16 @@ ${instructions}`;
               documentId: docToUpdate.id,
               accountId: input.accountId,
               version: nextVersion,
-              // Attributed explicitly: DocumentParseVersion now also carries
-              // runs from the Docling pipeline, and a row with no provider is
-              // indistinguishable between the two once it is written.
-              parserProvider: "GEMINI_VISION",
+              // Attributed by what this run actually read. This agent runs twice
+              // per upload -- once over the document image, once over a parser's
+              // rendered context -- and labelling both GEMINI_VISION left two rows
+              // that no reader could tell apart, including for the stored
+              // confidence, which describes a different act of reading in each
+              // case: a vision read of the page versus a read of parsed text.
+              parserProvider: fromParsedContext ? "GEMINI_PARSED_CONTEXT" : "GEMINI_VISION",
+              // For a context-backed run, which parser produced that context. This
+              // is the lineage that makes the row's provenance traceable at all.
+              parserName: input.documentContext?.parserProvider ?? null,
               status: "SUCCEEDED",
               parserVersion: "2.0.0",
               modelVersion: "gemini-3.6-flash",
