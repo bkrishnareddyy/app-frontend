@@ -1,6 +1,7 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DocumentsClient } from "./DocumentsClient";
+import type { TeamMember } from "@/lib/team";
 
 export default async function DocumentsPage() {
   const ctx = await getAccountContext();
@@ -9,7 +10,7 @@ export default async function DocumentsPage() {
   }
 
   // Fetch active team members if user is an enterprise admin
-  let teamMembers: any[] = [];
+  let teamMembers: TeamMember[] = [];
   const isEnterpriseAdmin =
     ctx.accountType === "ENTERPRISE" &&
     (ctx.roleNames.includes("ADMIN") || ctx.roleNames.includes("OWNER"));

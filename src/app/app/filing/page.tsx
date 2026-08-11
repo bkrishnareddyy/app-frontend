@@ -5,15 +5,10 @@ import { filingStages, type FilingStageState } from "@/modules/filings/filingSta
 import Link from "next/link";
 import {
   FileCheck2,
-  CheckCircle2,
-  Clock,
   Send,
-  Building2,
-  DollarSign,
   AlertCircle,
-  ChevronRight,
   Download,
-  Info,
+
 } from "lucide-react";
 
 const CLEARED_STATUSES = new Set(["Accepted", "Released", "Closed", "BrokerApproved"]);

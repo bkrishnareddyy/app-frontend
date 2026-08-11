@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Edit2, Check, X, Building2 } from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
 
 interface ShipmentClientEditorProps {
   shipmentId: string;
@@ -42,8 +43,8 @@ export function ShipmentClientEditor({
 
       setIsEditing(false);
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message || "Failed to update client");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to update client"));
       setClientId(initialClientId ?? "");
     } finally {
       setLoading(false);

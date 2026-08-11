@@ -40,7 +40,7 @@ export function UserManagementTable({ members, currentUserId, availableRoles, on
   const [showInactive, setShowInactive] = useState(false);
 
   const [loadingMembershipId, setLoadingMembershipId] = useState<string | null>(null);
-  const [selectedMember, setSelectedMember] = useState<MemberItem | null>(null);
+  const [, setSelectedMember] = useState<MemberItem | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const visibleMembers = showInactive ? members : members.filter((m) => m.status === "ACTIVE");

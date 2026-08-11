@@ -1,15 +1,48 @@
 "use client";
 
-import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
+import { DocumentReviewPanel, type ReviewDecision } from "@/components/DocumentReviewPanel";
 import { documentViewUrl } from "@/lib/documentUrl";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Scale, CheckCircle2, Clock, Search, Check, FileText, Layers } from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
+
+/**
+ * An `AgentDecision` row as this screen reads it.
+ *
+ * Extends the panel's own `ReviewDecision` so the rows handed to
+ * `DocumentReviewPanel` are checked against what that panel actually renders.
+ */
+interface DecisionRow extends ReviewDecision {
+  shipmentId: string;
+  createdAt: string | Date;
+  /** Non-null on the underlying AgentDecision row, so it is required here. */
+  agentName: string;
+  /**
+   * The document this decision was produced for, when the run was scoped to
+   * one. Null for a shipment-scoped run, which is what the legacy timestamp
+   * clustering below reconstructs a grouping for.
+   */
+  documentId?: string | null;
+  shipment?: { shipmentNumber?: string | null } | null;
+}
+
+/**
+ * A document row, used only to attribute a batch of decisions to the upload that
+ * most likely triggered it.
+ */
+interface DecisionDocument {
+  id: string;
+  shipmentId: string | null;
+  fileName: string;
+  createdAt: string | Date;
+  fileUrl?: string | null;
+}
 
 interface DecisionReviewClientProps {
-  decisions: any[];
-  allDocuments?: any[];
+  decisions: DecisionRow[];
+  allDocuments?: DecisionDocument[];
   initialDecisionId?: string;
   initialShipmentId?: string;
   initialAgentName?: string;
@@ -44,19 +77,20 @@ interface DecisionGroup {
   shipmentNumber: string;
   documentName: string;
   documentId?: string;
-  decisions: any[];
+  decisions: DecisionRow[];
   status: "Needs Review" | "Approved";
-  latestCreatedAt: string;
+  /** Only ever read through `new Date(...)`, which accepts either form. */
+  latestCreatedAt: string | Date;
 }
 
-function groupDecisions(decisions: any[], allDocuments: any[]): DecisionGroup[] {
+function groupDecisions(decisions: DecisionRow[], allDocuments: DecisionDocument[]): DecisionGroup[] {
   const documentScoped = decisions.filter((d) => !SHIPMENT_SCOPED_AGENTS.has(d.agentName));
   const shipmentScoped = decisions.filter((d) => SHIPMENT_SCOPED_AGENTS.has(d.agentName));
 
   // One current decision per (shipmentId, agentName) among shipment-scoped
   // agents -- the latest run is the shipment's current answer, not a batch
   // of historical runs to show as separate cards.
-  const latestShipmentScoped = new Map<string, any>();
+  const latestShipmentScoped = new Map<string, DecisionRow>();
   for (const dec of shipmentScoped) {
     const key = `${dec.shipmentId}::${dec.agentName}`;
     const existing = latestShipmentScoped.get(key);
@@ -64,15 +98,19 @@ function groupDecisions(decisions: any[], allDocuments: any[]): DecisionGroup[] 
       latestShipmentScoped.set(key, dec);
     }
   }
-  const shipmentScopedByShipment = new Map<string, any[]>();
+  const shipmentScopedByShipment = new Map<string, DecisionRow[]>();
   for (const dec of latestShipmentScoped.values()) {
     const list = shipmentScopedByShipment.get(dec.shipmentId) ?? [];
     list.push(dec);
     shipmentScopedByShipment.set(dec.shipmentId, list);
   }
 
-  const byDocumentId = new Map<string, any[]>();
-  const withRealDocId = documentScoped.filter((d) => d.documentId);
+  const byDocumentId = new Map<string, DecisionRow[]>();
+  // The predicate narrows the type as well as filtering, so the map key below is
+  // known to be a string. Same runtime test as before.
+  const withRealDocId = documentScoped.filter(
+    (d): d is DecisionRow & { documentId: string } => Boolean(d.documentId)
+  );
   const legacyWithoutDocId = documentScoped.filter((d) => !d.documentId);
 
   for (const dec of withRealDocId) {
@@ -87,7 +125,7 @@ function groupDecisions(decisions: any[], allDocuments: any[]): DecisionGroup[] 
     if (a.shipmentId !== b.shipmentId) return a.shipmentId < b.shipmentId ? -1 : 1;
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
-  let currentCluster: any[] = [];
+  let currentCluster: DecisionRow[] = [];
   const flushLegacyCluster = () => {
     if (currentCluster.length === 0) return;
     const shipmentId = currentCluster[0].shipmentId;
@@ -172,6 +210,8 @@ export function DecisionReviewClient({
   const [localDecisions, setLocalDecisions] = useState(decisions);
 
   useEffect(() => {
+    // Resyncs the local copy after router.refresh() returns new server data. The
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalDecisions(decisions);
   }, [decisions]);
 
@@ -227,6 +267,8 @@ export function DecisionReviewClient({
 
   useEffect(() => {
     if (filteredGroups.length > 0 && !filteredGroups.some((g) => g.id === selectedGroupId)) {
+      // Keeps the selection valid when the active filter removes the selected group.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedGroupId(filteredGroups[0].id);
     }
   }, [filteredGroups, selectedGroupId]);
@@ -247,8 +289,8 @@ export function DecisionReviewClient({
 
       setLocalDecisions((prev) => prev.map((d) => (d.id === decisionId ? { ...d, status: newStatus } : d)));
       return true;
-    } catch (err: any) {
-      alert(`Action failed: ${err.message || String(err)}`);
+    } catch (err) {
+      alert(`Action failed: ${caughtMessage(err, String(err))}`);
       return false;
     } finally {
       setActionLoadingId(null);
@@ -294,7 +336,7 @@ export function DecisionReviewClient({
           <Scale className="w-10 h-10 text-ink-muted mx-auto opacity-50" />
           <h3 className="text-sm font-bold text-ink">No AI decisions yet for this shipment</h3>
           <p className="text-xs text-ink-muted max-w-sm mx-auto">
-            Agent decisions will appear here once this shipment's documents have been processed.
+            Agent decisions will appear here once this shipment&apos;s documents have been processed.
           </p>
           <Link href={`/app/shipments/${initialShipmentId}`} className="inline-block text-xs font-semibold text-brand hover:underline">
             ← Back to Shipment

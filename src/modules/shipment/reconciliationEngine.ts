@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { ShipmentEventBus } from "@/modules/events/shipmentEventBus";
-import { LINE_ITEM_SENTINELS } from "./lineItemReconciler";
+import { isPlaceholderValue, lineItemFactField } from "./lineItemReconciler";
 
 interface ComplianceAuditFinding {
   ruleId: string;
@@ -138,6 +138,25 @@ export class ReconciliationEngine {
     // never left missing, but flagged here the same way HTS review is, so a
     // human confirms the real value before it's relied on for filing.
     const lineItems = shipment.lineItems;
+
+    // Every value a source actually supplied is recorded as a Fact, and only when
+    // it was present -- LineItemReconciler.recordFacts skips null and empty. So
+    // the presence of a fact is the out-of-band answer to "was this extracted?",
+    // which the stored value alone cannot give: the placeholder for an unknown
+    // quantity is 1, and a line legitimately shipping one unit is byte-identical
+    // to it. Reading the sentinel alone reported 20 of this invoice's 68 lines as
+    // having no quantity when all 68 were read correctly.
+    const recordedFacts = await db.fact.findMany({
+      where: {
+        shipmentId: shipment.id,
+        field: { startsWith: "lineItem." },
+      },
+      select: { field: true },
+    });
+    const factFields = new Set(recordedFacts.map((fact) => fact.field));
+    const wasExtracted = (lineNumber: number, field: string) =>
+      factFields.has(lineItemFactField(lineNumber, field));
+
     const defaultedFieldChecks: Array<{
       fieldKey: "quantity" | "unitPrice" | "countryOfOrigin";
       code: string;
@@ -148,19 +167,26 @@ export class ReconciliationEngine {
         fieldKey: "quantity",
         code: "MISSING_LINE_ITEM_QUANTITY",
         label: "Quantity",
-        isDefaulted: (item) => item.quantity === LINE_ITEM_SENTINELS.quantity,
+        isDefaulted: (item) =>
+          isPlaceholderValue("quantity", item.quantity, wasExtracted(item.lineNumber, "quantity")),
       },
       {
         fieldKey: "unitPrice",
         code: "MISSING_LINE_ITEM_UNIT_PRICE",
         label: "Unit Price",
-        isDefaulted: (item) => Number(item.unitPrice) === LINE_ITEM_SENTINELS.unitPrice,
+        isDefaulted: (item) =>
+          isPlaceholderValue("unitPrice", Number(item.unitPrice), wasExtracted(item.lineNumber, "unitPrice")),
       },
       {
         fieldKey: "countryOfOrigin",
         code: "MISSING_LINE_ITEM_COUNTRY_OF_ORIGIN",
         label: "Country of Origin",
-        isDefaulted: (item) => item.countryOfOrigin === LINE_ITEM_SENTINELS.countryOfOrigin,
+        isDefaulted: (item) =>
+          isPlaceholderValue(
+            "countryOfOrigin",
+            item.countryOfOrigin,
+            wasExtracted(item.lineNumber, "countryOfOrigin")
+          ),
       },
     ];
 

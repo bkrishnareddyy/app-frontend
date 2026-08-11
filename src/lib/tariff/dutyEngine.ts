@@ -77,19 +77,47 @@ export function calculateHMF(customsValue: number, isOcean: boolean = true): num
 /**
  * Loads the real ingested duty rates for a set of line items. Without this the
  * engine sees no HTS data at all and every line comes back unrated.
+ *
+ * Reads rates ONLY from the currently published release. The same HTS number
+ * exists in every ingested release, so an unfiltered lookup returned whichever
+ * row the database happened to hand back last -- which could be a DRAFT staged
+ * overnight by the nightly USITC refresh (carrying no duty rates at all, so the
+ * line read as unrated and transmission was refused), or a SUPERSEDED release
+ * (carrying an outdated rate, so the duty would be priced off a schedule that no
+ * longer applies). Both are wrong for a declaration that is legally binding, and
+ * which one you got depended on row order.
+ *
+ * Staged-but-unpublished releases are excluded by design: publishing a revision
+ * is a deliberate human review step precisely because these rates decide what an
+ * importer owes.
  */
 export async function loadHtsCodesMap(
-  lineItems: Array<TariffLineInput>
+  lineItems: Array<TariffLineInput>,
+  country: string = "US"
 ): Promise<Record<string, DutyRateInput>> {
   const { db } = await import("@/lib/db");
   const codes = [...new Set(lineItems.map((li) => li.htsCode).filter((c): c is string => !!c))];
   if (codes.length === 0) return {};
 
-  const normalizedOf = new Map(codes.map((code) => [code, code.replace(/[^0-9]/g, "")]));
-  const nodes = await db.htsNode.findMany({
-    where: { htsNumberNormalized: { in: [...normalizedOf.values()].filter(Boolean) } },
-    include: { dutyRates: true },
+  const publishedRelease = await db.htsRelease.findFirst({
+    where: { country, publicationStatus: "PUBLISHED" },
+    orderBy: { effectiveFrom: "desc" },
+    select: { id: true },
   });
+
+  const normalizedOf = new Map(codes.map((code) => [code, code.replace(/[^0-9]/g, "")]));
+
+  // With no published release there is no lawful rate to price against, so every
+  // line reports unrated rather than falling back to a draft or a retired one.
+  const nodes = publishedRelease
+    ? await db.htsNode.findMany({
+        where: {
+          releaseId: publishedRelease.id,
+          htsNumberNormalized: { in: [...normalizedOf.values()].filter(Boolean) },
+        },
+        include: { dutyRates: true },
+      })
+    : [];
   const byNormalized = new Map(nodes.map((n) => [n.htsNumberNormalized, n]));
 
   const map: Record<string, DutyRateInput> = {};

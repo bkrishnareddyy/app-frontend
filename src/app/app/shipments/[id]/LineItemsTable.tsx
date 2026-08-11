@@ -1,28 +1,27 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Edit2, Check, X, Search } from "lucide-react";
+import { Edit2, Check, X } from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
+import { displayCurrency } from "@/lib/honest";
 
-interface LineItem {
-  id: string;
-  lineNumber: number;
-  partNumber?: string | null;
-  description: string;
-  quantity: number;
-  unitPrice: any;
-  totalValue: any;
-  countryOfOrigin: string;
-  htsCode: string;
-  htsConfidence: number;
-}
+import { extendedAmount } from "./workspaceTypes";
+import type { HtsSuggestion, ShipmentLineItemRow as LineItem } from "./workspaceTypes";
 
 interface LineItemsTableProps {
   shipmentId: string;
   initialLineItems: LineItem[];
   isEnterpriseAdmin?: boolean;
+  /**
+   * ISO code the amounts are denominated in, or null when no document declared
+   * one. Null renders bare numbers: the invoice behind this table can be in any
+   * currency, and stamping a symbol on it we haven't read is a misstatement of
+   * value, not a formatting nicety.
+   */
+  currency?: string | null;
 }
 
-export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableProps) {
+export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineItemsTableProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   
@@ -30,14 +29,10 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
   const [editHts, setEditHts] = useState("");
   const [editCoo, setEditCoo] = useState("");
   const [saveLoading, setSaveLoading] = useState(false);
-
-  // Autocomplete state for HTS codes
-  const [htsSuggestions, setHtsSuggestions] = useState<any[]>([]);
-  const [searchingHts, setSearchingHts] = useState(false);
+  const [htsSuggestions, setHtsSuggestions] = useState<HtsSuggestion[]>([]);
 
   useEffect(() => {
     if (editingItemId && editHts.trim().length >= 2) {
-      setSearchingHts(true);
       const timer = setTimeout(async () => {
         try {
           const res = await fetch(`/api/v1/hts/search?q=${encodeURIComponent(editHts.trim())}&limit=5`);
@@ -47,13 +42,13 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
           }
         } catch (err) {
           console.error("Failed to query HTS suggestions:", err);
-        } finally {
-          setSearchingHts(false);
         }
       }, 300);
 
       return () => clearTimeout(timer);
     } else {
+      
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHtsSuggestions([]);
     }
   }, [editHts, editingItemId]);
@@ -101,12 +96,18 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
       
       // Highlight update to other parent lists
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message || "Failed to save changes");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to save changes"));
     } finally {
       setSaveLoading(false);
     }
   };
+
+  // Sorted for display regardless of what the caller passed. One source is a
+  // database relation and the other is the order a model happened to emit items
+  // in, and neither guarantees ascending lines. Sorted here so a fix is not
+  // needed once per call site.
+  const orderedLineItems = [...lineItems].sort((a, b) => a.lineNumber - b.lineNumber);
 
   return (
     <div className="mt-4 space-y-2">
@@ -114,26 +115,42 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
         <span>Extracted Line Items ({lineItems.length})</span>
       </div>
       {lineItems.length > 0 ? (
-        <div className="border border-border rounded-xl overflow-visible text-xs max-h-96 overflow-y-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="border border-border rounded-xl text-xs max-h-96 overflow-y-auto">
+          {/*
+            Fixed layout with declared column widths, so the table is always exactly
+            as wide as its container and never scrolls sideways.
+
+            With automatic layout the columns sized themselves to their content, the
+            row outgrew the panel -- opening a row for edit swaps two text cells for
+            inputs and adds around 9rem -- and because overflow-y-auto makes
+            overflow-x compute to auto, the overflow became a horizontal scrollbar
+            that carried Total and Action out of sight. Widths must total 100.
+          */}
+          <table className="w-full table-fixed text-left border-collapse">
             <thead className="bg-surface-muted text-[10px] font-bold text-ink-muted uppercase border-b border-border">
               <tr>
-                <th className="p-2.5">Line</th>
-                <th className="p-2.5">Description</th>
-                <th className="p-2.5">HTS Code</th>
-                <th className="p-2.5">Origin</th>
-                <th className="p-2.5 text-right">Qty</th>
-                <th className="p-2.5 text-right">Total</th>
-                <th className="p-2.5 text-center">Action</th>
+                <th className="p-2.5 w-[6%]">Line</th>
+                <th className="p-2.5 w-[30%]">Description</th>
+                <th className="p-2.5 w-[20%]">HTS Code</th>
+                <th className="p-2.5 w-[12%]">Origin</th>
+                <th className="p-2.5 w-[8%] text-right">Qty</th>
+                <th className="p-2.5 w-[15%] text-right">Total</th>
+                <th className="p-2.5 w-[9%] text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {lineItems.map((item) => {
+              {orderedLineItems.map((item) => {
                 const isEditing = editingItemId === item.id;
                 return (
                   <tr key={item.id} className="hover:bg-surface-muted/30 transition-colors">
                     <td className="p-2.5 font-mono text-ink-muted font-semibold">{item.lineNumber}</td>
-                    <td className="p-2.5 font-bold text-ink max-w-xs break-words">{item.description}</td>
+                    {/*
+                      break-words, not truncate: descriptions arrive as long unbroken
+                      runs like "TOPS,DRESSES,PULLOVERS,SUITS,C" that carry no space
+                      to wrap at, and a customs description clipped mid-word is not a
+                      description. The fixed column width bounds them instead.
+                    */}
+                    <td className="p-2.5 font-bold text-ink break-words">{item.description}</td>
                     
                     {/* HTS Code Column */}
                     <td className="p-2.5 font-mono relative">
@@ -144,7 +161,7 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
                             value={editHts}
                             onChange={(e) => setEditHts(e.target.value)}
                             placeholder="Search HTS Code..."
-                            className="w-32 px-2 py-1 border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white font-mono text-[11px]"
+                            className="w-full min-w-0 px-2 py-1 border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white font-mono text-[11px]"
                             disabled={saveLoading}
                           />
                           {/* Autocomplete dropdown */}
@@ -180,7 +197,7 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
                           value={editCoo}
                           onChange={(e) => setEditCoo(e.target.value)}
                           placeholder="e.g. Germany"
-                          className="w-24 px-2 py-1 border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white text-[11px]"
+                          className="w-full min-w-0 px-2 py-1 border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white text-[11px]"
                           disabled={saveLoading}
                         />
                       ) : (
@@ -190,7 +207,19 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
 
                     <td className="p-2.5 text-right font-mono">{item.quantity}</td>
                     <td className="p-2.5 text-right font-mono font-bold">
-                      ${(Number(item.quantity) * Number(item.unitPrice)).toLocaleString()}
+                      {(() => {
+                        const amount = extendedAmount(item);
+                        if (amount === null) {
+                          return (
+                            <span className="text-ink-muted font-normal" title="No amount on the source document">
+                              —
+                            </span>
+                          );
+                        }
+                        return currency
+                          ? displayCurrency(amount, currency)
+                          : amount.toLocaleString();
+                      })()}
                     </td>
                     
                     {/* Inline edit actions */}

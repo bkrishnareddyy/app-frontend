@@ -85,6 +85,11 @@ export function Header({
           className="flex items-center space-x-2.5 pl-1 pr-2.5 py-1 rounded-full hover:bg-white/70 transition-colors cursor-pointer"
         >
           {user?.imageUrl ? (
+            // A 32px avatar served from Clerk's CDN. next/image would require
+            // allowlisting that host in next.config.ts (there is no images config
+            // today), and a wrong pattern fails closed -- no avatar at all -- for
+            // no meaningful gain at this size.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={user.imageUrl}
               alt=""
@@ -108,6 +113,8 @@ export function Header({
             <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-border rounded-2xl shadow-lg z-20 overflow-hidden">
               <div className="p-4 border-b border-border flex items-center space-x-3">
                 {user?.imageUrl ? (
+                  // Same Clerk CDN avatar as above, at 40px. See the note there.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={user.imageUrl}
                     alt={userName}

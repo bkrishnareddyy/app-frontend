@@ -2,6 +2,7 @@ import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { ShipmentsWorkbenchClient } from "./ShipmentsWorkbenchClient";
+import type { TeamMember } from "@/lib/team";
 
 export default async function ShipmentsConsolePage() {
   const ctx = await getAccountContext();
@@ -29,7 +30,7 @@ export default async function ShipmentsConsolePage() {
   });
 
   // Fetch active team members if user is an enterprise admin
-  let teamMembers: any[] = [];
+  let teamMembers: TeamMember[] = [];
   const isEnterpriseAdmin =
     ctx.accountType === "ENTERPRISE" &&
     (ctx.roleNames.includes("ADMIN") || ctx.roleNames.includes("OWNER"));

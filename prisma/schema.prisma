@@ -71,6 +71,7 @@ model Account {
   clients                 Client[]
   legalEntities           LegalEntity[]
   shipmentSequences       ShipmentSequence[]
+  documentParseVersions   DocumentParseVersion[]
 
   @@index([type])
   @@index([slug])
@@ -354,6 +355,17 @@ model ShipmentDocument {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  /// Byte size and detected media type of the immutable original, recorded at
+  /// upload. `checksum` above is its SHA-256.
+  byteSize Int?
+  mimeType String?
+
+  /// The one successful processing run whose artifacts are authoritative for
+  /// this document. Set only after a run completes, validates, persists its
+  /// artifacts, and passes the quality policy -- so it never points at a
+  /// partial run, and a late-finishing older run cannot claim it.
+  activeParseVersionId String?
+
   extractionFields ExtractionField[]
   parseVersions    DocumentParseVersion[]
   exceptionItems   ExceptionItem[]
@@ -362,6 +374,7 @@ model ShipmentDocument {
 
   @@index([shipmentId])
   @@index([accountId])
+  @@index([accountId, checksum])
 }
 
 model ShipmentLineItem {
@@ -914,6 +927,18 @@ model ShipmentParty {
   @@index([shipmentId, role])
 }
 
+/// One immutable document processing run.
+///
+/// Originally this only recorded "the AI read this document, version N". It is
+/// now the durable processing run for the whole Document Intelligence pipeline:
+/// which parser provider ran, under which profile and configuration, what the
+/// provider's own task id was, where the artifacts landed, and what the quality
+/// gate concluded. Every added column is nullable or defaulted so historical
+/// Gemini-vision rows remain valid and readable.
+///
+/// A successful run is never mutated back into another state. Reprocessing
+/// creates a new run; `ShipmentDocument.activeParseVersionId` decides which one
+/// is authoritative, so a slow older run cannot displace a newer accepted one.
 model DocumentParseVersion {
   id            String           @id @default(cuid())
   documentId    String
@@ -925,8 +950,80 @@ model DocumentParseVersion {
   confidence    Float?
   createdAt     DateTime         @default(now())
 
+  /// Tenant that owns this run. Nullable only because rows predate the column;
+  /// every run created by the parsing subsystem sets it, and reads are filtered
+  /// through the parent document's account either way.
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// What produced this row: IBM_DOCLING or MOCK_PARSER for a parse run,
+  /// GEMINI_VISION for an extraction read off the document image, or
+  /// GEMINI_PARSED_CONTEXT for one read off a parser's rendered context (whose
+  /// upstream parser is then named in parserName).
+  parserProvider String?
+  /// Parser name as the provider reported it. Null when it reports none.
+  parserName     String?
+  /// Qubere processing profile: STANDARD | OCR_FALLBACK | FULL_PAGE_OCR.
+  profile        String?
+  /// Why this run exists: INITIAL | MANUAL_REPROCESS | OCR_RETRY | QUALITY_RETRY | PARSER_UPGRADE | CONFIG_CHANGE.
+  reason         String?
+  /// Hash of the provider settings that affect output. Part of the idempotency key.
+  configHash     String?
+  /// Version of the Qubere parser normalisation contract this run was written under.
+  schemaVersion  String?
+
+  /// Provider-side task identifier, persisted immediately on submission so a
+  /// process restart never orphans work already accepted by the provider.
+  externalTaskId String?
+  /// Derived from tenant + content hash + provider + profile + config hash.
+  /// Unique, so a duplicate queue delivery cannot create a second run.
+  idempotencyKey String? @unique
+  /// QUEUED | SUBMITTED | POLLING | SUCCEEDED | NEEDS_REVIEW | FAILED.
+  status         String? @default("SUCCEEDED")
+  /// Last provider status string observed. Sanitised; never a response body.
+  providerStatus String?
+
+  queuedAt    DateTime?
+  startedAt   DateTime?
+  /// Refreshed while a worker holds this run, so crashed work is reclaimable.
+  heartbeatAt DateTime?
+  completedAt DateTime?
+  nextRetryAt DateTime?
+  lastPolledAt DateTime?
+  nextPollAt   DateTime?
+
+  pollAttemptCount Int @default(0)
+  attemptCount     Int @default(0)
+  maxAttempts      Int @default(4)
+
+  durationMs Int?
+  pageCount  Int?
+  /// Null means the provider did not report OCR usage — not that OCR was absent.
+  ocrUsed         Boolean?
+  fullPageOcrUsed Boolean?
+
+  /// Structured code from the parser error model, e.g. PARSER_TIMEOUT.
+  errorCode    String?
+  /// Sanitised message safe to surface. Never a provider payload.
+  errorMessage String?
+  retryable    Boolean?
+
+  /// Parser warnings and non-fatal provider errors, as recorded.
+  warningsJson Json?
+  /// Objective quality-gate assessment for this run.
+  qualityJson  Json?
+  /// Index of artifacts in object storage: type -> ref, mime, bytes, sha256.
+  artifactsJson Json?
+  /// Correlation id linking upload -> queue -> provider -> result -> agents.
+  correlationId String?
+
   @@index([documentId])
   @@index([documentId, version])
+  @@index([accountId])
+  /// Drives the worker's "what is due" query.
+  @@index([status, nextPollAt])
+  @@index([status, nextRetryAt])
+  @@index([status, heartbeatAt])
 }
 
 model ShipmentChangeEvent {

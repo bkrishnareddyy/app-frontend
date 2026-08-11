@@ -225,6 +225,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       fileName: doc.fileName,
       mimeType: "application/pdf",
       docTypeCode: doc.docType,
+      // A person pressed "run extraction" on this document, so this reading is
+      // meant to replace whatever is there -- including a parse-derived one,
+      // which a background vision run is not allowed to overwrite.
+      forceOverwrite: true,
     });
 
     const updated = await db.shipmentDocument.findFirst({

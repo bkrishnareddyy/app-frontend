@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { EntityResolutionService } from "../src/modules/entity/entityResolutionService";
-import { ShipmentPartyService } from "../src/modules/shipment/shipmentPartyService";
-import { FactAuditService } from "../src/modules/audit/factAuditService";
 
 describe("Qubere Entity & Party Domain Refactor Unit Tests", () => {
   it("Normalize company names correctly for fuzzy matching", () => {

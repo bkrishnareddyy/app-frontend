@@ -11,6 +11,9 @@ const ctxMock = vi.fn();
 const dbMock = {
   agentDecision: { findFirst: vi.fn() },
   htsNode: { findMany: vi.fn() },
+  // Cited rates come only from the currently published release, so the route
+  // resolves that release before looking up any node.
+  htsRelease: { findFirst: vi.fn() },
   ruling: { findMany: vi.fn() },
 };
 
@@ -49,6 +52,7 @@ function htsRecord(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  dbMock.htsRelease.findFirst.mockResolvedValue({ id: "rel_published" });
   ctxMock.mockResolvedValue({
     userId: "u_1",
     accountId: ACCOUNT,
@@ -95,8 +99,25 @@ describe("GET /api/decisions/[id]/evidence", () => {
     await call();
 
     expect(dbMock.htsNode.findMany.mock.calls[0][0].where).toEqual({
+      // Scoped to the published release: the same HTS number exists in every
+      // ingested release, so an unscoped lookup could cite a rate from a DRAFT
+      // staged overnight or a SUPERSEDED schedule as the evidence for a
+      // classification.
+      releaseId: "rel_published",
       htsNumberNormalized: { in: ["8471300100", "8517620090"] },
     });
+  });
+
+  it("cites nothing when no release has been published", async () => {
+    dbMock.htsRelease.findFirst.mockResolvedValue(null);
+
+    const body = await (await call()).json();
+
+    // No lawful schedule to cite: report the codes as not found rather than
+    // reaching into a draft or a retired release for a rate.
+    expect(dbMock.htsNode.findMany).not.toHaveBeenCalled();
+    expect(body.proposed.found).toBe(false);
+    expect(body.proposed.generalDutyRate).toBeNull();
   });
 
   it("reports a code that is not in the loaded tariff as not found", async () => {
