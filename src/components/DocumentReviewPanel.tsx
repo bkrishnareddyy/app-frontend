@@ -2,10 +2,36 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw } from "lucide-react";
+import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare } from "lucide-react";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
 
 const NEUTRAL_BADGE = "text-[10px] font-bold px-2 py-1 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA] text-[#86868B]";
+
+interface DecisionListItem {
+  id: string;
+  agentName?: string | null;
+  proposedHtsCode?: string | null;
+  currentHtsCode?: string | null;
+  createdAt: string | Date;
+}
+
+/**
+ * AgentDecision has no documentId/runId FK, so a re-run (reattach, manual
+ * re-evaluate, reconciliation) leaves the old row sitting next to the new
+ * one instead of replacing it -- collapse to one card per agent, keeping
+ * whichever is most recent, so a stale decision never outlives its re-run.
+ */
+function latestPerAgent<T extends DecisionListItem>(decs: T[]): T[] {
+  const byLabel = new Map<string, T>();
+  for (const dec of decs) {
+    const key = decisionGroupLabel(dec);
+    const existing = byLabel.get(key);
+    if (!existing || new Date(dec.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+      byLabel.set(key, dec);
+    }
+  }
+  return Array.from(byLabel.values());
+}
 
 function severityBadgeClass(severity: string): string {
   if (severity === "CRITICAL") return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-red-100 text-red-900 border-red-300";
@@ -256,8 +282,8 @@ export function DocumentReviewPanel({
   const [extractError, setExtractError] = useState<string | null>(null);
 
   const hasFieldReview = decisions.length > 0;
-  const mechanicalDecisions = decisions.filter((dec) => reviewCategory(dec) === "MECHANICAL");
-  const reviewableDecisions = decisions.filter((dec) => reviewCategory(dec) !== "MECHANICAL");
+  const mechanicalDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) === "MECHANICAL"));
+  const reviewableDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) !== "MECHANICAL"));
 
   // Field Review opens first when agent checks are available -- the whole
   // point is to lead with results, not the raw document.
@@ -285,6 +311,11 @@ export function DocumentReviewPanel({
   const [missingFieldValues, setMissingFieldValues] = useState<Record<string, string>>({});
   const [savingMissingKey, setSavingMissingKey] = useState<string | null>(null);
   const [missingFieldErrors, setMissingFieldErrors] = useState<Record<string, string>>({});
+
+  // Comment input is collapsed behind a button by default -- expanded on
+  // click, or automatically for a decision that already has a note so
+  // existing comments are never hidden behind an extra click.
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
 
   // This panel can stay mounted across document selections when embedded
   // inline on a page (unlike a modal, which unmounts on close), so switching
@@ -547,7 +578,7 @@ export function DocumentReviewPanel({
             <p id={titleId} className="text-xs text-[#86868B] mt-0.5">
               {hasFieldReview ? (
                 <>
-                  {decisions.length} agent checks
+                  {mechanicalDecisions.length + reviewableDecisions.length} agent checks
                   {shipmentNumber && (
                     <>
                       {" · "}
@@ -592,7 +623,7 @@ export function DocumentReviewPanel({
                 activeTab === "FIELDS" ? "bg-white text-[#0071E3] shadow-2xs" : "text-[#86868B] hover:text-[#1D1D1F]"
               }`}
             >
-              Field Review ({decisions.length})
+              Field Review ({mechanicalDecisions.length + reviewableDecisions.length})
             </button>
           )}
           <button
@@ -755,14 +786,39 @@ export function DocumentReviewPanel({
                     renderNarrativeBody(dec, { onViewKeyValues: () => setActiveTab("KV"), kvCount: kvEntries.length })
                   )}
 
-                  <input
-                    type="text"
-                    value={notesByDecision[dec.id] ?? dec.humanNotes ?? ""}
-                    onChange={(e) => onNotesChange?.(dec.id, e.target.value)}
-                    placeholder="Comment..."
-                    className="w-full px-3 py-2 bg-[#F5F5F7] border border-[#E5E5EA] focus:border-[#0071E3] focus:bg-white rounded-lg text-[11px] text-[#1D1D1F] transition-all outline-none font-medium"
-                  />
+                  {(() => {
+                    const hasComment = Boolean((notesByDecision[dec.id] ?? dec.humanNotes ?? "").trim());
+                    const isExpanded = expandedComments.has(dec.id) || hasComment;
+                    if (!isExpanded) return null;
+                    return (
+                      <input
+                        type="text"
+                        value={notesByDecision[dec.id] ?? dec.humanNotes ?? ""}
+                        onChange={(e) => onNotesChange?.(dec.id, e.target.value)}
+                        placeholder="Comment..."
+                        autoFocus={expandedComments.has(dec.id) && !hasComment}
+                        className="w-full px-3 py-2 bg-[#F5F5F7] border border-[#E5E5EA] focus:border-[#0071E3] focus:bg-white rounded-lg text-[11px] text-[#1D1D1F] transition-all outline-none font-medium"
+                      />
+                    );
+                  })()}
                   <div className="flex items-center justify-end space-x-2">
+                    <button
+                      onClick={() =>
+                        setExpandedComments((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(dec.id)) {
+                            next.delete(dec.id);
+                          } else {
+                            next.add(dec.id);
+                          }
+                          return next;
+                        })
+                      }
+                      className="px-3 py-1.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#86868B] text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer mr-auto"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      <span>Comment</span>
+                    </button>
                     <button
                       onClick={() => onReviewAction?.(dec.id, "RE_EVALUATE")}
                       disabled={isBusy}
