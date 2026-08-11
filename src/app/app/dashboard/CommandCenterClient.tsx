@@ -520,7 +520,7 @@ export function CommandCenterClient({
 
         {/* 4. Requires Attention */}
         <Link
-          href="/app/decisions?status=Needs+Review"
+          href="/app/actions"
           className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group block"
         >
           <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-amber-600">

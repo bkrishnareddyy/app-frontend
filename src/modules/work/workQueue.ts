@@ -257,6 +257,14 @@ export const FILING_ACTIONABLE_STATUSES = Object.keys(FILING_ACTIONABLE);
 export const DOCUMENT_ACTIONABLE_STATUSES = Object.keys(DOCUMENT_ACTIONABLE);
 export const EXCEPTION_ACTIONABLE_STATUSES = openStatusVariants();
 
+export function decisionPriority(status: string): WorkPriority | null {
+  return DECISION_ACTIONABLE[status] ?? null;
+}
+
+export function exceptionPriority(severity: string): WorkPriority {
+  return EXCEPTION_SEVERITY[severity] ?? "normal";
+}
+
 export const WORK_KINDS: readonly WorkItemKind[] = [
   "decision",
   "finding",

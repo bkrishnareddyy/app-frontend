@@ -220,7 +220,7 @@ export function ExceptionsDrawer({
             </button>
           </div>
           <Link
-            href={`/app/decisions?shipmentId=${shipmentId}`}
+            href={`/app/actions?shipmentId=${shipmentId}`}
             className="text-xs font-semibold text-brand hover:underline"
           >
             View All Exceptions

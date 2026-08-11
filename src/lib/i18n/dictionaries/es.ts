@@ -7,6 +7,7 @@ export const es: TranslationKeys = {
     shipments: "Embarques",
     clients: "Clientes",
     tradeDocuments: "Documentos Comerciales",
+    actions: "Acciones",
     decisions: "Decisiones de IA",
     exceptions: "Excepciones",
     customsFiling: "Declaración Aduanera",

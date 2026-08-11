@@ -5,6 +5,7 @@ export const en = {
     shipments: "Shipments",
     clients: "Clients",
     tradeDocuments: "Trade Documents",
+    actions: "Actions",
     decisions: "Decisions",
     exceptions: "Exceptions",
     customsFiling: "Customs Filing",

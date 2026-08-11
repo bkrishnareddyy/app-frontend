@@ -10,6 +10,7 @@ export type NavIcon =
   | "shipments"
   | "clients"
   | "documents"
+  | "actions"
   | "decisions"
   | "exceptions"
   | "filing"
@@ -50,8 +51,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "documents", labelKey: "tradeDocuments", href: "/app/documents", icon: "documents" },
-      { id: "decisions", labelKey: "decisions", href: "/app/decisions", icon: "decisions" },
-      { id: "exceptions", labelKey: "exceptions", href: "/app/exceptions", icon: "exceptions" },
+      { id: "actions", labelKey: "actions", href: "/app/actions", icon: "actions" },
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
       { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },
     ],
