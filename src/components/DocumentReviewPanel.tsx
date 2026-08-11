@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare, Sparkles } from "lucide-react";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
 
-const NEUTRAL_BADGE = "text-[10px] font-bold px-2 py-1 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA] text-[#86868B]";
+const NEUTRAL_BADGE = "text-[10px] font-bold px-2 py-1 rounded-lg bg-surface-muted border border-border text-ink-muted";
 
 interface DecisionListItem {
   id: string;
@@ -36,7 +36,7 @@ function latestPerAgent<T extends DecisionListItem>(decs: T[]): T[] {
 function severityBadgeClass(severity: string): string {
   if (severity === "CRITICAL") return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-red-100 text-red-900 border-red-300";
   if (severity === "HIGH") return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-amber-100 text-amber-900 border-amber-300";
-  return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA]";
+  return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-surface-muted text-ink-muted border-border";
 }
 
 // The real gating sentinels agents write to proposedDescription when they
@@ -68,11 +68,11 @@ function RollupSummary({ decisions }: { decisions: RollupDecision[] }) {
   }
 
   return (
-    <div className="rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA] p-4 space-y-3">
+    <div className="rounded-2xl bg-surface-muted border border-border p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <Sparkles className="w-4 h-4 text-[#0071E3]" />
-        <span className="font-extrabold text-[#1D1D1F] text-[13px]">AI review</span>
-        <span className="ml-auto text-[11px] font-semibold text-[#86868B]">{verified} of {total} checks passed</span>
+        <Sparkles className="w-4 h-4 text-brand" />
+        <span className="font-extrabold text-ink text-[13px]">AI review</span>
+        <span className="ml-auto text-[11px] font-semibold text-ink-muted">{verified} of {total} checks passed</span>
       </div>
       <div className="flex gap-2">
         <div className="flex-1 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-2">
@@ -88,7 +88,7 @@ function RollupSummary({ decisions }: { decisions: RollupDecision[] }) {
           <p className="text-[9px] font-extrabold uppercase tracking-wide text-red-700">Blocked</p>
         </div>
       </div>
-      {summary && <p className="text-[11px] text-[#86868B] leading-relaxed">{summary}</p>}
+      {summary && <p className="text-[11px] text-ink-muted leading-relaxed">{summary}</p>}
     </div>
   );
 }
@@ -136,8 +136,8 @@ function SpecRows({ rows }: { rows: NarrativeRow[] }) {
         .filter((r) => r.value)
         .map((r) => (
           <div key={r.label} className="flex items-start justify-between gap-3 text-[11px]">
-            <span className="text-[#86868B] shrink-0">{r.label}</span>
-            <span className="text-[#1D1D1F] font-semibold text-right">{r.value}</span>
+            <span className="text-ink-muted shrink-0">{r.label}</span>
+            <span className="text-ink font-semibold text-right">{r.value}</span>
           </div>
         ))}
     </div>
@@ -154,7 +154,7 @@ function SpecRows({ rows }: { rows: NarrativeRow[] }) {
 function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: () => void; kvCount: number }): React.ReactNode {
   const groupLabel = decisionGroupLabel(dec);
   const ev = (dec.evidenceItems && typeof dec.evidenceItems === "object" ? dec.evidenceItems : {}) as Record<string, unknown>;
-  const fallback = <p className="text-[11px] text-[#86868B] leading-relaxed">{dec.decisionSummary || "No summary available."}</p>;
+  const fallback = <p className="text-[11px] text-ink-muted leading-relaxed">{dec.decisionSummary || "No summary available."}</p>;
 
   if (groupLabel === "Document Intelligence") {
     const primaryAgency = typeof ev.primaryAgency === "string" ? ev.primaryAgency : null;
@@ -172,7 +172,7 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
         </div>
         <button
           onClick={opts.onViewKeyValues}
-          className="text-[11px] font-semibold text-[#0071E3] hover:underline cursor-pointer"
+          className="text-[11px] font-semibold text-brand hover:underline cursor-pointer"
         >
           View {count} extracted field{count === 1 ? "" : "s"} →
         </button>
@@ -188,7 +188,7 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
         {profiles.map((p, i) => (
           <div key={i} className="space-y-1">
             {profiles.length > 1 && (
-              <p className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{p.sku || `Line ${i + 1}`}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-ink-muted">{p.sku || `Line ${i + 1}`}</p>
             )}
             <SpecRows
               rows={[
@@ -213,8 +213,8 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
         : `${primary.ftaProgram} qualification assessed`;
     return (
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="text-2xl font-extrabold text-[#1D1D1F]">{primary.countryOfOrigin || "—"}</span>
-        <span className="text-[11px] text-[#86868B]">
+        <span className="text-2xl font-extrabold text-ink">{primary.countryOfOrigin || "—"}</span>
+        <span className="text-[11px] text-ink-muted">
           {ftaText}
           {quals.length > 1 ? ` across ${quals.length} line items` : " for this line"}
         </span>
@@ -228,8 +228,8 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
     const adjustments = Array.isArray(ev.adjustments) ? (ev.adjustments as ValuationAdjustment[]) : [];
     return (
       <div className="space-y-1.5">
-        <p className="text-[10px] uppercase tracking-wide text-[#86868B]">Entered customs value</p>
-        <p className="text-2xl font-extrabold text-[#1D1D1F]">
+        <p className="text-[10px] uppercase tracking-wide text-ink-muted">Entered customs value</p>
+        <p className="text-2xl font-extrabold text-ink">
           ${enteredCustomsValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
         <div className="flex flex-wrap gap-1.5">
@@ -246,7 +246,7 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
     const flags = Array.isArray(ev.flags) ? (ev.flags as ComplianceFlag[]) : [];
     if (flags.length === 0) {
       return (
-        <div className="flex items-center gap-1.5 text-[11px] text-[#1D1D1F]">
+        <div className="flex items-center gap-1.5 text-[11px] text-ink">
           <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
           <span>{dec.decisionSummary || "No compliance issues identified."}</span>
         </div>
@@ -257,7 +257,7 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
         {flags.map((f, i) => (
           <div key={i} className="flex items-start gap-1.5 text-[11px]">
             <span className={severityBadgeClass(f.severity)}>{f.severity}</span>
-            <span className="text-[#1D1D1F]">{f.summary}</span>
+            <span className="text-ink">{f.summary}</span>
           </div>
         ))}
       </div>
@@ -852,7 +852,7 @@ export function DocumentReviewPanel({
                         onChange={(e) => onNotesChange?.(dec.id, e.target.value)}
                         placeholder="Comment..."
                         autoFocus={expandedComments.has(dec.id) && !hasComment}
-                        className="w-full px-3 py-2 bg-[#F5F5F7] border border-[#E5E5EA] focus:border-[#0071E3] focus:bg-white rounded-lg text-[11px] text-[#1D1D1F] transition-all outline-none font-medium"
+                        className="w-full px-3 py-2 bg-surface-muted border border-border focus:border-brand focus:bg-surface rounded-lg text-[11px] text-ink transition-all outline-none font-medium"
                       />
                     );
                   })()}
@@ -869,7 +869,7 @@ export function DocumentReviewPanel({
                           return next;
                         })
                       }
-                      className="px-3 py-1.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#86868B] text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer mr-auto"
+                      className="px-3 py-1.5 bg-surface border border-border hover:bg-surface-muted text-ink-muted text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer mr-auto"
                     >
                       <MessageSquare className="w-3 h-3" />
                       <span>Comment</span>
