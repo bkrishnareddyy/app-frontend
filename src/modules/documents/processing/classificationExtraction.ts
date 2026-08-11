@@ -101,7 +101,7 @@ export async function runDocumentExtraction(
     const { DocumentIntelligenceAgent } = await import("@/modules/agents/documentIntelligenceAgent");
     const output = await DocumentIntelligenceAgent.execute({
       accountId: input.accountId,
-      userId: input.userId ?? "SYSTEM",
+      userId: input.userId,
       shipmentId: input.shipmentId,
       packetId: `pkt_run_${processingRunId.slice(0, 8)}`,
       fileName: await documentFileName(input.accountId, input.documentId),

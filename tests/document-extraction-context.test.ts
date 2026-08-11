@@ -143,6 +143,23 @@ describe("extraction over a parsed context", () => {
     expect(String(context.text)).toContain("sec_0000_abc");
   });
 
+  it("passes a missing actor through as null rather than a sentinel string", async () => {
+    // A worker run has no human actor. AuditLog.userId is a foreign key to User,
+    // so substituting a placeholder like "SYSTEM" makes every audit write for a
+    // background parse fail the constraint — losing the audit trail on exactly
+    // the runs nobody watched.
+    await extraction.runDocumentExtraction({
+      accountId: ACCOUNT,
+      userId: null,
+      documentId: DOCUMENT,
+      shipmentId: "shp_1",
+      correlationId: "corr_1",
+      processingRunId: "run_1",
+    });
+
+    expect(agentInputs[0].userId).toBeNull();
+  });
+
   it("never puts the vendor payload or a storage location in the prompt", async () => {
     await extraction.runDocumentExtraction({
       accountId: ACCOUNT,

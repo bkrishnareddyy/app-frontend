@@ -184,7 +184,12 @@ export interface LineItemExtraction {
 
 export interface DocumentIntelligenceInput {
   accountId: string;
-  userId: string;
+  /**
+   * The acting user, or null when the run has no human actor (background worker,
+   * cron). This reaches AuditLog.userId, which is a foreign key to User — so an
+   * absent actor must stay null rather than becoming a sentinel string.
+   */
+  userId: string | null;
   shipmentId: string;
   documentId?: string | null;
   packetId: string;
