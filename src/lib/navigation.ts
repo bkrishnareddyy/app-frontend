@@ -47,7 +47,6 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "operations",
     labelKey: "mainOperations",
     items: [
-      { id: "work", labelKey: "myWork", href: "/app/work", icon: "inbox" },
       { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "documents", labelKey: "tradeDocuments", href: "/app/documents", icon: "documents" },

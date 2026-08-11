@@ -3,7 +3,6 @@ import { TranslationKeys } from "./en";
 export const es: TranslationKeys = {
   // Navigation
   nav: {
-    myWork: "Mi Trabajo",
     commandCenter: "Centro de Control",
     shipments: "Embarques",
     clients: "Clientes",
@@ -33,9 +32,7 @@ export const es: TranslationKeys = {
   },
   // Dashboard
   dashboard: {
-    commandCenter: "Centro de Control",
     demoMode: "Modo Demostración",
-    subtitle: "Visibilidad y control en tiempo real de las declaraciones aduaneras para",
     newShipment: "Agregar Embarque",
     activeShipments: "Declaraciones Aduaneras Activas",
     searchPlaceholder: "Búsqueda próximamente...",
