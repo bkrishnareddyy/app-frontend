@@ -10,7 +10,10 @@ import {
   Plus,
   Eye,
   Users,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { PAGE_SIZE_DEFAULT, pageWindow } from "@/modules/tables/tableQuery";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { documentViewUrl } from "@/lib/documentUrl";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -111,11 +114,18 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
   const [documents, setDocuments] = useState<ShipmentDocumentItem[]>([]);
   const [shipments, setShipments] = useState<ApiShipment[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useState("ALL");
-  const [selectedClientId, setSelectedClientId] = useState("ALL");
-  const [selectedShipmentId, setSelectedShipmentId] = useState("ALL");
-  const [selectedStatus, setSelectedStatus] = useState("ALL");
+
+  // Paginated over the filtered list, matching the shipments workbench: the six
+  // filters and the search all read every document, so limiting the rows on screen
+  // must not limit what they search.
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
+  const [page, setPage] = useState(1);
+
+  const [searchQuery, setSearchQueryValue] = useState("");
+  const [selectedType, setSelectedTypeValue] = useState("ALL");
+  const [selectedClientId, setSelectedClientIdValue] = useState("ALL");
+  const [selectedShipmentId, setSelectedShipmentIdValue] = useState("ALL");
+  const [selectedStatus, setSelectedStatusValue] = useState("ALL");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
   const [targetShipmentId] = useState("");
@@ -123,8 +133,36 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   const { t } = useLanguage();
 
   // Selected team member IDs. Default is [] (All Documents)
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [selectedUserIds, setSelectedUserIdsValue] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Narrowing any filter returns to the first page. Wrapped at the setters so the
+  // six existing filters, and any added later, cannot leave the operator looking at
+  // a page the new result no longer reaches.
+  const setSearchQuery: typeof setSearchQueryValue = (value) => {
+    setPage(1);
+    setSearchQueryValue(value);
+  };
+  const setSelectedType: typeof setSelectedTypeValue = (value) => {
+    setPage(1);
+    setSelectedTypeValue(value);
+  };
+  const setSelectedClientId: typeof setSelectedClientIdValue = (value) => {
+    setPage(1);
+    setSelectedClientIdValue(value);
+  };
+  const setSelectedShipmentId: typeof setSelectedShipmentIdValue = (value) => {
+    setPage(1);
+    setSelectedShipmentIdValue(value);
+  };
+  const setSelectedStatus: typeof setSelectedStatusValue = (value) => {
+    setPage(1);
+    setSelectedStatusValue(value);
+  };
+  const setSelectedUserIds: typeof setSelectedUserIdsValue = (value) => {
+    setPage(1);
+    setSelectedUserIdsValue(value);
+  };
 
   const fetchDocuments = async () => {
     setIsLoading(true);
@@ -271,6 +309,14 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
     return matchesSearch && matchesType && matchesClient && matchesShipment && matchesStatus;
   });
+
+  const totalDocs = filteredDocs.length;
+  const { pages, page: currentPage, firstRow, lastRow, start, end } = pageWindow(
+    totalDocs,
+    pageSize,
+    page
+  );
+  const pagedDocs = filteredDocs.slice(start, end);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -525,7 +571,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                   </td>
                 </tr>
               ) : (
-                filteredDocs.map((doc) => (
+                pagedDocs.map((doc) => (
                   <tr key={doc.id} className="hover:bg-surface-muted/50 transition-colors">
                     {/* Document Name Click triggers Modal */}
                     <td className="py-3.5 px-5 font-semibold text-ink">
@@ -590,6 +636,63 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             </tbody>
           </table>
         </div>
+
+        {/* Range read from the filtered total, so a partial last page reports the
+            rows it holds rather than repeating the page size. */}
+        <nav
+          className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-t border-border"
+          aria-label="Trade documents pagination"
+        >
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-ink-muted">
+              {totalDocs === 0
+                ? "No documents"
+                : `${firstRow}–${lastRow} of ${totalDocs} document${totalDocs === 1 ? "" : "s"}`}
+            </p>
+            <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+              <span>Rows</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                aria-label="Rows per page"
+                className="rounded-lg border border-border bg-white px-2 py-1 text-xs font-semibold text-ink focus:outline-none focus:border-brand"
+              >
+                {[25, 50, 100].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-ink-muted">
+              Page {currentPage} of {pages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed cursor-pointer"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Previous</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(currentPage + 1)}
+              disabled={currentPage >= pages}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed cursor-pointer"
+            >
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        </nav>
       </div>
 
       {/* Reusable Document Viewer Modal */}

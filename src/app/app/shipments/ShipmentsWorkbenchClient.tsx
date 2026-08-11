@@ -15,7 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { caughtMessage } from "@/lib/utils";
-import { PAGE_SIZE_DEFAULT, pageCount } from "@/modules/tables/tableQuery";
+import { PAGE_SIZE_DEFAULT, pageWindow } from "@/modules/tables/tableQuery";
 
 interface DocumentItem {
   id: string;
@@ -300,16 +300,14 @@ export function ShipmentsWorkbenchClient({
     (s) => s.status === "On Hold" || s.healthStatus === "Critical"
   ).length;
 
-  // Clamped while rendering rather than corrected in an effect. Narrowing a filter
-  // can leave `page` past the end of the new result, and an effect that fixed it
-  // afterwards would render one empty page first.
-  const pages = pageCount(totalCount, pageSize);
-  const currentPage = Math.min(page, pages);
-  const firstRow = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const lastRow = Math.min(currentPage * pageSize, totalCount);
+  const { pages, page: currentPage, firstRow, lastRow, start, end } = pageWindow(
+    totalCount,
+    pageSize,
+    page
+  );
   const pagedShipments = useMemo(
-    () => filteredShipments.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [filteredShipments, currentPage, pageSize]
+    () => filteredShipments.slice(start, end),
+    [filteredShipments, start, end]
   );
 
   return (

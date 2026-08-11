@@ -97,6 +97,45 @@ export function pageCount(total: number, pageSize: number): number {
   return Math.max(1, Math.ceil(total / pageSize));
 }
 
+export interface PageWindow {
+  /** Total pages, at least 1 so the footer always has something to render. */
+  pages: number;
+  /** The requested page, clamped into range. */
+  page: number;
+  /** 1-based row numbers for the "x-y of n" summary; 0 when nothing matched. */
+  firstRow: number;
+  lastRow: number;
+  /** Bounds for `Array.prototype.slice`. */
+  start: number;
+  end: number;
+}
+
+/**
+ * The slice of a client-filtered list to show, with its row numbers.
+ *
+ * The requested page is clamped rather than trusted: narrowing a filter can leave
+ * it past the end of the new result, and correcting that in an effect afterwards
+ * renders one empty page first. Clamping here means an in-range page over a
+ * non-empty list always yields at least one row, so an empty table means nothing
+ * matched and never a paging fault.
+ *
+ * Row numbers come from the real total, so a partial last page reports the rows it
+ * actually holds instead of repeating the page size.
+ */
+export function pageWindow(total: number, pageSize: number, requestedPage: number): PageWindow {
+  const pages = pageCount(total, pageSize);
+  const page = Math.min(Math.max(requestedPage, 1), pages);
+  const start = (page - 1) * pageSize;
+  return {
+    pages,
+    page,
+    firstRow: total === 0 ? 0 : start + 1,
+    lastRow: Math.min(page * pageSize, total),
+    start,
+    end: page * pageSize,
+  };
+}
+
 /** Clicking the active column reverses it; any other column starts descending. */
 export function nextDirection<TColumn extends string>(
   query: TableQuery<TColumn>,
