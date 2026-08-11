@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare } from "lucide-react";
+import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare, Sparkles } from "lucide-react";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
 
 const NEUTRAL_BADGE = "text-[10px] font-bold px-2 py-1 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA] text-[#86868B]";
@@ -37,6 +37,60 @@ function severityBadgeClass(severity: string): string {
   if (severity === "CRITICAL") return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-red-100 text-red-900 border-red-300";
   if (severity === "HIGH") return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-amber-100 text-amber-900 border-amber-300";
   return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA]";
+}
+
+// The real gating sentinels agents write to proposedDescription when they
+// refused to run because a prerequisite was missing -- distinct from an
+// ordinary "Needs Review" judgment call, so this is a grounded signal for
+// "blocked," not a guess.
+const BLOCKED_SENTINELS = new Set(["BLOCKED_DEPENDENCY", "WAITING_FOR_EXTRACTION", "BLOCKED_MISSING_DESCRIPTION"]);
+
+interface RollupDecision {
+  status: string;
+  proposedDescription?: string | null;
+}
+
+function RollupSummary({ decisions }: { decisions: RollupDecision[] }) {
+  const total = decisions.length;
+  if (total === 0) return null;
+
+  const blocked = decisions.filter((d) => d.proposedDescription && BLOCKED_SENTINELS.has(d.proposedDescription)).length;
+  const verified = decisions.filter((d) => d.status === "Approved").length;
+  const review = total - verified - blocked;
+
+  let summary: string | null = null;
+  if (blocked > 0 && review > 0) {
+    summary = `${blocked + review} issue${blocked + review === 1 ? "" : "s"} need attention before filing — ${blocked} blocked on missing data, ${review} flagged for review.`;
+  } else if (blocked > 0) {
+    summary = `${blocked} issue${blocked === 1 ? "" : "s"} blocked on missing data.`;
+  } else if (review > 0) {
+    summary = `${review} issue${review === 1 ? "" : "s"} flagged for review.`;
+  }
+
+  return (
+    <div className="rounded-2xl bg-[#F5F5F7] border border-[#E5E5EA] p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-[#0071E3]" />
+        <span className="font-extrabold text-[#1D1D1F] text-[13px]">AI review</span>
+        <span className="ml-auto text-[11px] font-semibold text-[#86868B]">{verified} of {total} checks passed</span>
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-2">
+          <p className="text-base font-extrabold text-emerald-900">{verified}</p>
+          <p className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">Verified</p>
+        </div>
+        <div className="flex-1 rounded-xl bg-amber-50 border border-amber-200 px-2.5 py-2">
+          <p className="text-base font-extrabold text-amber-900">{review}</p>
+          <p className="text-[9px] font-extrabold uppercase tracking-wide text-amber-700">Review</p>
+        </div>
+        <div className="flex-1 rounded-xl bg-red-50 border border-red-200 px-2.5 py-2">
+          <p className="text-base font-extrabold text-red-900">{blocked}</p>
+          <p className="text-[9px] font-extrabold uppercase tracking-wide text-red-700">Blocked</p>
+        </div>
+      </div>
+      {summary && <p className="text-[11px] text-[#86868B] leading-relaxed">{summary}</p>}
+    </div>
+  );
 }
 
 interface NarrativeRow {
@@ -671,6 +725,7 @@ export function DocumentReviewPanel({
           </div>
         ) : activeTab === "FIELDS" ? (
           <div className="flex-1 overflow-y-auto border border-[#E5E5EA] rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
+            <RollupSummary decisions={[...mechanicalDecisions, ...reviewableDecisions]} />
             {reviewableDecisions.map((dec) => {
               const isBusy = actionLoadingId === dec.id;
               const groupLabel = reviewerLabel(dec);
