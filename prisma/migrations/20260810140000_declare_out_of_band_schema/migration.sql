@@ -5,50 +5,6 @@
 --
 -- Guarded throughout, since the shared database already has all of it.
 
--- CreateTable (out-of-band tables that predate migrations; safe to re-run)
-CREATE TABLE IF NOT EXISTS "AgentExecutionLog" (
-    "id" TEXT NOT NULL,
-    "accountId" TEXT NOT NULL,
-    "shipmentId" TEXT NOT NULL,
-    "agentName" TEXT NOT NULL,
-    "stepNumber" INTEGER NOT NULL,
-    "status" TEXT NOT NULL,
-    "summary" TEXT NOT NULL,
-    "confidence" JSONB,
-    "aiProviderUsed" TEXT NOT NULL,
-    "decisionId" TEXT NOT NULL,
-    "inputSnapshot" JSONB,
-    "outputSnapshot" JSONB,
-    "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "AgentExecutionLog_pkey" PRIMARY KEY ("id")
-);
-
-CREATE TABLE IF NOT EXISTS "AgentExecutionRecord" (
-    "id" TEXT NOT NULL,
-    "accountId" TEXT,
-    "shipmentId" TEXT NOT NULL,
-    "agentName" TEXT NOT NULL,
-    "triggerEvent" TEXT,
-    "invokedBy" TEXT DEFAULT 'SYSTEM',
-    "stepNumber" INTEGER,
-    "nextStep" TEXT,
-    "status" TEXT NOT NULL DEFAULT 'COMPLETED',
-    "confidence" JSONB,
-    "decisionId" TEXT,
-    "aiProviderUsed" TEXT,
-    "durationMs" INTEGER,
-    "modelVersion" TEXT DEFAULT 'gemini-3.6-flash',
-    "error" TEXT,
-    "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "completedAt" TIMESTAMP(3),
-    "inputSnapshot" JSONB,
-    "outputSnapshot" JSONB,
-    "runId" TEXT,
-
-    CONSTRAINT "AgentExecutionRecord_pkey" PRIMARY KEY ("id")
-);
-
 -- AlterTable
 ALTER TABLE "AgentExecutionLog" ADD COLUMN IF NOT EXISTS "runId" TEXT,
                                 ADD COLUMN IF NOT EXISTS "triggerEvent" TEXT,
@@ -57,27 +13,6 @@ ALTER TABLE "AgentExecutionLog" ADD COLUMN IF NOT EXISTS "runId" TEXT,
 
 -- AlterTable
 ALTER TABLE "AgentExecutionRecord" ADD COLUMN IF NOT EXISTS "runId" TEXT;
-
--- CreateTable (HtsRelease also created out-of-band)
-CREATE TABLE IF NOT EXISTS "HtsRelease" (
-    "id" TEXT NOT NULL,
-    "country" TEXT NOT NULL DEFAULT 'US',
-    "editionYear" INTEGER NOT NULL,
-    "revisionNumber" INTEGER NOT NULL,
-    "releaseName" TEXT NOT NULL,
-    "effectiveFrom" TIMESTAMP(3) NOT NULL,
-    "publishedAt" TIMESTAMP(3),
-    "sourceUrl" TEXT NOT NULL,
-    "sourceFormat" TEXT NOT NULL,
-    "sha256" TEXT NOT NULL,
-    "rawObjectKey" TEXT,
-    "retrievedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "validationStatus" TEXT NOT NULL,
-    "publicationStatus" TEXT NOT NULL DEFAULT 'DRAFT',
-    "supersedesReleaseId" TEXT,
-
-    CONSTRAINT "HtsRelease_pkey" PRIMARY KEY ("id")
-);
 
 -- AlterTable
 ALTER TABLE "HtsRelease" ADD COLUMN IF NOT EXISTS "country" TEXT NOT NULL DEFAULT 'US';
