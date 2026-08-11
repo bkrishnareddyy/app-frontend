@@ -18,7 +18,7 @@ import {
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
 import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
-import { DocumentViewerControls } from "./DocumentViewerControls";
+import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
 import { ShipmentClientEditor } from "./ShipmentClientEditor";
 import { ExceptionsDrawer } from "./ExceptionsDrawer";
@@ -1224,25 +1224,20 @@ export default async function ShipmentWorkspacePage(props: {
                   return (
                     <div className="flex flex-col justify-between h-full space-y-4">
                       <div>
-                        {/* Viewer Controls */}
-                        <div className="flex items-center justify-between pb-3 border-b border-[#E5E5EA] text-xs">
-                          <DocumentViewerControls
+                        {/* Document type, name, and tabbed preview / key-value / raw JSON */}
+                        <div className="h-[620px] flex flex-col border-b border-[#E5E5EA] pb-4 overflow-hidden">
+                          <DocumentReviewPanel
                             documentId={primaryDoc.id}
-                            fileName={primaryDoc.fileName}
+                            fileName={primaryDoc.fileName || "Trade Document"}
+                            docType={
+                              !primaryDoc.docType || primaryDoc.docType === "AUTO_DETECT"
+                                ? "Commercial Invoice"
+                                : primaryDoc.docType
+                            }
                             fileUrl={primaryDoc.fileUrl}
                             proxyUrl={proxyUrl}
                             shipmentNumber={shipment.shipmentNumber}
-                          >
-                            <div className="flex items-center space-x-2 min-w-0 group-hover:opacity-90">
-                              <FileText className="w-4 h-4 text-[#0071E3] shrink-0" />
-                              <span className="font-bold text-[#1D1D1F] truncate group-hover:underline">
-                                {primaryDoc.fileName || "Trade Document"}
-                              </span>
-                              <span className="text-[#86868B] text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#F5F5F7]">
-                                {!primaryDoc.docType || primaryDoc.docType === "AUTO_DETECT" ? "Commercial Invoice" : primaryDoc.docType}
-                              </span>
-                            </div>
-                          </DocumentViewerControls>
+                          />
                         </div>
 
                         {/* Document Metadata Details */}
@@ -1256,14 +1251,6 @@ export default async function ShipmentWorkspacePage(props: {
                             )}
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <p className="text-[10px] text-[#86868B] uppercase font-bold">Uploaded File Name</p>
-                              <p className="font-bold text-[#1D1D1F] truncate">{primaryDoc.fileName}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-[#86868B] uppercase font-bold">Document Type</p>
-                              <p className="font-bold text-[#1D1D1F]">{primaryDoc.docType || "Commercial Invoice / Trade Document"}</p>
-                            </div>
                             <div>
                               <p className="text-[10px] text-[#86868B] uppercase font-bold">Page Count</p>
                               <p className="font-mono text-[#1D1D1F]">{primaryDoc.pageCount ? `${primaryDoc.pageCount} Pages` : "1 Page"}</p>

@@ -18,6 +18,9 @@ type ReviewAction = "APPROVE" | "REJECT" | "RE_EVALUATE";
 export interface DocumentReviewPanelProps {
   documentId: string;
   fileName: string;
+  // Shown as a small label above the file name, e.g. "Commercial Invoice".
+  // Omit to leave the header as just the name (no type line).
+  docType?: string | null;
   shipmentNumber?: string | null;
   fileUrl?: string | null;
   proxyUrl?: string;
@@ -51,6 +54,7 @@ function statusPillClass(status: string): string {
 export function DocumentReviewPanel({
   documentId,
   fileName,
+  docType = null,
   shipmentNumber = null,
   proxyUrl,
   decisions = [],
@@ -304,6 +308,9 @@ export function DocumentReviewPanel({
             <Code className="w-5 h-5" />
           </div>
           <div className="min-w-0">
+            {docType && (
+              <p className="text-[10px] text-[#86868B] uppercase font-bold tracking-wide mb-0.5">{docType}</p>
+            )}
             {isEditingName ? (
               <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
                 <input
@@ -640,9 +647,14 @@ export function DocumentReviewPanel({
                   className="max-h-[55vh] rounded-xl border border-[#E5E5EA] shadow-md object-contain"
                 />
               ) : isPdfFile(proxyUrl, fileName) ? (
+                // A fixed vh height here previously overflowed shorter
+                // containers (e.g. embedded on the shipment page at a fixed
+                // pixel height) since an iframe has no intrinsic size to
+                // shrink to. h-full defers to whatever height the container
+                // -- modal or inline panel -- actually provides.
                 <iframe
                   src={proxyUrl}
-                  className="w-full h-[55vh] rounded-xl border border-[#E5E5EA]"
+                  className="w-full h-full min-h-[350px] rounded-xl border border-[#E5E5EA]"
                   title={fileName}
                 />
               ) : (
