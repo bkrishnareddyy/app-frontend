@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, Plus, Upload, FileText, Unlink, Loader2, X, Files } from "lucide-react";
+import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
+import { caughtMessage } from "@/lib/utils";
 
 interface DocumentItem {
   id: string;
@@ -51,6 +52,8 @@ export function ShipmentDocumentsSection({
 
   // Sync state when initialDocs props change (e.g. after dynamic file upload refresh)
   useEffect(() => {
+    // Resyncs the list after an upload refreshes the server props.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDocuments(Array.from(new Map(initialDocs.map((d) => [d.id, d])).values()));
   }, [initialDocs]);
 
@@ -73,8 +76,8 @@ export function ShipmentDocumentsSection({
       }
       setDocuments((prev) => prev.filter((d) => d.id !== docId));
       router.refresh();
-    } catch (err: any) {
-      alert(err.message || "Failed to detach document");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to detach document"));
     } finally {
       setDetachingId(null);
       setDocPendingDetach(null);
@@ -198,7 +201,7 @@ export function ShipmentDocumentsSection({
             <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-start space-x-2">
               <Files className="w-4 h-4 text-[#0071E3] shrink-0 mt-0.5" />
               <span>
-                This will remove the document from this shipment. If you detach, you'll still find the document under{" "}
+                This will remove the document from this shipment. If you detach, you&apos;ll still find the document under{" "}
                 <strong>Trade Documents</strong> as unattached, and can reattach it to any shipment later — nothing is deleted.
               </span>
             </div>

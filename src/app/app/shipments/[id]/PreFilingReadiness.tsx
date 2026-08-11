@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertOctagon, CheckCircle2, ChevronDown, ChevronUp, Clock, FileText, HelpCircle, ShieldAlert, User } from "lucide-react";
 
-interface ComplianceEvidence {
+export interface ComplianceEvidence {
   sourceName: string;
   fields: { label: string; value: string }[];
   documentName?: string;
@@ -11,10 +11,17 @@ interface ComplianceEvidence {
   documentId?: string;
 }
 
-interface CategoryDetail {
+export interface CategoryDetail {
   id: string;
   name: string;
-  status: "Ready" | "Needs Information" | "Needs Review" | "Blocked" | "Not Applicable";
+  /**
+   * "Pending" is included because the Final Review category genuinely produces
+   * it. Only "Ready", "Blocked", "Needs Review" and "Needs Information" have
+   * their own badge; everything else -- including "Pending" -- falls through to
+   * the grey "N/A" pill below. That was already the rendered behaviour; listing
+   * the status here stops the type from claiming otherwise.
+   */
+  status: "Ready" | "Needs Information" | "Needs Review" | "Blocked" | "Not Applicable" | "Pending";
   result: string;
   details: string;
   whyItMatters: string;

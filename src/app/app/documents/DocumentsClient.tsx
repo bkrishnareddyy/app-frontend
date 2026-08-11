@@ -4,21 +4,11 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   FileText,
-  Upload,
-  Sparkles,
   Search,
-  Filter,
   CheckCircle2,
-  AlertTriangle,
-  Clock,
-  ExternalLink,
-  Bot,
   RefreshCw,
   Plus,
   Eye,
-  X,
-  FileCheck2,
-  Maximize2,
   Users,
 } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
@@ -43,6 +33,42 @@ interface ShipmentDocumentItem {
   clientId?: string | null;
   clientName: string;
   unattached?: boolean;
+}
+
+/**
+ * The subset of `/api/documents/unattached` and `/api/shipments` payloads this
+ * screen actually reads.
+ *
+ * Every field is optional because these describe a JSON response rather than a
+ * database row, and the rendering below already falls back for each one. Naming
+ * the shape here is what lets the fallbacks be checked instead of assumed.
+ */
+interface ApiDocument {
+  id: string;
+  fileName?: string | null;
+  name?: string | null;
+  docType?: string | null;
+  type?: string | null;
+  status?: string | null;
+  createdAt?: string | null;
+  fileUrl?: string | null;
+  url?: string | null;
+  /** Extraction confidence, absent until an extraction has actually run. */
+  confidence?: number | null;
+}
+
+interface ApiShipment {
+  id: string;
+  shipmentNumber?: string | null;
+  assignedBrokerId?: string | null;
+  assignedBroker?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    email: string;
+  } | null;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
+  documents?: ApiDocument[];
 }
 
 interface DocumentsClientProps {
@@ -84,7 +110,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   }, [teamMembers, context]);
 
   const [documents, setDocuments] = useState<ShipmentDocumentItem[]>([]);
-  const [shipments, setShipments] = useState<any[]>([]);
+  const [shipments, setShipments] = useState<ApiShipment[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("ALL");
   const [selectedClientId, setSelectedClientId] = useState("ALL");
@@ -92,17 +118,13 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
-  const [targetShipmentId, setTargetShipmentId] = useState("");
+  const [targetShipmentId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useLanguage();
 
   // Selected team member IDs. Default is [] (All Documents)
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
 
   const fetchDocuments = async () => {
     setIsLoading(true);
@@ -117,10 +139,11 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
       if (shipmentsRes.ok) {
         const data = await shipmentsRes.json();
         if (data.shipments && Array.isArray(data.shipments)) {
-          setShipments(data.shipments);
-          data.shipments.forEach((shp: any) => {
+          const apiShipments = data.shipments as ApiShipment[];
+          setShipments(apiShipments);
+          apiShipments.forEach((shp) => {
             if (shp.documents && Array.isArray(shp.documents)) {
-              shp.documents.forEach((d: any) => {
+              shp.documents.forEach((d) => {
                 docs.push({
                   id: d.id,
                   name: d.fileName || d.name || "Trade_Document.pdf",
@@ -151,7 +174,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
       if (unattachedRes.ok) {
         const data = await unattachedRes.json();
         if (data.documents && Array.isArray(data.documents)) {
-          data.documents.forEach((d: any) => {
+          (data.documents as ApiDocument[]).forEach((d) => {
             docs.push({
               id: d.id,
               name: d.fileName || "Trade_Document.pdf",
@@ -181,6 +204,14 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     }
   };
 
+  // Declared after fetchDocuments so the effect does not reference the const
+  // before its initialiser runs. Still a mount-only load, as before.
+  useEffect(() => {
+    // Sets the loading flag synchronously so the spinner shows on the same paint.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchDocuments();
+  }, []);
+
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
@@ -190,7 +221,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   // Derived from the shipments loaded via /api/shipments (already includes client)
   const availableClients = useMemo(() => {
     const map = new Map<string, string>();
-    shipments.forEach((shp: any) => {
+    shipments.forEach((shp) => {
       if (shp.client) map.set(shp.client.id, shp.client.name);
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
@@ -198,7 +229,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
   const availableShipments = useMemo(() => {
     return shipments
-      .map((shp: any) => ({ id: shp.id, ref: shp.shipmentNumber || shp.id }))
+      .map((shp) => ({ id: shp.id, ref: shp.shipmentNumber || shp.id }))
       .sort((a, b) => a.ref.localeCompare(b.ref));
   }, [shipments]);
 
@@ -240,16 +271,6 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
     return matchesSearch && matchesType && matchesClient && matchesShipment && matchesStatus;
   });
-
-  const isImageFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
-    return ext.includes(".png") || ext.includes(".jpg") || ext.includes(".jpeg") || ext.includes(".webp");
-  };
-
-  const isPdfFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
-    return ext.includes(".pdf");
-  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">

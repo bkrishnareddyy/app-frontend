@@ -1,20 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Edit2, Check, X, Search } from "lucide-react";
+import { Edit2, Check, X } from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
 
-interface LineItem {
-  id: string;
-  lineNumber: number;
-  partNumber?: string | null;
-  description: string;
-  quantity: number;
-  unitPrice: any;
-  totalValue: any;
-  countryOfOrigin: string;
-  htsCode: string;
-  htsConfidence: number;
-}
+import type { HtsSuggestion, ShipmentLineItemRow as LineItem } from "./workspaceTypes";
 
 interface LineItemsTableProps {
   shipmentId: string;
@@ -30,14 +20,10 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
   const [editHts, setEditHts] = useState("");
   const [editCoo, setEditCoo] = useState("");
   const [saveLoading, setSaveLoading] = useState(false);
-
-  // Autocomplete state for HTS codes
-  const [htsSuggestions, setHtsSuggestions] = useState<any[]>([]);
-  const [searchingHts, setSearchingHts] = useState(false);
+  const [htsSuggestions, setHtsSuggestions] = useState<HtsSuggestion[]>([]);
 
   useEffect(() => {
     if (editingItemId && editHts.trim().length >= 2) {
-      setSearchingHts(true);
       const timer = setTimeout(async () => {
         try {
           const res = await fetch(`/api/v1/hts/search?q=${encodeURIComponent(editHts.trim())}&limit=5`);
@@ -47,13 +33,13 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
           }
         } catch (err) {
           console.error("Failed to query HTS suggestions:", err);
-        } finally {
-          setSearchingHts(false);
         }
       }, 300);
 
       return () => clearTimeout(timer);
     } else {
+      
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHtsSuggestions([]);
     }
   }, [editHts, editingItemId]);
@@ -101,8 +87,8 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
       
       // Highlight update to other parent lists
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message || "Failed to save changes");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to save changes"));
     } finally {
       setSaveLoading(false);
     }

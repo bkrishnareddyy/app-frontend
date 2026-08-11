@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X, CheckCircle2, AlertTriangle, FileText, Sparkles, Pencil } from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
 
 export interface FieldSummaryItem {
   key: string;
@@ -61,8 +62,8 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
         throw new Error(data.error || "Failed to save field review");
       }
       window.location.reload();
-    } catch (err: any) {
-      setError(err.message || "Failed to save field review");
+    } catch (err) {
+      setError(caughtMessage(err, "Failed to save field review"));
       setSavingKey(null);
     }
   };

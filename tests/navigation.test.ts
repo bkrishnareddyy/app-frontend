@@ -61,9 +61,15 @@ describe("navigation visibility", () => {
 
   it("gives every member the operational pages", () => {
     const hrefs = hrefsFor(viewer);
-    expect(hrefs).toContain("/app/work");
     expect(hrefs).toContain("/app/shipments");
     expect(hrefs).toContain("/app/filing");
+  });
+
+  it("no longer offers a standalone My Work page", () => {
+    // /app/work was removed along with its route; the view it held is now the
+    // Command Center's "My Work" tab. This asserts the nav does not link to a
+    // page that no longer exists.
+    expect(hrefsFor(viewer)).not.toContain("/app/work");
   });
 
   it("drops sections that end up empty", () => {

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { CommandCenterClient } from "./CommandCenterClient";
+import type { TeamMember } from "@/lib/team";
 
 export default async function CommandCenterPage() {
   const context = await getAccountContext();
@@ -43,7 +44,7 @@ export default async function CommandCenterPage() {
   });
 
   // Fetch active team members if user is an enterprise admin
-  let teamMembers: any[] = [];
+  let teamMembers: TeamMember[] = [];
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
     (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));

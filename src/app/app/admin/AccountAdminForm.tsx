@@ -18,7 +18,7 @@ interface AccountAdminFormProps {
   onSaved?: () => void;
 }
 
-export function AccountAdminForm({ account, userRole, onSaved }: AccountAdminFormProps) {
+export function AccountAdminForm({ account, onSaved }: AccountAdminFormProps) {
   const router = useRouter();
   const [name, setName] = useState(account.name);
   const [status, setStatus] = useState(account.status);

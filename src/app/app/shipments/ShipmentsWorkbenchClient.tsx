@@ -6,14 +6,13 @@ import {
   Package,
   Plus,
   Search,
-  Filter,
   ShieldCheck,
   AlertTriangle,
   Clock,
-  ArrowRight,
   User,
   Users,
 } from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
 
 interface DocumentItem {
   id: string;
@@ -37,7 +36,8 @@ interface ShipmentItem {
   readinessScore?: number | null;
   healthStatus?: string | null;
   status: string;
-  createdAt: any;
+  /** Serialised to an ISO string by the page before it crosses to the client. */
+  createdAt: string;
   clientId?: string | null;
   client?: { id: string; name: string } | null;
   assignedBrokerId?: string | null;
@@ -48,8 +48,14 @@ interface ShipmentItem {
     email: string;
   } | null;
   documents: DocumentItem[];
-  lineItems: any[];
-  customsFilings: any[];
+  /**
+   * Carried in the payload but not read by this screen -- the workbench lists
+   * shipments and never inspects their line items or filings. Typed `unknown[]`
+   * rather than given a shape this file does not depend on, so a change to either
+   * row cannot silently invalidate a declaration nobody here checks.
+   */
+  lineItems: unknown[];
+  customsFilings: unknown[];
 }
 
 interface ShipmentsWorkbenchClientProps {
@@ -158,8 +164,8 @@ export function ShipmentsWorkbenchClient({
           return shp;
         })
       );
-    } catch (err: any) {
-      alert(err.message || "Failed to reassign shipment");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to reassign shipment"));
     }
   };
 
@@ -253,7 +259,10 @@ export function ShipmentsWorkbenchClient({
 
       return true;
     });
-  }, [initialShipments, selectedUserIds, columnFilters, searchQuery, isEnterpriseAdmin]);
+    // Depends on `shipmentsList`, not `initialShipments`: reassigning a broker
+    // updates `shipmentsList`, and with the prop as the dependency this memo did
+    // not recompute, so the new owner never appeared in the table.
+  }, [shipmentsList, selectedUserIds, columnFilters, searchQuery, isEnterpriseAdmin]);
 
   // Derived KPI Counts based on the current filtered list
   const totalCount = filteredShipments.length;

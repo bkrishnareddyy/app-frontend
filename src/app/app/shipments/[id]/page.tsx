@@ -6,12 +6,10 @@ import { notFound } from "next/navigation";
 import {
   FileText,
   CheckCircle2,
-  Sparkles,
   Building2,
   Truck,
   Activity,
   Layers,
-  ArrowRight,
   ChevronRight,
   AlertTriangle,
 } from "lucide-react";
@@ -28,6 +26,44 @@ import { CanonicalFactsSection } from "./CanonicalFactsSection";
 import { PreFilingReadiness } from "./PreFilingReadiness";
 import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
 import { buildAgentInvocations } from "./agentInvocations";
+import type { ShipmentLineItemRow } from "./workspaceTypes";
+import type { CategoryDetail } from "./PreFilingReadiness";
+
+/**
+ * A line item as persisted inside a document's `extractedJson`.
+ *
+ * Historical rows carry either the current `totalAmount`/`sku` names or the older
+ * `totalValue`/`partNumber` ones, so both are accepted and the read below falls
+ * back across them. Numbers may arrive as strings from the extractor, which is
+ * why `Number(...)` is applied at every use.
+ */
+interface ExtractedLineItem {
+  lineNumber?: number | null;
+  sku?: string | null;
+  partNumber?: string | null;
+  description?: string | null;
+  quantity?: number | string | null;
+  unitPrice?: number | string | null;
+  totalAmount?: number | string | null;
+  totalValue?: number | string | null;
+  countryOfOrigin?: string | null;
+  htsCode?: string | null;
+}
+
+/**
+ * Sums the quantities on a document's extracted line items.
+ *
+ * Returns 0 when the stored JSON carried no line-item array, which is what the
+ * previous `?.reduce(...) || 0` did — an absent array and a zero total were
+ * already indistinguishable here, and both mean "nothing to compare".
+ */
+function extractedQuantityTotal(lineItems: unknown): number {
+  if (!Array.isArray(lineItems)) return 0;
+  return (lineItems as ExtractedLineItem[]).reduce(
+    (sum, li) => sum + Number(li.quantity || 0),
+    0
+  );
+}
 
 export default async function ShipmentWorkspacePage(props: {
   params: Promise<{ id: string }>;
@@ -89,7 +125,7 @@ export default async function ShipmentWorkspacePage(props: {
   const agentInvocations = buildAgentInvocations(fullShipment.agentExecutionRecords || [], agentExecutionLogs || []);
 
   // Load display line items
-  let displayLineItems = (fullShipment.lineItems || []).map((item: any) => ({
+  const displayLineItems = (fullShipment.lineItems || []).map((item) => ({
     id: item.id,
     lineNumber: item.lineNumber,
     partNumber: item.partNumber || "",
@@ -106,7 +142,7 @@ export default async function ShipmentWorkspacePage(props: {
   }));
 
   const totalInvoiceAmount = displayLineItems.reduce(
-    (acc: number, item: any) => acc + Number(item.quantity) * Number(item.unitPrice),
+    (acc: number, item) => acc + Number(item.quantity) * Number(item.unitPrice),
     0
   );
 
@@ -133,12 +169,20 @@ export default async function ShipmentWorkspacePage(props: {
     originCountry: "Country of Origin",
   };
   const documentFieldSummaries = documents
-    .filter((d: any) => Boolean(d.extractedJson))
-    .map((d: any) => {
-      let tradeMetadata: any = {};
+    .filter((d) => Boolean(d.extractedJson))
+    .map((d) => {
+      // Only the three keys in FIELD_REVIEW_LABELS are read out of this, and a
+      // key the extractor never produced must read as absent rather than as a
+      // value, so the index signature admits undefined.
+      let tradeMetadata: Record<string, string | null | undefined> = {};
       try {
-        tradeMetadata = JSON.parse(d.extractedJson).tradeMetadata || {};
-      } catch (e) {}
+        // The filter above guarantees extractedJson is present; `?? "{}"` only
+        // satisfies the compiler, which cannot see across the filter.
+        tradeMetadata = JSON.parse(d.extractedJson ?? "{}").tradeMetadata || {};
+      } catch {
+        // Stored JSON that no longer parses leaves every field reading MISSING,
+        // which is the honest outcome -- nothing was recoverable from it.
+      }
 
       const fields = Object.keys(FIELD_REVIEW_LABELS).map((key) => {
         const value: string | null = tradeMetadata[key] || null;
@@ -182,10 +226,10 @@ export default async function ShipmentWorkspacePage(props: {
 
   const poaRecords = importerOfRecord?.powersOfAttorney || [];
   const activePoa = poaRecords.find(
-    (poa: any) => poa.status === "Active" && (!poa.expirationDate || new Date(poa.expirationDate) >= new Date())
+    (poa) => poa.status === "Active" && (!poa.expirationDate || new Date(poa.expirationDate) >= new Date())
   );
   const expiredPoa = poaRecords.find(
-    (poa: any) => poa.status === "Expired" || (poa.expirationDate && new Date(poa.expirationDate) < new Date())
+    (poa) => poa.status === "Expired" || (poa.expirationDate && new Date(poa.expirationDate) < new Date())
   );
   const poaStatusDisplay = importerOfRecord ? (activePoa ? "VALID" : "NOT ON FILE") : "NO IMPORTER LINKED";
 
@@ -275,7 +319,7 @@ export default async function ShipmentWorkspacePage(props: {
       if (kv["Consignee"]) extractedConsignee = kv["Consignee"];
       if (kv["Notify Party"]) extractedNotifyParty = kv["Notify Party"];
       if (kv["Method of Despatch"]) extractedMethodOfDespatch = kv["Method of Despatch"];
-    } catch (e) {}
+    } catch {}
   }
 
   // 2. Shipment & Entry Details
@@ -347,20 +391,21 @@ export default async function ShipmentWorkspacePage(props: {
   // to the actual uploaded document (opened in-app, in the workspace
   // viewer), instead of showing fabricated supporting data.
   const invoiceDoc = documents.find(
-    (d: any) => d.docType?.toLowerCase().includes("invoice") || d.fileName.toLowerCase().includes("invoice")
+    (d) => d.docType?.toLowerCase().includes("invoice") || d.fileName.toLowerCase().includes("invoice")
   );
   const packingDoc = documents.find(
-    (d: any) => d.docType?.toLowerCase().includes("packing") || d.fileName.toLowerCase().includes("packing")
+    (d) => d.docType?.toLowerCase().includes("packing") || d.fileName.toLowerCase().includes("packing")
   );
   const bolDoc = documents.find(
-    (d: any) =>
+    (d) =>
       d.docType?.toLowerCase().includes("lading") ||
       d.docType?.toLowerCase().includes("transport") ||
       d.fileName.toLowerCase().includes("lading") ||
       d.fileName.toLowerCase().includes("instructions") ||
       d.fileName.toLowerCase().includes("waybill")
   );
-  const docEvidenceUrl = (doc: any) => (doc ? `/app/shipments/${shipment.id}?view=workspace&docId=${doc.id}` : undefined);
+  const docEvidenceUrl = (doc: { id: string } | undefined) =>
+    doc ? `/app/shipments/${shipment.id}?view=workspace&docId=${doc.id}` : undefined;
   // For categories whose "evidence" is a live database field rather than an
   // uploaded document -- links into the tab/section that actually renders it.
   const filingAnchorUrl = (anchor: string) => `/app/shipments/${shipment.id}?view=filing#${anchor}`;
@@ -390,7 +435,7 @@ export default async function ShipmentWorkspacePage(props: {
   let merchandiseActionRequired = "";
   let htsQuestionnaire: string[] = [];
 
-  const vagueItems = displayLineItems.filter((item: any) => item.htsConfidence && item.htsConfidence < 80);
+  const vagueItems = displayLineItems.filter((item) => item.htsConfidence && item.htsConfidence < 80);
   // Line items can exist with a stored confidence value even after their
   // source document has been detached -- that stored number is stale, not
   // a live claim, so treat "line items but no attached document" as
@@ -435,12 +480,12 @@ export default async function ShipmentWorkspacePage(props: {
       const docType = doc.docType || parsed.metadata?.docType || "";
       if (docType.toLowerCase().includes("invoice")) {
         hasInv = true;
-        qtyInvoice += parsed.lineItems?.reduce((sum: number, li: any) => sum + Number(li.quantity || 0), 0) || 0;
+        qtyInvoice += extractedQuantityTotal(parsed.lineItems);
       } else if (docType.toLowerCase().includes("packing")) {
         hasPack = true;
-        qtyPacking += parsed.lineItems?.reduce((sum: number, li: any) => sum + Number(li.quantity || 0), 0) || 0;
+        qtyPacking += extractedQuantityTotal(parsed.lineItems);
       }
-    } catch (e) {}
+    } catch {}
   }
   let qtyStatus: "Ready" | "Blocked" | "Needs Review" | "Needs Information" = "Ready";
   let qtyResult = "Reconciled";
@@ -488,7 +533,7 @@ export default async function ShipmentWorkspacePage(props: {
     valueDetails = "Line items carry stored transaction values, but no document is currently attached to substantiate them. These figures predate detachment and can't be trusted as current.";
     valueActionRequired = "Attach the commercial invoice that backs these declared values.";
   } else {
-    const hasValueMissing = displayLineItems.some((item: any) => !item.unitPrice || Number(item.unitPrice) <= 0);
+    const hasValueMissing = displayLineItems.some((item) => !item.unitPrice || Number(item.unitPrice) <= 0);
     if (hasValueMissing) {
       valueStatus = "Needs Information";
       valueResult = "Line value missing";
@@ -498,9 +543,9 @@ export default async function ShipmentWorkspacePage(props: {
   }
 
   // 8. Origin, Marking & Trade Programs
-  const hasPreferentialHTS = displayLineItems.some((item: any) => item.htsCode?.startsWith("02"));
+  const hasPreferentialHTS = displayLineItems.some((item) => item.htsCode?.startsWith("02"));
   const cooDoc = documents.find(
-    (d: any) => d.docType?.toLowerCase().includes("certificate of origin") || d.docType?.toLowerCase().includes("coo")
+    (d) => d.docType?.toLowerCase().includes("certificate of origin") || d.docType?.toLowerCase().includes("coo")
   );
   const hasCoODoc = Boolean(cooDoc);
 
@@ -531,7 +576,7 @@ export default async function ShipmentWorkspacePage(props: {
   // ShipmentDocumentsSection does, so its "Missing required" callout and
   // the Exceptions panel above always agree instead of being two
   // independently-computed, silently-diverging checks.
-  const { requiredTypes: requiredDocTypes, missingTypes: missingDocTypes } = checkRequiredDocumentTypes(
+  const { missingTypes: missingDocTypes } = checkRequiredDocumentTypes(
     documents,
     originStatus !== "Not Applicable"
   );
@@ -548,7 +593,7 @@ export default async function ShipmentWorkspacePage(props: {
     pgaDetails = "Partner Government Agency checks require product classifications to determine eligibility and required permits.";
     pgaActionRequired = "Upload Commercial Invoice to run PGA assessment.";
   } else {
-    const requiresPgaUSDA = displayLineItems.some((item: any) => item.htsCode?.startsWith("02"));
+    const requiresPgaUSDA = displayLineItems.some((item) => item.htsCode?.startsWith("02"));
     if (requiresPgaUSDA) {
       pgaStatus = "Needs Review";
       pgaResult = "USDA FSIS permit required";
@@ -563,7 +608,7 @@ export default async function ShipmentWorkspacePage(props: {
   // exists after a shipment has already been filed (the very thing this
   // ribbon gates). So this category can never honestly report a computed
   // number pre-filing; it can only report that the calculation hasn't run.
-  const dutyStatus: "Needs Information" = "Needs Information";
+  const dutyStatus = "Needs Information" as const;
   const dutyResult = "Not yet calculated";
   const dutyDetails = "Customs duties, harbor maintenance fees (HMF), and merchandise processing fees (MPF) are not calculated pre-filing. No duty computation is currently wired to this shipment's line items.";
   const dutyActionRequired = "Duty estimation is not yet available for this shipment; final duties will be assessed by CBP after filing.";
@@ -595,7 +640,7 @@ export default async function ShipmentWorkspacePage(props: {
     finalActionRequired = "Review and sign the filing authorization declaration.";
   }
 
-  const readinessCategories: any[] = [
+  const readinessCategories: CategoryDetail[] = [
     {
       id: "importer",
       name: "1. Importer & Filing Authority",
@@ -812,7 +857,7 @@ export default async function ShipmentWorkspacePage(props: {
               sourceName: "PGA Cross-Reference Screening",
               fields: [
                 { label: "Line Items Screened", value: `${displayLineItems.length} Lines` },
-                { label: "HTS Codes Checked", value: displayLineItems.map((li: any) => li.htsCode).filter(Boolean).join(", ") || "N/A" },
+                { label: "HTS Codes Checked", value: displayLineItems.map((li) => li.htsCode).filter(Boolean).join(", ") || "N/A" },
                 { label: "Result", value: "No PGA-restricted HTS prefixes matched" },
               ],
               documentUrl: workspaceAnchorUrl("extracted-line-items-section"),
@@ -875,10 +920,10 @@ export default async function ShipmentWorkspacePage(props: {
   }
 
   const primaryDoc = docId
-    ? documents.find((d: any) => d.id === docId) || documents[0]
-    : documents.find((d: any) => d.status === "Received") ||
-      documents.find((d: any) => d.status === "Processed") ||
-      documents.find((d: any) => d.status === "Review Required") ||
+    ? documents.find((d) => d.id === docId) || documents[0]
+    : documents.find((d) => d.status === "Received") ||
+      documents.find((d) => d.status === "Processed") ||
+      documents.find((d) => d.status === "Review Required") ||
       documents[0];
 
   return (
@@ -1169,12 +1214,13 @@ export default async function ShipmentWorkspacePage(props: {
                     ? documentViewUrl(primaryDoc.id)
                     : primaryDoc.fileUrl || "#";
 
-                  let docLineItems: any[] = [];
+                  let docLineItems: ShipmentLineItemRow[] = [];
                   if (primaryDoc.extractedJson) {
                     try {
                       const parsed = JSON.parse(primaryDoc.extractedJson);
                       if (parsed.lineItems && Array.isArray(parsed.lineItems)) {
-                        docLineItems = parsed.lineItems.map((li: any, idx: number) => ({
+                        const extracted = parsed.lineItems as ExtractedLineItem[];
+                        docLineItems = extracted.map((li, idx: number) => ({
                           id: `extracted-${primaryDoc.id}-${idx}`,
                           lineNumber: li.lineNumber || idx + 1,
                           partNumber: li.sku || li.partNumber || "",
@@ -1187,7 +1233,7 @@ export default async function ShipmentWorkspacePage(props: {
                           htsConfidence: 95,
                         }));
                       }
-                    } catch (e) {}
+                    } catch {}
                   }
 
                   // Flag when a document's extracted products have nothing
@@ -1195,10 +1241,10 @@ export default async function ShipmentWorkspacePage(props: {
                   // usually means the wrong file got attached to this
                   // shipment, not that extraction is broken.
                   const docHtsChapters = new Set(
-                    docLineItems.map((li: any) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
+                    docLineItems.map((li) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
                   );
                   const shipmentHtsChapters = new Set(
-                    displayLineItems.map((li: any) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
+                    displayLineItems.map((li) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
                   );
                   const showMismatchWarning =
                     docLineItems.length > 0 &&
@@ -1252,9 +1298,9 @@ export default async function ShipmentWorkspacePage(props: {
                           <div className="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start space-x-2 text-xs text-amber-800">
                             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                             <div>
-                              <p className="font-bold">This document doesn't match the shipment's line items</p>
+                              <p className="font-bold">This document doesn&apos;t match the shipment&apos;s line items</p>
                               <p className="text-[11px] mt-0.5">
-                                The products extracted here don't correspond to the shipment's verified cargo
+                                The products extracted here don&apos;t correspond to the shipment&apos;s verified cargo
                                 {displayLineItems[0]?.description ? ` (${displayLineItems[0].description})` : ""}. It may be attached to the wrong shipment.
                               </p>
                             </div>
@@ -1297,7 +1343,7 @@ export default async function ShipmentWorkspacePage(props: {
               <span>Verified Line Items</span>
             </h3>
             <p className="text-[11px] text-[#86868B] mb-2">
-              This shipment's confirmed line items, regardless of which document is selected in the viewer above.
+              This shipment&apos;s confirmed line items, regardless of which document is selected in the viewer above.
             </p>
             <LineItemsTable
               shipmentId={shipment.id}

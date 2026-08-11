@@ -35,7 +35,7 @@ export function UserManagementTable({ members, currentUserId, availableRoles, on
   const [inviteLoading, setInviteLoading] = useState(false);
 
   const [loadingMembershipId, setLoadingMembershipId] = useState<string | null>(null);
-  const [selectedMember, setSelectedMember] = useState<MemberItem | null>(null);
+  const [, setSelectedMember] = useState<MemberItem | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const handleInviteUser = async (e: React.FormEvent) => {

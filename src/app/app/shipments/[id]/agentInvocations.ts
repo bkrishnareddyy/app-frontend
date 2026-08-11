@@ -75,7 +75,54 @@ function clusterLegacyByTime<T>(items: T[], getStartMs: (item: T) => number, sou
   return clusterOf;
 }
 
-export function buildAgentInvocations(records: any[], logs: any[]): AgentInvocation[] {
+/**
+ * An `AgentExecutionRecord` row: a selective agent re-run.
+ *
+ * `runId` is nullable because rows written before run grouping existed have none,
+ * which is exactly what `clusterLegacyByTime` reconstructs a grouping for.
+ */
+export interface AgentExecutionRecordRow {
+  id: string;
+  agentName: string;
+  status: string;
+  startedAt: Date | string;
+  completedAt?: Date | string | null;
+  durationMs?: number | null;
+  runId?: string | null;
+  invokedBy?: string | null;
+  triggerEvent?: string | null;
+  nextStep?: string | null;
+  error?: string | null;
+  /** Prisma `Json` snapshots of what the step was given and produced. */
+  inputSnapshot?: unknown;
+  outputSnapshot?: unknown;
+}
+
+/**
+ * An `AgentExecutionLog` row: one step of the upload pipeline.
+ *
+ * Unlike a record, this stores only `timestamp` (taken after the step finished),
+ * so a start time has to be derived from `durationMs`.
+ */
+export interface AgentExecutionLogRow {
+  id: string;
+  agentName: string;
+  status: string;
+  timestamp: Date | string;
+  durationMs?: number | null;
+  runId?: string | null;
+  invokedBy?: string | null;
+  triggerEvent?: string | null;
+  summary?: string;
+  /** Prisma `Json` snapshots of what the step was given and produced. */
+  inputSnapshot?: unknown;
+  outputSnapshot?: unknown;
+}
+
+export function buildAgentInvocations(
+  records: AgentExecutionRecordRow[],
+  logs: AgentExecutionLogRow[]
+): AgentInvocation[] {
   const groups = new Map<string, AgentInvocation>();
 
   const ensureGroup = (runId: string, invokedBy: string, triggerEvent: string) => {

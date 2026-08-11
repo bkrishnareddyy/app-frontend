@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Edit2, Check, X } from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
 
 interface ShipmentTitleEditorProps {
   shipmentId: string;
@@ -40,8 +41,8 @@ export function ShipmentTitleEditor({
 
       setIsEditing(false);
       window.location.reload(); // Refresh the page to update the URL/sidebar
-    } catch (err: any) {
-      alert(err.message || "Failed to rename shipment");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to rename shipment"));
       setTitle(initialShipmentNumber);
     } finally {
       setLoading(false);

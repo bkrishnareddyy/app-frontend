@@ -4,29 +4,28 @@ import { Fragment, useState, useMemo } from "react";
 import Link from "next/link";
 import {
   FileText,
-  AlertTriangle,
-  Clock,
   TrendingUp,
   CheckCircle2,
   AlertCircle,
   Search,
-  Sparkles,
-  ShieldCheck,
   Send,
   ChevronRight,
   ChevronDown,
   Inbox,
   DollarSign,
   Plus,
+  Clock,
+  AlertTriangle,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { displayDate } from "@/lib/honest";
+import type { MultiDimensionalMetrics } from "@/modules/shipment/canonicalShipmentService";
 
 type Urgency = "Critical" | "At Risk" | "Healthy";
 
 const URGENCY_RANK: Record<Urgency, number> = { Critical: 0, "At Risk": 1, Healthy: 2 };
 
-function urgencyOf(s: any): Urgency {
+function urgencyOf(s: CommandCenterShipment): Urgency {
   if (s.healthStatus === "Critical") return "Critical";
   if (s.healthStatus === "At Risk") return "At Risk";
   if (s.healthStatus === "Healthy") return "Healthy";
@@ -52,11 +51,56 @@ function ScorePill({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** A shipment as the dashboard's server page serialises it for the KPI tiles. */
+interface CommandCenterShipment {
+  id: string;
+  shipmentNumber: string;
+  referenceNumber: string | null;
+  exporterName: string;
+  primaryHtsCode: string;
+  totalValue: number;
+  readinessScore: number;
+  status: string;
+  healthStatus: string | null;
+  /** Null until a risk assessment has run; `null > 50` is false, as before. */
+  riskScore: number | null;
+  clientId: string | null;
+  client: { id: string; name: string } | null;
+  assignedBrokerId: string | null;
+  assignedBroker: { id: string; firstName: string | null; lastName: string | null } | null;
+  /** ISO string, or null when no ETA has been recorded. */
+  estimatedArrival: string | null;
+  requiredDocTypes: string[];
+  missingDocTypes: string[];
+  receivedDocCount: number;
+  totalRequiredDocs: number;
+}
+
+/** An agent decision, reduced to what the dashboard counts. */
+interface CommandCenterDecision {
+  id: string;
+  status: string;
+  assignedBrokerId: string | null;
+}
+
+/** A regulatory update tile item. */
+interface CommandCenterRegUpdate {
+  id: string;
+  title: string;
+  summary: string | null;
+  effectiveDate: string;
+}
+
 interface CommandCenterClientProps {
   accountName: string;
-  initialShipments: any[];
-  initialDecisions: any[];
-  regUpdates: any[];
+  initialShipments: CommandCenterShipment[];
+  initialDecisions: CommandCenterDecision[];
+  /**
+   * Still supplied by the page, but nothing on this screen renders it any more --
+   * the card that did was removed upstream. Kept on the props so the page keeps
+   * compiling; see the note in the destructure below.
+   */
+  regUpdates: CommandCenterRegUpdate[];
   teamMembers: Array<{
     userId: string;
     email: string;
@@ -76,10 +120,13 @@ interface CommandCenterClientProps {
 }
 
 export function CommandCenterClient({
-  accountName,
+  // accountName is still passed by the page but no longer rendered here; the
+  // header that showed it moved into the shared app chrome.
   initialShipments,
   initialDecisions,
-  regUpdates,
+  // regUpdates is intentionally not destructured: it is still passed by the page
+  // but no longer rendered here. The dashboard page still queries for it, which
+  // is a wasted round trip worth removing separately.
   teamMembers,
   clients,
   context,
@@ -115,7 +162,7 @@ export function CommandCenterClient({
 
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [rowMetrics, setRowMetrics] = useState<
-    Record<string, { status: "loading" | "loaded" | "error"; metrics?: any }>
+    Record<string, { status: "loading" | "loaded" | "error"; metrics?: MultiDimensionalMetrics }>
   >({});
 
   const toggleExpandRow = (id: string) => {
@@ -191,16 +238,11 @@ export function CommandCenterClient({
   }, [initialDecisions, selectedUserIds, isEnterpriseAdmin]);
 
   // Reactively computed KPI Counts
-  const totalShipments = filteredShipments.length;
   const inProgressCount = filteredShipments.filter((s) => s.status === "In Progress").length;
   const readyToFileCount = filteredShipments.filter((s) => s.status === "Ready to File").length;
   const onHoldCount = filteredShipments.filter((s) => s.status === "On Hold").length;
   const submittedCount = filteredShipments.filter((s) => s.status === "Submitted").length;
   const completedCount = filteredShipments.filter((s) => s.status === "Completed").length;
-
-  const atRiskCount = filteredShipments.filter(
-    (s) => s.healthStatus === "At Risk" || s.riskScore > 50
-  ).length;
 
   // Value at Risk: total $ value tied up in shipments that aren't ready to
   // file yet -- a dollar figure lands harder for a forwarder than an
@@ -209,12 +251,10 @@ export function CommandCenterClient({
   const notReadyShipments = filteredShipments.filter((s) => s.readinessScore < 85);
   const clearedShipments = filteredShipments.filter((s) => s.readinessScore >= 85);
   const valueAtRisk = notReadyShipments.reduce((sum, s) => sum + (s.totalValue || 0), 0);
-  const clearedValue = clearedShipments.reduce((sum, s) => sum + (s.totalValue || 0), 0);
 
   const reviewRequiredDecisions = filteredDecisions.filter(
     (d) => d.status === "Review Required" || d.status === "Needs Review"
   ).length;
-  const attentionDecisions = filteredDecisions.filter((d) => d.status === "Attention").length;
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -541,7 +581,7 @@ export function CommandCenterClient({
                   </td>
                 </tr>
               ) : (
-                filteredShipments.slice(0, 6).map((shp: any) => (
+                filteredShipments.slice(0, 6).map((shp) => (
                   <tr key={shp.id} className="hover:bg-[#F5F5F7]/50 transition-colors">
                     <td className="py-3 px-4 font-mono font-bold text-[#0071E3]">
                       <Link href={`/app/shipments/${shp.id}`} className="hover:underline">
@@ -549,7 +589,9 @@ export function CommandCenterClient({
                       </Link>
                     </td>
                     <td className="py-3 px-4 text-[#86868B]">
-                      {shp.exporterName || shp.shipper || "Shenzhen Hardware Corp"}
+                      {/* `shp.shipper` used to be consulted here, but the page has
+                          never sent that field, so the term was always undefined. */}
+                      {shp.exporterName || "Shenzhen Hardware Corp"}
                     </td>
                     <td className="py-3 px-4 font-mono text-[11px] text-[#1D1D1F]">
                       {shp.primaryHtsCode ?? "Not Yet Classified"}
@@ -613,7 +655,7 @@ export function CommandCenterClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5E5EA]">
-                  {myShipments.map((shp: any) => {
+                  {myShipments.map((shp) => {
                     const urgency = urgencyOf(shp);
                     const isExpanded = expandedRowId === shp.id;
                     const rowState = rowMetrics[shp.id];

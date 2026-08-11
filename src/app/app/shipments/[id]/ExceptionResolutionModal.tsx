@@ -1,25 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, CheckCircle2, FileText, AlertTriangle, Scale, ShieldAlert, Sparkles, Upload, Check } from "lucide-react";
+import { X, AlertTriangle, ShieldAlert, Sparkles, Upload} from "lucide-react";
+import { caughtMessage } from "@/lib/utils";
 
-interface ExceptionItem {
-  id: string;
-  dbId: string;
-  version: number;
-  category: string;
-  title: string;
-  desc: string;
-  actionText: string;
-  actionType: string;
-}
+import type { HtsSuggestion, ResolvableException, ShipmentLineItemRow } from "./workspaceTypes";
 
 interface ExceptionResolutionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  exception: ExceptionItem | null;
+  exception: ResolvableException | null;
   shipmentId: string;
-  lineItems: any[];
+  lineItems: ShipmentLineItemRow[];
 }
 
 export function ExceptionResolutionModal({
@@ -33,8 +25,7 @@ export function ExceptionResolutionModal({
   
   // HTS resolution state
   const [editHts, setEditHts] = useState("");
-  const [htsSuggestions, setHtsSuggestions] = useState<any[]>([]);
-  const [searchingHts, setSearchingHts] = useState(false);
+  const [htsSuggestions, setHtsSuggestions] = useState<HtsSuggestion[]>([]);
 
   // Origin resolution state
   const [editCoo, setEditCoo] = useState("");
@@ -48,12 +39,14 @@ export function ExceptionResolutionModal({
 
   // Certificate upload state
   const [fileName, setFileName] = useState("");
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
+
 
   // Sync initial values
   useEffect(() => {
     if (exception && lineItems.length > 0) {
       const targetItem = lineItems[1] || lineItems[0];
+      // Resets the form when a different exception is opened into the same mounted
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditHts(targetItem?.htsCode || "");
       setEditCoo(targetItem?.countryOfOrigin || "");
       setSelectedQuantity(20);
@@ -66,7 +59,6 @@ export function ExceptionResolutionModal({
   // HTS Search autocomplete debouncing
   useEffect(() => {
     if (exception?.actionType === "HTS" && editHts.trim().length >= 2) {
-      setSearchingHts(true);
       const timer = setTimeout(async () => {
         try {
           const res = await fetch(`/api/v1/hts/search?q=${encodeURIComponent(editHts.trim())}&limit=5`);
@@ -76,12 +68,12 @@ export function ExceptionResolutionModal({
           }
         } catch (err) {
           console.error("Failed to query HTS suggestions:", err);
-        } finally {
-          setSearchingHts(false);
         }
       }, 300);
       return () => clearTimeout(timer);
     } else {
+      // Clears stale autocomplete results as soon as the query stops qualifying.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHtsSuggestions([]);
     }
   }, [editHts, exception]);
@@ -192,8 +184,8 @@ export function ExceptionResolutionModal({
       onClose();
       // Silently reload the page to refresh metrics and drop the resolved card
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message || "Failed to resolve exception");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to resolve exception"));
     } finally {
       setSaveLoading(false);
     }

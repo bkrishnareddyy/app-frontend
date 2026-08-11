@@ -223,6 +223,37 @@ interface ExtractionPayload {
 
 type ReviewAction = "APPROVE" | "REJECT" | "RE_EVALUATE";
 
+/**
+ * An agent check rendered as a row in the Field Review tab.
+ *
+ * A structural superset of `DecisionLike` in `modules/decisions/editableFields`,
+ * which is what `reviewCategory`, `decisionGroupLabel` and `editableFieldsFor`
+ * consume, plus the fields this panel reads directly.
+ */
+/**
+ * An agent check as this panel's props receive it.
+ *
+ * Deliberately a structural superset of the two narrower shapes used inside this
+ * file -- `DecisionListItem` (which `latestPerAgent` needs `createdAt` for) and
+ * `NarrativeDecision` (which needs `status`) -- so a decision handed in as a prop
+ * satisfies both without a cast. `latestPerAgent` is generic, so it returns these
+ * rows with their extra fields intact rather than narrowing them away.
+ */
+export interface ReviewDecision {
+  id: string;
+  agentName?: string | null;
+  /** Required: the narrative renderer branches on it and the pill displays it. */
+  status: string;
+  /** Required: `latestPerAgent` keeps the most recent row per agent by this. */
+  createdAt: string | Date;
+  decisionSummary?: string | null;
+  humanNotes?: string | null;
+  currentHtsCode?: string | null;
+  proposedHtsCode?: string | null;
+  /** Prisma `Json`; its shape varies by agent, so it is narrowed where read. */
+  evidenceItems?: unknown;
+}
+
 export interface DocumentReviewPanelProps {
   documentId: string;
   fileName: string;
@@ -236,7 +267,7 @@ export interface DocumentReviewPanelProps {
   // to a "Field Review" tab that presents each check as a plain field/value
   // row instead of the raw document -- brokers care about the resulting
   // data, not which agent produced it.
-  decisions?: any[];
+  decisions?: ReviewDecision[];
   notesByDecision?: Record<string, string>;
   onNotesChange?: (decisionId: string, value: string) => void;
   onReviewAction?: (decisionId: string, action: ReviewAction) => void | Promise<void>;
@@ -253,7 +284,8 @@ export interface DocumentReviewPanelProps {
   titleId?: string;
 }
 
-function statusPillClass(status: string): string {
+/** An absent status falls through to the same default as any other. */
+function statusPillClass(status: string | null | undefined): string {
   if (status === "Approved") return "bg-emerald-100 text-emerald-900 border-emerald-300";
   if (status === "Rejected") return "bg-red-100 text-red-900 border-red-300";
   return "bg-amber-100 text-amber-900 border-amber-300";

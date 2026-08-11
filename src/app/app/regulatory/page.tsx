@@ -1,6 +1,5 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import Link from "next/link";
 import {
   Globe,
   TrendingUp,
