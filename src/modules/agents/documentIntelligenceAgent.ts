@@ -186,6 +186,7 @@ export interface DocumentIntelligenceInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   packetId: string;
   rawText?: string;
   fileBuffer?: Buffer;
@@ -688,6 +689,7 @@ INSTRUCTIONS:
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Document Intelligence Agent",
           agentIcon: "Binary",
           status: requiresReview ? "Needs Review" : "Approved",

@@ -36,6 +36,7 @@ export interface ComplianceAuditInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   lineItems: ComplianceLineItemInput[];
   destinationCountry?: string | null;
   importerName?: string | null;
@@ -169,6 +170,7 @@ export class ComplianceAuditAgent {
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "Compliance Agent",
             agentIcon: "ShieldAlert",
             status: "Needs Review",
@@ -427,6 +429,7 @@ export class ComplianceAuditAgent {
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Compliance Agent",
           agentIcon: "ShieldAlert",
           status: requiresReview ? "Needs Review" : "Approved",

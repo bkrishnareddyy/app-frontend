@@ -358,6 +358,7 @@ model ShipmentDocument {
   parseVersions    DocumentParseVersion[]
   exceptionItems   ExceptionItem[]
   fieldApprovals   FieldApproval[]
+  agentDecisions   AgentDecision[]
 
   @@index([shipmentId])
   @@index([accountId])
@@ -418,6 +419,15 @@ model AgentDecision {
   humanNotes          String?
   reviewedByUserId    String?
   reviewedByUser      User?    @relation("DecisionReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  // The document that triggered this run, when there was one. Set for
+  // genuinely document-scoped agents (Document Intake/Intelligence, Product
+  // Intelligence, HTS Classification) and for shipment-scoped agents
+  // (Origin, Valuation, Compliance, Filing Readiness) only when their run
+  // happened to be part of a document-upload pipeline -- null when
+  // triggered by a field edit, reconcile, or reattach not tied to one
+  // document, which is the honest answer rather than a guess.
+  documentId          String?
+  document            ShipmentDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -426,6 +436,7 @@ model AgentDecision {
   @@index([shipmentId])
   @@index([accountId])
   @@index([status])
+  @@index([documentId])
 }
 
 model CustomsFiling {

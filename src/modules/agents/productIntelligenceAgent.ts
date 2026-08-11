@@ -22,6 +22,7 @@ export interface ProductIntelligenceInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   lineItems: Array<{
     lineNumber: number;
     sku?: string;
@@ -142,6 +143,7 @@ export class ProductIntelligenceAgent {
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "Product Intelligence Agent",
             agentIcon: "Boxes",
             status: "Needs Review",
@@ -259,6 +261,7 @@ ${item.countryOfOrigin ? `Country of Origin (from shipment context, if it inform
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Product Intelligence Agent",
           agentIcon: "Boxes",
           status: overallConfidence >= 50 ? "Approved" : "Needs Review",

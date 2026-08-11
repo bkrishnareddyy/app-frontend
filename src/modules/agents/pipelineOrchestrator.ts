@@ -305,6 +305,7 @@ export class PipelineOrchestrator {
           accountId,
           userId,
           shipmentId,
+          documentId,
           packetId,
           fileBuffer: payload?.fileBuffer,
           fileName: payload?.fileName,
@@ -347,6 +348,7 @@ export class PipelineOrchestrator {
           accountId,
           userId,
           shipmentId,
+          documentId,
           lineItems: context.lineItems.map((li) => ({
             lineNumber: li.lineNumber,
             sku: li.partNumber ?? undefined,
@@ -365,6 +367,7 @@ export class PipelineOrchestrator {
           accountId,
           userId,
           shipmentId,
+          documentId,
           productProfiles: context.lineItems.map((li) => ({
             lineNumber: li.lineNumber,
             rawDescription: li.description,
@@ -395,6 +398,7 @@ export class PipelineOrchestrator {
           accountId,
           userId,
           shipmentId,
+          documentId,
           lineItems: context.lineItems.map((li) => ({
             lineNumber: li.lineNumber,
             htsCode: li.htsCode !== "UNCLASSIFIABLE" ? li.htsCode : null,
@@ -430,6 +434,7 @@ export class PipelineOrchestrator {
           accountId,
           userId,
           shipmentId,
+          documentId,
           invoiceSubtotal: numOrNull(factValue(context, "invoiceSubtotal")),
           oceanFreight: numOrNull(factValue(context, "oceanFreight")) ?? undefined,
           buyerAssists: numOrNull(factValue(context, "buyerAssists")) ?? undefined,
@@ -467,6 +472,7 @@ export class PipelineOrchestrator {
           accountId,
           userId,
           shipmentId,
+          documentId,
           lineItems: context.lineItems.map((li) => ({
             lineNumber: li.lineNumber,
             htsCode: li.htsCode !== "UNCLASSIFIABLE" ? li.htsCode : null,
@@ -514,6 +520,7 @@ export class PipelineOrchestrator {
           accountId,
           userId,
           shipmentId,
+          documentId,
           enteredValue: numOrNull(factValue(context, "enteredCustomsValue")),
           dutyDue: await computeDutyDue(context),
           lineItemCount: context.lineItems.length,
