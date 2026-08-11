@@ -90,8 +90,7 @@ describe("GSP Form A Certificate of Origin Zero-Hallucination Pipeline", () => {
       accountId,
       userId,
       shipmentId,
-      htsCode: undefined,
-      countryOfOrigin: null,
+      lineItems: [],
       isHtsBlocked: true,
     });
 

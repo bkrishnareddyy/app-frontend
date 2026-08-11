@@ -2,19 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-
-/** True when the supplied text names the rule's country or carries its ISO code. */
-function matchesRule(value: string | undefined, rule: { countryCode: string; countryName: string }): boolean {
-  if (!value) return false;
-  const text = value.trim().toLowerCase();
-  if (!text) return false;
-  if (text.includes(rule.countryName.toLowerCase())) return true;
-  // countryCode was stored but never compared, so "CU" cleared Cuba.
-  const code = rule.countryCode.toLowerCase();
-  if (text === code) return true;
-  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`\\b${escaped}\\b`).test(text);
-}
+import { matchesRule } from "@/lib/screening/embargoMatch";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
