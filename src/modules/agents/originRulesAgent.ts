@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
+import { Prisma } from "@prisma/client";
 
 export interface OriginQualificationResult {
   lineNumber: number;
@@ -180,6 +181,7 @@ export class OriginRulesAgent {
             "19 CFR Part 102 Substantial Transformation",
             "19 CFR § 134 Marking Verification",
           ],
+          evidenceItems: { qualifications } as unknown as Prisma.InputJsonValue,
         },
       });
       agentDecisionId = agentDecision.id;

@@ -3,7 +3,189 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw } from "lucide-react";
-import { decisionGroupLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
+import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
+
+const NEUTRAL_BADGE = "text-[10px] font-bold px-2 py-1 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA] text-[#86868B]";
+
+function severityBadgeClass(severity: string): string {
+  if (severity === "CRITICAL") return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-red-100 text-red-900 border-red-300";
+  if (severity === "HIGH") return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-amber-100 text-amber-900 border-amber-300";
+  return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-[#F5F5F7] text-[#86868B] border-[#E5E5EA]";
+}
+
+interface NarrativeRow {
+  label: string;
+  value: string | null;
+}
+
+interface NarrativeDecision {
+  agentName?: string | null;
+  proposedHtsCode?: string | null;
+  currentHtsCode?: string | null;
+  status: string;
+  decisionSummary?: string | null;
+  evidenceItems?: unknown;
+}
+
+interface ProductProfile {
+  sku?: string | null;
+  materialComposition?: string | null;
+  essentialCharacter?: string | null;
+  endUse?: string | null;
+}
+
+interface OriginQualification {
+  countryOfOrigin?: string | null;
+  ftaProgram?: string | null;
+}
+
+interface ComplianceFlag {
+  severity: string;
+  summary: string;
+}
+
+interface ValuationAdjustment {
+  type: string;
+  amount: number;
+}
+
+function SpecRows({ rows }: { rows: NarrativeRow[] }) {
+  return (
+    <div className="space-y-1">
+      {rows
+        .filter((r) => r.value)
+        .map((r) => (
+          <div key={r.label} className="flex items-start justify-between gap-3 text-[11px]">
+            <span className="text-[#86868B] shrink-0">{r.label}</span>
+            <span className="text-[#1D1D1F] font-semibold text-right">{r.value}</span>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+/**
+ * The Field Review card body for a NARRATIVE-category decision. Each agent
+ * type gets a layout that surfaces its actual value (a dollar figure, a
+ * country, a material spec) instead of a flat prose sentence -- falls back
+ * to decisionSummary when a decision predates evidenceItems carrying this
+ * structured data, or the shape doesn't match what's expected.
+ */
+function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: () => void; kvCount: number }): React.ReactNode {
+  const groupLabel = decisionGroupLabel(dec);
+  const ev = (dec.evidenceItems && typeof dec.evidenceItems === "object" ? dec.evidenceItems : {}) as Record<string, unknown>;
+  const fallback = <p className="text-[11px] text-[#86868B] leading-relaxed">{dec.decisionSummary || "No summary available."}</p>;
+
+  if (groupLabel === "Document Intelligence") {
+    const primaryAgency = typeof ev.primaryAgency === "string" ? ev.primaryAgency : null;
+    const hasCommercialInvoice = Boolean(ev.hasCommercialInvoice);
+    const lineItemCount = typeof ev.lineItemCount === "number" ? ev.lineItemCount : null;
+    const count = typeof ev.rawKeyValueCount === "number" ? ev.rawKeyValueCount : opts.kvCount;
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {primaryAgency && <span className={NEUTRAL_BADGE}>{primaryAgency}</span>}
+          <span className={NEUTRAL_BADGE}>{hasCommercialInvoice ? "Commercial invoice present" : "Commercial invoice missing"}</span>
+          {lineItemCount !== null && (
+            <span className={NEUTRAL_BADGE}>{lineItemCount} line item{lineItemCount === 1 ? "" : "s"}</span>
+          )}
+        </div>
+        <button
+          onClick={opts.onViewKeyValues}
+          className="text-[11px] font-semibold text-[#0071E3] hover:underline cursor-pointer"
+        >
+          View {count} extracted field{count === 1 ? "" : "s"} →
+        </button>
+      </div>
+    );
+  }
+
+  if (groupLabel === "Product Intelligence") {
+    const profiles = Array.isArray(ev.profiles) ? (ev.profiles as ProductProfile[]) : [];
+    if (profiles.length === 0) return fallback;
+    return (
+      <div className="space-y-3">
+        {profiles.map((p, i) => (
+          <div key={i} className="space-y-1">
+            {profiles.length > 1 && (
+              <p className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{p.sku || `Line ${i + 1}`}</p>
+            )}
+            <SpecRows
+              rows={[
+                { label: "Material", value: p.materialComposition ?? null },
+                { label: "Essential character", value: p.essentialCharacter ?? null },
+                { label: "End use", value: p.endUse ?? null },
+              ]}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (groupLabel === "Origin") {
+    const quals = Array.isArray(ev.qualifications) ? (ev.qualifications as OriginQualification[]) : [];
+    const primary = quals[0];
+    if (!primary) return fallback;
+    const ftaText =
+      !primary.ftaProgram || primary.ftaProgram === "NONE" || primary.ftaProgram === "UNDETERMINED"
+        ? "no FTA program qualified"
+        : `${primary.ftaProgram} qualification assessed`;
+    return (
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-2xl font-extrabold text-[#1D1D1F]">{primary.countryOfOrigin || "—"}</span>
+        <span className="text-[11px] text-[#86868B]">
+          {ftaText}
+          {quals.length > 1 ? ` across ${quals.length} line items` : " for this line"}
+        </span>
+      </div>
+    );
+  }
+
+  if (groupLabel === "Valuation") {
+    if (typeof ev.enteredCustomsValue !== "number") return fallback;
+    const enteredCustomsValue = ev.enteredCustomsValue;
+    const adjustments = Array.isArray(ev.adjustments) ? (ev.adjustments as ValuationAdjustment[]) : [];
+    return (
+      <div className="space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wide text-[#86868B]">Entered customs value</p>
+        <p className="text-2xl font-extrabold text-[#1D1D1F]">
+          ${enteredCustomsValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <span className={NEUTRAL_BADGE}>Method 1 — transaction value</span>
+          <span className={NEUTRAL_BADGE}>
+            {adjustments.length > 0 ? `${adjustments.length} adjustment${adjustments.length === 1 ? "" : "s"} applied` : "No adjustments applied"}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (groupLabel === "Compliance") {
+    const flags = Array.isArray(ev.flags) ? (ev.flags as ComplianceFlag[]) : [];
+    if (flags.length === 0) {
+      return (
+        <div className="flex items-center gap-1.5 text-[11px] text-[#1D1D1F]">
+          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span>{dec.decisionSummary || "No compliance issues identified."}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-1.5">
+        {flags.map((f, i) => (
+          <div key={i} className="flex items-start gap-1.5 text-[11px]">
+            <span className={severityBadgeClass(f.severity)}>{f.severity}</span>
+            <span className="text-[#1D1D1F]">{f.summary}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return fallback;
+}
 
 interface ExtractionPayload {
   extractedJson?: {
@@ -460,7 +642,7 @@ export function DocumentReviewPanel({
           <div className="flex-1 overflow-y-auto border border-[#E5E5EA] rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
             {reviewableDecisions.map((dec) => {
               const isBusy = actionLoadingId === dec.id;
-              const groupLabel = decisionGroupLabel(dec);
+              const groupLabel = reviewerLabel(dec);
               const category = reviewCategory(dec);
               const fields = category === "FIELDS" ? editableFieldsFor(dec) : [];
 
@@ -570,9 +752,7 @@ export function DocumentReviewPanel({
                       })}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-[#86868B] leading-relaxed">
-                      {dec.decisionSummary || "No summary available."}
-                    </p>
+                    renderNarrativeBody(dec, { onViewKeyValues: () => setActiveTab("KV"), kvCount: kvEntries.length })
                   )}
 
                   <input
