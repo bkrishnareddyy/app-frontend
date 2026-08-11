@@ -352,7 +352,7 @@ export class ComplianceAuditAgent {
       .map((r) => r.details);
 
     const riskScore = Math.min(100, criticalCount * 40 + highCount * 20 + mediumCount * 10);
-    const requiresReview = criticalCount > 0 || highCount > 0;
+    const deterministicRequiresReview = criticalCount > 0 || highCount > 0;
     const confidence = 70;
     const auditChecksRun = auditResults.length;
     const auditChecksPassed = auditResults.filter((r) => r.passed).length;
@@ -412,6 +412,14 @@ export class ComplianceAuditAgent {
     }
 
     const reasoningChain = deterministicSummary;
+
+    // Recomputed after flags are finalized: the LLM synthesis (or its
+    // fallback) can surface findings -- like missing shipmentContext fields --
+    // that never appeared in auditResults, so status must account for flags
+    // too or it can read "Approved" next to a summary describing a blocking
+    // issue.
+    const requiresReview =
+      deterministicRequiresReview || flags.some((f) => f.severity === "CRITICAL" || f.severity === "HIGH");
 
     let agentDecisionId: string | null = null;
     try {
