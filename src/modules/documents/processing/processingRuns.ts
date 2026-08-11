@@ -274,8 +274,31 @@ export interface CompleteRunInput {
   fullPageOcrUsed: boolean | null;
   durationMs: number | null;
   warnings: ReadonlyArray<{ code: string; message: string; page: number | null }>;
+  /**
+   * The parser's own confidence as a percentage, or null when it reported none.
+   *
+   * Percent rather than the 0-1 fraction the provider speaks, because this column
+   * is shared with extraction runs that already write 0-100. Two scales in one
+   * column would make a measured 0.86 look like near-zero next to a self-reported
+   * 98. Convert with `toConfidencePercent`; never substitute a default.
+   */
+  confidence: number | null;
   /** SUCCEEDED, or NEEDS_REVIEW when the quality gate demands a person. */
   finalState: "SUCCEEDED" | "NEEDS_REVIEW";
+}
+
+/**
+ * Converts a provider's 0-1 confidence to the 0-100 scale this column stores.
+ *
+ * Absence stays absent: a parser that reports nothing must not acquire a number
+ * here, because a fabricated confidence is worse than a missing one -- it invites
+ * someone to file against a figure no parser ever produced. Values already above
+ * 1 are passed through, since a provider quoting percent is not rescaled to 8500.
+ */
+export function toConfidencePercent(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  if (value < 0) return null;
+  return value <= 1 ? value * 100 : value;
 }
 
 /**
@@ -284,7 +307,9 @@ export interface CompleteRunInput {
  * `rawJson` is set to the artifact index rather than the parser payload: the
  * payload can be megabytes, and Postgres is the index, not the object store.
  * `confidence` stays null unless the parser genuinely emitted one — nothing here
- * manufactures a number to fill the column.
+ * manufactures a number to fill the column. It does have to be carried across
+ * though: it was previously omitted from the write, so a real score reached the
+ * stored artifact and the column stayed null regardless.
  */
 export async function completeRun(input: CompleteRunInput): Promise<boolean> {
   return transitionRun({
@@ -302,6 +327,7 @@ export async function completeRun(input: CompleteRunInput): Promise<boolean> {
       pageCount: input.pageCount,
       ocrUsed: input.ocrUsed,
       fullPageOcrUsed: input.fullPageOcrUsed,
+      confidence: input.confidence,
       durationMs: input.durationMs,
       qualityJson: input.quality as unknown as Prisma.InputJsonValue,
       artifactsJson: input.artifacts as unknown as Prisma.InputJsonValue,

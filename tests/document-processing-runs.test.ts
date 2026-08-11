@@ -217,6 +217,7 @@ describe("transitions", () => {
       pageCount: 2,
       ocrUsed: null,
       fullPageOcrUsed: null,
+      confidence: 85.89,
       durationMs: 1200,
       warnings: [],
       finalState: "SUCCEEDED",
@@ -229,6 +230,37 @@ describe("transitions", () => {
     expect(data.ocrUsed).toBeNull();
     expect(data.nextPollAt).toBeNull();
     expect(data.errorCode).toBeNull();
+    // The measured score has to reach the column. It was omitted from this write,
+    // so a real 0.86 from the parser landed in the stored artifact while the
+    // column readers saw null -- next to an extraction run's self-reported 98.
+    expect(data.confidence).toBe(85.89);
+  });
+});
+
+describe("confidence scale", () => {
+  it("converts a provider's 0-1 score to the percent this column stores", () => {
+    // Shared with extraction runs that already write 0-100. Left as a fraction, a
+    // measured 0.86 reads as near-zero beside a self-reported 98.
+    expect(runs.toConfidencePercent(0.8588636078768306)).toBeCloseTo(85.886, 3);
+    expect(runs.toConfidencePercent(1)).toBe(100);
+  });
+
+  it("leaves a score already quoted in percent alone", () => {
+    expect(runs.toConfidencePercent(98)).toBe(98);
+  });
+
+  it("never invents a number when the parser reported none", () => {
+    // A fabricated confidence is worse than a missing one: it invites someone to
+    // file against a figure no parser ever produced.
+    expect(runs.toConfidencePercent(null)).toBeNull();
+    expect(runs.toConfidencePercent(undefined)).toBeNull();
+    expect(runs.toConfidencePercent(Number.NaN)).toBeNull();
+  });
+
+  it("keeps a genuine zero distinguishable from absence", () => {
+    // 0 means the parser scored it and scored it badly, which must not read as
+    // "no score available".
+    expect(runs.toConfidencePercent(0)).toBe(0);
   });
 });
 

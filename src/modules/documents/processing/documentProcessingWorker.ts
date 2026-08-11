@@ -43,6 +43,7 @@ import {
   recordPoll,
   recordSubmission,
   timeOutExhaustedPolls,
+  toConfidencePercent,
   type DueRun,
 } from "./processingRuns";
 import { readOriginalDocument, resolveMimeType } from "./documentSource";
@@ -423,6 +424,10 @@ async function finishRun(
     pageCount: parsed.normalized.metadata.pageCount,
     ocrUsed: parsed.normalized.metadata.ocrUsed,
     fullPageOcrUsed: parsed.normalized.metadata.fullPageOcrUsed,
+    // The parser's measured score, which is the honest one on this document --
+    // Docling reported 0.86 on the invoice that made this omission visible while
+    // the column read null, next to an extraction run's self-reported 98.
+    confidence: toConfidencePercent(parsed.normalized.metadata.parserConfidence),
     durationMs,
     warnings: parsed.normalized.warnings,
     finalState,
