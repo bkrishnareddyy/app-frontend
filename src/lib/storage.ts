@@ -82,6 +82,24 @@ export interface StorageUploadResult {
   provider: "vercel-blob" | "local-fs";
 }
 
+/**
+ * Asserts that a URL points at Qubere-controlled object storage.
+ *
+ * Call this before handing any URL to an external parser. Passing a
+ * client-supplied URL to a provider that will fetch it makes the provider a
+ * confused deputy, so the only URLs allowed out are ones Qubere minted against
+ * its own allowlisted storage hosts.
+ */
+export function assertQubereStorageUrl(fileUrl: string): void {
+  const origin = resolveStorageOrigin(fileUrl);
+  if (origin === null) {
+    throw new StorageValidationError(
+      "UNTRUSTED_STORAGE_ORIGIN",
+      "Only an absolute Qubere object-storage URL may be handed to an external parser."
+    );
+  }
+}
+
 export class StorageValidationError extends Error {
   constructor(
     public readonly code:
@@ -93,6 +111,110 @@ export class StorageValidationError extends Error {
     super(message);
     this.name = "StorageValidationError";
   }
+}
+
+/**
+ * Writes a derived processing artifact (parser JSON, Markdown, table HTML, a
+ * quality report) to object storage under a tenant/document/run path, so one
+ * tenant's artifacts are never colocated with another's and a run's outputs can
+ * be enumerated or lifecycled as a unit.
+ *
+ * Separate from `storeDocumentFile` on purpose: that function enforces the
+ * upload MIME allowlist, which describes what a *customer* may upload and has
+ * nothing to say about what Qubere itself generates.
+ */
+export async function storeProcessingArtifact(params: {
+  accountId: string;
+  documentId: string;
+  processingRunId: string;
+  /** Short artifact name, e.g. "docling.json". Sanitised before use. */
+  name: string;
+  contentType: string;
+  body: Buffer;
+}): Promise<StorageUploadResult> {
+  const safeSegment = (value: string) => value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 64);
+  const objectPath = [
+    "processing",
+    safeSegment(params.accountId),
+    safeSegment(params.documentId),
+    safeSegment(params.processingRunId),
+    safeSegment(params.name),
+  ].join("/");
+
+  const checksum = createHash("sha256").update(params.body).digest("hex");
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+
+  if (token) {
+    const blob = await put(objectPath, params.body, {
+      access: "private",
+      contentType: params.contentType,
+      token,
+      // Artifact paths are already unique per run; a random suffix would break
+      // the "one artifact per run per type" uniqueness rule.
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+    return {
+      url: blob.url,
+      filename: params.name,
+      size: params.body.byteLength,
+      checksum,
+      provider: "vercel-blob",
+    };
+  }
+
+  const isServerless = Boolean(
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.cwd().startsWith("/var/task")
+  );
+  if (isServerless) {
+    throw new Error(
+      "[Storage] BLOB_READ_WRITE_TOKEN is required to persist processing artifacts in a serverless environment."
+    );
+  }
+
+  // Local development: artifacts are kept outside `public/` because, unlike an
+  // uploaded document, they are not served through the tenant-scoped proxy.
+  const artifactRoot = path.join(process.cwd(), ".qubere", "artifacts");
+  const target = path.join(artifactRoot, objectPath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, params.body);
+
+  return {
+    url: `file://${target}`,
+    filename: params.name,
+    size: params.body.byteLength,
+    checksum,
+    provider: "local-fs",
+  };
+}
+
+/** Reads back an artifact previously written by `storeProcessingArtifact`. */
+export async function readProcessingArtifact(storageRef: string): Promise<Buffer> {
+  if (storageRef.startsWith("file://")) {
+    const localPath = storageRef.slice("file://".length);
+    const artifactRoot = path.join(process.cwd(), ".qubere", "artifacts");
+    const resolved = path.resolve(localPath);
+    // Confine reads to the artifact root so a tampered storage reference cannot
+    // turn this into an arbitrary file read.
+    if (!resolved.startsWith(artifactRoot + path.sep)) {
+      throw new StorageValidationError(
+        "UNTRUSTED_STORAGE_ORIGIN",
+        "Artifact reference points outside the artifact store."
+      );
+    }
+    return fs.readFileSync(resolved);
+  }
+
+  assertQubereStorageUrl(storageRef);
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const response = await fetch(storageRef, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`[Storage] Failed to read artifact (HTTP ${response.status}).`);
+  }
+  return Buffer.from(await response.arrayBuffer());
 }
 
 export async function storeDocumentFile(

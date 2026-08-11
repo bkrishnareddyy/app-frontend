@@ -4,6 +4,8 @@ export type ShipmentEventType =
   | "SHIPMENT_CREATED"
   | "USER_FIELD_UPDATED"
   | "DOCUMENT_UPLOADED"
+  /** The parser finished and its run became the document's active version. */
+  | "DOCUMENT_READY_FOR_CLASSIFICATION"
   | "DOCUMENT_EXTRACTED"
   | "RECONCILIATION_REQUESTED"
   | "CONFLICT_DETECTED"
