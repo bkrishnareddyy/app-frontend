@@ -11,8 +11,11 @@ import {
   Clock,
   User,
   Users,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { caughtMessage } from "@/lib/utils";
+import { PAGE_SIZE_DEFAULT, pageCount } from "@/modules/tables/tableQuery";
 
 interface DocumentItem {
   id: string;
@@ -103,12 +106,19 @@ export function ShipmentsWorkbenchClient({
     return list;
   }, [teamMembers, context]);
 
+  // Pagination over the filtered result, not the raw list. The KPI cards above and
+  // the search below both read the whole set, so paginating the data source would
+  // make "Total: 25" mean "25 on this page" and let a search miss every match that
+  // is not on the page being viewed.
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
+  const [page, setPage] = useState(1);
+
   // Selected team member IDs. Default is [] (All Shipments) for the workbench view
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [selectedUserIds, setSelectedUserIdsValue] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Column filters state
-  const [columnFilters, setColumnFilters] = useState({
+  const [columnFilters, setColumnFiltersValue] = useState({
     shipmentNumber: "",
     importerName: "",
     entryTypePo: "",
@@ -119,8 +129,24 @@ export function ShipmentsWorkbenchClient({
     client: "ALL",
   });
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQueryValue] = useState("");
   const [shipmentsList, setShipmentsList] = useState<ShipmentItem[]>(initialShipments);
+
+  // Every filter change returns to the first page. Wrapped at the setter rather
+  // than at each of the sixteen call sites, so a filter added later cannot forget
+  // to do it and strand the operator on a page the new result no longer has.
+  const setSelectedUserIds: typeof setSelectedUserIdsValue = (value) => {
+    setPage(1);
+    setSelectedUserIdsValue(value);
+  };
+  const setColumnFilters: typeof setColumnFiltersValue = (value) => {
+    setPage(1);
+    setColumnFiltersValue(value);
+  };
+  const setSearchQuery: typeof setSearchQueryValue = (value) => {
+    setPage(1);
+    setSearchQueryValue(value);
+  };
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
@@ -273,6 +299,18 @@ export function ShipmentsWorkbenchClient({
   const holdCount = filteredShipments.filter(
     (s) => s.status === "On Hold" || s.healthStatus === "Critical"
   ).length;
+
+  // Clamped while rendering rather than corrected in an effect. Narrowing a filter
+  // can leave `page` past the end of the new result, and an effect that fixed it
+  // afterwards would render one empty page first.
+  const pages = pageCount(totalCount, pageSize);
+  const currentPage = Math.min(page, pages);
+  const firstRow = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const lastRow = Math.min(currentPage * pageSize, totalCount);
+  const pagedShipments = useMemo(
+    () => filteredShipments.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [filteredShipments, currentPage, pageSize]
+  );
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
@@ -650,7 +688,7 @@ export function ShipmentsWorkbenchClient({
                   </td>
                 </tr>
               ) : (
-                filteredShipments.map((shp) => {
+                pagedShipments.map((shp) => {
                   const isReady = (shp.readinessScore ?? 0) >= 85;
                   const isCritical = shp.healthStatus === "Critical";
 
@@ -757,6 +795,65 @@ export function ShipmentsWorkbenchClient({
             </tbody>
           </table>
         </div>
+
+        {/* Range counted from the filtered total, so a partial last page reports
+            how many rows it actually holds instead of repeating the page size. */}
+        <nav
+          className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-t border-border"
+          aria-label="Shipments pagination"
+        >
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-ink-muted">
+              {totalCount === 0
+                ? "No shipments"
+                : `${firstRow}–${lastRow} of ${totalCount} shipment${totalCount === 1 ? "" : "s"}`}
+            </p>
+            <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+              <span>Rows</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  // Back to the first page: keeping the page number while changing
+                  // its size scrolls the operator to an unrelated slice.
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                aria-label="Rows per page"
+                className="rounded-lg border border-border bg-white px-2 py-1 text-xs font-semibold text-ink focus:outline-none focus:border-brand"
+              >
+                {[25, 50, 100].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-ink-muted">
+              Page {currentPage} of {pages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed cursor-pointer"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Previous</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(currentPage + 1)}
+              disabled={currentPage >= pages}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed cursor-pointer"
+            >
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        </nav>
       </div>
     </div>
   );
