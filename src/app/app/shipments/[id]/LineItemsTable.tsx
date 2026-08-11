@@ -118,15 +118,33 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                 <th className="p-2.5">HTS Code</th>
                 <th className="p-2.5">Origin</th>
                 <th className="p-2.5 text-right">Qty</th>
-                <th className="p-2.5 text-right">Total</th>
-                <th className="p-2.5 text-center">Action</th>
+                {/*
+                  Amount and Action are pinned to the right edge. Opening a row for
+                  edit swaps two short text cells for inputs and widens the row past
+                  the container, and because overflow-y-auto makes overflow-x compute
+                  to auto, both columns used to slide out of view -- leaving no way to
+                  save without scrolling sideways first. The offset here must match
+                  the Action column's own width.
+                */}
+                {/*
+                  An inset shadow marks the pinned edge rather than border-l: this
+                  table sets border-collapse, and collapsed borders on a sticky cell
+                  are dropped by some browsers.
+                */}
+                <th className="p-2.5 text-right sticky right-20 bg-[#F5F5F7] z-10 shadow-[inset_1px_0_0_0_#E5E5EA]">
+                  Total
+                </th>
+                <th className="p-2.5 text-center sticky right-0 w-20 bg-[#F5F5F7] z-10">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5EA]">
               {lineItems.map((item) => {
                 const isEditing = editingItemId === item.id;
                 return (
-                  <tr key={item.id} className="hover:bg-[#F5F5F7]/30 transition-colors">
+                  // `group` lets the pinned cells below repaint their own background
+                  // on hover; an opaque background is what stops the scrolling
+                  // columns showing through them.
+                  <tr key={item.id} className="group hover:bg-[#F5F5F7]/30 transition-colors">
                     <td className="p-2.5 font-mono text-[#86868B] font-semibold">{item.lineNumber}</td>
                     <td className="p-2.5 font-bold text-[#1D1D1F] max-w-xs break-words">{item.description}</td>
                     
@@ -139,7 +157,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                             value={editHts}
                             onChange={(e) => setEditHts(e.target.value)}
                             placeholder="Search HTS Code..."
-                            className="w-32 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white font-mono text-[11px]"
+                            className="w-28 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white font-mono text-[11px]"
                             disabled={saveLoading}
                           />
                           {/* Autocomplete dropdown */}
@@ -175,7 +193,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                           value={editCoo}
                           onChange={(e) => setEditCoo(e.target.value)}
                           placeholder="e.g. Germany"
-                          className="w-24 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white text-[11px]"
+                          className="w-20 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white text-[11px]"
                           disabled={saveLoading}
                         />
                       ) : (
@@ -184,7 +202,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                     </td>
 
                     <td className="p-2.5 text-right font-mono">{item.quantity}</td>
-                    <td className="p-2.5 text-right font-mono font-bold">
+                    <td className="p-2.5 text-right font-mono font-bold sticky right-20 bg-white group-hover:bg-[#FCFCFD] z-10 shadow-[inset_1px_0_0_0_#E5E5EA]">
                       {(() => {
                         const amount = extendedAmount(item);
                         if (amount === null) {
@@ -201,7 +219,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                     </td>
                     
                     {/* Inline edit actions */}
-                    <td className="p-2.5 text-center">
+                    <td className="p-2.5 text-center sticky right-0 w-20 bg-white group-hover:bg-[#FCFCFD] z-10">
                       {isEditing ? (
                         <div className="flex items-center justify-center space-x-1.5">
                           <button
