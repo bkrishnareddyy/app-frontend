@@ -1423,7 +1423,7 @@ export default async function ShipmentWorkspacePage(props: {
             <h4 className="text-xs font-extrabold uppercase text-ink-muted tracking-wider">
               Run History ({agentInvocations.length})
             </h4>
-            <AgentExecutionTimeline invocations={agentInvocations} />
+            <AgentExecutionTimeline invocations={agentInvocations} shipmentId={shipment.id} />
           </div>
         </div>
       )}
