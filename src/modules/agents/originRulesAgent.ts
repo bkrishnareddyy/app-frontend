@@ -23,6 +23,7 @@ export interface OriginRulesInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   lineItems: Array<{
     lineNumber: number;
     htsCode?: string | null;
@@ -81,6 +82,7 @@ export class OriginRulesAgent {
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "Origin Agent",
             agentIcon: "Globe2",
             status: "Needs Review",
@@ -166,6 +168,7 @@ export class OriginRulesAgent {
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Origin Agent",
           agentIcon: "Globe2",
           status: "Approved",

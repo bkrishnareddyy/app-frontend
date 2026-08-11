@@ -44,6 +44,7 @@ export interface HTSClassificationInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   productProfiles: Array<{
     lineNumber: number;
     rawDescription: string;
@@ -173,6 +174,7 @@ export class HTSClassificationAgent {
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "HTS Classification Agent",
             agentIcon: "BookOpen",
             status: "Needs Review",
@@ -376,6 +378,7 @@ ${candidateContext}`;
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "HTS Classification Agent",
             agentIcon: "BookOpen",
             status: lineRequiresReview ? "Needs Review" : "Approved",

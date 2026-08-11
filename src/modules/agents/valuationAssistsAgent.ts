@@ -13,6 +13,7 @@ export interface ValuationAssistsInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   invoiceSubtotal?: number | null;
   oceanFreight?: number;
   buyerAssists?: number;
@@ -69,6 +70,7 @@ export class ValuationAssistsAgent {
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "Valuation Agent",
             agentIcon: "Calculator",
             status: "Needs Review",
@@ -160,6 +162,7 @@ export class ValuationAssistsAgent {
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Valuation Agent",
           agentIcon: "Calculator",
           status: "Approved",

@@ -21,6 +21,7 @@ export interface FilingReadinessInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   enteredValue?: number | null;
   dutyDue?: number | null;
   lineItemCount: number;
@@ -152,6 +153,7 @@ export class FilingReadinessAgent {
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Filing Readiness Agent",
           agentIcon: "CheckCircle2",
           status: readyForTransmission ? "Approved" : "Needs Review",
