@@ -16,7 +16,7 @@ interface TenantAdminFormProps {
   userRole: string;
 }
 
-export function TenantAdminForm({ tenant, userRole }: TenantAdminFormProps) {
+export function TenantAdminForm({ tenant }: TenantAdminFormProps) {
   const router = useRouter();
   const [name, setName] = useState(tenant.name);
   const [domain, setDomain] = useState(tenant.domain || "");

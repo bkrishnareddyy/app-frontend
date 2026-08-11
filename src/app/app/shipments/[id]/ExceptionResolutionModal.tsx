@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { AlertTriangle, ShieldAlert, Sparkles, Upload } from "lucide-react";
-import { Modal, ModalHeader, ModalFooter } from "@/components/ui/Modal";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
-import { cn } from "@/lib/utils";
+import { caughtMessage, cn } from "@/lib/utils";
+
+import type { HtsSuggestion, ShipmentLineItemRow } from "./workspaceTypes";
 
 interface ExceptionItem {
   id: string;
@@ -23,7 +25,7 @@ interface ExceptionResolutionModalProps {
   onClose: () => void;
   exception: ExceptionItem | null;
   shipmentId: string;
-  lineItems: any[];
+  lineItems: ShipmentLineItemRow[];
 }
 
 const TITLE_ID = "exception-resolution-title";
@@ -39,8 +41,7 @@ export function ExceptionResolutionModal({
 
   // HTS resolution state
   const [editHts, setEditHts] = useState("");
-  const [htsSuggestions, setHtsSuggestions] = useState<any[]>([]);
-  const [searchingHts, setSearchingHts] = useState(false);
+  const [htsSuggestions, setHtsSuggestions] = useState<HtsSuggestion[]>([]);
 
   // Origin resolution state
   const [editCoo, setEditCoo] = useState("");
@@ -54,12 +55,14 @@ export function ExceptionResolutionModal({
 
   // Certificate upload state
   const [fileName, setFileName] = useState("");
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Sync initial values
   useEffect(() => {
     if (exception && lineItems.length > 0) {
       const targetItem = lineItems[1] || lineItems[0];
+      // Resets the form when a different exception is opened into the same mounted
+      // dialog, so the previous exception's edits are never submitted against it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditHts(targetItem?.htsCode || "");
       setEditCoo(targetItem?.countryOfOrigin || "");
       setSelectedQuantity(20);
@@ -72,7 +75,6 @@ export function ExceptionResolutionModal({
   // HTS Search autocomplete debouncing
   useEffect(() => {
     if (exception?.actionType === "HTS" && editHts.trim().length >= 2) {
-      setSearchingHts(true);
       const timer = setTimeout(async () => {
         try {
           const res = await fetch(`/api/v1/hts/search?q=${encodeURIComponent(editHts.trim())}&limit=5`);
@@ -82,12 +84,12 @@ export function ExceptionResolutionModal({
           }
         } catch (err) {
           console.error("Failed to query HTS suggestions:", err);
-        } finally {
-          setSearchingHts(false);
         }
       }, 300);
       return () => clearTimeout(timer);
     } else {
+      // Clears stale autocomplete results as soon as the query stops qualifying.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHtsSuggestions([]);
     }
   }, [editHts, exception]);
@@ -198,8 +200,8 @@ export function ExceptionResolutionModal({
       onClose();
       // Silently reload the page to refresh metrics and drop the resolved card
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message || "Failed to resolve exception");
+    } catch (err) {
+      alert(caughtMessage(err, "Failed to resolve exception"));
     } finally {
       setSaveLoading(false);
     }
@@ -215,6 +217,10 @@ export function ExceptionResolutionModal({
         onClose={onClose}
       />
 
+      {/* The resolution body varies by exception type and the mismatch and POA
+          branches run tall. It scrolls so Resolve & Save below stays reachable --
+          that button going off-screen is what this pinning is for. */}
+      <ModalBody className="space-y-4">
       {/* Warning Details Panel */}
       <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 text-xs text-amber-800 leading-normal flex items-start space-x-2.5">
         <AlertTriangle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
@@ -394,6 +400,8 @@ export function ExceptionResolutionModal({
           </div>
         )}
       </div>
+
+      </ModalBody>
 
       {/* Footer */}
       <ModalFooter className="pt-3 border-t border-border">

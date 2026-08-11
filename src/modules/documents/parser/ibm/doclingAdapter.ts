@@ -1,0 +1,623 @@
+/**
+ * Normalises a Docling result into the provider-neutral Qubere parser contract.
+ *
+ * Two rules govern everything here:
+ *
+ * 1. Absence is preserved. If Docling did not report a page, a bounding box, a
+ *    version, or a confidence, the normalised value is `null`. Nothing is
+ *    defaulted, inferred, or averaged into existence — a fabricated bounding box
+ *    is worse than no bounding box, because it would be cited as evidence.
+ *
+ * 2. Identifiers are deterministic. Section and table ids derive from the
+ *    element's structural position plus a hash of its content, so re-running the
+ *    same parser over the same document yields the same ids and previously
+ *    recorded evidence references stay resolvable.
+ */
+
+import { createHash } from "crypto";
+import {
+  DocumentParserError,
+  QUBERE_PARSER_CONTRACT_VERSION,
+  parserResultSchema,
+  type BoundingBox,
+  type NormalizedParserResult,
+  type ParsedSection,
+  type ParsedTable,
+  type ParsedTableCell,
+  type ParserWarning,
+  type ProcessingProfile,
+  type Provenance,
+} from "../contracts";
+import {
+  DOCLING_BODY_LABELS,
+  DOCLING_HEADING_LABELS,
+  doclingResultSchema,
+  type DoclingConfidence,
+  type DoclingDocument,
+  type DoclingResultEnvelope,
+} from "./doclingWire";
+
+const PROVIDER_ID = "IBM_DOCLING";
+
+function shortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 12);
+}
+
+/** Deterministic id: kind, ordinal, and a content digest. */
+function stableId(kind: "sec" | "tbl", ordinal: number, content: string): string {
+  return `${kind}_${String(ordinal).padStart(4, "0")}_${shortHash(content)}`;
+}
+
+function normalizeBbox(raw: unknown): BoundingBox | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const box = raw as Record<string, unknown>;
+  const { l, t, r, b } = box;
+  if (
+    typeof l !== "number" ||
+    typeof t !== "number" ||
+    typeof r !== "number" ||
+    typeof b !== "number"
+  ) {
+    return null;
+  }
+  const origin = typeof box.coord_origin === "string" ? box.coord_origin.toUpperCase() : null;
+  return {
+    left: l,
+    top: t,
+    right: r,
+    bottom: b,
+    coordOrigin: origin === "TOPLEFT" || origin === "BOTTOMLEFT" ? origin : null,
+  };
+}
+
+function normalizeProvenance(
+  prov: ReadonlyArray<Record<string, unknown>> | undefined,
+  elementRef: string | null
+): Provenance[] {
+  if (!prov || prov.length === 0) {
+    // No provenance at all is itself a fact worth recording, but only when we
+    // have something to point at. An entry of all-nulls carries no information.
+    return elementRef === null ? [] : [{ page: null, bbox: null, elementRef }];
+  }
+  return prov.map((entry) => ({
+    page: typeof entry.page_no === "number" && entry.page_no > 0 ? entry.page_no : null,
+    bbox: normalizeBbox(entry.bbox),
+    elementRef,
+  }));
+}
+
+/** First reported page across a provenance list, or null. */
+function firstPage(provenance: readonly Provenance[]): number | null {
+  for (const entry of provenance) {
+    if (entry.page !== null) return entry.page;
+  }
+  return null;
+}
+
+function firstBbox(provenance: readonly Provenance[]): BoundingBox | null {
+  for (const entry of provenance) {
+    if (entry.bbox !== null) return entry.bbox;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------
+
+interface SectionAccumulator {
+  headingPath: string[];
+  parts: string[];
+  provenance: Provenance[];
+}
+
+/**
+ * Walks Docling's `texts` array in document order, grouping body text under the
+ * heading trail that precedes it. Docling's `level` on a section_header gives the
+ * nesting depth, so the trail is maintained as a stack rather than flattened.
+ */
+function buildSections(doc: DoclingDocument): ParsedSection[] {
+  const texts = doc.texts ?? [];
+  const sections: ParsedSection[] = [];
+  const headingStack: Array<{ level: number; text: string }> = [];
+  let current: SectionAccumulator | null = null;
+
+  const flush = () => {
+    if (!current) return;
+    const content = current.parts.join("\n").trim();
+    if (content !== "" || current.headingPath.length > 0) {
+      const ordinal = sections.length;
+      sections.push({
+        id: stableId("sec", ordinal, `${current.headingPath.join(">")}\u0000${content}`),
+        headingPath: [...current.headingPath],
+        content,
+        provenance: current.provenance,
+      });
+    }
+    current = null;
+  };
+
+  for (const item of texts) {
+    const label = (item.label ?? "").toLowerCase();
+    const text = (item.text ?? item.orig ?? "").trim();
+    if (text === "") continue;
+
+    const elementRef = typeof item.self_ref === "string" ? item.self_ref : null;
+    const provenance = normalizeProvenance(item.prov, elementRef);
+
+    if (DOCLING_HEADING_LABELS.has(label)) {
+      flush();
+      const level = typeof item.level === "number" && item.level > 0 ? item.level : 1;
+      while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) {
+        headingStack.pop();
+      }
+      headingStack.push({ level, text });
+      current = {
+        headingPath: headingStack.map((h) => h.text),
+        parts: [],
+        provenance: [...provenance],
+      };
+      continue;
+    }
+
+    if (!DOCLING_BODY_LABELS.has(label)) {
+      // An unrecognised label is kept rather than dropped — customs documents
+      // carry stamps and form fields Docling may label in ways we have not seen,
+      // and silently discarding them would lose evidence. The warning is raised
+      // by `collectWarnings` so the omission is visible if we ever do drop it.
+      continue;
+    }
+
+    if (!current) {
+      current = { headingPath: headingStack.map((h) => h.text), parts: [], provenance: [] };
+    }
+    current.parts.push(text);
+    current.provenance.push(...provenance);
+  }
+
+  flush();
+  return sections;
+}
+
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+function buildTableCells(
+  rawCells: ReadonlyArray<Record<string, unknown>>
+): { cells: ParsedTableCell[]; maxRow: number; maxColumn: number } {
+  const cells: ParsedTableCell[] = [];
+  let maxRow = 0;
+  let maxColumn = 0;
+
+  for (const raw of rawCells) {
+    const startRow = typeof raw.start_row_offset_idx === "number" ? raw.start_row_offset_idx : null;
+    const startCol = typeof raw.start_col_offset_idx === "number" ? raw.start_col_offset_idx : null;
+    if (startRow === null || startCol === null) continue;
+
+    const endRow = typeof raw.end_row_offset_idx === "number" ? raw.end_row_offset_idx : startRow + 1;
+    const endCol = typeof raw.end_col_offset_idx === "number" ? raw.end_col_offset_idx : startCol + 1;
+    const rowSpan =
+      typeof raw.row_span === "number" && raw.row_span > 0 ? raw.row_span : Math.max(1, endRow - startRow);
+    const colSpan =
+      typeof raw.col_span === "number" && raw.col_span > 0 ? raw.col_span : Math.max(1, endCol - startCol);
+
+    const bbox = normalizeBbox(raw.bbox);
+    cells.push({
+      row: startRow,
+      column: startCol,
+      rowSpan,
+      columnSpan: colSpan,
+      isHeader: raw.column_header === true || raw.row_header === true,
+      text: typeof raw.text === "string" ? raw.text : "",
+      provenance: bbox === null ? null : { page: null, bbox, elementRef: null },
+    });
+
+    maxRow = Math.max(maxRow, startRow + rowSpan);
+    maxColumn = Math.max(maxColumn, startCol + colSpan);
+  }
+
+  return { cells, maxRow, maxColumn };
+}
+
+/**
+ * Renders a cell grid as HTML.
+ *
+ * This is a loss-minimising derivative, not the canonical form: spans and header
+ * flags survive, coordinates do not. The canonical structure stays in the cell
+ * array and in the untouched Docling JSON.
+ */
+export function tableCellsToHtml(table: ParsedTable): string {
+  const escape = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  const byRow = new Map<number, ParsedTableCell[]>();
+  for (const cell of table.cells) {
+    const bucket = byRow.get(cell.row);
+    if (bucket) bucket.push(cell);
+    else byRow.set(cell.row, [cell]);
+  }
+
+  const rows = [...byRow.keys()].sort((a, b) => a - b);
+  const body = rows
+    .map((rowIndex) => {
+      const cells = (byRow.get(rowIndex) ?? []).sort((a, b) => a.column - b.column);
+      const rendered = cells
+        .map((cell) => {
+          const tag = cell.isHeader ? "th" : "td";
+          const attrs = [
+            cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : "",
+            cell.columnSpan > 1 ? ` colspan="${cell.columnSpan}"` : "",
+          ].join("");
+          return `<${tag}${attrs}>${escape(cell.text)}</${tag}>`;
+        })
+        .join("");
+      return `<tr>${rendered}</tr>`;
+    })
+    .join("");
+
+  const caption = table.caption === null ? "" : `<caption>${escape(table.caption)}</caption>`;
+  return `<table>${caption}${body}</table>`;
+}
+
+/** Compact Markdown rendering of a table, for token-budgeted agent context. */
+export function tableToMarkdown(table: ParsedTable): string {
+  if (table.cells.length === 0) return "";
+
+  const grid = new Map<string, string>();
+  let maxRow = 0;
+  let maxCol = 0;
+  for (const cell of table.cells) {
+    grid.set(`${cell.row}:${cell.column}`, cell.text.replace(/\|/g, "\\|").replace(/\n/g, " ").trim());
+    maxRow = Math.max(maxRow, cell.row);
+    maxCol = Math.max(maxCol, cell.column);
+  }
+
+  const rowStrings: string[] = [];
+  for (let r = 0; r <= maxRow; r++) {
+    const columns: string[] = [];
+    for (let c = 0; c <= maxCol; c++) columns.push(grid.get(`${r}:${c}`) ?? "");
+    rowStrings.push(`| ${columns.join(" | ")} |`);
+    // Docling marks header cells explicitly; the separator goes after the last
+    // header row rather than being assumed to be row 0.
+    const rowIsHeader = table.cells.some((cell) => cell.row === r && cell.isHeader);
+    const nextRowIsHeader = table.cells.some((cell) => cell.row === r + 1 && cell.isHeader);
+    if (rowIsHeader && !nextRowIsHeader) {
+      rowStrings.push(`| ${Array.from({ length: maxCol + 1 }, () => "---").join(" | ")} |`);
+    }
+  }
+  return rowStrings.join("\n");
+}
+
+function buildTables(doc: DoclingDocument): ParsedTable[] {
+  const rawTables = doc.tables ?? [];
+  return rawTables.map((raw, index) => {
+    const elementRef = typeof raw.self_ref === "string" ? raw.self_ref : null;
+    const provenance = normalizeProvenance(raw.prov, elementRef);
+    const rawCells = (raw.data?.table_cells ?? []) as ReadonlyArray<Record<string, unknown>>;
+    const { cells, maxRow, maxColumn } = buildTableCells(rawCells);
+
+    const declaredRows = typeof raw.data?.num_rows === "number" ? raw.data.num_rows : null;
+    const declaredCols = typeof raw.data?.num_cols === "number" ? raw.data.num_cols : null;
+
+    const table: ParsedTable = {
+      id: stableId("tbl", index, cells.map((c) => `${c.row}:${c.column}:${c.text}`).join("\u0000")),
+      index,
+      // Docling stores captions as $refs into `texts`; resolving them is not
+      // reliable across versions, so the caption is reported as absent rather
+      // than guessed from surrounding text.
+      caption: null,
+      page: firstPage(provenance),
+      bbox: firstBbox(provenance),
+      rowCount: declaredRows ?? maxRow,
+      columnCount: declaredCols ?? maxColumn,
+      cells,
+      html: null,
+    };
+
+    return { ...table, html: cells.length === 0 ? null : tableCellsToHtml(table) };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Metadata, warnings, page coverage
+// ---------------------------------------------------------------------------
+
+function collectWarnings(
+  envelope: DoclingResultEnvelope,
+  doc: DoclingDocument | null,
+  sections: readonly ParsedSection[],
+  tables: readonly ParsedTable[]
+): ParserWarning[] {
+  const warnings: ParserWarning[] = [];
+
+  for (const raw of envelope.errors ?? []) {
+    // Provider errors on an otherwise successful conversion are non-fatal, but
+    // they must be recorded. Only a short, structure-free rendering is kept so a
+    // provider echoing document content cannot leak it into our warning store.
+    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+    warnings.push({
+      code: "PROVIDER_REPORTED_ERROR",
+      message: text.slice(0, 300),
+      page: null,
+    });
+  }
+
+  if (doc === null) {
+    warnings.push({
+      code: "NO_STRUCTURED_DOCUMENT",
+      message: "The provider returned no structured document, so only derivative formats exist.",
+      page: null,
+    });
+  }
+
+  if (doc !== null && (doc.pictures?.length ?? 0) > 0 && sections.length === 0 && tables.length === 0) {
+    warnings.push({
+      code: "IMAGE_ONLY_RESULT",
+      message: "The parse produced images but no text or tables.",
+      page: null,
+    });
+  }
+
+  const unlabelled = (doc?.texts ?? []).filter((item) => {
+    const label = (item.label ?? "").toLowerCase();
+    return (
+      (item.text ?? item.orig ?? "").trim() !== "" &&
+      !DOCLING_HEADING_LABELS.has(label) &&
+      !DOCLING_BODY_LABELS.has(label)
+    );
+  });
+  if (unlabelled.length > 0) {
+    const labels = [...new Set(unlabelled.map((i) => (i.label ?? "unlabelled").toLowerCase()))];
+    warnings.push({
+      code: "UNSUPPORTED_ELEMENT_LABEL",
+      message: `${unlabelled.length} text element(s) carried label(s) Qubere does not normalise: ${labels.join(", ")}. They remain in the canonical Docling JSON.`,
+      page: null,
+    });
+  }
+
+  return warnings;
+}
+
+/**
+ * Text length per page, indexed by page number.
+ *
+ * Feeds the quality gate's blank-page and low-text-page signals. Pages Docling
+ * declared but attributed no text to appear as 0, which is the honest reading:
+ * the page exists and no text was extracted from it.
+ */
+function buildPageTextLengths(doc: DoclingDocument | null): number[] {
+  if (doc === null) return [];
+
+  const declaredPages = Object.values(doc.pages ?? {})
+    .map((p) => (typeof p.page_no === "number" ? p.page_no : null))
+    .filter((n): n is number => n !== null && n > 0);
+
+  const perPage = new Map<number, number>();
+  for (const page of declaredPages) perPage.set(page, 0);
+
+  for (const item of doc.texts ?? []) {
+    const length = (item.text ?? item.orig ?? "").trim().length;
+    if (length === 0) continue;
+    for (const prov of item.prov ?? []) {
+      if (typeof prov.page_no !== "number" || prov.page_no <= 0) continue;
+      perPage.set(prov.page_no, (perPage.get(prov.page_no) ?? 0) + length);
+    }
+  }
+
+  if (perPage.size === 0) return [];
+  const highest = Math.max(...perPage.keys());
+  return Array.from({ length: highest }, (_, i) => perPage.get(i + 1) ?? 0);
+}
+
+/**
+ * Maps the provider's own confidence block onto the Qubere parser contract.
+ *
+ * These numbers are genuinely emitted by the hosted service, so they are carried
+ * through rather than reported as absent. A null score means the service did not
+ * measure that dimension (no tables, or no OCR pass), and stays null: "not
+ * measured" is not "zero".
+ *
+ * `ocrUsed` is derived from whether an OCR score exists at all. A number means
+ * an OCR pass ran and was scored. A null does NOT prove OCR was skipped -- it
+ * could equally be unmeasured -- so that case reports unknown rather than false.
+ */
+export function mapConfidence(confidence: DoclingConfidence | null | undefined): {
+  parserConfidence: number | null;
+  ocrConfidence: number | null;
+  ocrUsed: boolean | null;
+} {
+  if (!confidence) {
+    return { parserConfidence: null, ocrConfidence: null, ocrUsed: null };
+  }
+
+  // mean_score spans every measured dimension, so it is the closest thing the
+  // service offers to a single "how well was this parsed" figure. Falling back
+  // to parse_score keeps a value when only that dimension was scored.
+  const parserConfidence =
+    typeof confidence.mean_score === "number"
+      ? confidence.mean_score
+      : typeof confidence.parse_score === "number"
+        ? confidence.parse_score
+        : null;
+
+  const ocrConfidence = typeof confidence.ocr_score === "number" ? confidence.ocr_score : null;
+
+  return {
+    parserConfidence,
+    ocrConfidence,
+    ocrUsed: ocrConfidence === null ? null : true,
+  };
+}
+
+/**
+ * Builds parser metadata.
+ *
+ * The hosted API does not report an OCR engine name or version, so those stay
+ * null. It does report confidence, which is passed through by `mapConfidence`.
+ */
+function buildMetadata(
+  envelope: DoclingResultEnvelope,
+  doc: DoclingDocument | null,
+  pageTextLengths: readonly number[],
+  confidence?: DoclingConfidence | null,
+  processingTimeSeconds?: number | null
+) {
+  const scores = mapConfidence(confidence);
+  const declaredPageCount = doc === null ? null : Object.keys(doc.pages ?? {}).length;
+  const pageCount =
+    declaredPageCount !== null && declaredPageCount > 0
+      ? declaredPageCount
+      : pageTextLengths.length > 0
+        ? pageTextLengths.length
+        : null;
+
+  const seconds =
+    typeof processingTimeSeconds === "number"
+      ? processingTimeSeconds
+      : typeof envelope.processing_time === "number"
+        ? envelope.processing_time
+        : null;
+
+  return {
+    provider: PROVIDER_ID,
+    parserName: typeof doc?.schema_name === "string" ? doc.schema_name : null,
+    parserVersion: typeof doc?.version === "string" ? doc.version : null,
+    ocrEngine: null,
+    ocrEngineVersion: null,
+    pageCount,
+    ocrUsed: scores.ocrUsed,
+    // Whether OCR covered every page is a separate claim the service does not
+    // make, so it stays unknown even when an OCR score exists.
+    fullPageOcrUsed: null,
+    processingDurationMs: seconds === null ? null : Math.round(seconds * 1000),
+    parserConfidence: scores.parserConfidence,
+    ocrConfidence: scores.ocrConfidence,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates and normalises a Docling result payload.
+ *
+ * Throws PARSER_RESULT_INVALID (non-retryable — the same payload will not become
+ * valid on a second attempt) when the envelope cannot be understood at all, and
+ * PARSER_RESULT_INCOMPLETE when it is structurally valid but carries neither a
+ * structured document nor any derivative content.
+ */
+export function adaptDoclingResult(
+  rawPayload: unknown,
+  profile: ProcessingProfile
+): { canonical: unknown; normalized: NormalizedParserResult } {
+  const envelopeParse = doclingResultSchema.safeParse(rawPayload);
+  if (!envelopeParse.success) {
+    throw new DocumentParserError(
+      "PARSER_RESULT_INVALID",
+      "The parser result did not match the expected provider contract."
+    );
+  }
+  const envelope = envelopeParse.data;
+  const doc = envelope.document?.json_content ?? null;
+  const markdown = envelope.document?.md_content ?? null;
+  const text = envelope.document?.text_content ?? null;
+
+  if (doc === null && (markdown === null || markdown.trim() === "") && (text === null || text.trim() === "")) {
+    throw new DocumentParserError(
+      "PARSER_RESULT_INCOMPLETE",
+      "The parser reported completion but returned no document content."
+    );
+  }
+
+  return normalizeDoclingDocument({ doc, markdown, profile, envelope });
+}
+
+/**
+ * Normalises an already-retrieved DoclingDocument.
+ *
+ * Split out from `adaptDoclingResult` because the hosted deployment delivers the
+ * document behind presigned artifact URLs rather than inline, so the provider
+ * fetches it first and hands the parsed content here. Both delivery shapes then
+ * share one normalisation, so they cannot drift.
+ */
+export function normalizeDoclingDocument(input: {
+  doc: DoclingDocument | null;
+  markdown: string | null;
+  profile: ProcessingProfile;
+  envelope?: DoclingResultEnvelope;
+  confidence?: DoclingConfidence | null;
+  processingTimeSeconds?: number | null;
+  /** Non-fatal errors the provider reported alongside a successful conversion. */
+  providerErrors?: readonly unknown[];
+}): { canonical: unknown; normalized: NormalizedParserResult } {
+  const { doc, markdown, profile } = input;
+  const envelope: DoclingResultEnvelope =
+    input.envelope ?? ({ errors: [...(input.providerErrors ?? [])] } as DoclingResultEnvelope);
+
+  const sections = doc === null ? [] : buildSections(doc);
+  const tables = doc === null ? [] : buildTables(doc);
+  const pageTextLengths = buildPageTextLengths(doc);
+
+  const normalized: NormalizedParserResult = {
+    contractVersion: QUBERE_PARSER_CONTRACT_VERSION,
+    profile,
+    metadata: buildMetadata(
+      envelope,
+      doc,
+      pageTextLengths,
+      input.confidence,
+      input.processingTimeSeconds
+    ),
+    markdown,
+    sections,
+    tables,
+    warnings: collectWarnings(envelope, doc, sections, tables),
+    pageTextLengths,
+  };
+
+  // Validate our own normalisation, not just the provider's payload: a bug in
+  // this adapter must not silently produce a malformed canonical context.
+  const validated = parserResultSchema.safeParse(normalized);
+  if (!validated.success) {
+    throw new DocumentParserError(
+      "PARSER_RESULT_INVALID",
+      `Normalised parser result failed Qubere schema validation: ${validated.error.issues
+        .map((i) => i.path.join("."))
+        .join(", ")}`
+    );
+  }
+
+  // `canonical` is the provider's own payload, kept byte-for-byte in meaning:
+  // the structured document when present, else the envelope it arrived in.
+  return { canonical: doc ?? envelope, normalized: validated.data };
+}
+
+/**
+ * Translates a provider task status into a Qubere state.
+ *
+ * An unrecognised status keeps the run polling rather than resolving it, because
+ * mapping an unknown string to FAILED would discard work that is still running,
+ * and mapping it to SUCCEEDED would fetch a result that does not exist. The
+ * polling attempt ceiling is what eventually ends an indefinitely unknown state.
+ */
+export function translateTaskStatus(
+  rawStatus: string
+): { state: "POLLING" | "SUCCEEDED" | "FAILED"; recognised: boolean } {
+  const status = rawStatus.trim().toLowerCase();
+  if ((["success", "succeeded", "completed"] as readonly string[]).includes(status)) {
+    return { state: "SUCCEEDED", recognised: true };
+  }
+  if ((["failure", "failed", "error", "revoked", "cancelled"] as readonly string[]).includes(status)) {
+    return { state: "FAILED", recognised: true };
+  }
+  if ((["pending", "queued", "started", "running"] as readonly string[]).includes(status)) {
+    return { state: "POLLING", recognised: true };
+  }
+  return { state: "POLLING", recognised: false };
+}

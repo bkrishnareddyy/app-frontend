@@ -5,11 +5,18 @@ import Link from "next/link";
 import { AlertCircle, AlertTriangle, Info, FileText, CheckCircle2, ChevronRight } from "lucide-react";
 import { ExceptionResolutionModal } from "./ExceptionResolutionModal";
 import { DocumentFieldReviewModal, DocumentFieldSummary } from "./DocumentFieldReviewModal";
+import {
+  isResolvableException,
+  type DbExceptionItem,
+  type ExceptionCard,
+  type ResolvableException,
+  type ShipmentLineItemRow,
+} from "./workspaceTypes";
 
 interface ExceptionsDrawerProps {
   shipmentId: string;
-  exceptionItems: any[];
-  lineItems: any[];
+  exceptionItems: DbExceptionItem[];
+  lineItems: ShipmentLineItemRow[];
   // Required document types not yet uploaded, computed by the page from the
   // live document list -- surfaced here as real action cards instead of
   // living only in a separate, disconnected "Document Set Summary" box.
@@ -30,7 +37,7 @@ export function ExceptionsDrawer({
   documentFieldSummaries = [],
 }: ExceptionsDrawerProps) {
   const [activeTab, setActiveTab] = useState<"ALL" | "MISSING" | "CONFLICTS" | "VALIDATION" | "WARNINGS">("ALL");
-  const [selectedException, setSelectedException] = useState<any | null>(null);
+  const [selectedException, setSelectedException] = useState<ResolvableException | null>(null);
   const [reviewingDoc, setReviewingDoc] = useState<DocumentFieldSummary | null>(null);
 
   // Filter out exceptions that have been resolved
@@ -39,7 +46,7 @@ export function ExceptionsDrawer({
   );
 
   // Map database exception items to UI objects
-  const exceptions = openExceptions.map((dbEx) => {
+  const exceptions: ExceptionCard[] = openExceptions.map((dbEx) => {
     const descLower = dbEx.description.toLowerCase();
     const isHts = descLower.includes("hts");
     const isCo = descLower.includes("certificate of origin");
@@ -141,7 +148,7 @@ export function ExceptionsDrawer({
   // Missing required documents the page detected directly from the live
   // document list -- skip any type already represented by a real DB
   // exception above so the same gap isn't shown twice.
-  const missingDocExceptions = missingDocumentTypes
+  const missingDocExceptions: ExceptionCard[] = missingDocumentTypes
     .filter((type) => !exceptions.some((ex) => ex.title.toLowerCase().includes(type.toLowerCase())))
     .map((type) => ({
       id: `missing-doc-${type}`,
@@ -256,7 +263,7 @@ export function ExceptionsDrawer({
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {filtered.map((ex: any) => (
+          {filtered.map((ex) => (
             <div key={ex.id} className="p-4 rounded-xl bg-surface-muted border border-border space-y-2 hover:border-brand transition-all duration-200">
               <div className="flex items-start space-x-2 text-xs font-bold text-ink">
                 <span className="shrink-0">{ex.icon}</span>
@@ -272,7 +279,15 @@ export function ExceptionsDrawer({
                 </button>
               ) : ex.actionType ? (
                 <button
-                  onClick={() => setSelectedException(ex)}
+                  // Only a card backed by a real ExceptionItem row can be
+                  // resolved -- the modal writes back to /api/exceptions/{dbId}
+                  // with an expected version. Synthetic cards take the
+                  // UPLOAD_DIRECT branch above, so this guard does not currently
+                  // exclude anything reachable; it stops a future synthetic card
+                  // from producing a request against `undefined`.
+                  onClick={() => {
+                    if (isResolvableException(ex)) setSelectedException(ex);
+                  }}
                   className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
                 >
                   {ex.actionText}

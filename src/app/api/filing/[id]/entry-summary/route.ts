@@ -15,7 +15,9 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     where: { id, accountId: ctx.accountId },
     include: {
       shipment: {
-        include: { lineItems: true },
+        // The entry summary emits these as a numbered line list on the 7501, so
+        // they have to come back in line order rather than heap order.
+        include: { lineItems: { orderBy: { lineNumber: "asc" } } },
       },
       importerOfRecord: true,
       bond: true,

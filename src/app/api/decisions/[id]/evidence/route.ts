@@ -52,14 +52,29 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
     // The tariff table is reference data shared by every tenant, so it is not
     // account-scoped. The decision that named these codes was.
-    const records =
+    //
+    // Scoped to the currently PUBLISHED release. This is the rate a broker is
+    // shown as the evidence behind a classification, and the same HTS number
+    // exists in every ingested release -- so without the filter the map below
+    // kept whichever row came last, which could be a DRAFT staged overnight
+    // (carrying no rates) or a SUPERSEDED one (carrying a retired rate). Citing
+    // either as evidence would be citing the wrong schedule.
+    const publishedRelease =
       wanted.length === 0
-        ? []
-        : await db.htsNode.findMany({
-            where: { htsNumberNormalized: { in: wanted } },
-            include: { dutyRates: true, release: true },
-            orderBy: { sourceRowNumber: "asc" },
+        ? null
+        : await db.htsRelease.findFirst({
+            where: { country: "US", publicationStatus: "PUBLISHED" },
+            orderBy: { effectiveFrom: "desc" },
+            select: { id: true },
           });
+
+    const records = publishedRelease
+      ? await db.htsNode.findMany({
+          where: { releaseId: publishedRelease.id, htsNumberNormalized: { in: wanted } },
+          include: { dutyRates: true, release: true },
+          orderBy: { sourceRowNumber: "asc" },
+        })
+      : [];
 
     const byCode = new Map(records.map((r) => [r.htsNumberNormalized, r]));
 

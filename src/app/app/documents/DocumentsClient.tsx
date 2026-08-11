@@ -4,23 +4,16 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   FileText,
-  Upload,
-  Sparkles,
   Search,
-  Filter,
   CheckCircle2,
-  AlertTriangle,
-  Clock,
-  ExternalLink,
-  Bot,
   RefreshCw,
   Plus,
   Eye,
-  X,
-  FileCheck2,
-  Maximize2,
   Users,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { PAGE_SIZE_DEFAULT, pageWindow } from "@/modules/tables/tableQuery";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { documentViewUrl } from "@/lib/documentUrl";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -43,6 +36,42 @@ interface ShipmentDocumentItem {
   clientId?: string | null;
   clientName: string;
   unattached?: boolean;
+}
+
+/**
+ * The subset of `/api/documents/unattached` and `/api/shipments` payloads this
+ * screen actually reads.
+ *
+ * Every field is optional because these describe a JSON response rather than a
+ * database row, and the rendering below already falls back for each one. Naming
+ * the shape here is what lets the fallbacks be checked instead of assumed.
+ */
+interface ApiDocument {
+  id: string;
+  fileName?: string | null;
+  name?: string | null;
+  docType?: string | null;
+  type?: string | null;
+  status?: string | null;
+  createdAt?: string | null;
+  fileUrl?: string | null;
+  url?: string | null;
+  /** Extraction confidence, absent until an extraction has actually run. */
+  confidence?: number | null;
+}
+
+interface ApiShipment {
+  id: string;
+  shipmentNumber?: string | null;
+  assignedBrokerId?: string | null;
+  assignedBroker?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    email: string;
+  } | null;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
+  documents?: ApiDocument[];
 }
 
 interface DocumentsClientProps {
@@ -84,25 +113,56 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   }, [teamMembers, context]);
 
   const [documents, setDocuments] = useState<ShipmentDocumentItem[]>([]);
-  const [shipments, setShipments] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useState("ALL");
-  const [selectedClientId, setSelectedClientId] = useState("ALL");
-  const [selectedShipmentId, setSelectedShipmentId] = useState("ALL");
-  const [selectedStatus, setSelectedStatus] = useState("ALL");
+  const [shipments, setShipments] = useState<ApiShipment[]>([]);
+
+  // Paginated over the filtered list, matching the shipments workbench: the six
+  // filters and the search all read every document, so limiting the rows on screen
+  // must not limit what they search.
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
+  const [page, setPage] = useState(1);
+
+  const [searchQuery, setSearchQueryValue] = useState("");
+  const [selectedType, setSelectedTypeValue] = useState("ALL");
+  const [selectedClientId, setSelectedClientIdValue] = useState("ALL");
+  const [selectedShipmentId, setSelectedShipmentIdValue] = useState("ALL");
+  const [selectedStatus, setSelectedStatusValue] = useState("ALL");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
-  const [targetShipmentId, setTargetShipmentId] = useState("");
+  const [targetShipmentId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useLanguage();
 
   // Selected team member IDs. Default is [] (All Documents)
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [selectedUserIds, setSelectedUserIdsValue] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
+  // Narrowing any filter returns to the first page. Wrapped at the setters so the
+  // six existing filters, and any added later, cannot leave the operator looking at
+  // a page the new result no longer reaches.
+  const setSearchQuery: typeof setSearchQueryValue = (value) => {
+    setPage(1);
+    setSearchQueryValue(value);
+  };
+  const setSelectedType: typeof setSelectedTypeValue = (value) => {
+    setPage(1);
+    setSelectedTypeValue(value);
+  };
+  const setSelectedClientId: typeof setSelectedClientIdValue = (value) => {
+    setPage(1);
+    setSelectedClientIdValue(value);
+  };
+  const setSelectedShipmentId: typeof setSelectedShipmentIdValue = (value) => {
+    setPage(1);
+    setSelectedShipmentIdValue(value);
+  };
+  const setSelectedStatus: typeof setSelectedStatusValue = (value) => {
+    setPage(1);
+    setSelectedStatusValue(value);
+  };
+  const setSelectedUserIds: typeof setSelectedUserIdsValue = (value) => {
+    setPage(1);
+    setSelectedUserIdsValue(value);
+  };
 
   const fetchDocuments = async () => {
     setIsLoading(true);
@@ -117,10 +177,11 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
       if (shipmentsRes.ok) {
         const data = await shipmentsRes.json();
         if (data.shipments && Array.isArray(data.shipments)) {
-          setShipments(data.shipments);
-          data.shipments.forEach((shp: any) => {
+          const apiShipments = data.shipments as ApiShipment[];
+          setShipments(apiShipments);
+          apiShipments.forEach((shp) => {
             if (shp.documents && Array.isArray(shp.documents)) {
-              shp.documents.forEach((d: any) => {
+              shp.documents.forEach((d) => {
                 docs.push({
                   id: d.id,
                   name: d.fileName || d.name || "Trade_Document.pdf",
@@ -151,7 +212,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
       if (unattachedRes.ok) {
         const data = await unattachedRes.json();
         if (data.documents && Array.isArray(data.documents)) {
-          data.documents.forEach((d: any) => {
+          (data.documents as ApiDocument[]).forEach((d) => {
             docs.push({
               id: d.id,
               name: d.fileName || "Trade_Document.pdf",
@@ -181,6 +242,14 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     }
   };
 
+  // Declared after fetchDocuments so the effect does not reference the const
+  // before its initialiser runs. Still a mount-only load, as before.
+  useEffect(() => {
+    // Sets the loading flag synchronously so the spinner shows on the same paint.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchDocuments();
+  }, []);
+
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
@@ -190,7 +259,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   // Derived from the shipments loaded via /api/shipments (already includes client)
   const availableClients = useMemo(() => {
     const map = new Map<string, string>();
-    shipments.forEach((shp: any) => {
+    shipments.forEach((shp) => {
       if (shp.client) map.set(shp.client.id, shp.client.name);
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
@@ -198,7 +267,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
   const availableShipments = useMemo(() => {
     return shipments
-      .map((shp: any) => ({ id: shp.id, ref: shp.shipmentNumber || shp.id }))
+      .map((shp) => ({ id: shp.id, ref: shp.shipmentNumber || shp.id }))
       .sort((a, b) => a.ref.localeCompare(b.ref));
   }, [shipments]);
 
@@ -241,15 +310,13 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     return matchesSearch && matchesType && matchesClient && matchesShipment && matchesStatus;
   });
 
-  const isImageFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
-    return ext.includes(".png") || ext.includes(".jpg") || ext.includes(".jpeg") || ext.includes(".webp");
-  };
-
-  const isPdfFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
-    return ext.includes(".pdf");
-  };
+  const totalDocs = filteredDocs.length;
+  const { pages, page: currentPage, firstRow, lastRow, start, end } = pageWindow(
+    totalDocs,
+    pageSize,
+    page
+  );
+  const pagedDocs = filteredDocs.slice(start, end);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -504,7 +571,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                   </td>
                 </tr>
               ) : (
-                filteredDocs.map((doc) => (
+                pagedDocs.map((doc) => (
                   <tr key={doc.id} className="hover:bg-surface-muted/50 transition-colors">
                     {/* Document Name Click triggers Modal */}
                     <td className="py-3.5 px-5 font-semibold text-ink">
@@ -569,6 +636,63 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             </tbody>
           </table>
         </div>
+
+        {/* Range read from the filtered total, so a partial last page reports the
+            rows it holds rather than repeating the page size. */}
+        <nav
+          className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-t border-border"
+          aria-label="Trade documents pagination"
+        >
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-ink-muted">
+              {totalDocs === 0
+                ? "No documents"
+                : `${firstRow}–${lastRow} of ${totalDocs} document${totalDocs === 1 ? "" : "s"}`}
+            </p>
+            <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+              <span>Rows</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                aria-label="Rows per page"
+                className="rounded-lg border border-border bg-white px-2 py-1 text-xs font-semibold text-ink focus:outline-none focus:border-brand"
+              >
+                {[25, 50, 100].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-ink-muted">
+              Page {currentPage} of {pages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed cursor-pointer"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Previous</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(currentPage + 1)}
+              disabled={currentPage >= pages}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed cursor-pointer"
+            >
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        </nav>
       </div>
 
       {/* Reusable Document Viewer Modal */}

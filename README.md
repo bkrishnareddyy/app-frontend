@@ -174,6 +174,16 @@ curl -X GET "https://<your-deployment>/api/cron/hts-refresh" \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
+### Document Processing Worker
+`GET|POST /api/cron/document-processing` advances the Document Intelligence pipeline by one bounded pass: it submits queued documents to the configured parser provider, polls in-flight conversions, retrieves and persists completed results, runs the quality gate, and reclaims work abandoned by a crashed worker.
+
+- **Schedule**: every minute, defined in `vercel.json`. On other hosts, run the long-lived worker instead: `npm run worker:documents`. Both drive the same durable Postgres state and are safe to run simultaneously.
+- **Auth**: requires `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set.
+- **No work without a provider**: returns HTTP 503 with an explicit blocker when `DOCUMENT_PARSER_PROVIDER` is unset or IBM Docling is not configured, rather than a 200 that looks like an idle queue.
+- **Does not hold the request open** waiting for the parser, and creates no documents, exceptions, or demo data.
+
+See [docs/document-intelligence.md](docs/document-intelligence.md) for the architecture, processing profiles, provenance chain, configuration, and known limitations.
+
 ### Sanctions Watchlist Sync
 `scripts/nightly-watchlist-sync.ts` exists in the repo but is **not currently wired to any scheduler** — running it today requires invoking it manually (`npx tsx scripts/nightly-watchlist-sync.ts`). It also currently seeds hardcoded example OFAC/BIS entries rather than fetching from a real sanctions list source. Treat it as a stub, not a working scheduled job.
 

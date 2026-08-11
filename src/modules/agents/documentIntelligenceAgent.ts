@@ -184,7 +184,12 @@ export interface LineItemExtraction {
 
 export interface DocumentIntelligenceInput {
   accountId: string;
-  userId: string;
+  /**
+   * The acting user, or null when the run has no human actor (background worker,
+   * cron). This reaches AuditLog.userId, which is a foreign key to User — so an
+   * absent actor must stay null rather than becoming a sentinel string.
+   */
+  userId: string | null;
   shipmentId: string;
   documentId?: string | null;
   packetId: string;
@@ -194,6 +199,32 @@ export interface DocumentIntelligenceInput {
   mimeType?: string;
   docTypeCode?: string;
   state?: AgentState;
+  /**
+   * Parsed document context (QubereDocumentContextV1), rendered for a prompt.
+   *
+   * When present this is what the model reads, in place of the raw document
+   * bytes: it is budget-bounded, carries page/bbox provenance and stable
+   * element ids, and is a Qubere-owned contract rather than a parser's internal
+   * schema. Raw Docling JSON is never passed here.
+   */
+  documentContext?: {
+    text: string;
+    processingRunId: string;
+    parserProvider: string;
+    parserProfile: string;
+    contextSchemaVersion: string;
+    /** True when the budget omitted material, so "absent" is qualified. */
+    truncated: boolean;
+  };
+  /**
+   * Persist this extraction even if the document already has one derived from an
+   * accepted parse.
+   *
+   * Set only when a person explicitly asked for the re-extraction. A background
+   * run leaves it unset so an automatic vision pass can never silently replace a
+   * reading that carries page and bounding-box provenance.
+   */
+  forceOverwrite?: boolean;
 }
 
 export interface TradeMetadata {
@@ -498,13 +529,16 @@ export class DocumentIntelligenceAgent {
 
     const aiClient = this.getAiClient();
 
-    if (input.fileBuffer && aiClient) {
+    // A parsed document context is preferred over the raw bytes: it is bounded,
+    // carries provenance, and does not couple this agent to any parser's schema.
+    // The bytes remain the fallback for documents that have not been parsed yet.
+    const parsedContext = input.documentContext;
+
+    if ((parsedContext || input.fileBuffer) && aiClient) {
       try {
         const mimeType = input.mimeType || "application/pdf";
-        const base64Data = input.fileBuffer.toString("base64");
 
-        const prompt = `${DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT}
-
+        const instructions = `
 INSTRUCTIONS:
 1. Discover ALL raw label-value pairs on the document (e.g. {"PO No": "290051", "Shipper": "ACME Corp", "Consignee": "Logistics LLC", "Origin": "China"}) and populate 'discoveredKeyValues'.
 2. Populate 'tradeMetadata' with explicit fields visible on the document. Map shipper to exporterName, consignee/importerOfRecord to importerName, countryOfOrigin to originCountry, totalValue to invoiceSubtotal, etc.
@@ -514,15 +548,35 @@ INSTRUCTIONS:
 6. Do NOT mutate or invent missing values. Set unverified values to null.
 7. Set 'hasCommercialInvoice' to true ONLY if financial line items and subtotal pricing are present on the document.`;
 
+        const prompt = parsedContext
+          ? `${DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT}
+${instructions}
+8. You are reading a PARSED REPRESENTATION of the document produced by ${parsedContext.parserProvider} (profile ${parsedContext.parserProfile}), not the original image. Every SECTION and TABLE block below carries a stable id and page reference -- cite those ids in 'entities' when you report where a value came from.${
+              parsedContext.truncated
+                ? "\n9. The supplied context is INCOMPLETE: material was omitted to fit a budget. If a field is not in the context, treat it as not supplied rather than as absent from the document, and record that in 'warnings'."
+                : ""
+            }
+
+PARSED DOCUMENT CONTEXT (${parsedContext.contextSchemaVersion}):
+${parsedContext.text}`
+          : `${DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT}
+${instructions}`;
+
+        if (parsedContext) {
+          aiProvider = `Gemini Flash over ${parsedContext.parserProvider} parsed context (${parsedContext.contextSchemaVersion})`;
+        }
+
         const response = await aiClient.models.generateContent({
           model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
           contents: [
             {
               role: "user",
-              parts: [
-                { inlineData: { mimeType, data: base64Data } },
-                { text: prompt },
-              ],
+              parts: parsedContext
+                ? [{ text: prompt }]
+                : [
+                    { inlineData: { mimeType, data: (input.fileBuffer as Buffer).toString("base64") } },
+                    { text: prompt },
+                  ],
             },
           ],
           config: {
@@ -779,8 +833,32 @@ INSTRUCTIONS:
         if (docToUpdate) {
           const nextVersion = (docToUpdate.parseVersions?.length || 0) + 1;
 
-          await db.shipmentDocument.update({
-            where: { id: docToUpdate.id },
+          // One upload can produce two extractions: this agent runs once over the
+          // raw image (via the upload pipeline) and once over a parsed document
+          // context (via the document worker, after a parse is accepted). Both
+          // write the same column, so without a rule the value a broker sees is
+          // whichever happened to finish last.
+          //
+          // The rule: an extraction derived from an accepted parse carries page
+          // and bounding-box provenance; one read straight off the image cannot.
+          // The weaker reading must never replace the stronger one, in either
+          // arrival order. `activeParseVersionId` is exactly "a parse has been
+          // accepted for this document", so it is the condition.
+          //
+          // Expressed as a condition on the UPDATE rather than a read-then-write:
+          // two concurrent executions could both read "no parse yet" and then
+          // both write, which is the race this is here to remove.
+          const fromParsedContext = Boolean(input.documentContext);
+          const persistedWrite = await db.shipmentDocument.updateMany({
+            where: {
+              id: docToUpdate.id,
+              // A context-backed run always persists. A vision run persists only
+              // while no parse has been accepted -- unless a user explicitly
+              // asked for this re-extraction, which is a deliberate override.
+              ...(fromParsedContext || input.forceOverwrite
+                ? {}
+                : { activeParseVersionId: null }),
+            },
             data: {
               extractedJson: JSON.stringify(extractedBlob, null, 2),
               rawContent: Object.entries(rawDiscoveredKeyValues)
@@ -789,11 +867,34 @@ INSTRUCTIONS:
             },
           });
 
+          const persisted = persistedWrite.count === 1;
+          if (!persisted) {
+            // Not an error: the document already carries a better-evidenced
+            // extraction. Logged so a "why didn't my values change" question has
+            // an answer, with no document content in the log line.
+            console.log(
+              "[DocumentIntelligenceAgent] vision extraction discarded; this document already has a parse-derived extraction",
+              { documentId: docToUpdate.id, shipmentId: input.shipmentId }
+            );
+          }
+
           // Save immutable DocumentParseVersion
           await db.documentParseVersion.create({
             data: {
               documentId: docToUpdate.id,
+              accountId: input.accountId,
               version: nextVersion,
+              // Attributed by what this run actually read. This agent runs twice
+              // per upload -- once over the document image, once over a parser's
+              // rendered context -- and labelling both GEMINI_VISION left two rows
+              // that no reader could tell apart, including for the stored
+              // confidence, which describes a different act of reading in each
+              // case: a vision read of the page versus a read of parsed text.
+              parserProvider: fromParsedContext ? "GEMINI_PARSED_CONTEXT" : "GEMINI_VISION",
+              // For a context-backed run, which parser produced that context. This
+              // is the lineage that makes the row's provenance traceable at all.
+              parserName: input.documentContext?.parserProvider ?? null,
+              status: "SUCCEEDED",
               parserVersion: "2.0.0",
               modelVersion: "gemini-3.6-flash",
               rawJson: JSON.stringify(extractedBlob, null, 2),
@@ -801,51 +902,59 @@ INSTRUCTIONS:
             },
           });
 
-          // Resolve & associate extracted party names (Importer / Exporter)
-          if (importerName) {
-            const resolvedImporter = await EntityResolutionService.findOrCreateEntity(
-              input.accountId,
-              importerName
-            );
-            if (resolvedImporter) {
-              await ShipmentPartyService.assignParty({
-                shipmentId: input.shipmentId,
-                legalEntityId: resolvedImporter.id,
-                role: "IMPORTER_OF_RECORD",
-                source: "DOCUMENT",
-                confidence: typeof confidence === "number" ? confidence / 100 : 0.9,
-                isVerified: false,
-              });
+          // Everything below applies THIS run's readings to the shipment --
+          // the resolved parties, and the open/resolved state of each field
+          // exception. When the extraction itself was discarded above, applying
+          // them anyway would let the losing reading win by the back door: the
+          // document would show one set of values while the exceptions and
+          // parties were derived from another.
+          if (persisted) {
+            // Resolve & associate extracted party names (Importer / Exporter)
+            if (importerName) {
+              const resolvedImporter = await EntityResolutionService.findOrCreateEntity(
+                input.accountId,
+                importerName
+              );
+              if (resolvedImporter) {
+                await ShipmentPartyService.assignParty({
+                  shipmentId: input.shipmentId,
+                  legalEntityId: resolvedImporter.id,
+                  role: "IMPORTER_OF_RECORD",
+                  source: "DOCUMENT",
+                  confidence: typeof confidence === "number" ? confidence / 100 : 0.9,
+                  isVerified: false,
+                });
+              }
             }
-          }
 
-          if (exporterName) {
-            const resolvedExporter = await EntityResolutionService.findOrCreateEntity(
-              input.accountId,
-              exporterName
-            );
-            if (resolvedExporter) {
-              await ShipmentPartyService.assignParty({
-                shipmentId: input.shipmentId,
-                legalEntityId: resolvedExporter.id,
-                role: "EXPORTER",
-                source: "DOCUMENT",
-                confidence: typeof confidence === "number" ? confidence / 100 : 0.9,
-                isVerified: false,
-              });
+            if (exporterName) {
+              const resolvedExporter = await EntityResolutionService.findOrCreateEntity(
+                input.accountId,
+                exporterName
+              );
+              if (resolvedExporter) {
+                await ShipmentPartyService.assignParty({
+                  shipmentId: input.shipmentId,
+                  legalEntityId: resolvedExporter.id,
+                  role: "EXPORTER",
+                  source: "DOCUMENT",
+                  confidence: typeof confidence === "number" ? confidence / 100 : 0.9,
+                  isVerified: false,
+                });
+              }
             }
-          }
 
-          // Keep this document's field exceptions in sync with what was
-          // actually extracted -- opens one per still-missing expected
-          // field, auto-resolves any that are now present.
-          await ExceptionService.syncDocumentFieldExceptions({
-            accountId: input.accountId,
-            shipmentId: input.shipmentId,
-            documentId: docToUpdate.id,
-            fileName: input.fileName || docToUpdate.fileName,
-            fields: { exporterName, importerName, originCountry },
-          });
+            // Keep this document's field exceptions in sync with what was
+            // actually extracted -- opens one per still-missing expected
+            // field, auto-resolves any that are now present.
+            await ExceptionService.syncDocumentFieldExceptions({
+              accountId: input.accountId,
+              shipmentId: input.shipmentId,
+              documentId: docToUpdate.id,
+              fileName: input.fileName || docToUpdate.fileName,
+              fields: { exporterName, importerName, originCountry },
+            });
+          }
         }
       }
     } catch (err) {

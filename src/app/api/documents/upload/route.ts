@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse } from "@/lib/api/error";
 import { db } from "@/lib/db";
-import { storeDocumentFile } from "@/lib/storage";
-import { PgQueue, toJobState } from "@/lib/queue/pgQueue";
+import { storeDocumentFile, StorageValidationError } from "@/lib/storage";
+import { createAuditLog } from "@/lib/audit";
 import {
   resolveTenantShipmentId,
   shipmentResolutionStatus,
@@ -10,104 +12,183 @@ import {
 } from "@/modules/shipments/resolveShipment";
 import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
 import { PipelineOrchestrator } from "@/modules/agents/pipelineOrchestrator";
+import { PgQueue, toJobState } from "@/lib/queue/pgQueue";
+import { enqueueDocumentParse } from "@/modules/documents/processing/documentProcessingWorker";
+import { assertParseableFormat } from "@/modules/documents/processing/documentSource";
+import { isDocumentParserError } from "@/modules/documents/parser/contracts";
+import { screenUploadForMalware } from "@/modules/documents/processing/malwarePolicy";
 
-export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+/**
+ * Accepts a trade document and queues it for processing.
+ *
+ * This request does no parsing. It validates the file, stores the immutable
+ * original, records its hash/size/type, creates exactly one durable processing
+ * run, writes an audit event, and returns 202. Everything expensive — the parser
+ * provider call, polling, artifact persistence, the quality gate, classification
+ * and extraction — happens in the document worker against durable Postgres state,
+ * so a slow or unavailable parser cannot make an upload slow or lossy.
+ *
+ * Previously this route ran Gemini vision on the raw buffer and kicked off a
+ * ten-agent pipeline inline, inside the user's request.
+ */
+export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const accountId = ctx.accountId;
   const userId = ctx.userId;
+  const correlationId = randomUUID();
 
   const formData = await req.formData();
-  const file = formData.get("file") as File | null;
-  const rawDocType = formData.get("docType") as string | null;
+  const file = formData.get("file");
+  const rawDocType = formData.get("docType");
 
-  if (!file) {
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
+  if (!(file instanceof File)) {
+    return buildErrorResponse(400, "NO_FILE", "No file was provided.", undefined, requestId);
+  }
+  if (file.size === 0) {
+    return buildErrorResponse(400, "EMPTY_FILE", "The uploaded file is empty.", undefined, requestId);
   }
 
-  // Convert file to Node Buffer for Gemini Vision / Multi-modal agent processing
-  const fileArrayBuffer = await file.arrayBuffer();
-  const fileBuffer = Buffer.from(fileArrayBuffer);
+  const fileBuffer = Buffer.from(await file.arrayBuffer());
 
-  // Step 1: Upload file via Dual Storage Engine (Vercel Blob / Local Storage)
-  const storageResult = await storeDocumentFile(file, file.name);
+  // Signature-level validation, on top of the extension/MIME allowlist that
+  // `storeDocumentFile` enforces. An encrypted or truncated PDF is rejected here
+  // rather than becoming a processing run that can never succeed.
+  try {
+    assertParseableFormat(fileBuffer);
+  } catch (error) {
+    if (isDocumentParserError(error)) {
+      return buildErrorResponse(400, error.code, error.message, undefined, requestId);
+    }
+    throw error;
+  }
 
-  const shipmentId = formData.get("shipmentId") as string | null;
+  // Malware policy. There is no scanner wired up in this build; the policy hook
+  // reports that honestly and quarantines rather than pretending a scan passed.
+  const scan = await screenUploadForMalware({
+    fileName: file.name,
+    byteSize: file.size,
+    bytes: fileBuffer,
+  });
+  if (scan.verdict === "QUARANTINE") {
+    await createAuditLog({
+      accountId,
+      userId,
+      action: "document.upload.quarantined",
+      entity: "ShipmentDocument",
+      entityId: "unpersisted",
+      metadata: { fileName: file.name, byteSize: file.size, reason: scan.reason },
+      correlationId,
+      requestId,
+      success: false,
+    });
+    return buildErrorResponse(
+      422,
+      "MALWARE_QUARANTINED",
+      scan.reason,
+      undefined,
+      requestId
+    );
+  }
+
+  let storageResult;
+  try {
+    storageResult = await storeDocumentFile(file, file.name);
+  } catch (error) {
+    if (error instanceof StorageValidationError) {
+      return buildErrorResponse(400, error.code, error.message, undefined, requestId);
+    }
+    throw error;
+  }
+
+  const shipmentIdParam = typeof formData.get("shipmentId") === "string"
+    ? (formData.get("shipmentId") as string)
+    : null;
 
   let targetShipmentId: string;
   try {
-    targetShipmentId = await resolveTenantShipmentId(accountId, shipmentId);
+    targetShipmentId = await resolveTenantShipmentId(accountId, shipmentIdParam);
   } catch (err) {
     if (err instanceof ShipmentResolutionError) {
       if (err.code === "TARGET_NOT_DETERMINED") {
         const intake = await recordUnassignedIntake(accountId, {
           source: "document_upload",
           fileName: file.name,
-          docType: rawDocType,
+          docType: typeof rawDocType === "string" ? rawDocType : null,
         });
         return NextResponse.json(
           {
             error: err.code,
             message: `${err.message} The file was stored and raised as an exception for someone to assign.`,
             exceptionId: intake.id,
-            fileUrl: storageResult.url,
+            requestId,
           },
           { status: 409 }
         );
       }
       return NextResponse.json(
-        { error: err.code, message: err.message },
+        { error: err.code, message: err.message, requestId },
         { status: shipmentResolutionStatus(err.code) }
       );
     }
     throw err;
   }
 
-  // Resolve user or AI document type
   const { DocumentTypeCatalog } = await import("@/modules/intake/documentTypeCatalog");
-  let resolvedDocType: string;
-  if (rawDocType && rawDocType !== "AUTO_DETECT") {
-    resolvedDocType = rawDocType;
-  } else {
-    resolvedDocType = DocumentTypeCatalog.matchDocumentType(file.name).name;
-  }
+  const declaredDocType = typeof rawDocType === "string" ? rawDocType : null;
+  const resolvedDocType =
+    declaredDocType !== null && declaredDocType !== "AUTO_DETECT"
+      ? declaredDocType
+      : // Filename matching is a placeholder until the classifier runs against the
+        // parsed document; the classifier's result is what the document ends up with.
+        DocumentTypeCatalog.matchDocumentType(file.name).name;
 
-  // Persist or find document record in database vault
   const existingDoc = await db.shipmentDocument.findFirst({
-    where: {
-      accountId,
-      shipmentId: targetShipmentId,
-      fileName: file.name,
-    },
+    where: { accountId, shipmentId: targetShipmentId, fileName: file.name },
   });
 
-  let docRecord;
-  if (existingDoc) {
-    docRecord = await db.shipmentDocument.update({
-      where: { id: existingDoc.id },
-      data: {
-        docType: resolvedDocType,
-        fileUrl: storageResult.url,
-        checksum: storageResult.checksum,
-      },
-    });
-  } else {
-    docRecord = await db.shipmentDocument.create({
-      data: {
-        accountId,
-        shipmentId: targetShipmentId,
-        fileName: file.name,
-        docType: resolvedDocType,
-        fileUrl: storageResult.url,
-        checksum: storageResult.checksum,
-      },
-    });
-  }
+  // Superset of what upstream wrote: the original's size and media type are
+  // recorded alongside its SHA-256 so the immutable original is fully described.
+  const documentFields = {
+    docType: resolvedDocType,
+    fileUrl: storageResult.url,
+    checksum: storageResult.checksum,
+    byteSize: file.size,
+    mimeType: file.type === "" ? null : file.type,
+  };
 
-  // Step 4: Dispatch Event to PG Queue and trigger background pipeline worker execution.
-  // Document Intake and Document Intelligence used to also run synchronously here
-  // "for real-time inspection" before the background pipeline ran the same two
-  // steps again a moment later -- nothing in the client ever read the synchronous
-  // result (it was only ever returned in the response body, unused), so it existed
-  // purely to write a duplicate AgentDecision row per upload for both agents.
+  const docRecord = existingDoc
+    ? await db.shipmentDocument.update({ where: { id: existingDoc.id }, data: documentFields })
+    : await db.shipmentDocument.create({
+        data: { accountId, shipmentId: targetShipmentId, fileName: file.name, ...documentFields },
+      });
+
+  await createAuditLog({
+    accountId,
+    userId,
+    action: existingDoc ? "document.upload.replaced" : "document.upload.completed",
+    entity: "ShipmentDocument",
+    entityId: docRecord.id,
+    metadata: {
+      fileName: file.name,
+      docType: resolvedDocType,
+      byteSize: file.size,
+      // The content hash, not the content, and not the storage URL.
+      sha256: storageResult.checksum,
+      mimeType: file.type === "" ? null : file.type,
+      storageProvider: storageResult.provider,
+      shipmentId: targetShipmentId,
+      malwareScan: scan.verdict,
+    },
+    correlationId,
+    requestId,
+  });
+
+  // Two independent pieces of work are dispatched here, and both matter:
+  //
+  // 1. The agent pipeline, which writes the AgentDecision rows the Decisions
+  //    screen and the document Field Review tab render. Kept exactly as upstream
+  //    wrote it, including the fire-and-forget dispatch.
+  // 2. The durable Docling processing run, which parses the document into
+  //    evidence-backed artifacts.
   const job = await PgQueue.enqueueJob({
     accountId,
     userId,
@@ -141,13 +222,46 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     }
   })();
 
-  return NextResponse.json({
-    success: true,
-    jobId: job.id,
+  // Exactly one durable processing run per (tenant, content, provider, profile,
+  // config). Re-uploading identical bytes returns the existing run instead of
+  // paying the provider twice.
+  const queued = await enqueueDocumentParse({
+    accountId,
     documentId: docRecord.id,
-    shipmentId: targetShipmentId,
-    orchestration: "Dispatched to Qubere Autonomous Multi-Agent Pipeline (10 Agents)",
-    storage: storageResult,
-    pipelineResult: { status: "processing", shipmentId: targetShipmentId },
+    contentSha256: storageResult.checksum,
+    profile: "STANDARD",
+    reason: "INITIAL",
+    correlationId,
   });
-}, { permission: "documents.create" });
+
+  return NextResponse.json(
+    {
+      status: "ACCEPTED",
+      requestId,
+      correlationId,
+      documentId: docRecord.id,
+      shipmentId: targetShipmentId,
+      docType: resolvedDocType,
+      original: {
+        fileName: file.name,
+        byteSize: file.size,
+        sha256: storageResult.checksum,
+        mimeType: file.type === "" ? null : file.type,
+      },
+      // Retained from the previous response shape so anything reading the agent
+      // pipeline's queue id keeps working.
+      jobId: job.id,
+      processing: {
+        runId: queued.runId,
+        // false means an identical parse already exists -- not a failure.
+        created: queued.created,
+        // Non-null when no parser provider is configured, so the caller is never
+        // told processing was queued when nothing will process it.
+        blocker: queued.blocker,
+        statusUrl: `/api/documents/${docRecord.id}/processing`,
+      },
+      malwareScan: { verdict: scan.verdict, detail: scan.reason },
+    },
+    { status: 202 }
+  );
+}, { permission: "documents.create", write: true });
