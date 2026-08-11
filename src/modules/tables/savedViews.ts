@@ -19,6 +19,11 @@ export function savedViewStorageKey(tableId: string): string {
   return `qubere.savedViews.${tableId}`;
 }
 
+/** `.slice(0, n)` cuts by UTF-16 code unit, which can split a surrogate pair (emoji, some CJK) in two. `Array.from` iterates by code point, so the cut always lands on a whole character. */
+function truncateToCodePoints(value: string, max: number): string {
+  return Array.from(value).slice(0, max).join("");
+}
+
 function isSavedView(value: unknown): value is SavedView {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -41,7 +46,7 @@ export function parseSavedViews(raw: string | null): SavedView[] {
   return parsed
     .filter(isSavedView)
     .map((view) => ({
-      name: view.name.trim().slice(0, SAVED_VIEW_NAME_MAX),
+      name: truncateToCodePoints(view.name.trim(), SAVED_VIEW_NAME_MAX),
       // Re-serialising drops anything that is not a well-formed parameter pair.
       query: new URLSearchParams(view.query).toString(),
     }))
@@ -55,7 +60,7 @@ export function upsertSavedView(
   name: string,
   query: string
 ): SavedView[] {
-  const trimmedName = name.trim().slice(0, SAVED_VIEW_NAME_MAX);
+  const trimmedName = truncateToCodePoints(name.trim(), SAVED_VIEW_NAME_MAX);
   if (!trimmedName) return [...views];
 
   const next: SavedView = { name: trimmedName, query: new URLSearchParams(query).toString() };

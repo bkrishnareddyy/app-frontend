@@ -63,6 +63,7 @@ model Account {
   auditTimelines          AuditTimeline[]
   screeningLogs           ScreeningLog[]
   agentExecutionLogs      AgentExecutionLog[]
+  agentExecutionRecords   AgentExecutionRecord[]
   shipmentStateRecords    ShipmentStateRecord[]
   pipelineJobs            PipelineJob[]
   classificationCases     ClassificationCase[]
@@ -405,6 +406,10 @@ model AgentDecision {
   dataSources         String[] // e.g. Documents, Product Master, Historical Shipments, Tariff Rulings
   regulations         String[] // e.g. US HTS 2025, General Rules of Interpretation (GRI 1 & 6)
   modelVersion        String?
+  // Which ShipmentLineItem this decision targets, when it targets one -- e.g.
+  // HTS Classification's proposedHtsCode. Approving/rejecting the decision
+  // resolves this line item, not a fragile match on currentHtsCode's value.
+  lineNumber          Int?
   currentHtsCode      String? // e.g. 8481.80.5090
   proposedHtsCode     String? // e.g. 8537.10.2030
   proposedDescription String? // e.g. Electronic Boards & Controllers
@@ -1009,25 +1014,43 @@ model ShipmentEventLog {
 }
 
 model AgentExecutionRecord {
-  id           String    @id @default(cuid())
-  shipmentId   String
-  shipment     Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  agentName    String
-  triggerEvent String?
-  invokedBy    String?   @default("SYSTEM")
-  nextStep     String?
-  status       String    @default("COMPLETED") // RUNNING, COMPLETED, FAILED
-  durationMs   Int?
-  modelVersion String?   @default("gemini-3.6-flash")
-  error        String?
-  startedAt    DateTime  @default(now())
-  completedAt  DateTime?
+  id             String    @id @default(cuid())
+  accountId      String?
+  account        Account?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId     String
+  shipment       Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  agentName      String
+  triggerEvent   String?
+  invokedBy      String?   @default("SYSTEM")
+  // Position of this agent within the run that fired it -- the merged
+  // PipelineOrchestrator selects agents dynamically per trigger, so this is
+  // an ordinal for that run rather than a fixed 1-10 pipeline slot.
+  stepNumber     Int?
+  nextStep       String?
+  status         String    @default("COMPLETED") // RUNNING, COMPLETED, FAILED
+  // Null when the agent reported no confidence, or reported a multi-dimensional
+  // breakdown instead of a single number -- never substitute a synthetic figure.
+  confidence     Json?
+  // The AgentDecision this step produced, when it produced one.
+  decisionId     String?
+  aiProviderUsed String?
+  durationMs     Int?
+  modelVersion   String?   @default("gemini-3.6-flash")
+  error          String?
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  // Exactly what buildAgentContext() handed this agent for this step, and what
+  // it returned -- so "what did agent N actually see" is answered by reading
+  // this row instead of re-deriving it from code.
+  inputSnapshot  Json?
+  outputSnapshot Json?
   // Groups every agent step fired by one orchestration call into a single
   // invocation for the Agent Executions waterfall view -- without this,
   // rows from the same run are indistinguishable from unrelated ones.
-  runId        String?
+  runId          String?
 
   @@index([shipmentId])
+  @@index([accountId])
   @@index([agentName])
   @@index([runId])
 }

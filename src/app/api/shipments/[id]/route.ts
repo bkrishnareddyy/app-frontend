@@ -3,8 +3,10 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
-import { AgentDependencyOrchestrator } from "@/modules/agents/agentDependencyOrchestrator";
+import { PipelineOrchestrator } from "@/modules/agents/pipelineOrchestrator";
 import { FactAuditService } from "@/modules/audit/factAuditService";
+import { FactService } from "@/modules/shipment/factService";
+import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
 import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment/shipmentPartyService";
 import { z } from "zod";
 
@@ -66,7 +68,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
     await db.shipment.update({
       where: { id },
-      data: { countryOfOrigin },
+      data: { countryOfOrigin, version: { increment: 1 } },
     });
 
     // Also update all line items for consistency if present
@@ -75,8 +77,15 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       data: { countryOfOrigin },
     });
 
+    await FactService.record({
+      shipmentId: id,
+      field: "countryOfOrigin",
+      value: countryOfOrigin,
+      sourceType: "USER_ENTERED",
+    });
+
     // Trigger selective dependency-aware agent execution
-    await AgentDependencyOrchestrator.processEvent({
+    await PipelineOrchestrator.processEvent({
       shipmentId: id,
       accountId: ctx.accountId,
       userId: ctx.userId,
@@ -87,12 +96,29 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   // Handle Incoterm update
   if (incoterm && incoterm !== shipment.incoterm) {
-    await db.shipment.update({
-      where: { id },
-      data: { incoterm },
+    await FactAuditService.logChangeEvent({
+      shipmentId: id,
+      userId: ctx.userId,
+      changeType: "USER_FIELD_UPDATE",
+      field: "incoterm",
+      previousValue: shipment.incoterm,
+      newValue: incoterm,
+      reason: "User manual update",
     });
 
-    await AgentDependencyOrchestrator.processEvent({
+    await db.shipment.update({
+      where: { id },
+      data: { incoterm, version: { increment: 1 } },
+    });
+
+    await FactService.record({
+      shipmentId: id,
+      field: "incoterm",
+      value: incoterm,
+      sourceType: "USER_ENTERED",
+    });
+
+    await PipelineOrchestrator.processEvent({
       shipmentId: id,
       accountId: ctx.accountId,
       userId: ctx.userId,
@@ -103,28 +129,76 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   // Handle Line Items inline updates
   if (Array.isArray(lineItems) && lineItems.length > 0) {
+    let anyLineItemChanged = false;
     for (const item of lineItems) {
       if (item.id) {
         // Scoped to this shipment so an id from another tenant cannot be edited.
         const existingItem = await db.shipmentLineItem.findFirst({
           where: { id: item.id, shipmentId: id, accountId: ctx.accountId },
-          select: { id: true },
         });
         if (existingItem) {
-          await db.shipmentLineItem.update({
-            where: { id: item.id },
-            data: {
-              htsCode: item.htsCode !== undefined ? item.htsCode : undefined,
-              countryOfOrigin: item.countryOfOrigin !== undefined ? item.countryOfOrigin : undefined,
-              htsConfidence: 100,
-            },
-          });
+          const htsChanged = item.htsCode !== undefined && item.htsCode !== existingItem.htsCode;
+          const originChanged = item.countryOfOrigin !== undefined && item.countryOfOrigin !== existingItem.countryOfOrigin;
+
+          if (htsChanged) {
+            await FactAuditService.logChangeEvent({
+              shipmentId: id,
+              userId: ctx.userId,
+              changeType: "USER_FIELD_UPDATE",
+              field: lineItemFactField(existingItem.lineNumber, "htsCode"),
+              previousValue: existingItem.htsCode,
+              newValue: item.htsCode,
+              reason: "User manual update",
+            });
+            await FactService.record({
+              shipmentId: id,
+              field: lineItemFactField(existingItem.lineNumber, "htsCode"),
+              value: item.htsCode,
+              sourceType: "USER_ENTERED",
+            });
+          }
+          if (originChanged) {
+            await FactAuditService.logChangeEvent({
+              shipmentId: id,
+              userId: ctx.userId,
+              changeType: "USER_FIELD_UPDATE",
+              field: lineItemFactField(existingItem.lineNumber, "countryOfOrigin"),
+              previousValue: existingItem.countryOfOrigin,
+              newValue: item.countryOfOrigin,
+              reason: "User manual update",
+            });
+            await FactService.record({
+              shipmentId: id,
+              field: lineItemFactField(existingItem.lineNumber, "countryOfOrigin"),
+              value: item.countryOfOrigin,
+              sourceType: "USER_ENTERED",
+            });
+          }
+
+          if (htsChanged || originChanged) {
+            anyLineItemChanged = true;
+            await db.shipmentLineItem.update({
+              where: { id: item.id },
+              data: {
+                htsCode: item.htsCode !== undefined ? item.htsCode : undefined,
+                countryOfOrigin: item.countryOfOrigin !== undefined ? item.countryOfOrigin : undefined,
+                htsConfidence: 100,
+                // A user directly editing a line's classification/origin is
+                // exactly what confirming it looks like.
+                status: "Valid",
+              },
+            });
+          }
         }
       }
     }
 
+    if (anyLineItemChanged) {
+      await db.shipment.update({ where: { id }, data: { version: { increment: 1 } } });
+    }
+
     // Trigger selective agent execution for HTS/CoO edits
-    await AgentDependencyOrchestrator.processEvent({
+    await PipelineOrchestrator.processEvent({
       shipmentId: id,
       accountId: ctx.accountId,
       userId: ctx.userId,

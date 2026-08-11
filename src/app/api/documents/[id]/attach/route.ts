@@ -3,7 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams, parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { AgentDependencyOrchestrator } from "@/modules/agents/agentDependencyOrchestrator";
+import { PipelineOrchestrator } from "@/modules/agents/pipelineOrchestrator";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -54,7 +54,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   });
 
   try {
-    await AgentDependencyOrchestrator.processEvent({
+    await PipelineOrchestrator.processEvent({
       shipmentId,
       accountId: ctx.accountId,
       userId: ctx.userId,

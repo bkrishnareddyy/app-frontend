@@ -28,7 +28,11 @@ export class EntityResolutionService {
     return name
       .toLowerCase()
       .replace(/\b(inc|corp|corporation|llc|ltd|limited|co|company|pvt|gmbh|sa|plc)\b\.?/gi, "")
-      .replace(/[^a-z0-9\s]/gi, "")
+      // Unicode-property classes, not [a-z0-9] -- the ASCII-only version
+      // stripped every accented/CJK/Arabic/Cyrillic character (e.g.
+      // "Société Générale" -> "socit gnrale"), breaking entity resolution
+      // for any non-English company name.
+      .replace(/[^\p{L}\p{N}\s]/gu, "")
       .trim();
   }
 
