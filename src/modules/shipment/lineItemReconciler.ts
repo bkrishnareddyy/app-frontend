@@ -23,6 +23,31 @@ export const LINE_ITEM_SENTINELS = {
   unitPrice: 0,
 } as const;
 
+/**
+ * Whether a stored field is a placeholder rather than something a source read.
+ *
+ * Two of these sentinels are in-band: the placeholder quantity is 1 and the
+ * placeholder unit price is 0, both of which are perfectly ordinary declared
+ * values. So the stored value can only ever say "this *might* be a placeholder",
+ * and the answer comes from whether a Fact was recorded for the field --
+ * recordFacts writes one only when a value was actually present.
+ *
+ * Reading the value alone reported 20 of a 68-line invoice as having no quantity
+ * when every line was read correctly; they simply shipped one unit each.
+ *
+ * `extracted` is false for rows predating fact recording, which leaves them
+ * classified exactly as the value-only rule classified them.
+ */
+export function isPlaceholderValue(
+  field: "quantity" | "unitPrice" | "countryOfOrigin",
+  value: number | string | { toString(): string },
+  extracted: boolean
+): boolean {
+  if (extracted) return false;
+  if (field === "countryOfOrigin") return String(value) === LINE_ITEM_SENTINELS.countryOfOrigin;
+  return Number(value) === LINE_ITEM_SENTINELS[field];
+}
+
 export interface LineItemDiscovery {
   lineNumber: number;
   description?: string | null;
