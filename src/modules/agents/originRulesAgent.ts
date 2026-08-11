@@ -29,6 +29,12 @@ export interface OriginRulesInput {
     rawMaterialOrigin?: string;
     /** Caller-provided duty rate for this HTS (e.g. from the HTS DB lookup in Agent 4). */
     standardDutyRate?: string;
+    /** Not consumed by origin-determination logic today -- available for future GRI/de-minimis reasoning. */
+    description?: string | null;
+    sku?: string | null;
+    materialComposition?: string | null;
+    essentialCharacter?: string | null;
+    endUse?: string | null;
   }>;
 }
 

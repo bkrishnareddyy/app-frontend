@@ -15,6 +15,13 @@ export interface ValuationAssistsInput {
   invoiceSubtotal?: number | null;
   oceanFreight?: number;
   buyerAssists?: number;
+  /** Not consumed by valuation logic today -- available for a future line-total-vs-invoice-subtotal reconciliation check. */
+  lineItems?: Array<{
+    lineNumber: number;
+    totalValue?: number | null;
+    quantity?: number | null;
+    unitPrice?: number | null;
+  }>;
 }
 
 export interface ValuationAssistsOutput {
