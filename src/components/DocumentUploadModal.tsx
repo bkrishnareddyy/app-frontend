@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, Link2 } from "lucide-react";
-import { Modal, ModalHeader, ModalFooter } from "@/components/ui/Modal";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Label, FormField } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
@@ -303,6 +303,9 @@ export function DocumentUploadModal({
 
       {mode === "UPLOAD" ? (
         <>
+          {/* The form scrolls; the header above and the actions below stay put, so
+              the submit button cannot be pushed off a short viewport. */}
+          <ModalBody className="space-y-5">
           {/* Shipment Selection */}
           <FormField>
             <Label htmlFor="upload-shipment-search" className="ml-1">
@@ -412,6 +415,8 @@ export function DocumentUploadModal({
             </span>
           </div>
 
+          </ModalBody>
+
           {/* Modal Action Buttons */}
           <ModalFooter>
             <Button variant="secondary" onClick={closeModal} disabled={isUploading}>
@@ -431,6 +436,7 @@ export function DocumentUploadModal({
         </>
       ) : (
         <>
+          <ModalBody className="space-y-5">
           {/* Attach Existing Unattached Document */}
           <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center space-x-2">
             <Link2 className="w-4 h-4 text-brand shrink-0" />
@@ -440,7 +446,9 @@ export function DocumentUploadModal({
             </span>
           </div>
 
-          <div className="space-y-2 max-h-72 overflow-y-auto">
+          {/* No cap of its own: the body around it scrolls now, and a scroller
+              inside a scroller gives the operator two bars to fight over. */}
+          <div className="space-y-2">
             {unattachedDocs.length === 0 ? (
               <div className="p-4 text-center text-xs text-ink-muted">
                 No detached documents available to attach.
@@ -475,6 +483,8 @@ export function DocumentUploadModal({
               ))
             )}
           </div>
+
+          </ModalBody>
 
           <ModalFooter>
             <Button variant="secondary" onClick={closeModal}>

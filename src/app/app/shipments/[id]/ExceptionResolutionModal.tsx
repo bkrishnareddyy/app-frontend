@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { AlertTriangle, ShieldAlert, Sparkles, Upload } from "lucide-react";
-import { Modal, ModalHeader, ModalFooter } from "@/components/ui/Modal";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { caughtMessage, cn } from "@/lib/utils";
@@ -217,6 +217,10 @@ export function ExceptionResolutionModal({
         onClose={onClose}
       />
 
+      {/* The resolution body varies by exception type and the mismatch and POA
+          branches run tall. It scrolls so Resolve & Save below stays reachable --
+          that button going off-screen is what this pinning is for. */}
+      <ModalBody className="space-y-4">
       {/* Warning Details Panel */}
       <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 text-xs text-amber-800 leading-normal flex items-start space-x-2.5">
         <AlertTriangle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
@@ -396,6 +400,8 @@ export function ExceptionResolutionModal({
           </div>
         )}
       </div>
+
+      </ModalBody>
 
       {/* Footer */}
       <ModalFooter className="pt-3 border-t border-border">

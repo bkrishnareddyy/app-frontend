@@ -48,15 +48,22 @@ export function Modal({ isOpen, onClose, titleId, closeDisabled, size = "md", cl
         {...dialogSurfaceProps(titleId)}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          // Capped and scrollable. The shell centres its surface, and a centred
-          // flex child taller than its container overflows in both directions at
-          // once -- so an uncapped dialog was clipped at the top and the bottom
+          // Capped in height. The shell centres its surface, and a centred flex
+          // child taller than its container overflows in both directions at once
+          // -- so an uncapped dialog was clipped at the top and the bottom
           // simultaneously with no way to reach either. On a 1080p screen at 100%
           // zoom that put the upload dialog's own submit button off-screen.
           //
-          // Applied here rather than per dialog so every caller inherits it, and
-          // so a dialog that grows later cannot reintroduce the fault.
-          "bg-white rounded-3xl border border-border shadow-2xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200",
+          // Capped here rather than per dialog so every caller inherits it, and a
+          // dialog that grows later cannot reintroduce the fault.
+          //
+          // A column layout so a dialog that wraps its middle in ModalBody gets a
+          // pinned header and footer with only the body scrolling. `overflow-y-auto`
+          // stays as the fallback for dialogs that do not: without it they would be
+          // capped and clipped, which is worse than scrolling the whole surface. It
+          // costs nothing once ModalBody is present, since the surface itself then
+          // never overflows.
+          "bg-white rounded-3xl border border-border shadow-2xl w-full p-6 space-y-5 max-h-[90vh] flex flex-col overflow-y-auto animate-in fade-in zoom-in-95 duration-200",
           sizeClasses[size],
           className
         )}
@@ -78,7 +85,7 @@ export interface ModalHeaderProps {
 
 export function ModalHeader({ titleId, title, subtitle, icon, onClose, closeDisabled }: ModalHeaderProps) {
   return (
-    <div className="flex items-center justify-between border-b border-border pb-3">
+    <div className="shrink-0 flex items-center justify-between border-b border-border pb-3">
       <div className="flex items-center space-x-2.5 min-w-0">
         {icon && (
           <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-brand shrink-0">
@@ -105,5 +112,21 @@ export function ModalHeader({ titleId, title, subtitle, icon, onClose, closeDisa
 }
 
 export function ModalFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex items-center justify-end space-x-3", className)} {...props} />;
+  return <div className={cn("shrink-0 flex items-center justify-end space-x-3", className)} {...props} />;
+}
+
+/**
+ * The scrolling middle of a dialog, between a pinned header and footer.
+ *
+ * Wrap everything that is neither header nor footer. `min-h-0` is what allows it
+ * to shrink below its content -- a flex child defaults to its content size and
+ * would push the footer out of the capped surface instead of scrolling.
+ *
+ * Worth knowing before wrapping: this establishes a clipping context, so an
+ * absolutely positioned child (an autocomplete list, a popover) is clipped at the
+ * body's edge rather than escaping over the dialog. It scrolls into view with its
+ * input, but a dropdown that must overflow the dialog needs a portal instead.
+ */
+export function ModalBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("flex-1 min-h-0 overflow-y-auto", className)} {...props} />;
 }

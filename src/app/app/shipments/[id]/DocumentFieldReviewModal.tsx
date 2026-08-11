@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle2, AlertTriangle, FileText, Sparkles, Pencil } from "lucide-react";
-import { Modal, ModalHeader } from "@/components/ui/Modal";
+import { Modal, ModalHeader, ModalBody } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { caughtMessage } from "@/lib/utils";
 
@@ -82,7 +82,10 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
         onClose={onClose}
       />
 
-      {error && (
+      {/* A document can expect many fields, so this list is what outgrows the
+          viewport. It scrolls between the pinned header and the footnote below. */}
+      <ModalBody className="space-y-4">
+        {error && (
           <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-start space-x-2">
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
             <span>{error}</span>
@@ -175,10 +178,12 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
           })}
         </div>
 
-        <div className="flex items-start space-x-2 text-[10px] text-ink-muted pt-2 border-t border-border">
-          <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <span>These are the fields Qubere expects to find on this document. Approving confirms the extracted value is correct; editing corrects it.</span>
-        </div>
+      </ModalBody>
+
+      <div className="shrink-0 flex items-start space-x-2 text-[10px] text-ink-muted pt-2 border-t border-border">
+        <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>These are the fields Qubere expects to find on this document. Approving confirms the extracted value is correct; editing corrects it.</span>
+      </div>
     </Modal>
   );
 }
