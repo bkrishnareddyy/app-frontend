@@ -19,6 +19,11 @@ const dbMock = {
   htsNode: {
     findMany: vi.fn(),
   },
+  // Duty rates are read only from the currently published release, so the
+  // engine resolves that release before looking up any node.
+  htsRelease: {
+    findFirst: vi.fn(),
+  },
 };
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
@@ -57,6 +62,9 @@ function filingRecord(lineItems: unknown[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A published release exists in every case here; the "no published release"
+  // path is covered in duty-rate-release-scope.test.ts.
+  dbMock.htsRelease.findFirst.mockResolvedValue({ id: "rel_published" });
   dbMock.customsFiling.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: "fil_1",
     ...data,
