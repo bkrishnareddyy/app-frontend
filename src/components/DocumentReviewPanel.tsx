@@ -515,9 +515,9 @@ export function DocumentReviewPanel({
   return (
     <div className="flex flex-1 flex-col min-h-0 gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3 shrink-0 gap-3">
+      <div className="flex items-center justify-between border-b border-border pb-3 shrink-0 gap-3">
         <div className="flex items-center space-x-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-brand shrink-0">
             <Code className="w-5 h-5" />
           </div>
           <div className="min-w-0">
@@ -537,7 +537,7 @@ export function DocumentReviewPanel({
                       setEditingNameValue(fileName);
                     }
                   }}
-                  className="px-2.5 py-1 text-sm font-extrabold text-[#1D1D1F] border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white w-64"
+                  className="px-2.5 py-1 text-sm font-extrabold text-ink border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white w-64"
                   disabled={renaming}
                   autoFocus
                 />
@@ -560,7 +560,7 @@ export function DocumentReviewPanel({
                 </button>
               </div>
             ) : (
-              <h3 className="text-base font-extrabold text-[#1D1D1F] flex items-center space-x-2 group min-w-0">
+              <h3 className="text-base font-extrabold text-ink flex items-center space-x-2 group min-w-0">
                 <span className="truncate">{fileName}</span>
                 <button
                   onClick={(e) => {
@@ -568,21 +568,21 @@ export function DocumentReviewPanel({
                     setEditingNameValue(fileName);
                     setIsEditingName(true);
                   }}
-                  className="p-1 rounded hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                  className="p-1 rounded hover:bg-surface-muted text-ink-muted hover:text-ink opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
                   title="Rename Document"
                 >
                   <Edit2 className="w-3.5 h-3.5 animate-in fade-in" />
                 </button>
               </h3>
             )}
-            <p id={titleId} className="text-xs text-[#86868B] mt-0.5">
+            <p id={titleId} className="text-xs text-ink-muted mt-0.5">
               {hasFieldReview ? (
                 <>
                   {mechanicalDecisions.length + reviewableDecisions.length} agent checks
                   {shipmentNumber && (
                     <>
                       {" · "}
-                      <span className="font-mono text-[#0071E3] font-bold">{shipmentNumber}</span>
+                      <span className="font-mono text-brand font-bold">{shipmentNumber}</span>
                     </>
                   )}
                 </>
@@ -592,7 +592,7 @@ export function DocumentReviewPanel({
                   {shipmentNumber && (
                     <>
                       {" • Shipment: "}
-                      <span className="font-mono text-[#0071E3] font-bold">{shipmentNumber}</span>
+                      <span className="font-mono text-brand font-bold">{shipmentNumber}</span>
                     </>
                   )}
                 </>
@@ -605,7 +605,7 @@ export function DocumentReviewPanel({
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
+              className="p-1.5 rounded-full hover:bg-surface-muted text-ink-muted hover:text-ink transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -614,13 +614,13 @@ export function DocumentReviewPanel({
       </div>
 
       {/* Tab Selection Bar */}
-      <div className="flex items-center justify-between bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs shrink-0">
+      <div className="flex items-center justify-between bg-surface-muted p-1 rounded-xl border border-border text-xs shrink-0">
         <div className="flex items-center space-x-1">
           {hasFieldReview && (
             <button
               onClick={() => setActiveTab("FIELDS")}
               className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                activeTab === "FIELDS" ? "bg-white text-[#0071E3] shadow-2xs" : "text-[#86868B] hover:text-[#1D1D1F]"
+                activeTab === "FIELDS" ? "bg-white text-brand shadow-2xs" : "text-ink-muted hover:text-ink"
               }`}
             >
               Field Review ({mechanicalDecisions.length + reviewableDecisions.length})
@@ -629,7 +629,7 @@ export function DocumentReviewPanel({
           <button
             onClick={() => setActiveTab("DOC")}
             className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              activeTab === "DOC" ? "bg-white text-[#0071E3] shadow-2xs" : "text-[#86868B] hover:text-[#1D1D1F]"
+              activeTab === "DOC" ? "bg-white text-brand shadow-2xs" : "text-ink-muted hover:text-ink"
             }`}
           >
             Document Preview
@@ -637,7 +637,7 @@ export function DocumentReviewPanel({
           <button
             onClick={() => setActiveTab("KV")}
             className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              activeTab === "KV" ? "bg-white text-[#0071E3] shadow-2xs" : "text-[#86868B] hover:text-[#1D1D1F]"
+              activeTab === "KV" ? "bg-white text-brand shadow-2xs" : "text-ink-muted hover:text-ink"
             }`}
           >
             Neutral Key-Value Pairs ({kvEntries.length})
@@ -645,7 +645,7 @@ export function DocumentReviewPanel({
           <button
             onClick={() => setActiveTab("JSON")}
             className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              activeTab === "JSON" ? "bg-white text-[#0071E3] shadow-2xs" : "text-[#86868B] hover:text-[#1D1D1F]"
+              activeTab === "JSON" ? "bg-white text-brand shadow-2xs" : "text-ink-muted hover:text-ink"
             }`}
           >
             Raw Extraction JSON Blob
@@ -655,9 +655,9 @@ export function DocumentReviewPanel({
         {activeTab === "JSON" && (
           <button
             onClick={handleCopy}
-            className="px-2.5 py-1 rounded-lg bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#1D1D1F] font-bold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+            className="px-2.5 py-1 rounded-lg bg-white border border-border hover:bg-surface-muted text-ink font-bold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-[#0071E3]" />}
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-brand" />}
             <span>{copied ? "Copied!" : "Copy JSON"}</span>
           </button>
         )}
@@ -670,7 +670,7 @@ export function DocumentReviewPanel({
             <span>Loading raw extraction data...</span>
           </div>
         ) : activeTab === "FIELDS" ? (
-          <div className="flex-1 overflow-y-auto border border-[#E5E5EA] rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
+          <div className="flex-1 overflow-y-auto border border-border rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
             {reviewableDecisions.map((dec) => {
               const isBusy = actionLoadingId === dec.id;
               const groupLabel = reviewerLabel(dec);
@@ -678,9 +678,9 @@ export function DocumentReviewPanel({
               const fields = category === "FIELDS" ? editableFieldsFor(dec) : [];
 
               return (
-                <div key={dec.id} className="p-3.5 rounded-xl bg-white border border-[#E5E5EA] shadow-2xs space-y-2.5">
+                <div key={dec.id} className="p-3.5 rounded-xl bg-white border border-border shadow-2xs space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-extrabold text-[#1D1D1F] text-[13px]">{groupLabel}</span>
+                    <span className="font-extrabold text-ink text-[13px]">{groupLabel}</span>
                     <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
                       {dec.status}
                     </span>
@@ -711,7 +711,7 @@ export function DocumentReviewPanel({
                                   }}
                                   disabled={isSavingThis}
                                   placeholder={`Enter ${f.label}...`}
-                                  className="flex-1 min-w-0 px-2 py-1 text-[12px] font-mono font-bold text-[#1D1D1F] border border-amber-300 rounded-lg bg-white outline-none focus:border-[#0071E3]"
+                                  className="flex-1 min-w-0 px-2 py-1 text-[12px] font-mono font-bold text-ink border border-amber-300 rounded-lg bg-white outline-none focus:border-brand"
                                 />
                                 <button
                                   onClick={() => commitMissingField(dec.id, f.key)}
@@ -730,13 +730,13 @@ export function DocumentReviewPanel({
                         const isSavingThis = savingFieldKey === compositeKey;
 
                         return (
-                          <div key={f.key} className="group p-2.5 rounded-lg bg-[#F5F5F7] border border-[#E5E5EA]">
+                          <div key={f.key} className="group p-2.5 rounded-lg bg-surface-muted border border-border">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="text-[10px] text-[#86868B] font-bold uppercase tracking-wide">{f.label}</p>
+                              <p className="text-[10px] text-ink-muted font-bold uppercase tracking-wide">{f.label}</p>
                               {!isEditingThis && (
                                 <button
                                   onClick={() => beginEditField(dec.id, f.key, f.value)}
-                                  className="p-1 rounded hover:bg-white text-[#86868B] hover:text-[#0071E3] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                                  className="p-1 rounded hover:bg-white text-ink-muted hover:text-brand opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
                                   title={`Edit ${f.label}`}
                                 >
                                   <Edit2 className="w-3 h-3" />
@@ -756,7 +756,7 @@ export function DocumentReviewPanel({
                                     }}
                                     disabled={isSavingThis}
                                     autoFocus
-                                    className="flex-1 min-w-0 px-2 py-1 text-[12px] font-mono font-bold text-[#1D1D1F] border border-[#0071E3] rounded-lg bg-white outline-none"
+                                    className="flex-1 min-w-0 px-2 py-1 text-[12px] font-mono font-bold text-ink border border-brand rounded-lg bg-white outline-none"
                                   />
                                   <button
                                     onClick={() => commitEditField(dec.id, f.key)}
@@ -776,7 +776,7 @@ export function DocumentReviewPanel({
                                 {editFieldError && <p className="text-[10px] text-red-600">{editFieldError}</p>}
                               </div>
                             ) : (
-                              <p className="font-mono font-extrabold text-[#1D1D1F] text-[12px] break-words mt-0.5">{f.value}</p>
+                              <p className="font-mono font-extrabold text-ink text-[12px] break-words mt-0.5">{f.value}</p>
                             )}
                           </div>
                         );
@@ -797,7 +797,7 @@ export function DocumentReviewPanel({
                         onChange={(e) => onNotesChange?.(dec.id, e.target.value)}
                         placeholder="Comment..."
                         autoFocus={expandedComments.has(dec.id) && !hasComment}
-                        className="w-full px-3 py-2 bg-[#F5F5F7] border border-[#E5E5EA] focus:border-[#0071E3] focus:bg-white rounded-lg text-[11px] text-[#1D1D1F] transition-all outline-none font-medium"
+                        className="w-full px-3 py-2 bg-surface-muted border border-border focus:border-brand focus:bg-white rounded-lg text-[11px] text-ink transition-all outline-none font-medium"
                       />
                     );
                   })()}
@@ -822,7 +822,7 @@ export function DocumentReviewPanel({
                     <button
                       onClick={() => onReviewAction?.(dec.id, "RE_EVALUATE")}
                       disabled={isBusy}
-                      className="px-3 py-1.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-amber-700 text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer disabled:opacity-40"
+                      className="px-3 py-1.5 bg-white border border-border hover:bg-surface-muted text-amber-700 text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer disabled:opacity-40"
                     >
                       <RotateCcw className="w-3 h-3" />
                       <span>Re-evaluate</span>
@@ -838,7 +838,7 @@ export function DocumentReviewPanel({
                     <button
                       onClick={() => onReviewAction?.(dec.id, "APPROVE")}
                       disabled={isBusy || dec.status === "Approved"}
-                      className="px-3.5 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-40 text-white text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer"
+                      className="px-3.5 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 text-white text-[11px] font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer"
                     >
                       <Check className="w-3 h-3" />
                       <span>{isBusy ? "Saving..." : "Approve"}</span>
@@ -848,18 +848,18 @@ export function DocumentReviewPanel({
               );
             })}
             {reviewableDecisions.length === 0 && mechanicalDecisions.length === 0 && (
-              <div className="p-8 text-center text-[#86868B]">No agent checks yet for this document.</div>
+              <div className="p-8 text-center text-ink-muted">No agent checks yet for this document.</div>
             )}
 
             {mechanicalDecisions.length > 0 && (
-              <div className="p-3 rounded-xl bg-[#F0F0F2] border border-[#E5E5EA] space-y-1.5">
-                <p className="text-[10px] font-bold uppercase text-[#86868B] tracking-wide">
+              <div className="p-3 rounded-xl bg-[#F0F0F2] border border-border space-y-1.5">
+                <p className="text-[10px] font-bold uppercase text-ink-muted tracking-wide">
                   Automated processing ({mechanicalDecisions.length}) — nothing to review
                 </p>
                 <div className="space-y-1">
                   {mechanicalDecisions.map((dec) => (
                     <div key={dec.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
-                      <span className="text-[#1D1D1F] font-semibold truncate">{decisionGroupLabel(dec)}</span>
+                      <span className="text-ink font-semibold truncate">{decisionGroupLabel(dec)}</span>
                       <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
                         {dec.status}
                       </span>
@@ -870,7 +870,7 @@ export function DocumentReviewPanel({
             )}
           </div>
         ) : activeTab === "DOC" ? (
-          <div className="flex-1 overflow-y-auto bg-[#F5F5F7] rounded-2xl border border-[#E5E5EA] p-4 flex items-center justify-center min-h-[350px]">
+          <div className="flex-1 overflow-y-auto bg-surface-muted rounded-2xl border border-border p-4 flex items-center justify-center min-h-[350px]">
             {proxyUrl ? (
               isImageFile(proxyUrl, fileName) ? (
                 // next/image is deliberately not used: these are tenant documents
@@ -880,7 +880,7 @@ export function DocumentReviewPanel({
                 <img
                   src={proxyUrl}
                   alt={fileName}
-                  className="max-h-[55vh] rounded-xl border border-[#E5E5EA] shadow-md object-contain"
+                  className="max-h-[55vh] rounded-xl border border-border shadow-md object-contain"
                 />
               ) : isPdfFile(proxyUrl, fileName) ? (
                 // A fixed vh height here previously overflowed shorter
@@ -890,21 +890,21 @@ export function DocumentReviewPanel({
                 // -- modal or inline panel -- actually provides.
                 <iframe
                   src={proxyUrl}
-                  className="w-full h-full min-h-[350px] rounded-xl border border-[#E5E5EA]"
+                  className="w-full h-full min-h-[350px] rounded-xl border border-border"
                   title={fileName}
                 />
               ) : (
                 <div className="text-center p-8 space-y-3">
-                  <FileText className="w-12 h-12 text-[#0071E3] mx-auto" />
+                  <FileText className="w-12 h-12 text-brand mx-auto" />
                   <div>
-                    <h4 className="font-extrabold text-[#1D1D1F] text-sm">{fileName}</h4>
-                    <p className="text-xs text-[#86868B] mt-1">Binary trade file stored securely in Qubere Document Vault.</p>
+                    <h4 className="font-extrabold text-ink text-sm">{fileName}</h4>
+                    <p className="text-xs text-ink-muted mt-1">Binary trade file stored securely in Qubere Document Vault.</p>
                   </div>
                   <a
                     href={proxyUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#0071E3] text-white text-xs font-semibold hover:bg-[#0077ED] transition-colors"
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-hover transition-colors"
                   >
                     <span>Open File in New Tab</span>
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -913,22 +913,22 @@ export function DocumentReviewPanel({
               )
             ) : (
               <div className="text-center p-8 space-y-3">
-                <FileText className="w-12 h-12 text-[#86868B]/50 mx-auto" />
+                <FileText className="w-12 h-12 text-ink-muted/50 mx-auto" />
                 <div>
-                  <h4 className="font-extrabold text-[#1D1D1F] text-sm">{fileName}</h4>
-                  <p className="text-xs text-[#86868B] mt-1">Document preview is currently unavailable.</p>
+                  <h4 className="font-extrabold text-ink text-sm">{fileName}</h4>
+                  <p className="text-xs text-ink-muted mt-1">Document preview is currently unavailable.</p>
                 </div>
               </div>
             )}
           </div>
         ) : activeTab === "KV" ? (
-          <div className="flex-1 overflow-y-auto border border-[#E5E5EA] rounded-2xl p-4 bg-[#F9F9FB] space-y-3 text-xs">
+          <div className="flex-1 overflow-y-auto border border-border rounded-2xl p-4 bg-[#F9F9FB] space-y-3 text-xs">
             {kvEntries.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {kvEntries.map(([k, v], idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-white border border-[#E5E5EA] space-y-0.5 shadow-2xs">
-                    <p className="text-[11px] text-[#86868B] font-bold uppercase">{k}</p>
-                    <p className="font-extrabold text-[#1D1D1F] break-words">
+                  <div key={idx} className="p-3 rounded-xl bg-white border border-border space-y-0.5 shadow-2xs">
+                    <p className="text-[11px] text-ink-muted font-bold uppercase">{k}</p>
+                    <p className="font-extrabold text-ink break-words">
                       {v !== null && v !== undefined ? String(v) : (
                         <span className="italic font-normal text-amber-700">Not Present (Null)</span>
                       )}
@@ -937,15 +937,15 @@ export function DocumentReviewPanel({
                 ))}
               </div>
             ) : (
-              <div className="p-6 text-center text-[#86868B]">
-                <p className="font-bold text-[#1D1D1F]">No key-value pairs extracted</p>
+              <div className="p-6 text-center text-ink-muted">
+                <p className="font-bold text-ink">No key-value pairs extracted</p>
                 {isPending ? (
                   <>
                     <p className="text-sm mt-1">This document has not been processed yet.</p>
                     <button
                       onClick={runExtraction}
                       disabled={extracting}
-                      className="mt-4 px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                      className="mt-4 px-4 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
                     >
                       {extracting ? "Extracting..." : "Run extraction"}
                     </button>

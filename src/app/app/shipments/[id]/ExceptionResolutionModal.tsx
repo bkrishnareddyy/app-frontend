@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, CheckCircle2, FileText, AlertTriangle, Scale, ShieldAlert, Sparkles, Upload, Check } from "lucide-react";
+import { AlertTriangle, ShieldAlert, Sparkles, Upload } from "lucide-react";
+import { Modal, ModalHeader, ModalFooter } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input, Label } from "@/components/ui/Input";
+import { cn } from "@/lib/utils";
 
 interface ExceptionItem {
   id: string;
@@ -22,6 +26,8 @@ interface ExceptionResolutionModalProps {
   lineItems: any[];
 }
 
+const TITLE_ID = "exception-resolution-title";
+
 export function ExceptionResolutionModal({
   isOpen,
   onClose,
@@ -30,7 +36,7 @@ export function ExceptionResolutionModal({
   lineItems,
 }: ExceptionResolutionModalProps) {
   const [saveLoading, setSaveLoading] = useState(false);
-  
+
   // HTS resolution state
   const [editHts, setEditHts] = useState("");
   const [htsSuggestions, setHtsSuggestions] = useState<any[]>([]);
@@ -93,11 +99,11 @@ export function ExceptionResolutionModal({
     try {
       // 1. Perform backend mutations depending on the exception category
       if (exception.actionType === "HTS") {
-        const targetItem = lineItems.find(item => item.description.toLowerCase().includes("controller")) 
-          || lineItems[1] 
+        const targetItem = lineItems.find(item => item.description.toLowerCase().includes("controller"))
+          || lineItems[1]
           || lineItems[0]
           || null;
-        const payload = targetItem 
+        const payload = targetItem
           ? { id: targetItem.id, htsCode: editHts.trim() }
           : { htsCode: editHts.trim() };
 
@@ -109,14 +115,14 @@ export function ExceptionResolutionModal({
           }),
         });
         if (!res.ok) throw new Error("Failed to save HTS classification");
-      } 
-      
+      }
+
       else if (exception.actionType === "COO") {
-        const targetItem = lineItems.find(item => item.description.toLowerCase().includes("controller")) 
-          || lineItems[1] 
+        const targetItem = lineItems.find(item => item.description.toLowerCase().includes("controller"))
+          || lineItems[1]
           || lineItems[0]
           || null;
-        const payload = targetItem 
+        const payload = targetItem
           ? { id: targetItem.id, countryOfOrigin: editCoo.trim() }
           : { countryOfOrigin: editCoo.trim() };
 
@@ -128,18 +134,18 @@ export function ExceptionResolutionModal({
           }),
         });
         if (!res.ok) throw new Error("Failed to save Country of Origin");
-      } 
-      
+      }
+
       else if (exception.actionType === "MISMATCH") {
-        const targetItem = lineItems.find(item => item.description.toLowerCase().includes("controller")) 
-          || lineItems[1] 
+        const targetItem = lineItems.find(item => item.description.toLowerCase().includes("controller"))
+          || lineItems[1]
           || lineItems[0]
           || null;
         const finalQuantity = selectedQuantity === "CUSTOM" ? parseInt(customQtyVal, 10) : selectedQuantity;
         if (isNaN(finalQuantity) || finalQuantity <= 0) {
           throw new Error("Please enter a valid positive quantity");
         }
-        const payload = targetItem 
+        const payload = targetItem
           ? { id: targetItem.id, quantity: finalQuantity }
           : { quantity: finalQuantity };
 
@@ -151,8 +157,8 @@ export function ExceptionResolutionModal({
           }),
         });
         if (!res.ok) throw new Error("Failed to save quantity");
-      } 
-      
+      }
+
       else if (exception.actionType === "UPLOAD") {
         if (!fileName.trim()) throw new Error("Please select a file to attach");
         // Simulate uploading a document
@@ -167,8 +173,8 @@ export function ExceptionResolutionModal({
           }),
         });
         if (!uploadRes.ok) throw new Error("Failed to upload certificate document");
-      } 
-      
+      }
+
       else if (exception.actionType === "POA") {
         if (!poaSignedName.trim()) throw new Error("Customs Broker Signature is required for POA renewal");
       }
@@ -200,235 +206,204 @@ export function ExceptionResolutionModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3 shrink-0">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3]">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-[#1D1D1F]">{exception.title}</h3>
-              <p className="text-xs text-[#86868B]">Resolve exception item directly in Qubere Workspace</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} titleId={TITLE_ID} className="max-w-xl space-y-4">
+      <ModalHeader
+        titleId={TITLE_ID}
+        title={exception.title}
+        subtitle="Resolve exception item directly in Qubere Workspace"
+        icon={<Sparkles className="w-5 h-5" />}
+        onClose={onClose}
+      />
 
-        {/* Warning Details Panel */}
-        <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 text-xs text-amber-800 leading-normal flex items-start space-x-2.5">
-          <AlertTriangle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-extrabold text-[12px]">Issue: {exception.title}</p>
-            <p className="text-[11px] mt-0.5">{exception.desc}</p>
-          </div>
-        </div>
-
-        {/* Core Resolution Fields depending on Exception Category */}
-        <div className="py-2">
-          {/* 1. HTS Code resolution UI */}
-          {exception.actionType === "HTS" && (
-            <div className="space-y-3 relative text-xs">
-              <label className="font-bold text-[#1D1D1F]">Override HTS Classification Code</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={editHts}
-                  onChange={(e) => setEditHts(e.target.value)}
-                  placeholder="Type product type or HTS number..."
-                  className="w-full px-3.5 py-2.5 border border-[#E5E5EA] focus:border-[#0071E3] rounded-xl outline-none font-mono font-bold bg-[#F5F5F7] focus:bg-white text-[12px]"
-                  disabled={saveLoading}
-                />
-                
-                {/* Autocomplete suggestions */}
-                {htsSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 z-50 bg-white border border-[#E5E5EA] rounded-xl shadow-lg mt-1 p-1.5 space-y-1 max-h-48 overflow-y-auto">
-                    <p className="text-[9px] text-[#86868B] font-bold px-1.5 uppercase tracking-wider">HTS Autocomplete Results</p>
-                    {htsSuggestions.map((sugg) => (
-                      <button
-                        key={sugg.id}
-                        onClick={() => {
-                          setEditHts(sugg.htsNumberDisplay);
-                          setHtsSuggestions([]);
-                        }}
-                        className="w-full text-left p-2 rounded-lg hover:bg-[#F5F5F7] text-[10px] space-y-0.5 block transition-colors cursor-pointer"
-                      >
-                        <span className="font-mono font-bold text-[#0071E3]">{sugg.htsNumberDisplay}</span>
-                        <span className="text-[#86868B] block truncate leading-snug">{sugg.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <p className="text-[10px] text-[#86868B] leading-relaxed">
-                Provide correct 10-digit Harmonized Tariff Schedule classification. Autocomplete searches database in real-time.
-              </p>
-            </div>
-          )}
-
-          {/* 2. Country of Origin resolution UI */}
-          {exception.actionType === "COO" && (
-            <div className="space-y-3 text-xs">
-              <label className="font-bold text-[#1D1D1F]">Specify Declared Country of Origin</label>
-              <input
-                type="text"
-                value={editCoo}
-                onChange={(e) => setEditCoo(e.target.value)}
-                placeholder="e.g. Germany"
-                className="w-full px-3.5 py-2.5 border border-[#E5E5EA] focus:border-[#0071E3] rounded-xl outline-none font-bold bg-[#F5F5F7] focus:bg-white text-[12px]"
-                disabled={saveLoading}
-              />
-              <p className="text-[10px] text-[#86868B] leading-relaxed">
-                Provide the correct Country of Origin as verified on shipment documents to determine preferential duty qualifiers.
-              </p>
-            </div>
-          )}
-
-          {/* 3. Certificate of Origin Missing upload UI */}
-          {exception.actionType === "UPLOAD" && (
-            <div className="space-y-3 text-xs">
-              <label className="font-bold text-[#1D1D1F]">Upload Trade Certificate</label>
-              <div className="border-2 border-dashed border-[#E5E5EA] rounded-2xl p-5 text-center bg-[#F9F9FB] space-y-2">
-                <Upload className="w-8 h-8 text-[#0071E3] mx-auto opacity-70" />
-                <div>
-                  <p className="font-bold text-[#1D1D1F]">Drag and drop certificate file</p>
-                  <p className="text-[10px] text-[#86868B] mt-0.5">Supports PDF, PNG, JPG up to 10MB</p>
-                </div>
-                <input
-                  type="text"
-                  placeholder="Or enter filename (e.g. cert_origin_shp001.pdf)"
-                  value={fileName}
-                  onChange={(e) => setFileName(e.target.value)}
-                  className="w-full max-w-xs mx-auto px-3 py-1.5 border border-[#E5E5EA] focus:border-[#0071E3] rounded-lg text-xs bg-white text-center font-bold"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 4. Side by Side Quantity Mismatch Resolution */}
-          {exception.actionType === "MISMATCH" && (
-            <div className="space-y-3 text-xs">
-              <label className="font-bold text-[#1D1D1F]">Resolve Document Mismatch</label>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div
-                  onClick={() => setSelectedQuantity(20)}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-2 ${
-                    selectedQuantity === 20
-                      ? "bg-blue-50/80 border-[#0071E3] ring-1 ring-[#0071E3]/20"
-                      : "bg-[#F9F9FB] border-[#E5E5EA] hover:border-[#0071E3]"
-                  }`}
-                >
-                  <div className="flex justify-between items-center text-[9px] uppercase font-bold text-[#86868B]">
-                    <span>Commercial Invoice</span>
-                    <span className="text-[#0071E3]">Doc 1</span>
-                  </div>
-                  <p className="font-extrabold text-[#1D1D1F] text-sm font-mono">20 PCS</p>
-                </div>
-
-                <div
-                  onClick={() => setSelectedQuantity(18)}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-2 ${
-                    selectedQuantity === 18
-                      ? "bg-blue-50/80 border-[#0071E3] ring-1 ring-[#0071E3]/20"
-                      : "bg-[#F9F9FB] border-[#E5E5EA] hover:border-[#0071E3]"
-                  }`}
-                >
-                  <div className="flex justify-between items-center text-[9px] uppercase font-bold text-[#86868B]">
-                    <span>Packing List</span>
-                    <span className="text-purple-700">Doc 2</span>
-                  </div>
-                  <p className="font-extrabold text-[#1D1D1F] text-sm font-mono">18 PCS</p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-[#F5F5F7] rounded-xl border border-[#E5E5EA] space-y-2">
-                <label className="flex items-center space-x-2 font-bold cursor-pointer">
-                  <input
-                    type="radio"
-                    checked={selectedQuantity === "CUSTOM"}
-                    onChange={() => setSelectedQuantity("CUSTOM")}
-                    className="w-4 h-4 text-[#0071E3]"
-                  />
-                  <span>Specify Custom Correct Quantity</span>
-                </label>
-                {selectedQuantity === "CUSTOM" && (
-                  <div className="flex items-center space-x-2 pl-6">
-                    <input
-                      type="number"
-                      value={customQtyVal}
-                      onChange={(e) => setCustomQtyVal(e.target.value)}
-                      placeholder="e.g. 19"
-                      className="w-20 px-2.5 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white font-mono text-xs"
-                      disabled={saveLoading}
-                    />
-                    <span className="font-bold text-[#86868B]">PCS</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 5. Importer POA Expired renewal UI */}
-          {exception.actionType === "POA" && (
-            <div className="space-y-3 text-xs">
-              <label className="font-bold text-[#1D1D1F]">Renew Importer Power of Attorney</label>
-              <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 flex items-start space-x-2 text-blue-900 leading-normal">
-                <ShieldAlert className="w-5 h-5 text-[#0071E3] shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-extrabold">POA Electronic Consent Renewal</p>
-                  <p className="text-[11px] mt-0.5">
-                    Sign off to renew the active Power of Attorney consent for Target Enterprise. The renewal extends POA credentials for 1 year per CBP regulation 19 CFR § 141.46.
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="font-bold text-[#1D1D1F]">Broker / Officer Signature Name</p>
-                <input
-                  type="text"
-                  value={poaSignedName}
-                  onChange={(e) => setPoaSignedName(e.target.value)}
-                  placeholder="Sign as Joe Admin / Licensed Customs Broker"
-                  className="w-full px-3.5 py-2.5 border border-[#E5E5EA] focus:border-[#0071E3] rounded-xl outline-none font-bold bg-[#F5F5F7] focus:bg-white text-[12px]"
-                  disabled={saveLoading}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end space-x-3 pt-3 border-t border-[#E5E5EA]">
-          <button
-            onClick={onClose}
-            disabled={saveLoading}
-            className="px-4 py-2 border border-[#E5E5EA] hover:bg-[#F5F5F7] rounded-xl text-xs font-semibold text-[#1D1D1F] transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleResolve}
-            disabled={saveLoading}
-            className="px-5 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
-          >
-            {saveLoading ? "Saving..." : "Resolve & Save"}
-          </button>
+      {/* Warning Details Panel */}
+      <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 text-xs text-amber-800 leading-normal flex items-start space-x-2.5">
+        <AlertTriangle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
+        <div>
+          <p className="font-extrabold text-[12px]">Issue: {exception.title}</p>
+          <p className="text-[11px] mt-0.5">{exception.desc}</p>
         </div>
       </div>
-    </div>
+
+      {/* Core Resolution Fields depending on Exception Category */}
+      <div className="py-2">
+        {/* 1. HTS Code resolution UI */}
+        {exception.actionType === "HTS" && (
+          <div className="space-y-3 relative text-xs">
+            <Label className="font-bold">Override HTS Classification Code</Label>
+            <div className="relative">
+              <Input
+                value={editHts}
+                onChange={(e) => setEditHts(e.target.value)}
+                placeholder="Type product type or HTS number..."
+                className="bg-surface-muted focus:bg-white font-mono font-bold text-[12px]"
+                disabled={saveLoading}
+              />
+
+              {/* Autocomplete suggestions */}
+              {htsSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 z-50 bg-white border border-border rounded-xl shadow-lg mt-1 p-1.5 space-y-1 max-h-48 overflow-y-auto">
+                  <p className="text-[9px] text-ink-muted font-bold px-1.5 uppercase tracking-wider">HTS Autocomplete Results</p>
+                  {htsSuggestions.map((sugg) => (
+                    <button
+                      key={sugg.id}
+                      onClick={() => {
+                        setEditHts(sugg.htsNumberDisplay);
+                        setHtsSuggestions([]);
+                      }}
+                      className="w-full text-left p-2 rounded-lg hover:bg-surface-muted text-[10px] space-y-0.5 block transition-colors cursor-pointer"
+                    >
+                      <span className="font-mono font-bold text-brand">{sugg.htsNumberDisplay}</span>
+                      <span className="text-ink-muted block truncate leading-snug">{sugg.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="text-[10px] text-ink-muted leading-relaxed">
+              Provide correct 10-digit Harmonized Tariff Schedule classification. Autocomplete searches database in real-time.
+            </p>
+          </div>
+        )}
+
+        {/* 2. Country of Origin resolution UI */}
+        {exception.actionType === "COO" && (
+          <div className="space-y-3 text-xs">
+            <Label className="font-bold">Specify Declared Country of Origin</Label>
+            <Input
+              value={editCoo}
+              onChange={(e) => setEditCoo(e.target.value)}
+              placeholder="e.g. Germany"
+              className="bg-surface-muted focus:bg-white font-bold text-[12px]"
+              disabled={saveLoading}
+            />
+            <p className="text-[10px] text-ink-muted leading-relaxed">
+              Provide the correct Country of Origin as verified on shipment documents to determine preferential duty qualifiers.
+            </p>
+          </div>
+        )}
+
+        {/* 3. Certificate of Origin Missing upload UI */}
+        {exception.actionType === "UPLOAD" && (
+          <div className="space-y-3 text-xs">
+            <Label className="font-bold">Upload Trade Certificate</Label>
+            <div className="border-2 border-dashed border-border rounded-2xl p-5 text-center bg-[#F9F9FB] space-y-2">
+              <Upload className="w-8 h-8 text-brand mx-auto opacity-70" />
+              <div>
+                <p className="font-bold text-ink">Drag and drop certificate file</p>
+                <p className="text-[10px] text-ink-muted mt-0.5">Supports PDF, PNG, JPG up to 10MB</p>
+              </div>
+              <Input
+                placeholder="Or enter filename (e.g. cert_origin_shp001.pdf)"
+                value={fileName}
+                onChange={(e) => setFileName(e.target.value)}
+                className="max-w-xs mx-auto bg-white text-center font-bold py-1.5"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 4. Side by Side Quantity Mismatch Resolution */}
+        {exception.actionType === "MISMATCH" && (
+          <div className="space-y-3 text-xs">
+            <Label className="font-bold">Resolve Document Mismatch</Label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                onClick={() => setSelectedQuantity(20)}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all cursor-pointer space-y-2",
+                  selectedQuantity === 20
+                    ? "bg-blue-50/80 border-brand ring-1 ring-brand/20"
+                    : "bg-[#F9F9FB] border-border hover:border-brand"
+                )}
+              >
+                <div className="flex justify-between items-center text-[9px] uppercase font-bold text-ink-muted">
+                  <span>Commercial Invoice</span>
+                  <span className="text-brand">Doc 1</span>
+                </div>
+                <p className="font-extrabold text-ink text-sm font-mono">20 PCS</p>
+              </div>
+
+              <div
+                onClick={() => setSelectedQuantity(18)}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all cursor-pointer space-y-2",
+                  selectedQuantity === 18
+                    ? "bg-blue-50/80 border-brand ring-1 ring-brand/20"
+                    : "bg-[#F9F9FB] border-border hover:border-brand"
+                )}
+              >
+                <div className="flex justify-between items-center text-[9px] uppercase font-bold text-ink-muted">
+                  <span>Packing List</span>
+                  <span className="text-purple-700">Doc 2</span>
+                </div>
+                <p className="font-extrabold text-ink text-sm font-mono">18 PCS</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-surface-muted rounded-xl border border-border space-y-2">
+              <label className="flex items-center space-x-2 font-bold cursor-pointer">
+                <input
+                  type="radio"
+                  checked={selectedQuantity === "CUSTOM"}
+                  onChange={() => setSelectedQuantity("CUSTOM")}
+                  className="w-4 h-4 text-brand"
+                />
+                <span>Specify Custom Correct Quantity</span>
+              </label>
+              {selectedQuantity === "CUSTOM" && (
+                <div className="flex items-center space-x-2 pl-6">
+                  <input
+                    type="number"
+                    value={customQtyVal}
+                    onChange={(e) => setCustomQtyVal(e.target.value)}
+                    placeholder="e.g. 19"
+                    className="w-20 px-2.5 py-1 border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white font-mono text-xs"
+                    disabled={saveLoading}
+                  />
+                  <span className="font-bold text-ink-muted">PCS</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 5. Importer POA Expired renewal UI */}
+        {exception.actionType === "POA" && (
+          <div className="space-y-3 text-xs">
+            <Label className="font-bold">Renew Importer Power of Attorney</Label>
+            <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 flex items-start space-x-2 text-blue-900 leading-normal">
+              <ShieldAlert className="w-5 h-5 text-brand shrink-0 mt-0.5" />
+              <div>
+                <p className="font-extrabold">POA Electronic Consent Renewal</p>
+                <p className="text-[11px] mt-0.5">
+                  Sign off to renew the active Power of Attorney consent for Target Enterprise. The renewal extends POA credentials for 1 year per CBP regulation 19 CFR § 141.46.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="font-bold text-ink">Broker / Officer Signature Name</p>
+              <Input
+                value={poaSignedName}
+                onChange={(e) => setPoaSignedName(e.target.value)}
+                placeholder="Sign as Joe Admin / Licensed Customs Broker"
+                className="bg-surface-muted focus:bg-white font-bold text-[12px]"
+                disabled={saveLoading}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <ModalFooter className="pt-3 border-t border-border">
+        <Button variant="secondary" onClick={onClose} disabled={saveLoading}>
+          Cancel
+        </Button>
+        <Button onClick={handleResolve} loading={saveLoading}>
+          {saveLoading ? "Saving..." : "Resolve & Save"}
+        </Button>
+      </ModalFooter>
+    </Modal>
   );
 }

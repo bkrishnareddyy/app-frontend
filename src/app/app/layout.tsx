@@ -20,7 +20,7 @@ export default async function AppLayout({
       : context.email;
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] text-[#1D1D1F] flex selection:bg-[#0071E3]/20 selection:text-[#0071E3]">
+    <div className="min-h-screen bg-surface-muted text-ink flex selection:bg-brand/20 selection:text-brand">
       {/* Sidebar Navigation */}
       <Sidebar
         currentAccountId={context.accountId}

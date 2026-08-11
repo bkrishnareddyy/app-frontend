@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens for the shared component library (src/components/ui/*).
+ * Values intentionally mirror the --apple-* variables below so both the
+ * legacy .apple-card/.apple-glass utilities and new components stay in sync.
+ * Change a color here, not in individual components.
+ */
+@theme {
+  --color-brand: #0071E3;
+  --color-brand-hover: #0077ED;
+  --color-ink: #1D1D1F;
+  --color-ink-muted: #86868B;
+  --color-border: #E5E5EA;
+  --color-surface: #ffffff;
+  --color-surface-muted: #F5F5F7;
+}
+
 @layer utilities {
   .apple-card {
     background: #ffffff;

@@ -58,7 +58,7 @@ export function ShipmentClientEditor({
           onChange={(e) => setClientId(e.target.value)}
           disabled={loading}
           autoFocus
-          className="px-3 py-1 text-xs font-semibold text-[#1D1D1F] border border-[#0071E3] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white"
+          className="px-3 py-1 text-xs font-semibold text-ink border border-brand rounded-xl focus:outline-none focus:ring-1 focus:ring-brand bg-white"
         >
           <option value="">No Client</option>
           {clients.map((c) => (
@@ -91,12 +91,12 @@ export function ShipmentClientEditor({
   return (
     <div className="flex items-center space-x-1.5 group">
       {initialClientName ? (
-        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand/10 text-brand">
           <Building2 className="w-3 h-3" />
           <span>{initialClientName}</span>
         </span>
       ) : (
-        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#F5F5F7] text-[#86868B] border border-[#E5E5EA]">
+        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-muted text-ink-muted border border-border">
           <Building2 className="w-3 h-3" />
           <span>No Client</span>
         </span>
@@ -104,7 +104,7 @@ export function ShipmentClientEditor({
       {canEdit && (
         <button
           onClick={() => setIsEditing(true)}
-          className="p-1 rounded-lg hover:bg-[#F5F5F7] text-[#86868B]/80 hover:text-[#1D1D1F] transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+          className="p-1 rounded-lg hover:bg-surface-muted text-ink-muted/80 hover:text-ink transition-all cursor-pointer opacity-0 group-hover:opacity-100"
           title="Edit Client"
         >
           <Edit2 className="w-3.5 h-3.5" />

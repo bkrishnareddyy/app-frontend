@@ -3,6 +3,8 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bookmark, Check, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input, Label } from "@/components/ui/Input";
 import {
   type SavedView,
   isActiveView,
@@ -69,12 +71,12 @@ export function SavedViews({ tableId, label }: SavedViewsProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
         Saved views
       </span>
 
       {views.length === 0 ? (
-        <span className="text-xs text-[#86868B]">None saved on this device</span>
+        <span className="text-xs text-ink-muted">None saved on this device</span>
       ) : (
         views.map((view) => {
           const active = isActiveView(view, currentQuery);
@@ -84,10 +86,10 @@ export function SavedViews({ tableId, label }: SavedViewsProps) {
                 type="button"
                 onClick={() => router.push(savedViewHref(pathname, view))}
                 aria-current={active ? "true" : undefined}
-                className={`inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-l-xl border text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3] ${
+                className={`inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-l-xl border text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
                   active
-                    ? "border-[#0071E3] bg-[#0071E3]/10 text-[#0071E3]"
-                    : "border-[#E5E5EA] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7]"
+                    ? "border-brand bg-brand/10 text-brand"
+                    : "border-border bg-white text-ink hover:bg-surface-muted"
                 }`}
               >
                 {active ? (
@@ -101,7 +103,7 @@ export function SavedViews({ tableId, label }: SavedViewsProps) {
                 type="button"
                 onClick={() => persist(removeSavedView(views, view.name))}
                 aria-label={`Delete saved view ${view.name}`}
-                className="inline-flex items-center px-2 py-1 rounded-r-xl border border-l-0 border-[#E5E5EA] bg-white text-[#86868B] hover:text-red-600 hover:bg-[#F5F5F7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3]"
+                className="inline-flex items-center px-2 py-1 rounded-r-xl border border-l-0 border-border bg-white text-ink-muted hover:text-red-600 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
               >
                 <Trash2 className="w-3 h-3" aria-hidden="true" />
               </button>
@@ -112,40 +114,45 @@ export function SavedViews({ tableId, label }: SavedViewsProps) {
 
       {isNaming ? (
         <form onSubmit={handleSave} className="flex items-center gap-1.5">
-          <label htmlFor={`saved-view-name-${tableId}`} className="sr-only">
+          <Label htmlFor={`saved-view-name-${tableId}`} className="sr-only">
             Name for this {label} view
-          </label>
-          <input
+          </Label>
+          <Input
             id={`saved-view-name-${tableId}`}
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="View name"
             autoFocus
-            className="px-2.5 py-1 w-36 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
+            className="w-36 px-2.5 py-1 bg-white focus:ring-0"
           />
-          <button
+          <Button
             type="submit"
-            className="px-2.5 py-1 rounded-xl bg-[#0071E3] text-white text-xs font-semibold hover:bg-[#0077ED] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3]"
+            size="sm"
+            className="px-2.5 py-1 rounded-xl shadow-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
             Save
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => setIsNaming(false)}
-            className="px-2.5 py-1 rounded-xl border border-[#E5E5EA] bg-white text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3]"
+            className="px-2.5 py-1 rounded-xl shadow-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
             Cancel
-          </button>
+          </Button>
         </form>
       ) : (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => setIsNaming(true)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-dashed border-[#C7C7CC] bg-white text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3]"
+          className="gap-1 px-2.5 py-1 rounded-xl border-dashed border-[#C7C7CC] shadow-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           <Bookmark className="w-3 h-3" aria-hidden="true" />
           <span>Save this view</span>
-        </button>
+        </Button>
       )}
     </div>
   );
