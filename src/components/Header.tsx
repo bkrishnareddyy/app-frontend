@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { Building2, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, type LucideIcon } from "lucide-react";
+import { Building2, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, Archive, type LucideIcon } from "lucide-react";
 import { ManageAccountModal, type ManageAccountPanelItem, type PanelItemId } from "./ManageAccountModal";
 import { accountAdminItems } from "@/lib/navigation";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -61,6 +61,7 @@ export function Header({
   const menuActions = [
     { label: "Manage Account", icon: Settings2, onClick: () => setIsManageAccountOpen(true) },
     { label: "Profile & Security", icon: UserCog, onClick: () => openUserProfile() },
+    { label: "Document Vault", icon: Archive, onClick: () => router.push("/app/vault") },
     { label: "AI Agents Roster & Testing", icon: Bot, onClick: () => router.push("/agents") },
   ];
 

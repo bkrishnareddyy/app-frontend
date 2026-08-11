@@ -17,16 +17,6 @@ import {
 import { caughtMessage } from "@/lib/utils";
 import { PAGE_SIZE_DEFAULT, pageWindow } from "@/modules/tables/tableQuery";
 
-interface DocumentItem {
-  id: string;
-  docType: string;
-  fileName: string;
-  pageCount: number | null;
-  confidence: number | null;
-  status: string;
-  fileUrl?: string | null;
-}
-
 interface ShipmentItem {
   id: string;
   shipmentNumber: string;
@@ -50,15 +40,6 @@ interface ShipmentItem {
     lastName: string | null;
     email: string;
   } | null;
-  documents: DocumentItem[];
-  /**
-   * Carried in the payload but not read by this screen -- the workbench lists
-   * shipments and never inspects their line items or filings. Typed `unknown[]`
-   * rather than given a shape this file does not depend on, so a change to either
-   * row cannot silently invalidate a declaration nobody here checks.
-   */
-  lineItems: unknown[];
-  customsFilings: unknown[];
 }
 
 interface ShipmentsWorkbenchClientProps {

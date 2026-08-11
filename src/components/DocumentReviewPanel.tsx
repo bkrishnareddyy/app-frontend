@@ -45,17 +45,37 @@ function severityBadgeClass(severity: string): string {
 // "blocked," not a guess.
 const BLOCKED_SENTINELS = new Set(["BLOCKED_DEPENDENCY", "WAITING_FOR_EXTRACTION", "BLOCKED_MISSING_DESCRIPTION"]);
 
+type RollupCategory = "VERIFIED" | "REVIEW" | "BLOCKED";
+
 interface RollupDecision {
+  id: string;
   status: string;
   proposedDescription?: string | null;
 }
 
-function RollupSummary({ decisions }: { decisions: RollupDecision[] }) {
+function classifyDecision(d: { status: string; proposedDescription?: string | null }): RollupCategory {
+  if (d.proposedDescription && BLOCKED_SENTINELS.has(d.proposedDescription)) return "BLOCKED";
+  if (d.status === "Approved") return "VERIFIED";
+  return "REVIEW";
+}
+
+// Fixed ordering used both to sort the check list and to rank which stat
+// box's first match a click should jump to -- worst first, so the thing
+// most likely to need action is what you land on.
+const CATEGORY_PRIORITY: Record<RollupCategory, number> = { BLOCKED: 0, REVIEW: 1, VERIFIED: 2 };
+
+function RollupSummary({
+  decisions,
+  onSelectCategory,
+}: {
+  decisions: RollupDecision[];
+  onSelectCategory?: (category: RollupCategory) => void;
+}) {
   const total = decisions.length;
   if (total === 0) return null;
 
-  const blocked = decisions.filter((d) => d.proposedDescription && BLOCKED_SENTINELS.has(d.proposedDescription)).length;
-  const verified = decisions.filter((d) => d.status === "Approved").length;
+  const blocked = decisions.filter((d) => classifyDecision(d) === "BLOCKED").length;
+  const verified = decisions.filter((d) => classifyDecision(d) === "VERIFIED").length;
   const review = total - verified - blocked;
 
   let summary: string | null = null;
@@ -75,18 +95,30 @@ function RollupSummary({ decisions }: { decisions: RollupDecision[] }) {
         <span className="ml-auto text-[11px] font-semibold text-ink-muted">{verified} of {total} checks passed</span>
       </div>
       <div className="flex gap-2">
-        <div className="flex-1 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-2">
+        <button
+          type="button"
+          onClick={() => onSelectCategory?.("VERIFIED")}
+          className="flex-1 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-2 text-left hover:bg-emerald-100 transition-colors cursor-pointer"
+        >
           <p className="text-base font-extrabold text-emerald-900">{verified}</p>
           <p className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">Verified</p>
-        </div>
-        <div className="flex-1 rounded-xl bg-amber-50 border border-amber-200 px-2.5 py-2">
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectCategory?.("REVIEW")}
+          className="flex-1 rounded-xl bg-amber-50 border border-amber-200 px-2.5 py-2 text-left hover:bg-amber-100 transition-colors cursor-pointer"
+        >
           <p className="text-base font-extrabold text-amber-900">{review}</p>
           <p className="text-[9px] font-extrabold uppercase tracking-wide text-amber-700">Review</p>
-        </div>
-        <div className="flex-1 rounded-xl bg-red-50 border border-red-200 px-2.5 py-2">
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectCategory?.("BLOCKED")}
+          className="flex-1 rounded-xl bg-red-50 border border-red-200 px-2.5 py-2 text-left hover:bg-red-100 transition-colors cursor-pointer"
+        >
           <p className="text-base font-extrabold text-red-900">{blocked}</p>
           <p className="text-[9px] font-extrabold uppercase tracking-wide text-red-700">Blocked</p>
-        </div>
+        </button>
       </div>
       {summary && <p className="text-[11px] text-ink-muted leading-relaxed">{summary}</p>}
     </div>
@@ -369,7 +401,20 @@ export function DocumentReviewPanel({
 
   const hasFieldReview = decisions.length > 0;
   const mechanicalDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) === "MECHANICAL"));
-  const reviewableDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) !== "MECHANICAL"));
+  // Worst-first (Blocked, then Review, then Verified) so the checks most
+  // likely to need action surface at the top of the list.
+  const reviewableDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) !== "MECHANICAL")).sort(
+    (a, b) => CATEGORY_PRIORITY[classifyDecision(a)] - CATEGORY_PRIORITY[classifyDecision(b)]
+  );
+
+  // Jumps to the first check card in the clicked rollup category. Mechanical
+  // checks render in their own collapsed block with no per-card scroll
+  // target, so a click only ever needs to consider reviewableDecisions.
+  function scrollToCategory(category: RollupCategory) {
+    const target = reviewableDecisions.find((dec) => classifyDecision(dec) === category);
+    if (!target) return;
+    document.getElementById(`decision-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   // Field Review opens first when agent checks are available -- the whole
   // point is to lead with results, not the raw document.
@@ -753,7 +798,7 @@ export function DocumentReviewPanel({
           </div>
         ) : activeTab === "FIELDS" ? (
           <div className="flex-1 overflow-y-auto border border-border rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
-            <RollupSummary decisions={[...mechanicalDecisions, ...reviewableDecisions]} />
+            <RollupSummary decisions={[...mechanicalDecisions, ...reviewableDecisions]} onSelectCategory={scrollToCategory} />
             {reviewableDecisions.map((dec) => {
               const isBusy = actionLoadingId === dec.id;
               const groupLabel = reviewerLabel(dec);
@@ -761,7 +806,7 @@ export function DocumentReviewPanel({
               const fields = category === "FIELDS" ? editableFieldsFor(dec) : [];
 
               return (
-                <div key={dec.id} className="p-3.5 rounded-xl bg-white border border-border shadow-2xs space-y-2.5">
+                <div id={`decision-${dec.id}`} key={dec.id} className="p-3.5 rounded-xl bg-white border border-border shadow-2xs space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-extrabold text-ink text-[13px]">{groupLabel}</span>
                     <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
@@ -934,23 +979,33 @@ export function DocumentReviewPanel({
               <div className="p-8 text-center text-ink-muted">No agent checks yet for this document.</div>
             )}
 
-            {mechanicalDecisions.length > 0 && (
-              <div className="p-3 rounded-xl bg-[#F0F0F2] border border-border space-y-1.5">
-                <p className="text-[10px] font-bold uppercase text-ink-muted tracking-wide">
-                  Automated processing ({mechanicalDecisions.length}) — nothing to review
-                </p>
-                <div className="space-y-1">
-                  {mechanicalDecisions.map((dec) => (
-                    <div key={dec.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
-                      <span className="text-ink font-semibold truncate">{decisionGroupLabel(dec)}</span>
-                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
-                        {dec.status}
-                      </span>
-                    </div>
-                  ))}
+            {(() => {
+              // "Mechanical" means no field to correct, not "can't fail" --
+              // Document Intake and Filing Readiness write status "Needs
+              // Review" when the underlying check actually failed (e.g. not
+              // ready for transmission). A passing mechanical check has
+              // nothing to tell the broker, so it's not rendered at all;
+              // only the ones that actually failed are worth a line.
+              const failingMechanical = mechanicalDecisions.filter((dec) => dec.status !== "Approved");
+              if (failingMechanical.length === 0) return null;
+              return (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
+                  <p className="text-[10px] font-bold uppercase text-amber-800 tracking-wide">
+                    Automated processing — {failingMechanical.length} needs attention
+                  </p>
+                  <div className="space-y-1">
+                    {failingMechanical.map((dec) => (
+                      <div key={dec.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
+                        <span className="text-ink font-semibold truncate">{decisionGroupLabel(dec)}</span>
+                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
+                          {dec.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         ) : activeTab === "DOC" ? (
           <div className="flex-1 overflow-y-auto bg-surface-muted rounded-2xl border border-border p-4 flex items-center justify-center min-h-[350px]">

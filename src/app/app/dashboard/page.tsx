@@ -12,19 +12,46 @@ export default async function CommandCenterPage() {
 
   const accountId = context.accountId;
 
-  // Fetch all shipments for active tenant account, including broker assignment
+  // A stopgap cap, not real pagination: the Command Center's KPI tiles and
+  // client-side search are documented as reading the *whole* filtered set (see
+  // CommandCenterClient's filter comment), so paginating the query would make
+  // "Total: 25" mean "25 on this page" and let search miss off-page rows.
+  // Moving KPIs/search server-side is the real fix; this cap only bounds the
+  // worst case for now.
+  const SHIPMENT_ROW_CAP = 500;
+
+  // Fetch shipments for the active tenant account, selecting only the columns
+  // this page's formatting actually reads. The previous `include: { ...: true
+  // }` pulled every column of six relations per shipment -- including two
+  // (agentDecisions, customsFilings) that formattedShipments below never uses
+  // at all, and large text/JSON columns (documents.rawContent, lineItem
+  // description, etc.) on the two relations that are used.
   const shipments = await db.shipment.findMany({
     where: { accountId, deletedAt: null },
-    include: {
-      agentDecisions: true,
-      customsFilings: true,
-      assignedBroker: true,
-      documents: true,
-      lineItems: true,
-      exceptionItems: true,
-      client: true,
+    select: {
+      id: true,
+      shipmentNumber: true,
+      poReference: true,
+      importerName: true,
+      entryType: true,
+      incoterm: true,
+      portOfEntry: true,
+      countryOfExport: true,
+      status: true,
+      healthStatus: true,
+      riskScore: true,
+      clientId: true,
+      client: { select: { id: true, name: true } },
+      assignedBrokerId: true,
+      assignedBroker: { select: { id: true, firstName: true, lastName: true } },
+      estimatedArrival: true,
+      // computeReadinessScore's inputs
+      documents: { select: { docType: true, fileName: true, status: true, fileUrl: true, extractedJson: true } },
+      lineItems: { select: { htsCode: true, countryOfOrigin: true, quantity: true, unitPrice: true, totalValue: true } },
+      exceptionItems: { select: { status: true, severity: true } },
     },
     orderBy: { createdAt: "desc" },
+    take: SHIPMENT_ROW_CAP,
   });
 
   const clients = await db.client.findMany({
@@ -32,16 +59,22 @@ export default async function CommandCenterPage() {
     orderBy: { name: "asc" },
   });
 
-  // Fetch all decisions for active tenant account
+  // Fetch decisions for the active tenant account -- only the columns
+  // formattedDecisions reads, not the full row (which includes an
+  // `evidenceItems` JSON blob and several string-array columns per decision).
   const decisions = await db.agentDecision.findMany({
     where: { accountId },
-    include: {
+    select: {
+      id: true,
+      status: true,
       shipment: {
         select: {
           assignedBrokerId: true,
         },
       },
     },
+    orderBy: { createdAt: "desc" },
+    take: SHIPMENT_ROW_CAP,
   });
 
   // Fetch active team members if user is an enterprise admin

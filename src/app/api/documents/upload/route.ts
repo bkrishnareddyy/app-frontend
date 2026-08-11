@@ -207,6 +207,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
         accountId,
         userId,
         shipmentId: targetShipmentId,
+        jobId: job.id,
         triggerEvent: "DOCUMENT_UPLOADED",
         payload: {
           documentId: docRecord.id,

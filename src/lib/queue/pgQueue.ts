@@ -135,6 +135,18 @@ export class PgQueue {
   }
 
   /**
+   * Advances the visible progress of a job that is running inline (all steps within
+   * one worker invocation), without releasing the lock or changing status -- unlike
+   * updateJobState, which is for the dequeue-per-step worker model.
+   */
+  static async updateProgress(jobId: string, currentStep: number) {
+    await db.pipelineJob.update({
+      where: { id: jobId },
+      data: { currentStep },
+    });
+  }
+
+  /**
    * Marks a job as completed.
    */
   static async completeJob(jobId: string, finalState: JobState) {

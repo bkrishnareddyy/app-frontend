@@ -16,6 +16,7 @@ import { LineItemReconciler, lineItemFactField } from "@/modules/shipment/lineIt
 import { buildAgentContext, ShipmentAgentContext, factValue, latestTradeMetadata } from "./agentContext";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { captureShipmentOutputFacts } from "./outputCapture";
+import { PgQueue } from "@/lib/queue/pgQueue";
 
 /**
  * Replaces ComplianceWorkflowEngine/AgentOrchestrator (the fixed 10-step
@@ -45,6 +46,8 @@ export interface ProcessEventParams {
   userId?: string;
   triggerEvent: ShipmentEventType;
   payload?: AgentTriggerPayload;
+  /** PipelineJob to report step progress against, for callers running this inline behind a job record. */
+  jobId?: string;
 }
 
 export interface ProcessEventResult {
@@ -113,7 +116,7 @@ async function recordLineItemFacts(
 export class PipelineOrchestrator {
   static async processEvent(params: ProcessEventParams): Promise<ProcessEventResult> {
     const startTime = Date.now();
-    const { shipmentId, accountId, triggerEvent, payload } = params;
+    const { shipmentId, accountId, triggerEvent, payload, jobId } = params;
     const userId = params.userId || "usr_system";
     const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const invokedByLabel = this.invokedByLabel(triggerEvent, payload);
@@ -190,6 +193,12 @@ export class PipelineOrchestrator {
             },
           })
           .catch((e) => console.error("[PipelineOrchestrator] Failed to write execution record:", e));
+
+        if (jobId) {
+          await PgQueue.updateProgress(jobId, i + 1).catch((e) =>
+            console.error("[PipelineOrchestrator] Failed to update job progress:", e)
+          );
+        }
       }
     }
 
