@@ -15,14 +15,28 @@ interface DecisionReviewClientProps {
   initialAgentName?: string;
 }
 
-// One document upload triggers the full agent pipeline (up to 10 agents),
-// each writing its own AgentDecision row. AgentDecision has no documentId or
-// runId to group by, so decisions from the same shipment that landed within
-// this gap are treated as one review batch -- same time-clustering approach
-// already proven for AgentExecutionLog grouping (see agentInvocations.ts),
-// wide enough to cover a slow agent run without merging genuinely separate
-// upload events (which in practice are minutes to days apart, not seconds).
-const CLUSTER_GAP_MS = 15 * 60 * 1000;
+// Document Intake, Document Intelligence, Product Intelligence, and HTS
+// Classification each run because of one specific document event -- their
+// AgentDecision.documentId (added once AgentDecision had no way to record
+// this) is the real document to group under. Origin, Valuation, Compliance,
+// and Filing Readiness are shipment-scoped by design (they evaluate every
+// line item on the shipment, not one document's) and rerun on every edit,
+// reconcile, or reattach -- grouping them per-run used to fabricate a new
+// "document" card every time, even though there's only ever one current
+// answer per agent for the whole shipment.
+const SHIPMENT_SCOPED_AGENTS = new Set([
+  "Origin Agent",
+  "Valuation Agent",
+  "Compliance Agent",
+  "Filing Readiness Agent",
+]);
+
+// Legacy-only: decisions written before AgentDecision.documentId existed
+// still have documentId: null despite being document-scoped. Falls back to
+// the old 15-minute time-clustering + nearest-upload-timestamp heuristic so
+// that historical data doesn't disappear from the page -- irrelevant for
+// anything created going forward, since those always carry a real documentId.
+const LEGACY_CLUSTER_GAP_MS = 15 * 60 * 1000;
 
 interface DecisionGroup {
   id: string;
@@ -36,26 +50,50 @@ interface DecisionGroup {
 }
 
 function groupDecisions(decisions: any[], allDocuments: any[]): DecisionGroup[] {
-  const sorted = [...decisions].sort((a, b) => {
+  const documentScoped = decisions.filter((d) => !SHIPMENT_SCOPED_AGENTS.has(d.agentName));
+  const shipmentScoped = decisions.filter((d) => SHIPMENT_SCOPED_AGENTS.has(d.agentName));
+
+  // One current decision per (shipmentId, agentName) among shipment-scoped
+  // agents -- the latest run is the shipment's current answer, not a batch
+  // of historical runs to show as separate cards.
+  const latestShipmentScoped = new Map<string, any>();
+  for (const dec of shipmentScoped) {
+    const key = `${dec.shipmentId}::${dec.agentName}`;
+    const existing = latestShipmentScoped.get(key);
+    if (!existing || new Date(dec.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+      latestShipmentScoped.set(key, dec);
+    }
+  }
+  const shipmentScopedByShipment = new Map<string, any[]>();
+  for (const dec of latestShipmentScoped.values()) {
+    const list = shipmentScopedByShipment.get(dec.shipmentId) ?? [];
+    list.push(dec);
+    shipmentScopedByShipment.set(dec.shipmentId, list);
+  }
+
+  const byDocumentId = new Map<string, any[]>();
+  const withRealDocId = documentScoped.filter((d) => d.documentId);
+  const legacyWithoutDocId = documentScoped.filter((d) => !d.documentId);
+
+  for (const dec of withRealDocId) {
+    const list = byDocumentId.get(dec.documentId) ?? [];
+    list.push(dec);
+    byDocumentId.set(dec.documentId, list);
+  }
+
+  // Legacy fallback: same clustering + nearest-timestamp attribution as
+  // before, feeding into the same byDocumentId map.
+  const sortedLegacy = [...legacyWithoutDocId].sort((a, b) => {
     if (a.shipmentId !== b.shipmentId) return a.shipmentId < b.shipmentId ? -1 : 1;
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
-
-  const groups: DecisionGroup[] = [];
-  let current: any[] = [];
-
-  const flush = () => {
-    if (current.length === 0) return;
-    const shipmentId = current[0].shipmentId;
-    const shipmentNumber = current[0].shipment?.shipmentNumber || shipmentId;
-    const clusterStart = new Date(current[0].createdAt).getTime();
-    const clusterEnd = new Date(current[current.length - 1].createdAt).getTime();
+  let currentCluster: any[] = [];
+  const flushLegacyCluster = () => {
+    if (currentCluster.length === 0) return;
+    const shipmentId = currentCluster[0].shipmentId;
+    const clusterStart = new Date(currentCluster[0].createdAt).getTime();
+    const clusterEnd = new Date(currentCluster[currentCluster.length - 1].createdAt).getTime();
     const midpoint = (clusterStart + clusterEnd) / 2;
-
-    // Best-effort attribution to the document that was actually uploaded
-    // around this batch of agent activity, instead of always defaulting to
-    // "the shipment's first document" regardless of which upload triggered
-    // these specific decisions.
     const shipmentDocs = allDocuments.filter((d) => d.shipmentId === shipmentId);
     let bestDoc = shipmentDocs[0];
     let bestDelta = Infinity;
@@ -66,38 +104,58 @@ function groupDecisions(decisions: any[], allDocuments: any[]): DecisionGroup[] 
         bestDoc = d;
       }
     }
-
-    const allApproved = current.every((d) => d.status === "Approved");
-
-    groups.push({
-      id: current[0].id,
-      shipmentId,
-      shipmentNumber,
-      documentName: bestDoc?.fileName || "Uploaded document",
-      documentId: bestDoc?.id,
-      decisions: current,
-      status: allApproved ? "Approved" : "Needs Review",
-      latestCreatedAt: current[current.length - 1].createdAt,
-    });
-    current = [];
+    if (bestDoc) {
+      const list = byDocumentId.get(bestDoc.id) ?? [];
+      list.push(...currentCluster);
+      byDocumentId.set(bestDoc.id, list);
+    }
+    currentCluster = [];
   };
-
-  for (const dec of sorted) {
-    if (current.length === 0) {
-      current.push(dec);
+  for (const dec of sortedLegacy) {
+    if (currentCluster.length === 0) {
+      currentCluster.push(dec);
       continue;
     }
-    const last = current[current.length - 1];
+    const last = currentCluster[currentCluster.length - 1];
     const sameShipment = dec.shipmentId === last.shipmentId;
     const gap = new Date(dec.createdAt).getTime() - new Date(last.createdAt).getTime();
-    if (sameShipment && gap <= CLUSTER_GAP_MS) {
-      current.push(dec);
+    if (sameShipment && gap <= LEGACY_CLUSTER_GAP_MS) {
+      currentCluster.push(dec);
     } else {
-      flush();
-      current.push(dec);
+      flushLegacyCluster();
+      currentCluster.push(dec);
     }
   }
-  flush();
+  flushLegacyCluster();
+
+  // One group per real document that has at least one document-scoped
+  // decision, with the shipment's current shipment-scoped decisions merged
+  // in -- every document's panel shows both its own results and the
+  // shipment's current Origin/Valuation/Compliance/Filing status.
+  const groups: DecisionGroup[] = [];
+  for (const [documentId, docDecisions] of byDocumentId) {
+    const doc = allDocuments.find((d) => d.id === documentId);
+    if (!doc) continue;
+    const shipmentId = docDecisions[0].shipmentId;
+    const shipmentNumber = docDecisions[0].shipment?.shipmentNumber || shipmentId;
+    const allDecisionsForGroup = [...docDecisions, ...(shipmentScopedByShipment.get(shipmentId) ?? [])];
+    const allApproved = allDecisionsForGroup.every((d) => d.status === "Approved");
+    const latestCreatedAt = allDecisionsForGroup.reduce(
+      (latest, d) => (new Date(d.createdAt).getTime() > new Date(latest).getTime() ? d.createdAt : latest),
+      allDecisionsForGroup[0].createdAt
+    );
+
+    groups.push({
+      id: docDecisions[0].id,
+      shipmentId,
+      shipmentNumber,
+      documentName: doc.fileName || "Uploaded document",
+      documentId: doc.id,
+      decisions: allDecisionsForGroup,
+      status: allApproved ? "Approved" : "Needs Review",
+      latestCreatedAt,
+    });
+  }
 
   groups.sort((a, b) => new Date(b.latestCreatedAt).getTime() - new Date(a.latestCreatedAt).getTime());
   return groups;

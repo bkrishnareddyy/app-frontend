@@ -2,6 +2,38 @@ import { db } from "@/lib/db";
 import { ShipmentEventBus } from "@/modules/events/shipmentEventBus";
 import { LINE_ITEM_SENTINELS } from "./lineItemReconciler";
 
+interface ComplianceAuditFinding {
+  ruleId: string;
+  category: "PGA" | "ADD_CVD" | "UFLPA" | "VALUATION" | "HTS_INTEGRITY" | "DATA_MISSING" | "SCREENING_GAP";
+  passed: boolean;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  details: string;
+  lineNumber?: number;
+}
+
+interface ComplianceAuditFlag {
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  category: string;
+  summary: string;
+  evidenceRef: string;
+  suggestedAction: string;
+}
+
+const COMPLIANCE_EXCEPTION_CATEGORY: Record<ComplianceAuditFinding["category"], "COMPLIANCE" | "MISSING_DATA"> = {
+  UFLPA: "COMPLIANCE",
+  ADD_CVD: "COMPLIANCE",
+  PGA: "COMPLIANCE",
+  SCREENING_GAP: "COMPLIANCE",
+  VALUATION: "COMPLIANCE",
+  HTS_INTEGRITY: "COMPLIANCE",
+  DATA_MISSING: "MISSING_DATA",
+};
+
+function complianceExceptionCode(finding: ComplianceAuditFinding): string {
+  const sanitizedRuleId = finding.ruleId.replace(/[^A-Z0-9]/gi, "_").toUpperCase();
+  return `COMPLIANCE_${sanitizedRuleId}${finding.lineNumber != null ? `_L${finding.lineNumber}` : ""}`;
+}
+
 export interface ReconciliationResult {
   shipmentId: string;
   reconciledAt: string;
@@ -163,6 +195,63 @@ export class ReconciliationEngine {
           affectedAgentsSet.add("LINE_ITEM_RECONCILER");
         }
       } else if (existing) {
+        await db.exceptionItem.update({
+          where: { id: existing.id },
+          data: { status: "Resolved", resolvedAt: new Date(), resolvedBy: triggerSource },
+        });
+        exceptionsResolved++;
+      }
+    }
+
+    // 4. Sync Compliance Audit Agent's CRITICAL/HIGH findings into real
+    // exceptions -- the deterministic auditResults are the dedup source
+    // (stable ruleId/lineNumber), not the LLM-phrased flags, whose wording
+    // can vary run to run for the same underlying finding.
+    const latestComplianceDecision = await db.agentDecision.findFirst({
+      where: { shipmentId: shipment.id, agentName: "Compliance Agent" },
+      orderBy: { createdAt: "desc" },
+    });
+    const evidenceItems = latestComplianceDecision?.evidenceItems as
+      | { auditResults?: ComplianceAuditFinding[]; flags?: ComplianceAuditFlag[] }
+      | null
+      | undefined;
+    const auditResults = evidenceItems?.auditResults ?? [];
+    const flags = evidenceItems?.flags ?? [];
+
+    const activeComplianceExceptions = activeExceptions.filter((e) => e.sourceAgent === "Compliance Agent");
+    const currentFindings = auditResults.filter(
+      (r) => !r.passed && (r.severity === "CRITICAL" || r.severity === "HIGH")
+    );
+    const currentCodes = new Set(currentFindings.map(complianceExceptionCode));
+
+    for (const finding of currentFindings) {
+      const code = complianceExceptionCode(finding);
+      if (activeComplianceExceptions.some((e) => e.code === code)) continue;
+
+      const matchingFlag = flags.find(
+        (f) => f.category === finding.category && (finding.lineNumber == null || f.evidenceRef.includes(`Line ${finding.lineNumber}`))
+      );
+
+      await db.exceptionItem.create({
+        data: {
+          accountId: shipment.accountId,
+          shipmentId: shipment.id,
+          code,
+          category: COMPLIANCE_EXCEPTION_CATEGORY[finding.category],
+          type: "compliance_flag",
+          severity: finding.severity === "CRITICAL" ? "Critical" : "High",
+          description: matchingFlag?.summary ?? finding.details,
+          blocking: finding.severity === "CRITICAL",
+          requiredAction: matchingFlag?.suggestedAction ?? "Manual compliance review required before filing.",
+          sourceAgent: "Compliance Agent",
+        },
+      });
+      exceptionsGenerated++;
+      affectedAgentsSet.add("COMPLIANCE_AUDIT");
+    }
+
+    for (const existing of activeComplianceExceptions) {
+      if (existing.code && !currentCodes.has(existing.code)) {
         await db.exceptionItem.update({
           where: { id: existing.id },
           data: { status: "Resolved", resolvedAt: new Date(), resolvedBy: triggerSource },

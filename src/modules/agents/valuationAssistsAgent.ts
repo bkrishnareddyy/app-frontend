@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
+import { Prisma } from "@prisma/client";
 
 export interface ValuationAdjustment {
   type: string;
@@ -12,9 +13,17 @@ export interface ValuationAssistsInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   invoiceSubtotal?: number | null;
   oceanFreight?: number;
   buyerAssists?: number;
+  /** Not consumed by valuation logic today -- available for a future line-total-vs-invoice-subtotal reconciliation check. */
+  lineItems?: Array<{
+    lineNumber: number;
+    totalValue?: number | null;
+    quantity?: number | null;
+    unitPrice?: number | null;
+  }>;
 }
 
 export interface ValuationAssistsOutput {
@@ -61,6 +70,7 @@ export class ValuationAssistsAgent {
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "Valuation Agent",
             agentIcon: "Calculator",
             status: "Needs Review",
@@ -152,6 +162,7 @@ export class ValuationAssistsAgent {
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Valuation Agent",
           agentIcon: "Calculator",
           status: "Approved",
@@ -171,6 +182,11 @@ export class ValuationAssistsAgent {
                 ]
               : []),
           ],
+          evidenceItems: {
+            enteredCustomsValue,
+            valuationMethod: "METHOD_1_TRANSACTION_VALUE",
+            adjustments,
+          } as unknown as Prisma.InputJsonValue,
         },
       });
       agentDecisionId = agentDecision.id;

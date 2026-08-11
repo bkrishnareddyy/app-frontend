@@ -120,6 +120,22 @@ export function decisionGroupLabel(decision: DecisionLike): string {
   return agentBaseName(decision) || "Check";
 }
 
+// "Document Intelligence" and "Product Intelligence" are this pipeline's own
+// internal agent names, not customs terminology -- a broker wouldn't
+// recognize either from CBP regulation or industry practice. Everything else
+// (Origin, Valuation, Compliance, HTS Classification) already is a real
+// customs term, so those pass through unchanged.
+const REVIEWER_LABELS: Record<string, string> = {
+  "Document Intelligence": "Document data",
+  "Product Intelligence": "Product classification",
+};
+
+/** decisionGroupLabel, translated into the term a broker would actually use. */
+export function reviewerLabel(decision: DecisionLike): string {
+  const base = decisionGroupLabel(decision);
+  return REVIEWER_LABELS[base] ?? base;
+}
+
 export function readEditableValue(decision: DecisionLike, key: string): string | null {
   const field = editableFieldsFor(decision).find((f) => f.key === key);
   return field ? field.value : null;

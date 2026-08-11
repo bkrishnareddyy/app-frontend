@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
+import { Prisma } from "@prisma/client";
 
 export interface OriginQualificationResult {
   lineNumber: number;
@@ -22,6 +23,7 @@ export interface OriginRulesInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  documentId?: string | null;
   lineItems: Array<{
     lineNumber: number;
     htsCode?: string | null;
@@ -29,6 +31,12 @@ export interface OriginRulesInput {
     rawMaterialOrigin?: string;
     /** Caller-provided duty rate for this HTS (e.g. from the HTS DB lookup in Agent 4). */
     standardDutyRate?: string;
+    /** Not consumed by origin-determination logic today -- available for future GRI/de-minimis reasoning. */
+    description?: string | null;
+    sku?: string | null;
+    materialComposition?: string | null;
+    essentialCharacter?: string | null;
+    endUse?: string | null;
   }>;
 }
 
@@ -74,6 +82,7 @@ export class OriginRulesAgent {
           data: {
             accountId: input.accountId,
             shipmentId: input.shipmentId,
+            documentId: input.documentId ?? null,
             agentName: "Origin Agent",
             agentIcon: "Globe2",
             status: "Needs Review",
@@ -159,6 +168,7 @@ export class OriginRulesAgent {
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: input.documentId ?? null,
           agentName: "Origin Agent",
           agentIcon: "Globe2",
           status: "Approved",
@@ -174,6 +184,7 @@ export class OriginRulesAgent {
             "19 CFR Part 102 Substantial Transformation",
             "19 CFR § 134 Marking Verification",
           ],
+          evidenceItems: { qualifications } as unknown as Prisma.InputJsonValue,
         },
       });
       agentDecisionId = agentDecision.id;

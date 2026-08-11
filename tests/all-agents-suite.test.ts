@@ -33,6 +33,21 @@ vi.mock("../src/lib/db", () => ({
     customsFiling: {
       create: vi.fn().mockImplementation(async ({ data }) => ({ id: `filing_${Date.now()}`, ...data })),
     },
+    embargoRule: {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: "er_kp",
+          countryCode: "KP",
+          countryName: "North Korea",
+          regime: "Comprehensive Sanctions",
+          restriction: "Comprehensive OFAC embargo.",
+          authority: "US OFAC / CBP",
+        },
+      ]),
+    },
+    tradeBenchmark: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   },
 }));
 
@@ -174,19 +189,77 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     expect(res.agentDecisionId).toBeDefined();
   });
 
-  it("Agent 7 (Compliance Audit): should execute 52 pre-filing CBP rules and UFLPA screening", async () => {
+  it("Agent 7 (Compliance Audit): screens every line's origin against real embargo reference data", async () => {
     const res = await ComplianceAuditAgent.execute({
       accountId: "acc_1",
       userId: "usr_1",
       shipmentId: "shp_1",
-      htsCode: "7318.15.2065",
-      countryOfOrigin: "MX",
+      lineItems: [{ lineNumber: 1, htsCode: "7318.15.2065", countryOfOrigin: "MX" }],
       supplierName: "Shenzhen Precision Hardware Corp",
     });
     expect(res.riskScore).toBe(0);
     expect(res.uflpaCleared).toBe(true);
-    expect(res.auditChecksPassed).toBe(52);
+    expect(res.auditChecksRun).toBeGreaterThan(0);
+    expect(res.auditChecksPassed).toBe(res.auditChecksRun);
     expect(res.agentDecisionId).toBeDefined();
+  });
+
+  it("Agent 7 (Compliance Audit): flags a sanctioned-origin line even when other lines are clean", async () => {
+    const res = await ComplianceAuditAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [
+        { lineNumber: 1, htsCode: "7318.15.2065", countryOfOrigin: "MX" },
+        { lineNumber: 2, htsCode: "8481.80.5090", countryOfOrigin: "KP" },
+      ],
+    });
+    expect(res.riskScore).toBeGreaterThan(0);
+    expect(res.uflpaCleared).toBe(false);
+    expect(res.status).toBe("Review Required");
+    const line2Finding = res.auditResults.find((r) => r.lineNumber === 2 && r.category === "UFLPA");
+    expect(line2Finding?.passed).toBe(false);
+    expect(line2Finding?.details).toContain("North Korea");
+  });
+
+  it("Agent 7 (Compliance Audit): flags a line missing HTS independently of other lines being fine", async () => {
+    const res = await ComplianceAuditAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [
+        { lineNumber: 1, htsCode: "7318.15.2065", countryOfOrigin: "MX" },
+        { lineNumber: 2, htsCode: null, countryOfOrigin: "IN" },
+      ],
+    });
+    const missingHtsFinding = res.auditResults.find(
+      (r) => r.lineNumber === 2 && r.category === "DATA_MISSING" && r.ruleId === "RULE-DATA-02"
+    );
+    expect(missingHtsFinding?.passed).toBe(false);
+    const line1MissingHts = res.auditResults.find(
+      (r) => r.lineNumber === 1 && r.category === "DATA_MISSING" && r.ruleId === "RULE-DATA-02"
+    );
+    expect(line1MissingHts).toBeUndefined();
+  });
+
+  it("Agent 7 (Compliance Audit): reports a screening gap rather than a false clear when no embargo rules are loaded", async () => {
+    const { db } = await import("../src/lib/db");
+    const findMany = db.embargoRule.findMany as unknown as ReturnType<typeof vi.fn>;
+    findMany.mockResolvedValueOnce([]);
+
+    const res = await ComplianceAuditAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [{ lineNumber: 1, htsCode: "7318.15.2065", countryOfOrigin: "KP" }],
+    });
+
+    expect(res.uflpaCleared).toBe(false);
+    const gapFinding = res.auditResults.find((r) => r.category === "SCREENING_GAP");
+    expect(gapFinding).toBeDefined();
+    expect(gapFinding?.details).toContain("not been screened");
+    // With no rules loaded, no UFLPA match/no-match finding should be fabricated for the line.
+    expect(res.auditResults.find((r) => r.category === "UFLPA")).toBeUndefined();
   });
 
   it("Agent 8 (Filing Readiness): should verify Form 7501 fields and continuous bond status", async () => {

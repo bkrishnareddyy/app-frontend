@@ -100,6 +100,31 @@ export function ExceptionsDrawer({
       actionType = "POA";
     }
 
+    // Compliance Audit's findings (embargo/UFLPA/ADD-CVD/PGA/missing HTS or
+    // origin) are grounded in the real DB `category` column, not description
+    // keywords -- their wording can coincidentally match one of the phrases
+    // above (e.g. "missing an HTS classification" matching isHts) and land in
+    // the wrong tab/action with a special mutation meant for a different
+    // exception type. Override using the real column for this source only, so
+    // the three original checks above are untouched.
+    if (dbEx.sourceAgent === "Compliance Agent") {
+      const complianceCategory: Record<string, string> = {
+        COMPLIANCE: "WARNINGS",
+        MISSING_DATA: "MISSING",
+      };
+      category = (dbEx.category && complianceCategory[dbEx.category]) || "WARNINGS";
+      actionType = "DEFAULT";
+      actionText = "Resolve Exception →";
+      icon =
+        dbEx.severity === "Critical" ? (
+          <AlertCircle className="w-4 h-4 text-red-500" />
+        ) : (
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+        );
+      title = dbEx.category === "MISSING_DATA" ? "Missing Compliance Data" : "Sanctions / Compliance Finding";
+      desc = dbEx.description;
+    }
+
     return {
       id: dbEx.id,
       dbId: dbEx.id,
@@ -130,49 +155,15 @@ export function ExceptionsDrawer({
 
   const allExceptions = [...exceptions, ...missingDocExceptions];
 
-  const warnings = [
-    {
-      id: "bond-warning",
-      category: "WARNINGS",
-      title: "Bond Sufficiency Warning",
-      icon: <AlertTriangle className="w-4 h-4 text-amber-500" />,
-      desc: "Estimated duties exceed active continuous bond value",
-      actionText: "Inspect Bond Limits →",
-      actionHref: `/app/decisions?shipmentId=${shipmentId}`,
-    },
-    {
-      id: "pga-warning",
-      category: "WARNINGS",
-      title: "PGA Screening Warning",
-      icon: <Info className="w-4 h-4 text-blue-500" />,
-      desc: "FDA prior notice required for Electronic Controller lithium cell",
-      actionText: "Validate FDA PGA →",
-      actionHref: `/app/decisions?shipmentId=${shipmentId}`,
-    },
-    {
-      id: "add-warning",
-      category: "WARNINGS",
-      title: "ADD/CVD Scope Alert",
-      icon: <AlertCircle className="w-4 h-4 text-red-500" />,
-      desc: "Electronic controller components flagged for possible anti-dumping duty",
-      actionText: "Review ADD Scope →",
-      actionHref: `/app/decisions?shipmentId=${shipmentId}`,
-    }
-  ];
-
-  const filtered = activeTab === "WARNINGS"
-    ? warnings
-    : allExceptions.filter((ex) => {
-        if (activeTab === "ALL") return true;
-        if (activeTab === "MISSING") return ex.category === "MISSING";
-        if (activeTab === "CONFLICTS") return ex.category === "CONFLICTS";
-        if (activeTab === "VALIDATION") return ex.category === "VALIDATION";
-        return true;
-      });
+  const filtered = allExceptions.filter((ex) => {
+    if (activeTab === "ALL") return true;
+    return ex.category === activeTab;
+  });
 
   const validationCount = allExceptions.filter((e) => e.category === "VALIDATION").length;
   const missingCount = allExceptions.filter((e) => e.category === "MISSING").length;
   const conflictsCount = allExceptions.filter((e) => e.category === "CONFLICTS").length;
+  const warningsCount = allExceptions.filter((e) => e.category === "WARNINGS").length;
   const totalCount = allExceptions.length;
 
   return (
@@ -218,7 +209,7 @@ export function ExceptionsDrawer({
                 activeTab === "WARNINGS" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
               }`}
             >
-              Warnings ({warnings.length})
+              Warnings ({warningsCount})
             </button>
           </div>
           <Link

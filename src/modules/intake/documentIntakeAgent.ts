@@ -378,6 +378,7 @@ Target File Name: "${input.fileName}"`;
         data: {
           accountId: input.accountId,
           shipmentId: input.shipmentId,
+          documentId: shipmentDocId,
           agentName: "Document Intake Agent",
           agentIcon: "FileCheck2",
           status: status === "Completed" ? "Approved" : "Needs Review",
