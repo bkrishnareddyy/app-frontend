@@ -268,6 +268,61 @@ async function main() {
   }
   console.log(`  ✅ Created ${rulingsCreated} CBP CROSS Rulings`);
 
+  // ─────────────────────────────────────────────
+  // Step 4: Seed Embargo / Sanctions Reference Data
+  // OFAC comprehensive sanctions countries + the UFLPA forced-labor
+  // designation, matching the example set named in the EmbargoRule
+  // schema comment (countryCode: CU, IR, KP, SY, UFLPA_XINJIANG).
+  // ─────────────────────────────────────────────
+  const embargoRules = [
+    {
+      countryCode: "CU",
+      countryName: "Cuba",
+      regime: "Comprehensive Sanctions",
+      restriction: "Comprehensive OFAC embargo — trade generally prohibited absent a specific license.",
+      authority: "US OFAC / CBP",
+    },
+    {
+      countryCode: "IR",
+      countryName: "Iran",
+      regime: "Comprehensive Sanctions",
+      restriction: "Comprehensive OFAC embargo — trade generally prohibited absent a specific license.",
+      authority: "US OFAC / CBP",
+    },
+    {
+      countryCode: "KP",
+      countryName: "North Korea",
+      regime: "Comprehensive Sanctions",
+      restriction: "Comprehensive OFAC embargo — trade generally prohibited absent a specific license.",
+      authority: "US OFAC / CBP",
+    },
+    {
+      countryCode: "SY",
+      countryName: "Syria",
+      regime: "Comprehensive Sanctions",
+      restriction: "Comprehensive OFAC embargo — trade generally prohibited absent a specific license.",
+      authority: "US OFAC / CBP",
+    },
+    {
+      countryCode: "UFLPA_XINJIANG",
+      countryName: "Xinjiang, China",
+      regime: "UFLPA Forced Labor",
+      restriction: "Rebuttable presumption of forced labor — goods mined, produced, or manufactured wholly or in part in Xinjiang are detained absent clear and convincing evidence otherwise.",
+      authority: "US CBP (Public Law 117-78)",
+    },
+  ];
+
+  let embargoRulesCreated = 0;
+  for (const rule of embargoRules) {
+    await db.embargoRule.upsert({
+      where: { countryCode: rule.countryCode },
+      update: {},
+      create: rule,
+    });
+    embargoRulesCreated++;
+  }
+  console.log(`  ✅ Seeded ${embargoRulesCreated} embargo/sanctions rules`);
+
   console.log("\n✅ Seed complete! HTS Master & CROSS Rulings are ready.");
   console.log("   Try searching for: 'steel valves', '8481', 'cotton', 'battery'");
   console.log("   Try verifying: 'HQ H293841', 'NY N304912', 'HQ H312004'");

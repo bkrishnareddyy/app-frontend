@@ -76,7 +76,7 @@ describe("POST /api/agents/[agentId] input requirements", () => {
     ["4", "productProfiles", {}],
     ["5", "lineItems", {}],
     ["6", "invoiceSubtotal", {}],
-    ["7", "supplierName", { htsCode: "7318.15.2065", countryOfOrigin: "MX" }],
+    ["7", "lineItems", {}],
     ["8", "enteredValue", {}],
     ["9", "enteredValue", {}],
     ["10", "entryNumber", {}],
@@ -96,8 +96,7 @@ describe("POST /api/agents/[agentId] input requirements", () => {
 
   it("runs the agent once the caller supplies the real values", async () => {
     const res = await post("7", {
-      htsCode: "8481.80.1050",
-      countryOfOrigin: "DE",
+      lineItems: [{ lineNumber: 1, htsCode: "8481.80.1050", countryOfOrigin: "DE" }],
       supplierName: "Acme Valve GmbH",
     });
 
@@ -105,8 +104,7 @@ describe("POST /api/agents/[agentId] input requirements", () => {
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({
         shipmentId: "shp_real",
-        htsCode: "8481.80.1050",
-        countryOfOrigin: "DE",
+        lineItems: [{ lineNumber: 1, htsCode: "8481.80.1050", countryOfOrigin: "DE" }],
         supplierName: "Acme Valve GmbH",
       })
     );

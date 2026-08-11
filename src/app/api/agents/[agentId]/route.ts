@@ -156,15 +156,18 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
       case "compliance-audit":
       case "7":
         agentName = "Compliance & Audit Agent";
-        if (!body.htsCode || !body.countryOfOrigin || !body.supplierName) {
-          return missingInput(["htsCode", "countryOfOrigin", "supplierName"]);
+        if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
+          return missingInput(["lineItems"]);
         }
         agentResult = await ComplianceAuditAgent.execute({
           accountId,
           userId,
           shipmentId: targetShipmentId,
-          htsCode: body.htsCode,
-          countryOfOrigin: body.countryOfOrigin,
+          lineItems: body.lineItems,
+          destinationCountry: body.destinationCountry,
+          importerName: body.importerName,
+          incoterm: body.incoterm,
+          exporterName: body.exporterName,
           supplierName: body.supplierName,
         });
         break;
