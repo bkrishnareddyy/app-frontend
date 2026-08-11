@@ -50,7 +50,6 @@ import { ComplianceAuditAgent } from "../src/modules/agents/complianceAuditAgent
 import { FilingReadinessAgent } from "../src/modules/agents/filingReadinessAgent";
 import { CustomsFilingAgent } from "../src/modules/agents/customsFilingAgent";
 import { ResponseManagementAgent } from "../src/modules/agents/responseManagementAgent";
-import { AgentOrchestrator } from "../src/modules/agents/agentOrchestrator";
 import { AgentState } from "../src/modules/agents/agentState";
 import { db } from "../src/lib/db";
 import { createAuditLog } from "../src/lib/audit";
@@ -251,33 +250,14 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     expect(res.agentDecisionId).toBeDefined();
   });
 
-  it("Master Agent Orchestrator: should execute full 10-agent pipeline with AgentState context and math gates", async () => {
-    const pipeline = await AgentOrchestrator.runFullPipeline({
-      accountId: "acc_1",
-      userId: "usr_1",
-      shipmentId: "shp_1",
-      fileName: "Commercial_Invoice_INV-88421.pdf",
-      fileUrl: "https://example.blob.core.windows.net/docs/inv-88421.pdf",
-      docTypeOverride: "COMMERCIAL_INVOICE",
-    });
-
-    expect(pipeline.totalAgentsExecuted).toBeGreaterThanOrEqual(1);
-    expect(pipeline.stateHistoryCount).toBeGreaterThanOrEqual(1);
-    expect(pipeline.haltedAgents).toEqual([]);
-    expect(pipeline.agentResults.agent1_intake?.packetId).toBeDefined();
-  });
-
-  it("Master Agent Orchestrator: refuses to run without a file instead of inventing one", async () => {
-    await expect(
-      AgentOrchestrator.runFullPipeline({
-        accountId: "acc_1",
-        userId: "usr_1",
-        shipmentId: "shp_1",
-      })
-    ).rejects.toThrow(/requires a fileName/);
-
-    expect(db.shipmentDocument.create).not.toHaveBeenCalled();
-  });
+  // The "Master Agent Orchestrator" full-pipeline cases that used to live
+  // here tested ComplianceWorkflowEngine/AgentOrchestrator directly. That
+  // subsystem is gone: PipelineOrchestrator persists straight to Postgres
+  // (Fact, ShipmentLineItem, ExceptionItem, AgentExecutionRecord) rather
+  // than assembling an in-memory PipelineOrchestrationOutput report, so
+  // there's no equivalent in-memory shape left to assert against here.
+  // Covered instead by the plan's end-to-end verification against a running
+  // dev server + real DB.
 
   it("Agents return a null decision id when the AgentDecision write fails", async () => {
     vi.mocked(db.agentDecision.create).mockRejectedValueOnce(new Error("db down"));

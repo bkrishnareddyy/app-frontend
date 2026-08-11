@@ -1,12 +1,13 @@
-// Merges the two independent agent-execution logging tables into a single
-// list of "invocations" (one entry per orchestration call) for the Agent
-// Executions & Audit Log waterfall view.
+// Merges two agent-execution logging tables into a single list of
+// "invocations" (one entry per orchestration call) for the Agent Executions
+// & Audit Log waterfall view.
 //
-// AgentExecutionRecord rows come from AgentDependencyOrchestrator (selective
-// re-runs triggered by field edits, reconcile, or document attach).
-// AgentExecutionLog rows come from ComplianceWorkflowEngine (the real
-// 10-agent pipeline that runs on document upload). Both now carry a shared
-// `runId` so every step fired by one orchestration call groups together.
+// PipelineOrchestrator (every trigger -- upload, field edits, reattach,
+// reconcile) writes only AgentExecutionRecord going forward. AgentExecutionLog
+// rows are historical, from the two separate orchestrators it replaced
+// (ComplianceWorkflowEngine and AgentDependencyOrchestrator); both tables are
+// still read here so old runs keep showing up in the waterfall. Both carry a
+// shared `runId` so every step fired by one orchestration call groups together.
 //
 // Rows written before that column existed (runId === null) don't carry an
 // explicit group, but a single pipeline call still fires its agent steps
@@ -25,6 +26,10 @@ export interface InvocationStep {
   durationMs: number;
   summary?: string;
   error?: string;
+  /** Exactly what buildAgentContext() handed this agent for this step -- answers "what did it actually see" without re-deriving it from code. Undefined on rows written before this column existed. */
+  inputSnapshot?: unknown;
+  /** The agent's raw output for this step. */
+  outputSnapshot?: unknown;
 }
 
 export interface AgentInvocation {
@@ -105,6 +110,8 @@ export function buildAgentInvocations(records: any[], logs: any[]): AgentInvocat
       durationMs: rec.durationMs || 0,
       summary: rec.nextStep ? `Next: ${rec.nextStep}` : undefined,
       error: rec.error || undefined,
+      inputSnapshot: rec.inputSnapshot ?? undefined,
+      outputSnapshot: rec.outputSnapshot ?? undefined,
     });
   }
 
@@ -126,6 +133,8 @@ export function buildAgentInvocations(records: any[], logs: any[]): AgentInvocat
       completedAt: completedAt.toISOString(),
       durationMs,
       summary: log.summary,
+      inputSnapshot: log.inputSnapshot ?? undefined,
+      outputSnapshot: log.outputSnapshot ?? undefined,
     });
   }
 

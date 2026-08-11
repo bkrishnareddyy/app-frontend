@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { AgentDependencyOrchestrator } from "@/modules/agents/agentDependencyOrchestrator";
+import { PipelineOrchestrator } from "@/modules/agents/pipelineOrchestrator";
 import { z } from "zod";
 
 const paramsSchema = z.object({
@@ -25,7 +25,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   }
 
   try {
-    const result = await AgentDependencyOrchestrator.processEvent({
+    const result = await PipelineOrchestrator.processEvent({
       shipmentId: id,
       accountId: ctx.accountId,
       userId: ctx.userId,

@@ -9,7 +9,7 @@ import {
   ShipmentResolutionError,
 } from "@/modules/shipments/resolveShipment";
 import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
-import { AgentOrchestrator } from "@/modules/agents/agentOrchestrator";
+import { PipelineOrchestrator } from "@/modules/agents/pipelineOrchestrator";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const accountId = ctx.accountId;
@@ -120,14 +120,19 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   void (async () => {
     try {
       await PgQueue.claimJob(job.id);
-      const pipelineOut = await AgentOrchestrator.runFullPipeline({
+      const pipelineOut = await PipelineOrchestrator.processEvent({
         accountId,
         userId,
         shipmentId: targetShipmentId,
-        fileName: file.name,
-        fileUrl: storageResult.url,
-        fileBuffer,
-        mimeType: file.type || "application/pdf",
+        triggerEvent: "DOCUMENT_UPLOADED",
+        payload: {
+          documentId: docRecord.id,
+          fileName: file.name,
+          fileUrl: storageResult.url,
+          fileBuffer,
+          mimeType: file.type || "application/pdf",
+          docTypeOverride: resolvedDocType,
+        },
       });
       await PgQueue.completeJob(job.id, toJobState(pipelineOut));
     } catch (err: unknown) {

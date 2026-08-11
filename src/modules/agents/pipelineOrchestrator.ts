@@ -1,0 +1,550 @@
+import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
+import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
+import { DocumentIntelligenceAgent, DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
+import { ProductIntelligenceAgent, ProductIntelligenceOutput } from "./productIntelligenceAgent";
+import { HTSClassificationAgent, HTSClassificationOutput } from "./htsClassificationAgent";
+import { OriginRulesAgent, OriginRulesOutput } from "./originRulesAgent";
+import { ValuationAssistsAgent, ValuationAssistsOutput } from "./valuationAssistsAgent";
+import { ComplianceAuditAgent, ComplianceAuditOutput } from "./complianceAuditAgent";
+import { FilingReadinessAgent } from "./filingReadinessAgent";
+import { ReconciliationEngine } from "@/modules/shipment/reconciliationEngine";
+import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
+import { ShipmentEventBus, ShipmentEventType } from "@/modules/events/shipmentEventBus";
+import { FactService, RecordFactInput } from "@/modules/shipment/factService";
+import { LineItemReconciler, lineItemFactField } from "@/modules/shipment/lineItemReconciler";
+import { buildAgentContext, ShipmentAgentContext, factValue } from "./agentContext";
+import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+
+/**
+ * Replaces ComplianceWorkflowEngine/AgentOrchestrator (the fixed 10-step
+ * pipeline that used to run on upload, threaded through an in-memory
+ * AgentState) and AgentDependencyOrchestrator (the selective dependency-graph
+ * runner used on field edits/reattach/reconcile). Every trigger now goes
+ * through this one entry point, every agent's input is built fresh from
+ * Postgres (buildAgentContext), and every agent's output is persisted the
+ * same way regardless of what triggered the run.
+ */
+export interface AgentTriggerPayload {
+  field?: string;
+  newValue?: string | null;
+  documentId?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileBuffer?: Buffer;
+  mimeType?: string;
+  docTypeOverride?: string;
+  entryType?: string;
+  [key: string]: unknown;
+}
+
+export interface ProcessEventParams {
+  shipmentId: string;
+  accountId: string;
+  userId?: string;
+  triggerEvent: ShipmentEventType;
+  payload?: AgentTriggerPayload;
+}
+
+export interface ProcessEventResult {
+  shipmentId: string;
+  triggerEvent: ShipmentEventType;
+  agentsExecuted: string[];
+  durationMs: number;
+  canonicalState: Awaited<ReturnType<typeof CanonicalShipmentService.getCanonicalState>>;
+}
+
+interface SingleAgentResult {
+  confidence?: unknown;
+  decisionId?: string | null;
+  aiProviderUsed?: string;
+  input: unknown;
+  output: unknown;
+}
+
+/** Carried across the agents fired within one processEvent call only -- not persisted, not a source of truth. Postgres is. */
+interface RunScratch {
+  packetId?: string;
+  isComplianceBlocked?: boolean;
+}
+
+function numOrNull(v: string | null | undefined): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function computeDutyDue(context: ShipmentAgentContext): Promise<number | null> {
+  const classified = context.lineItems.filter((li) => li.htsCode && li.htsCode !== "UNCLASSIFIABLE");
+  if (classified.length === 0) return null;
+  const lineItems = classified.map((li) => ({ htsCode: li.htsCode, totalValue: new Prisma.Decimal(li.totalValue) }));
+  const tariff = computeFilingTariff(lineItems, await loadHtsCodesMap(lineItems));
+  return tariff.unratedLineCount > 0 ? null : tariff.totalDuty;
+}
+
+/** Facts that don't correspond to a ShipmentLineItem column (enrichment detail, origin/valuation results) still get recorded -- nothing an agent discovers is dropped just because there's no curated-record column for it. */
+async function recordLineItemFacts(
+  shipmentId: string,
+  documentId: string | null,
+  sourceType: "EXTRACTED" | "AGENT_PROPOSED",
+  lineNumber: number,
+  fields: Record<string, string | number | null | undefined>
+): Promise<void> {
+  const facts: RecordFactInput[] = [];
+  for (const [field, value] of Object.entries(fields)) {
+    if (value === null || value === undefined || value === "") continue;
+    facts.push({
+      shipmentId,
+      field: lineItemFactField(lineNumber, field),
+      value: String(value),
+      sourceType,
+      documentId,
+    });
+  }
+  await FactService.recordMany(facts);
+}
+
+export class PipelineOrchestrator {
+  static async processEvent(params: ProcessEventParams): Promise<ProcessEventResult> {
+    const startTime = Date.now();
+    const { shipmentId, accountId, triggerEvent, payload } = params;
+    const userId = params.userId || "usr_system";
+    const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const invokedByLabel = this.invokedByLabel(triggerEvent, payload);
+
+    await ShipmentEventBus.logEvent({
+      shipmentId,
+      eventType: triggerEvent,
+      payload,
+      triggeredBy: params.userId || "SYSTEM",
+    });
+
+    const agentsToRun = this.determineAgentsToRun(triggerEvent, payload);
+    const executedAgents: string[] = [];
+    const scratch: RunScratch = {};
+
+    for (let i = 0; i < agentsToRun.length; i++) {
+      const agentName = agentsToRun[i];
+      const nextStep = i < agentsToRun.length - 1 ? agentsToRun[i + 1] : "Reconciliation";
+      const stepStart = Date.now();
+      const startedAt = new Date();
+
+      let status: "COMPLETED" | "FAILED" = "COMPLETED";
+      let error: string | undefined;
+      let confidence: unknown = null;
+      let decisionId: string | null = null;
+      let aiProviderUsed: string | undefined;
+      let inputSnapshot: unknown = null;
+      let outputSnapshot: unknown = null;
+
+      try {
+        const result = await this.runSingleAgent(agentName, {
+          shipmentId,
+          accountId,
+          userId,
+          documentId: payload?.documentId ?? null,
+          payload,
+          scratch,
+        });
+        executedAgents.push(agentName);
+        confidence = result.confidence ?? null;
+        decisionId = result.decisionId ?? null;
+        aiProviderUsed = result.aiProviderUsed;
+        inputSnapshot = result.input;
+        outputSnapshot = result.output;
+      } catch (err) {
+        status = "FAILED";
+        error = err instanceof Error ? err.message : "Agent execution failed";
+        console.error(`[PipelineOrchestrator] ${agentName} failed:`, err);
+      } finally {
+        await db.agentExecutionRecord
+          .create({
+            data: {
+              accountId,
+              shipmentId,
+              agentName,
+              triggerEvent,
+              invokedBy: invokedByLabel,
+              stepNumber: i + 1,
+              nextStep,
+              status,
+              durationMs: Date.now() - stepStart,
+              confidence: (confidence ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+              decisionId,
+              aiProviderUsed,
+              startedAt,
+              completedAt: new Date(),
+              runId,
+              error,
+              inputSnapshot: (inputSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+              outputSnapshot: (outputSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            },
+          })
+          .catch((e) => console.error("[PipelineOrchestrator] Failed to write execution record:", e));
+      }
+    }
+
+    // Unconditional, regardless of trigger -- this is what turns current DB
+    // state into human-visible ExceptionItem action items. The old upload
+    // path never called this at all; every trigger does now.
+    await ReconciliationEngine.reconcileShipment(shipmentId, triggerEvent);
+
+    const canonicalState = await CanonicalShipmentService.getCanonicalState(shipmentId);
+
+    return {
+      shipmentId,
+      triggerEvent,
+      agentsExecuted: executedAgents,
+      durationMs: Date.now() - startTime,
+      canonicalState,
+    };
+  }
+
+  private static invokedByLabel(triggerEvent: ShipmentEventType, payload?: AgentTriggerPayload): string {
+    if (triggerEvent === "USER_FIELD_UPDATED") return `User (${payload?.field ? `Edit ${payload.field}` : "Manual Edit"})`;
+    if (triggerEvent === "DOCUMENT_UPLOADED") return "Document Upload Intake";
+    return "Reconciliation Engine";
+  }
+
+  /**
+   * Maps a domain event to the agents it affects. Response & Post-Summary and
+   * Customs Filing are deliberately excluded from every auto-triggered path:
+   * Response's own implementation is a placeholder with nothing new to learn
+   * from a re-run, and Customs Filing simulates an actual CBP transmission --
+   * firing it as a side effect of an edit or reattach, with no user
+   * attestation, would fabricate a real-looking "filed and released" record.
+   * Both only ever run from the explicit, authorized filing action at
+   * /api/agents/[agentId], never from here.
+   */
+  private static determineAgentsToRun(triggerEvent: ShipmentEventType, payload?: AgentTriggerPayload): string[] {
+    switch (triggerEvent) {
+      case "DOCUMENT_UPLOADED":
+        return [
+          "Document Intake Agent",
+          "Document Intelligence Agent",
+          "Product Intelligence Agent",
+          "HTS Classification Agent",
+          "Origin Rules Agent",
+          "Valuation & Assists Agent",
+          "Compliance Audit Agent",
+          "Filing Readiness Agent",
+        ];
+
+      case "USER_FIELD_UPDATED": {
+        const field = payload?.field;
+        if (field === "countryOfOrigin" || field === "origin") {
+          return ["Origin Rules Agent", "Compliance Audit Agent", "Filing Readiness Agent"];
+        }
+        if (field === "htsCode" || field?.startsWith("lineItem")) {
+          return [
+            "HTS Classification Agent",
+            "Origin Rules Agent",
+            "Valuation & Assists Agent",
+            "Compliance Audit Agent",
+            "Filing Readiness Agent",
+          ];
+        }
+        if (field === "incoterm" || field === "totalValue" || field === "currency") {
+          return ["Valuation & Assists Agent", "Compliance Audit Agent", "Filing Readiness Agent"];
+        }
+        return ["Compliance Audit Agent", "Filing Readiness Agent"];
+      }
+
+      case "RECONCILIATION_REQUESTED":
+        return ["Compliance Audit Agent", "Filing Readiness Agent"];
+
+      default:
+        return ["Filing Readiness Agent"];
+    }
+  }
+
+  private static async runSingleAgent(
+    agentName: string,
+    ctx: {
+      shipmentId: string;
+      accountId: string;
+      userId: string;
+      documentId: string | null;
+      payload?: AgentTriggerPayload;
+      scratch: RunScratch;
+    }
+  ): Promise<SingleAgentResult> {
+    const { shipmentId, accountId, userId, documentId, payload, scratch } = ctx;
+
+    switch (agentName) {
+      case "Document Intake Agent": {
+        if (!payload?.fileUrl || !payload.fileName) {
+          return { input: null, output: { skipped: "No file on this trigger" } };
+        }
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          fileName: payload.fileName,
+          fileUrl: payload.fileUrl,
+          fileBuffer: payload.fileBuffer,
+          mimeType: payload.mimeType,
+          docTypeOverride: payload.docTypeOverride,
+        };
+        const output = await DocumentIntakeAgent.execute(agentInput);
+        scratch.packetId = output.packetId;
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, input: agentInput, output };
+      }
+
+      case "Document Intelligence Agent": {
+        const packetId = scratch.packetId || documentId || "pkt_default";
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          packetId,
+          fileBuffer: payload?.fileBuffer,
+          fileName: payload?.fileName,
+          mimeType: payload?.mimeType,
+        };
+        const output = await DocumentIntelligenceAgent.execute(agentInput);
+        await this.persistIntelligence(shipmentId, accountId, documentId, output);
+        return {
+          decisionId: output.agentDecisionId,
+          aiProviderUsed: output.aiProviderUsed,
+          confidence: output.confidenceMetrics,
+          input: agentInput,
+          output,
+        };
+      }
+
+      case "Product Intelligence Agent": {
+        const context = await buildAgentContext(shipmentId);
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          lineItems: context.lineItems.map((li) => ({
+            lineNumber: li.lineNumber,
+            sku: li.partNumber ?? undefined,
+            description: li.description,
+            countryOfOrigin: li.countryOfOrigin !== "Unknown" ? li.countryOfOrigin : factValue(context, "countryOfOrigin"),
+          })),
+        };
+        const output = await ProductIntelligenceAgent.execute(agentInput);
+        await this.persistProductIntelligence(shipmentId, documentId, agentInput.lineItems, output);
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+      }
+
+      case "HTS Classification Agent": {
+        const context = await buildAgentContext(shipmentId);
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          productProfiles: context.lineItems.map((li) => ({
+            lineNumber: li.lineNumber,
+            rawDescription: li.description,
+            enrichedDescription: context.facts[lineItemFactField(li.lineNumber, "enrichedDescription")]?.value,
+            essentialCharacter: context.facts[lineItemFactField(li.lineNumber, "essentialCharacter")]?.value,
+            materialComposition: context.facts[lineItemFactField(li.lineNumber, "materialComposition")]?.value ?? null,
+            endUse: context.facts[lineItemFactField(li.lineNumber, "endUse")]?.value ?? null,
+            finish: context.facts[lineItemFactField(li.lineNumber, "finish")]?.value ?? null,
+            carbonContentPercentage: numOrNull(context.facts[lineItemFactField(li.lineNumber, "carbonContentPercentage")]?.value),
+            casNumber: context.facts[lineItemFactField(li.lineNumber, "casNumber")]?.value ?? null,
+          })),
+          countryOfOrigin: factValue(context, "countryOfOrigin"),
+        };
+        const output: HTSClassificationOutput = await HTSClassificationAgent.execute(agentInput);
+        await this.persistClassification(shipmentId, accountId, documentId, output);
+        return {
+          decisionId: output.agentDecisionId,
+          aiProviderUsed: output.aiProviderUsed,
+          confidence: output.overallConfidence,
+          input: agentInput,
+          output,
+        };
+      }
+
+      case "Origin Rules Agent": {
+        const context = await buildAgentContext(shipmentId);
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          lineItems: context.lineItems.map((li) => ({
+            lineNumber: li.lineNumber,
+            htsCode: li.htsCode !== "UNCLASSIFIABLE" ? li.htsCode : null,
+            manufacturingCountry: li.countryOfOrigin !== "Unknown" ? li.countryOfOrigin : factValue(context, "countryOfOrigin"),
+            rawMaterialOrigin: context.facts[lineItemFactField(li.lineNumber, "rawMaterialOrigin")]?.value,
+            standardDutyRate: context.facts[lineItemFactField(li.lineNumber, "dutyRate")]?.value,
+          })),
+        };
+        const output: OriginRulesOutput = await OriginRulesAgent.execute(agentInput);
+        for (const q of output.qualifications) {
+          await recordLineItemFacts(shipmentId, documentId, "AGENT_PROPOSED", q.lineNumber, {
+            ftaProgram: q.ftaProgram,
+            spiCode: q.spiCode,
+            preferenceCriterion: q.preferenceCriterion,
+            tariffShiftMet: q.tariffShiftMet == null ? null : String(q.tariffShiftMet),
+            estimatedSavings: q.estimatedSavings,
+          });
+        }
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+      }
+
+      case "Valuation & Assists Agent": {
+        const context = await buildAgentContext(shipmentId);
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          invoiceSubtotal: numOrNull(factValue(context, "invoiceSubtotal")),
+          oceanFreight: numOrNull(factValue(context, "oceanFreight")) ?? undefined,
+          buyerAssists: numOrNull(factValue(context, "buyerAssists")) ?? undefined,
+        };
+        const output: ValuationAssistsOutput = await ValuationAssistsAgent.execute(agentInput);
+        if (output.enteredCustomsValue != null) {
+          await FactService.record({
+            shipmentId,
+            field: "enteredCustomsValue",
+            value: String(output.enteredCustomsValue),
+            sourceType: "AGENT_PROPOSED",
+            documentId,
+          });
+        }
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+      }
+
+      case "Compliance Audit Agent": {
+        const context = await buildAgentContext(shipmentId);
+        const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          htsCode: context.lineItems.find((li) => li.htsCode !== "UNCLASSIFIABLE")?.htsCode ?? null,
+          countryOfOrigin: factValue(context, "countryOfOrigin"),
+          supplierName: factValue(context, "exporterName") ?? undefined,
+          isHtsBlocked,
+        };
+        const output: ComplianceAuditOutput = await ComplianceAuditAgent.execute(agentInput);
+        scratch.isComplianceBlocked = output.status === "BLOCKED_DEPENDENCY";
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: null, input: agentInput, output };
+      }
+
+      case "Filing Readiness Agent": {
+        const context = await buildAgentContext(shipmentId);
+        const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
+        const isOriginBlocked = !factValue(context, "countryOfOrigin");
+        const agentInput = {
+          accountId,
+          userId,
+          shipmentId,
+          enteredValue: numOrNull(factValue(context, "enteredCustomsValue")),
+          dutyDue: await computeDutyDue(context),
+          lineItemCount: context.lineItems.length,
+          hasCommercialInvoice: Boolean(factValue(context, "invoiceSubtotal")),
+          isHtsBlocked,
+          isOriginBlocked,
+          isComplianceBlocked: scratch.isComplianceBlocked ?? false,
+          entryType: payload?.entryType,
+        };
+        const output = await FilingReadinessAgent.execute(agentInput);
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.readinessScore, input: agentInput, output };
+      }
+
+      default:
+        throw new Error(`Unknown agent: ${agentName}`);
+    }
+  }
+
+  private static async persistIntelligence(
+    shipmentId: string,
+    accountId: string,
+    documentId: string | null,
+    output: DocumentIntelligenceOutput
+  ): Promise<void> {
+    const shipmentFacts: RecordFactInput[] = [];
+    const push = (field: string, value: string | number | null | undefined) => {
+      if (value === null || value === undefined || value === "") return;
+      shipmentFacts.push({ shipmentId, field, value: String(value), sourceType: "EXTRACTED", documentId });
+    };
+    push("exporterName", output.exporterName);
+    push("importerName", output.importerName);
+    push("countryOfOrigin", output.originCountry);
+    push("destinationCountry", output.destinationCountry);
+    push("incoterm", output.incoterm);
+    push("currency", output.currency);
+    push("invoiceSubtotal", output.invoiceSubtotal);
+    push("invoiceNumber", output.invoiceNumber);
+    push("invoiceDate", output.invoiceDate);
+    await FactService.recordMany(shipmentFacts);
+
+    await LineItemReconciler.applyDiscoveries({
+      shipmentId,
+      accountId,
+      documentId,
+      sourceType: "EXTRACTED",
+      items: output.lineItems.map((li) => ({
+        lineNumber: li.lineNumber,
+        description: li.description,
+        partNumber: li.sku ?? null,
+        quantity: li.quantity,
+        unitPrice: li.unitPrice,
+        totalValue: li.totalAmount,
+        countryOfOrigin: li.countryOfOrigin ?? output.originCountry ?? null,
+        htsCode: li.htsCode,
+      })),
+    });
+
+    await LineItemReconciler.fillShipmentFields(shipmentId, {
+      countryOfOrigin: output.originCountry,
+      incoterm: output.incoterm,
+    });
+  }
+
+  private static async persistProductIntelligence(
+    shipmentId: string,
+    documentId: string | null,
+    lineItems: Array<{ lineNumber: number }>,
+    output: ProductIntelligenceOutput
+  ): Promise<void> {
+    // profiles[] is produced in the same order as the lineItems it was given -- see ProductIntelligenceAgent.execute's `for (const item of input.lineItems)` loop.
+    for (let i = 0; i < output.profiles.length; i++) {
+      const lineNumber = lineItems[i]?.lineNumber;
+      if (lineNumber == null) continue;
+      const profile = output.profiles[i];
+      await recordLineItemFacts(shipmentId, documentId, "AGENT_PROPOSED", lineNumber, {
+        enrichedDescription: profile.enrichedDescription,
+        materialComposition: profile.materialComposition,
+        essentialCharacter: profile.essentialCharacter,
+        carbonContentPercentage: profile.carbonContentPercentage,
+        finish: profile.finish,
+        casNumber: profile.casNumber,
+        endUse: profile.endUse,
+      });
+    }
+  }
+
+  private static async persistClassification(
+    shipmentId: string,
+    accountId: string,
+    documentId: string | null,
+    output: HTSClassificationOutput
+  ): Promise<void> {
+    for (const c of output.classifications) {
+      await recordLineItemFacts(shipmentId, documentId, "AGENT_PROPOSED", c.lineNumber, {
+        htsDescription: c.htsDescription,
+        dutyRate: c.dutyRate,
+        legalRationale: c.legalRationale,
+      });
+    }
+    await LineItemReconciler.applyDiscoveries({
+      shipmentId,
+      accountId,
+      documentId,
+      sourceType: "AGENT_PROPOSED",
+      items: output.classifications.map((c) => ({
+        lineNumber: c.lineNumber,
+        htsCode: c.htsCode !== "UNCLASSIFIABLE" ? c.htsCode : null,
+        htsConfidence: c.confidence,
+      })),
+    });
+  }
+}

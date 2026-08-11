@@ -4,6 +4,10 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { FactAuditService } from "@/modules/audit/factAuditService";
+import { FactService } from "@/modules/shipment/factService";
+import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
+import { ReconciliationEngine } from "@/modules/shipment/reconciliationEngine";
 import {
   OVERRIDE_PERMISSION,
   REVIEW_ACTIONS,
@@ -27,57 +31,83 @@ const REVIEWER_SELECT = {
 type ClassificationApplication = {
   proposedHtsCode: string;
   htsConfidence: number | null;
-  updatedLineItemIds: string[];
-  skippedReason: "NO_CURRENT_HTS_CODE" | "NO_MATCHING_LINE_ITEMS" | null;
+  updatedLineItemId: string | null;
+  skippedReason: "NO_LINE_NUMBER" | "LINE_ITEM_NOT_FOUND" | null;
 };
 
 /**
- * AgentDecision carries a shipmentId but no line-item FK, so the only
- * unambiguous target is a line on that shipment still holding the code the
- * decision proposed to replace. Anything else would be a guess, and a guess
- * here silently rewrites the classification an entry is filed under.
+ * AgentDecision now carries the lineNumber it targets (HTS Classification
+ * populates one decision per line item, see htsClassificationAgent.ts), so
+ * approving finds the exact ShipmentLineItem directly. The previous approach
+ * matched line items by their *current* htsCode string, which meant a
+ * first-ever classification -- where there is no current code to match --
+ * silently did nothing even when a human clicked Approve.
+ *
+ * Approving is a user action on an already-populated curated field, so it
+ * goes through the same version + audit path as any other manual edit:
+ * bumps Shipment.version, logs a ShipmentChangeEvent, and records a
+ * USER_ENTERED Fact -- never a silent agent-style write.
  */
 async function applyProposedHtsCode(
-  decision: { shipmentId: string; currentHtsCode: string | null; confidence: number | null },
+  decision: { shipmentId: string; lineNumber: number | null; confidence: number | null },
   proposedHtsCode: string,
-  accountId: string
+  ctx: { accountId: string; userId: string; reviewerName: string }
 ): Promise<ClassificationApplication> {
-  if (!decision.currentHtsCode) {
+  if (decision.lineNumber == null) {
     return {
       proposedHtsCode,
       htsConfidence: decision.confidence,
-      updatedLineItemIds: [],
-      skippedReason: "NO_CURRENT_HTS_CODE",
+      updatedLineItemId: null,
+      skippedReason: "NO_LINE_NUMBER",
     };
   }
 
-  const targets = await db.shipmentLineItem.findMany({
-    where: { shipmentId: decision.shipmentId, accountId, htsCode: decision.currentHtsCode },
-    select: { id: true },
+  const target = await db.shipmentLineItem.findFirst({
+    where: { shipmentId: decision.shipmentId, accountId: ctx.accountId, lineNumber: decision.lineNumber },
   });
 
-  if (targets.length === 0) {
+  if (!target) {
     return {
       proposedHtsCode,
       htsConfidence: decision.confidence,
-      updatedLineItemIds: [],
-      skippedReason: "NO_MATCHING_LINE_ITEMS",
+      updatedLineItemId: null,
+      skippedReason: "LINE_ITEM_NOT_FOUND",
     };
   }
 
-  const updatedLineItemIds = targets.map((t) => t.id);
+  await FactAuditService.logChangeEvent({
+    shipmentId: decision.shipmentId,
+    userId: ctx.userId,
+    changeType: "CLASSIFICATION_CHANGED",
+    field: lineItemFactField(decision.lineNumber, "htsCode"),
+    previousValue: target.htsCode,
+    newValue: proposedHtsCode,
+    reason: `Approved via Decisions review by ${ctx.reviewerName}`,
+  });
 
-  await db.shipmentLineItem.updateMany({
-    where: { id: { in: updatedLineItemIds } },
-    // The stored confidence scored the code being replaced, so it cannot follow
-    // the new one; the decision's own score is the only one that applies here.
-    data: { htsCode: proposedHtsCode, htsConfidence: decision.confidence },
+  await db.shipmentLineItem.update({
+    where: { id: target.id },
+    // The stored confidence scored the code being replaced, so it cannot
+    // follow the new one; the decision's own score is the only one that
+    // applies here. Approving is what a human confirming a line looks like,
+    // so the row is locked (status "Valid") from here.
+    data: { htsCode: proposedHtsCode, htsConfidence: decision.confidence, status: "Valid" },
+  });
+
+  await db.shipment.update({ where: { id: decision.shipmentId }, data: { version: { increment: 1 } } });
+
+  await FactService.record({
+    shipmentId: decision.shipmentId,
+    field: lineItemFactField(decision.lineNumber, "htsCode"),
+    value: proposedHtsCode,
+    sourceType: "USER_ENTERED",
+    confidence: decision.confidence,
   });
 
   return {
     proposedHtsCode,
     htsConfidence: decision.confidence,
-    updatedLineItemIds,
+    updatedLineItemId: target.id,
     skippedReason: null,
   };
 }
@@ -333,12 +363,26 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // line items kept the code the reviewer had just rejected.
   let classificationApplied: ClassificationApplication | null = null;
   if (action === "APPROVE" && decision.proposedHtsCode) {
-    classificationApplied = await applyProposedHtsCode(
-      decision,
-      decision.proposedHtsCode,
-      ctx.accountId
-    );
+    classificationApplied = await applyProposedHtsCode(decision, decision.proposedHtsCode, {
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      reviewerName: reviewer.name || ctx.userId,
+    });
+  } else if (action === "REJECT" && decision.lineNumber != null) {
+    // Nothing on the curated record changed -- just flagged back for
+    // re-review -- so this does not bump Shipment.version.
+    await db.shipmentLineItem.updateMany({
+      where: { shipmentId: decision.shipmentId, accountId: ctx.accountId, lineNumber: decision.lineNumber },
+      data: { status: "Review Required" },
+    });
   }
+
+  // Resolves HTS_REVIEW_REQUIRED (and any other now-stale exception) against
+  // the line item state this review action just produced, instead of
+  // leaving it to wait for the next pipeline trigger.
+  await ReconciliationEngine.reconcileShipment(decision.shipmentId, "USER_FIELD_UPDATED").catch((err) => {
+    console.error("[decisions/route] Reconciliation after review failed:", err);
+  });
 
   const updatedDecision = await db.agentDecision.findFirst({
     where: { id: decisionId, accountId: ctx.accountId },

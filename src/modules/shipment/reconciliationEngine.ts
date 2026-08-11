@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ShipmentEventBus } from "@/modules/events/shipmentEventBus";
+import { LINE_ITEM_SENTINELS } from "./lineItemReconciler";
 
 export interface ReconciliationResult {
   shipmentId: string;
@@ -99,6 +100,75 @@ export class ReconciliationEngine {
         data: { status: "Resolved", resolvedAt: new Date(), resolvedBy: triggerSource },
       });
       exceptionsResolved++;
+    }
+
+    // 3. Check for line-item fields LineItemReconciler had to placeholder --
+    // never left missing, but flagged here the same way HTS review is, so a
+    // human confirms the real value before it's relied on for filing.
+    const lineItems = shipment.lineItems;
+    const defaultedFieldChecks: Array<{
+      fieldKey: "quantity" | "unitPrice" | "countryOfOrigin";
+      code: string;
+      label: string;
+      isDefaulted: (item: (typeof lineItems)[number]) => boolean;
+    }> = [
+      {
+        fieldKey: "quantity",
+        code: "MISSING_LINE_ITEM_QUANTITY",
+        label: "Quantity",
+        isDefaulted: (item) => item.quantity === LINE_ITEM_SENTINELS.quantity,
+      },
+      {
+        fieldKey: "unitPrice",
+        code: "MISSING_LINE_ITEM_UNIT_PRICE",
+        label: "Unit Price",
+        isDefaulted: (item) => Number(item.unitPrice) === LINE_ITEM_SENTINELS.unitPrice,
+      },
+      {
+        fieldKey: "countryOfOrigin",
+        code: "MISSING_LINE_ITEM_COUNTRY_OF_ORIGIN",
+        label: "Country of Origin",
+        isDefaulted: (item) => item.countryOfOrigin === LINE_ITEM_SENTINELS.countryOfOrigin,
+      },
+    ];
+
+    for (const check of defaultedFieldChecks) {
+      // Only rows still awaiting review carry this signal -- once a human
+      // approves a row (status "Valid"), a lingering sentinel value is a
+      // deliberate confirmed answer (e.g. a genuinely unknown origin), not a
+      // still-open gap.
+      const affectedLines = shipment.lineItems.filter((item) => item.status !== "Valid" && check.isDefaulted(item));
+      const existing = activeExceptions.find((e) => e.code === check.code);
+
+      if (affectedLines.length > 0) {
+        if (!existing) {
+          await db.exceptionItem.create({
+            data: {
+              accountId: shipment.accountId,
+              shipmentId: shipment.id,
+              code: check.code,
+              fieldKey: check.fieldKey,
+              category: "MISSING_DATA",
+              type: "data_mismatch",
+              severity: "Medium",
+              description: `${check.label} could not be extracted for ${affectedLines.length} line item(s) (line ${affectedLines
+                .map((i) => i.lineNumber)
+                .join(", ")}) -- confirm before filing.`,
+              blocking: false,
+              requiredAction: `Review and confirm ${check.label.toLowerCase()} for the affected line item(s)`,
+              sourceAgent: "Line Item Reconciler",
+            },
+          });
+          exceptionsGenerated++;
+          affectedAgentsSet.add("LINE_ITEM_RECONCILER");
+        }
+      } else if (existing) {
+        await db.exceptionItem.update({
+          where: { id: existing.id },
+          data: { status: "Resolved", resolvedAt: new Date(), resolvedBy: triggerSource },
+        });
+        exceptionsResolved++;
+      }
     }
 
     // Always include Filing Readiness for score updates
