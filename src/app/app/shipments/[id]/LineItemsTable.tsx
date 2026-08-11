@@ -3,16 +3,25 @@
 import { useState, useEffect } from "react";
 import { Edit2, Check, X } from "lucide-react";
 import { caughtMessage } from "@/lib/utils";
+import { displayCurrency } from "@/lib/honest";
 
+import { extendedAmount } from "./workspaceTypes";
 import type { HtsSuggestion, ShipmentLineItemRow as LineItem } from "./workspaceTypes";
 
 interface LineItemsTableProps {
   shipmentId: string;
   initialLineItems: LineItem[];
   isEnterpriseAdmin?: boolean;
+  /**
+   * ISO code the amounts are denominated in, or null when no document declared
+   * one. Null renders bare numbers: the invoice behind this table can be in any
+   * currency, and stamping a symbol on it we haven't read is a misstatement of
+   * value, not a formatting nicety.
+   */
+  currency?: string | null;
 }
 
-export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableProps) {
+export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineItemsTableProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   
@@ -176,7 +185,19 @@ export function LineItemsTable({ shipmentId, initialLineItems }: LineItemsTableP
 
                     <td className="p-2.5 text-right font-mono">{item.quantity}</td>
                     <td className="p-2.5 text-right font-mono font-bold">
-                      ${(Number(item.quantity) * Number(item.unitPrice)).toLocaleString()}
+                      {(() => {
+                        const amount = extendedAmount(item);
+                        if (amount === null) {
+                          return (
+                            <span className="text-[#86868B] font-normal" title="No amount on the source document">
+                              —
+                            </span>
+                          );
+                        }
+                        return currency
+                          ? displayCurrency(amount, currency)
+                          : amount.toLocaleString();
+                      })()}
                     </td>
                     
                     {/* Inline edit actions */}

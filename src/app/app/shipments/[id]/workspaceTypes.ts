@@ -19,14 +19,39 @@ export interface ShipmentLineItemRow {
   partNumber?: string | null;
   description: string;
   quantity: number;
-  unitPrice: number;
-  totalValue: number;
+  /**
+   * Null when the source never carried a price — extraction routinely recovers a
+   * line's total without its unit price, and vice versa. Coercing either to 0
+   * makes an unknown amount render as a real "0.00", so the absence survives to
+   * the renderer and shows as missing instead.
+   */
+  unitPrice: number | null;
+  totalValue: number | null;
   countryOfOrigin: string;
   htsCode: string;
   htsConfidence: number;
   status?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+}
+
+/**
+ * A line's extended amount, or null when no source carried one.
+ *
+ * Prefers the total the document stated over one multiplied out here — the two
+ * disagree whenever the invoice discounts a line or prices per pack. Falls back
+ * to quantity x unit price only when a unit price is genuinely present. A real 0
+ * survives every branch, because a free-of-charge line is a fact, while an
+ * unknown amount rendered as "0.00" is a false one.
+ */
+export function extendedAmount(item: {
+  quantity: number;
+  unitPrice: number | null;
+  totalValue: number | null;
+}): number | null {
+  if (item.totalValue !== null && item.totalValue !== undefined) return item.totalValue;
+  if (item.unitPrice === null || item.unitPrice === undefined) return null;
+  return Number(item.quantity) * item.unitPrice;
 }
 
 /**

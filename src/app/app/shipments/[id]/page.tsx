@@ -26,6 +26,7 @@ import { CanonicalFactsSection } from "./CanonicalFactsSection";
 import { PreFilingReadiness } from "./PreFilingReadiness";
 import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
 import { buildAgentInvocations } from "./agentInvocations";
+import { displayCurrency } from "@/lib/honest";
 import type { ShipmentLineItemRow } from "./workspaceTypes";
 import type { CategoryDetail } from "./PreFilingReadiness";
 
@@ -48,6 +49,36 @@ interface ExtractedLineItem {
   totalValue?: number | string | null;
   countryOfOrigin?: string | null;
   htsCode?: string | null;
+}
+
+/** Reads a numeric field that may be absent, keeping "missing" distinct from 0. */
+function numberOrNull(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isNaN(numeric) ? null : numeric;
+}
+
+/**
+ * The currency the shipment's documents are denominated in.
+ *
+ * Nothing on Shipment or ShipmentLineItem stores a currency, so the only honest
+ * source is what the extractor read off the documents themselves. Returns null
+ * when no document declared one, or when two disagree — a guessed currency
+ * misstates every amount on the screen, so a bare number is the safer answer.
+ */
+function extractedCurrency(documents: Array<{ extractedJson?: string | null }>): string | null {
+  const found = new Set<string>();
+  for (const doc of documents) {
+    if (!doc.extractedJson) continue;
+    try {
+      const parsed = JSON.parse(doc.extractedJson);
+      const code = parsed?.tradeMetadata?.currency ?? parsed?.currency;
+      if (typeof code === "string" && code.trim()) found.add(code.trim().toUpperCase());
+    } catch {
+      // A document with unparseable JSON simply contributes no currency.
+    }
+  }
+  return found.size === 1 ? [...found][0] : null;
 }
 
 /**
@@ -118,6 +149,7 @@ export default async function ShipmentWorkspacePage(props: {
   const { metrics, facts, agentExecutionLogs } = canonical;
   const fullShipment = canonical.shipment;
   const documents = fullShipment.documents || [];
+  const lineItemCurrency = extractedCurrency(documents);
 
   // Merges AgentExecutionRecord (selective re-runs) and AgentExecutionLog
   // (the real 10-agent upload pipeline) into one waterfall-ready list --
@@ -145,6 +177,13 @@ export default async function ShipmentWorkspacePage(props: {
     (acc: number, item) => acc + Number(item.quantity) * Number(item.unitPrice),
     0
   );
+
+  // Formatted once: this figure is shown in the readiness evidence panel and the
+  // filing summary, and both used to prefix it with "$" regardless of the
+  // currency the invoice was actually written in.
+  const totalInvoiceDisplay = lineItemCurrency
+    ? displayCurrency(totalInvoiceAmount, lineItemCurrency)
+    : totalInvoiceAmount.toLocaleString();
 
   const activeExceptions = fullShipment.exceptionItems || [];
 
@@ -808,7 +847,7 @@ export default async function ShipmentWorkspacePage(props: {
           ? {
               sourceName: "Commercial Invoice",
               fields: [
-                { label: "Total Invoice Value", value: `$${totalInvoiceAmount.toLocaleString()}` },
+                { label: "Total Invoice Value", value: totalInvoiceDisplay },
                 { label: "Incoterm", value: shipment.incoterm || "N/A" },
               ],
               documentUrl: docEvidenceUrl(invoiceDoc),
@@ -1169,7 +1208,7 @@ export default async function ShipmentWorkspacePage(props: {
                 </div>
                 <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
                   <span className="text-[#86868B] font-bold">Total Invoice Value</span>
-                  <span className="font-mono font-bold text-[#1D1D1F]">${totalInvoiceAmount.toLocaleString()}</span>
+                  <span className="font-mono font-bold text-[#1D1D1F]">{totalInvoiceDisplay}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
                   <span className="text-[#86868B] font-bold">Country of Export</span>
@@ -1220,18 +1259,49 @@ export default async function ShipmentWorkspacePage(props: {
                       const parsed = JSON.parse(primaryDoc.extractedJson);
                       if (parsed.lineItems && Array.isArray(parsed.lineItems)) {
                         const extracted = parsed.lineItems as ExtractedLineItem[];
-                        docLineItems = extracted.map((li, idx: number) => ({
-                          id: `extracted-${primaryDoc.id}-${idx}`,
-                          lineNumber: li.lineNumber || idx + 1,
-                          partNumber: li.sku || li.partNumber || "",
-                          description: li.description || "Product",
-                          quantity: Number(li.quantity || 0),
-                          unitPrice: Number(li.unitPrice || 0),
-                          totalValue: Number(li.totalAmount || li.totalValue || 0),
-                          countryOfOrigin: li.countryOfOrigin || "",
-                          htsCode: li.htsCode || (li.sku && /^\d{4}/.test(li.sku) ? li.sku : ""),
-                          htsConfidence: 95,
-                        }));
+
+                        // A document's stored extraction is often thinner than the
+                        // curated record built from it -- this invoice's JSON kept a
+                        // total for 57 of its 68 lines and a unit price for none,
+                        // while all 68 persisted rows carry both. Where a persisted
+                        // row is unambiguously the same line, its price is this
+                        // document's price and gets shown rather than a dash.
+                        const persistedByLine = new Map(
+                          displayLineItems.map((row) => [row.lineNumber, row] as const)
+                        );
+                        const sameLine = (a: string, b: string) =>
+                          a.trim().toLowerCase() === b.trim().toLowerCase();
+
+                        docLineItems = extracted.map((li, idx: number) => {
+                          const lineNumber = li.lineNumber || idx + 1;
+                          const description = li.description || "Product";
+
+                          // Matched on description as well as line number, so a
+                          // shipment carrying several invoices can never borrow a
+                          // price from a different document's line 1.
+                          const persisted = persistedByLine.get(lineNumber);
+                          const counterpart =
+                            persisted && sameLine(persisted.description, description) ? persisted : null;
+
+                          return {
+                            id: `extracted-${primaryDoc.id}-${idx}`,
+                            lineNumber,
+                            partNumber: li.sku || li.partNumber || "",
+                            description,
+                            quantity: Number(li.quantity || 0),
+                            // Null, never 0, when neither source has a price: "0"
+                            // would state the line was free of charge.
+                            unitPrice: numberOrNull(li.unitPrice) ?? counterpart?.unitPrice ?? null,
+                            totalValue:
+                              numberOrNull(li.totalAmount) ??
+                              numberOrNull(li.totalValue) ??
+                              counterpart?.totalValue ??
+                              null,
+                            countryOfOrigin: li.countryOfOrigin || "",
+                            htsCode: li.htsCode || (li.sku && /^\d{4}/.test(li.sku) ? li.sku : ""),
+                            htsConfidence: 95,
+                          };
+                        });
                       }
                     } catch {}
                   }
@@ -1309,7 +1379,11 @@ export default async function ShipmentWorkspacePage(props: {
 
                         {/* Extracted Line Items for this Document */}
                         <div id="extracted-line-items-section">
-                          <LineItemsTable shipmentId={shipment.id} initialLineItems={docLineItems} />
+                          <LineItemsTable
+                            shipmentId={shipment.id}
+                            initialLineItems={docLineItems}
+                            currency={lineItemCurrency}
+                          />
                         </div>
                       </div>
 
@@ -1349,6 +1423,7 @@ export default async function ShipmentWorkspacePage(props: {
               shipmentId={shipment.id}
               initialLineItems={displayLineItems}
               isEnterpriseAdmin={isEnterpriseAdmin}
+              currency={lineItemCurrency}
             />
           </div>
         </>
