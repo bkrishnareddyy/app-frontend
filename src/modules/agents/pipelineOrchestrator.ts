@@ -59,6 +59,7 @@ interface SingleAgentResult {
   confidence?: unknown;
   decisionId?: string | null;
   aiProviderUsed?: string;
+  summary?: string;
   input: unknown;
   output: unknown;
 }
@@ -135,6 +136,7 @@ export class PipelineOrchestrator {
       let confidence: unknown = null;
       let decisionId: string | null = null;
       let aiProviderUsed: string | undefined;
+      let summary: string | undefined;
       let inputSnapshot: unknown = null;
       let outputSnapshot: unknown = null;
 
@@ -151,6 +153,7 @@ export class PipelineOrchestrator {
         confidence = result.confidence ?? null;
         decisionId = result.decisionId ?? null;
         aiProviderUsed = result.aiProviderUsed;
+        summary = result.summary;
         inputSnapshot = result.input;
         outputSnapshot = result.output;
       } catch (err) {
@@ -168,6 +171,7 @@ export class PipelineOrchestrator {
               invokedBy: invokedByLabel,
               stepNumber: i + 1,
               nextStep,
+              summary,
               status,
               durationMs: Date.now() - stepStart,
               confidence: (confidence ?? Prisma.JsonNull) as Prisma.InputJsonValue,
@@ -296,7 +300,15 @@ export class PipelineOrchestrator {
           output: output as unknown as Record<string, unknown>,
           exclude: ["shipmentDocumentId", "packetId"],
         });
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, input: agentInput, output };
+        const detectedType = output.detectedTypes?.[0];
+        const intakeSummary = [
+          detectedType && `${detectedType.replace(/_/g, " ")}`,
+          output.pageCount != null && `${output.pageCount}p`,
+          output.documentCount != null && output.documentCount > 1 && `${output.documentCount} docs`,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, summary: intakeSummary || undefined, input: agentInput, output };
       }
 
       case "Document Intelligence Agent": {
@@ -333,10 +345,20 @@ export class PipelineOrchestrator {
             "packetId",
           ],
         });
+        const lineCount = output.lineItems?.length ?? 0;
+        const exporter = output.exporterName || output.importerName;
+        const intelliSummary = [
+          lineCount > 0 && `${lineCount} line item${lineCount !== 1 ? "s" : ""}`,
+          exporter && `from ${exporter}`,
+          output.invoiceNumber && `inv ${output.invoiceNumber}`,
+        ]
+          .filter(Boolean)
+          .join("; ");
         return {
           decisionId: output.agentDecisionId,
           aiProviderUsed: output.aiProviderUsed,
           confidence: output.confidenceMetrics,
+          summary: intelliSummary || undefined,
           input: agentInput,
           output,
         };
@@ -358,7 +380,9 @@ export class PipelineOrchestrator {
         };
         const output = await ProductIntelligenceAgent.execute(agentInput);
         await this.persistProductIntelligence(shipmentId, documentId, agentInput.lineItems, output);
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+        const productCount = output.profiles?.length ?? 0;
+        const productSummary = productCount > 0 ? `Enriched ${productCount} product profile${productCount !== 1 ? "s" : ""}` : undefined;
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, summary: productSummary, input: agentInput, output };
       }
 
       case "HTS Classification Agent": {
@@ -383,10 +407,16 @@ export class PipelineOrchestrator {
         };
         const output: HTSClassificationOutput = await HTSClassificationAgent.execute(agentInput);
         await this.persistClassification(shipmentId, accountId, documentId, output);
+        const classifiedCount = output.classifications?.filter((c: { htsCode: string }) => c.htsCode !== "UNCLASSIFIABLE").length ?? 0;
+        const totalClassified = output.classifications?.length ?? 0;
+        const htsSummary = totalClassified > 0
+          ? `${classifiedCount}/${totalClassified} classified${output.overallConfidence != null ? `; ${Math.round(Number(output.overallConfidence))}% confidence` : ""}`
+          : undefined;
         return {
           decisionId: output.agentDecisionId,
           aiProviderUsed: output.aiProviderUsed,
           confidence: output.overallConfidence,
+          summary: htsSummary,
           input: agentInput,
           output,
         };
@@ -425,7 +455,12 @@ export class PipelineOrchestrator {
             countryOfOrigin: q.countryOfOrigin,
           });
         }
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+        const qualCount = output.qualifications?.length ?? 0;
+        const savings = (output.qualifications ?? []).reduce((s: number, q: { estimatedSavings?: number | null }) => s + (q.estimatedSavings ?? 0), 0);
+        const originSummary = qualCount > 0
+          ? `${qualCount} FTA qualification${qualCount !== 1 ? "s" : ""}${savings > 0 ? `; est. $${savings.toLocaleString()} savings` : ""}`
+          : "No FTA qualifications found";
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, summary: originSummary, input: agentInput, output };
       }
 
       case "Valuation & Assists Agent": {
@@ -462,7 +497,9 @@ export class PipelineOrchestrator {
           output: output as unknown as Record<string, unknown>,
           exclude: ["enteredCustomsValue", "shipmentId"],
         });
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+        const ecv = output.enteredCustomsValue;
+        const valuationSummary = ecv != null ? `Entered customs value $${Number(ecv).toLocaleString()}` : "No customs value determined";
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, summary: valuationSummary, input: agentInput, output };
       }
 
       case "Compliance Audit Agent": {
@@ -509,7 +546,14 @@ export class PipelineOrchestrator {
             complianceFindings: JSON.stringify(findings),
           });
         }
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: null, input: agentInput, output };
+        const issueCount = output.auditResults?.filter((r: { severity?: string }) => r.severity === "HIGH" || r.severity === "MEDIUM").length ?? 0;
+        const totalIssues = output.auditResults?.length ?? 0;
+        const complianceSummary = output.status === "BLOCKED_DEPENDENCY"
+          ? "Blocked — missing upstream data"
+          : totalIssues === 0
+          ? "Cleared — no findings"
+          : `${totalIssues} finding${totalIssues !== 1 ? "s" : ""}${issueCount > 0 ? ` (${issueCount} high/med)` : ""}`;
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: null, summary: complianceSummary, input: agentInput, output };
       }
 
       case "Filing Readiness Agent": {
@@ -537,7 +581,10 @@ export class PipelineOrchestrator {
           agentKey: "filingReadiness",
           output: output as unknown as Record<string, unknown>,
         });
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.readinessScore, input: agentInput, output };
+        const readinessSummary = output.readinessScore != null
+          ? `Readiness score ${Math.round(Number(output.readinessScore))}%${output.status ? ` — ${output.status}` : ""}`
+          : undefined;
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.readinessScore, summary: readinessSummary, input: agentInput, output };
       }
 
       default:

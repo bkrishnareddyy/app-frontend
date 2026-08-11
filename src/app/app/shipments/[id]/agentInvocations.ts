@@ -25,6 +25,8 @@ export interface InvocationStep {
   completedAt: string | null;
   durationMs: number;
   summary?: string;
+  confidence?: number | null;
+  modelVersion?: string | null;
   error?: string;
   /** Exactly what buildAgentContext() handed this agent for this step -- answers "what did it actually see" without re-deriving it from code. Undefined on rows written before this column existed. */
   inputSnapshot?: unknown;
@@ -92,6 +94,9 @@ export interface AgentExecutionRecordRow {
   invokedBy?: string | null;
   triggerEvent?: string | null;
   nextStep?: string | null;
+  summary?: string | null;
+  confidence?: unknown;
+  modelVersion?: string | null;
   error?: string | null;
   /** Prisma `Json` snapshots of what the step was given and produced. */
   inputSnapshot?: unknown;
@@ -147,6 +152,7 @@ export function buildAgentInvocations(
   for (const rec of records || []) {
     const runId = rec.runId || legacyRecordClusters.get(rec)!;
     const g = ensureGroup(runId, rec.invokedBy || rec.triggerEvent || "SYSTEM", rec.triggerEvent || "UNKNOWN");
+    const confidenceNum = typeof rec.confidence === "number" ? rec.confidence : null;
     g.steps.push({
       id: rec.id,
       agentName: rec.agentName,
@@ -155,7 +161,9 @@ export function buildAgentInvocations(
       startedAt: new Date(rec.startedAt).toISOString(),
       completedAt: rec.completedAt ? new Date(rec.completedAt).toISOString() : null,
       durationMs: rec.durationMs || 0,
-      summary: rec.nextStep ? `Next: ${rec.nextStep}` : undefined,
+      summary: rec.summary || undefined,
+      confidence: confidenceNum,
+      modelVersion: rec.modelVersion || undefined,
       error: rec.error || undefined,
       inputSnapshot: rec.inputSnapshot ?? undefined,
       outputSnapshot: rec.outputSnapshot ?? undefined,

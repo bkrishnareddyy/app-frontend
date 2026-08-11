@@ -4,6 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Clock, Loader2, Sparkles, XCircle } from "lucide-react";
 import type { AgentInvocation } from "./agentInvocations";
 
+function parseErrorMessage(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    // Gemini-style: { error: { message, code, status } }
+    if (parsed?.error?.message) return `[${parsed.error.code ?? parsed.error.status}] ${parsed.error.message}`;
+    // Flat { message } shape
+    if (typeof parsed?.message === "string") return parsed.message;
+  } catch {
+    // not JSON — use as-is
+  }
+  return raw;
+}
+
 function formatDuration(ms: number) {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
@@ -163,13 +176,18 @@ export function AgentExecutionTimeline({
                       <span className="w-5 h-5 rounded-full bg-white border border-border text-[10px] font-bold text-ink inline-flex items-center justify-center shrink-0">
                         {idx + 1}
                       </span>
-                      <div className="min-w-[190px] max-w-[190px] shrink-0">
+                      <div className="min-w-[200px] max-w-[200px] shrink-0">
                         <p className="text-[11px] font-bold text-ink truncate" title={step.agentName}>
                           {step.agentName}
                         </p>
                         {step.summary && (
                           <p className="text-[9px] text-ink-muted truncate" title={step.summary}>
                             {step.summary}
+                          </p>
+                        )}
+                        {step.modelVersion && (
+                          <p className="text-[9px] text-ink-muted/60 truncate font-mono">
+                            {step.modelVersion}
                           </p>
                         )}
                       </div>
@@ -188,6 +206,11 @@ export function AgentExecutionTimeline({
                           title={`${formatDuration(step.durationMs)}`}
                         />
                       </div>
+                      {step.confidence != null && (
+                        <span className="text-[10px] font-mono font-bold text-ink-muted w-10 text-right shrink-0" title="Confidence">
+                          {Math.round(Number(step.confidence))}%
+                        </span>
+                      )}
                       <span className="text-[10px] font-mono font-bold text-ink w-14 text-right shrink-0">
                         {formatDuration(step.durationMs)}
                       </span>
@@ -203,7 +226,8 @@ export function AgentExecutionTimeline({
                       .filter((s) => s.error)
                       .map((s) => (
                         <p key={s.id} className="text-[10px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
-                          <span className="font-bold">{s.agentName}:</span> {s.error}
+                          <span className="font-bold">{s.agentName}:</span>{" "}
+                          {parseErrorMessage(s.error!)}
                         </p>
                       ))}
                   </div>

@@ -1135,6 +1135,7 @@ model AgentExecutionRecord {
   // an ordinal for that run rather than a fixed 1-10 pipeline slot.
   stepNumber     Int?
   nextStep       String?
+  summary        String?   // Human-readable one-line summary of what this step found or changed.
   status         String    @default("COMPLETED") // RUNNING, COMPLETED, FAILED
   // Null when the agent reported no confidence, or reported a multi-dimensional
   // breakdown instead of a single number -- never substitute a synthetic figure.
