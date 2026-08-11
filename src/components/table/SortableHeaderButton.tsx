@@ -40,8 +40,8 @@ export function SortableHeaderButton<TColumn extends string>({
       <button
         type="button"
         onClick={() => onSort(column, nextDirection)}
-        className={`inline-flex items-center gap-1.5 rounded-sm uppercase tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3] ${
-          isActive ? "text-[#1D1D1F]" : "hover:text-[#1D1D1F]"
+        className={`inline-flex items-center gap-1.5 rounded-sm uppercase tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+          isActive ? "text-ink" : "hover:text-ink"
         }`}
       >
         <span className="whitespace-nowrap">{label}</span>

@@ -280,23 +280,23 @@ export function ShipmentsWorkbenchClient({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#0071E3]/10 text-[#0071E3]">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-brand/10 text-brand">
               Shipment Operations Console
             </span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#1D1D1F] mt-1">
+          <h1 className="text-2xl font-bold tracking-tight text-ink mt-1">
             Shipment Workbench
           </h1>
-          <p className="text-xs text-[#86868B]">
+          <p className="text-xs text-ink-muted">
             Active shipment management, document intake status, and readiness tracking for{" "}
-            <strong className="text-[#1D1D1F]">{context.accountName}</strong>.
+            <strong className="text-ink">{context.accountName}</strong>.
           </p>
         </div>
 
         <div className="flex items-center space-x-3">
           <Link
             href="/app/shipments/new"
-            className="px-4 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-2 shrink-0 whitespace-nowrap cursor-pointer"
+            className="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-2 shrink-0 whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Shipment</span>
@@ -306,20 +306,20 @@ export function ShipmentsWorkbenchClient({
 
       {/* Enterprise Admin Top Filter Controls */}
       {isEnterpriseAdmin && (
-        <div className="bg-white p-4 rounded-2xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-border shadow-2xs flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center space-x-2.5">
-            <Users className="w-4 h-4 text-[#0071E3]" />
-            <span className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider">
+            <Users className="w-4 h-4 text-brand" />
+            <span className="text-xs font-bold text-ink uppercase tracking-wider">
               Assignee View
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs">
+            <div className="flex bg-surface-muted p-1 rounded-xl border border-border text-xs">
               <button
                 onClick={() => setSelectedUserIds([])}
                 className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  selectedUserIds.length === 0 ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
+                  selectedUserIds.length === 0 ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
                 }`}
               >
                 All Shipments
@@ -328,8 +328,8 @@ export function ShipmentsWorkbenchClient({
                 onClick={() => setSelectedUserIds([context.userId])}
                 className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                   selectedUserIds.length === 1 && selectedUserIds[0] === context.userId
-                    ? "bg-white text-[#1D1D1F] shadow-3xs"
-                    : "text-[#86868B]"
+                    ? "bg-white text-ink shadow-3xs"
+                    : "text-ink-muted"
                 }`}
               >
                 My Shipments
@@ -337,10 +337,10 @@ export function ShipmentsWorkbenchClient({
             </div>
 
             <div className="flex items-center space-x-2 text-xs relative">
-              <span className="text-[#86868B] font-semibold">Team Members:</span>
+              <span className="text-ink-muted font-semibold">Team Members:</span>
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
+                className="px-3.5 py-1.5 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
               >
                 <span>
                   {selectedUserIds.length === 0
@@ -356,25 +356,25 @@ export function ShipmentsWorkbenchClient({
                         })()
                     : `${selectedUserIds.length} Selected`}
                 </span>
-                <span className="text-[#86868B] text-[9px]">▼</span>
+                <span className="text-ink-muted text-[9px]">▼</span>
               </button>
 
               {isDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E5E5EA] rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
-                    <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-2 mb-1 text-[10px] font-bold text-[#86868B] uppercase">
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-border rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-border pb-2 mb-1 text-[10px] font-bold text-ink-muted uppercase">
                       <span>Select Members</span>
                       <div className="space-x-2">
                         <button
                           onClick={() => setSelectedUserIds(fullTeamList.map((t) => t.userId))}
-                          className="text-[#0071E3] hover:underline cursor-pointer"
+                          className="text-brand hover:underline cursor-pointer"
                         >
                           All
                         </button>
                         <button
                           onClick={() => setSelectedUserIds([])}
-                          className="text-[#0071E3] hover:underline cursor-pointer"
+                          className="text-brand hover:underline cursor-pointer"
                         >
                           Clear
                         </button>
@@ -392,20 +392,20 @@ export function ShipmentsWorkbenchClient({
                         return (
                           <label
                             key={member.userId}
-                            className="flex items-center space-x-2.5 p-2 hover:bg-[#F5F5F7] rounded-xl cursor-pointer text-left transition-colors"
+                            className="flex items-center space-x-2.5 p-2 hover:bg-surface-muted rounded-xl cursor-pointer text-left transition-colors"
                           >
                             <input
                               type="checkbox"
                               checked={isChecked}
                               onChange={() => toggleUser(member.userId)}
-                              className="rounded border-[#E5E5EA] text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                              className="rounded border-border text-brand focus:ring-brand cursor-pointer"
                             />
                             <div className="truncate">
-                              <p className="font-bold text-[#1D1D1F] text-xs truncate">
+                              <p className="font-bold text-ink text-xs truncate">
                                 {memberName}
                                 {member.userId === context.userId && " (Me)"}
                               </p>
-                              <p className="text-[10px] text-[#86868B] truncate">
+                              <p className="text-[10px] text-ink-muted truncate">
                                 {member.email}
                               </p>
                             </div>
@@ -423,50 +423,50 @@ export function ShipmentsWorkbenchClient({
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
+        <div className="bg-white p-5 rounded-2xl border border-border shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-ink-muted mb-2">
             <span>Total Shipments</span>
-            <Package className="w-4 h-4 text-[#0071E3]" />
+            <Package className="w-4 h-4 text-brand" />
           </div>
-          <p className="text-2xl font-bold text-[#1D1D1F]">{totalCount}</p>
-          <p className="text-[11px] text-[#86868B] mt-1">Matched by filters</p>
+          <p className="text-2xl font-bold text-ink">{totalCount}</p>
+          <p className="text-[11px] text-ink-muted mt-1">Matched by filters</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
+        <div className="bg-white p-5 rounded-2xl border border-border shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-ink-muted mb-2">
             <span>In Progress</span>
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
-          <p className="text-2xl font-bold text-[#1D1D1F]">{inProgressCount}</p>
+          <p className="text-2xl font-bold text-ink">{inProgressCount}</p>
           <p className="text-[11px] text-amber-600 mt-1">Under agent review</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
+        <div className="bg-white p-5 rounded-2xl border border-border shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-ink-muted mb-2">
             <span>Ready to File</span>
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
           </div>
-          <p className="text-2xl font-bold text-[#1D1D1F]">{readyCount}</p>
+          <p className="text-2xl font-bold text-ink">{readyCount}</p>
           <p className="text-[11px] text-emerald-600 mt-1">Cleared for filing</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#86868B] mb-2">
+        <div className="bg-white p-5 rounded-2xl border border-border shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-ink-muted mb-2">
             <span>Exception Hold</span>
             <AlertTriangle className="w-4 h-4 text-red-500" />
           </div>
-          <p className="text-2xl font-bold text-[#1D1D1F]">{holdCount}</p>
+          <p className="text-2xl font-bold text-ink">{holdCount}</p>
           <p className="text-[11px] text-red-500 mt-1">Attention required</p>
         </div>
       </div>
 
       {/* Main Table Section */}
-      <div className="bg-white rounded-2xl border border-[#E5E5EA] shadow-2xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-border shadow-2xs overflow-hidden">
         {/* Table Header Bar */}
-        <div className="p-4 md:p-5 border-b border-[#E5E5EA] flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#FAF9F6]/50">
+        <div className="p-4 md:p-5 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#FAF9F6]/50">
           <div className="flex items-center space-x-2">
-            <h2 className="text-sm font-bold text-[#1D1D1F]">All Shipments</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#E5E5EA] text-[#1D1D1F]">
+            <h2 className="text-sm font-bold text-ink">All Shipments</h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-border text-ink">
               {totalCount}
             </span>
           </div>
@@ -495,19 +495,19 @@ export function ShipmentsWorkbenchClient({
                   });
                   setSearchQuery("");
                 }}
-                className="px-3 py-1.5 bg-[#F5F5F7] hover:bg-[#E5E5EA] border border-[#E5E5EA] rounded-xl text-xs font-semibold text-[#1D1D1F] transition-colors cursor-pointer"
+                className="px-3 py-1.5 bg-surface-muted hover:bg-border border border-border rounded-xl text-xs font-semibold text-ink transition-colors cursor-pointer"
               >
                 Clear Filters
               </button>
             )}
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-[#86868B] absolute left-3 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-ink-muted absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Global search shipments..."
-                className="pl-8 pr-3 py-1.5 bg-white border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] w-64 focus:outline-none focus:border-[#0071E3]"
+                className="pl-8 pr-3 py-1.5 bg-white border border-border rounded-xl text-xs text-ink w-64 focus:outline-none focus:border-brand"
               />
             </div>
           </div>
@@ -515,8 +515,8 @@ export function ShipmentsWorkbenchClient({
 
         {/* Datatable */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-[#1D1D1F]">
-            <thead className="bg-[#F5F5F7] text-[#86868B] font-bold border-b border-[#E5E5EA]">
+          <table className="w-full text-left text-xs text-ink">
+            <thead className="bg-surface-muted text-ink-muted font-bold border-b border-border">
               <tr>
                 <th className="px-5 py-3.5">Shipment #</th>
                 <th className="px-5 py-3.5">Importer of Record</th>
@@ -528,9 +528,9 @@ export function ShipmentsWorkbenchClient({
                 {isEnterpriseAdmin && <th className="px-5 py-3.5">Owner</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5EA]">
+            <tbody className="divide-y divide-border">
               {/* Column Filters Row */}
-              <tr className="bg-[#FAF9F6]/40 border-b border-[#E5E5EA]">
+              <tr className="bg-[#FAF9F6]/40 border-b border-border">
                 <td className="px-4 py-2">
                   <input
                     type="text"
@@ -539,7 +539,7 @@ export function ShipmentsWorkbenchClient({
                       setColumnFilters({ ...columnFilters, shipmentNumber: e.target.value })
                     }
                     placeholder="Filter #"
-                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3]"
+                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
                   />
                 </td>
                 <td className="px-4 py-2">
@@ -550,7 +550,7 @@ export function ShipmentsWorkbenchClient({
                       setColumnFilters({ ...columnFilters, importerName: e.target.value })
                     }
                     placeholder="Filter Importer"
-                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3]"
+                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
                   />
                 </td>
                 <td className="px-4 py-2">
@@ -561,7 +561,7 @@ export function ShipmentsWorkbenchClient({
                       setColumnFilters({ ...columnFilters, entryTypePo: e.target.value })
                     }
                     placeholder="Filter Type/PO"
-                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3]"
+                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
                   />
                 </td>
                 <td className="px-4 py-2">
@@ -572,7 +572,7 @@ export function ShipmentsWorkbenchClient({
                       setColumnFilters({ ...columnFilters, portMode: e.target.value })
                     }
                     placeholder="Filter Port"
-                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3]"
+                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
                   />
                 </td>
                 <td className="px-4 py-2">
@@ -581,7 +581,7 @@ export function ShipmentsWorkbenchClient({
                     onChange={(e) =>
                       setColumnFilters({ ...columnFilters, readiness: e.target.value })
                     }
-                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3] cursor-pointer"
+                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand cursor-pointer"
                   >
                     <option value="ALL">All Readiness</option>
                     <option value="READY">Ready (&gt;= 85%)</option>
@@ -592,7 +592,7 @@ export function ShipmentsWorkbenchClient({
                   <select
                     value={columnFilters.status}
                     onChange={(e) => setColumnFilters({ ...columnFilters, status: e.target.value })}
-                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3] cursor-pointer"
+                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand cursor-pointer"
                   >
                     <option value="ALL">All Statuses</option>
                     <option value="In Progress">In Progress</option>
@@ -606,7 +606,7 @@ export function ShipmentsWorkbenchClient({
                   <select
                     value={columnFilters.client}
                     onChange={(e) => setColumnFilters({ ...columnFilters, client: e.target.value })}
-                    className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3] cursor-pointer"
+                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand cursor-pointer"
                   >
                     <option value="ALL">All Clients</option>
                     <option value="UNASSIGNED">No Client</option>
@@ -622,7 +622,7 @@ export function ShipmentsWorkbenchClient({
                     <select
                       value={columnFilters.owner}
                       onChange={(e) => setColumnFilters({ ...columnFilters, owner: e.target.value })}
-                      className="px-2.5 py-1 w-full bg-white border border-[#E5E5EA] rounded-lg text-[11px] font-medium focus:outline-none focus:border-[#0071E3] cursor-pointer"
+                      className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand cursor-pointer"
                     >
                       <option value="ALL">All Owners</option>
                       <option value="UNASSIGNED">Unassigned</option>
@@ -642,10 +642,10 @@ export function ShipmentsWorkbenchClient({
                 <tr>
                   <td
                     colSpan={isEnterpriseAdmin ? 8 : 7}
-                    className="px-5 py-12 text-center text-[#86868B]"
+                    className="px-5 py-12 text-center text-ink-muted"
                   >
-                    <Package className="w-8 h-8 mx-auto text-[#86868B] mb-2 stroke-1" />
-                    <p className="font-semibold text-sm text-[#1D1D1F]">No shipments match the filters</p>
+                    <Package className="w-8 h-8 mx-auto text-ink-muted mb-2 stroke-1" />
+                    <p className="font-semibold text-sm text-ink">No shipments match the filters</p>
                     <p className="text-xs mt-1">Try resetting the search filters to view active shipments.</p>
                   </td>
                 </tr>
@@ -655,41 +655,41 @@ export function ShipmentsWorkbenchClient({
                   const isCritical = shp.healthStatus === "Critical";
 
                   return (
-                    <tr key={shp.id} className="hover:bg-[#F5F5F7]/60 transition-colors">
-                      <td className="px-5 py-4 font-bold text-[#0071E3]">
+                    <tr key={shp.id} className="hover:bg-surface-muted/60 transition-colors">
+                      <td className="px-5 py-4 font-bold text-brand">
                         <Link
                           href={`/app/shipments/${shp.id}`}
                           className="hover:underline flex items-center space-x-2"
                         >
-                          <Package className="w-4 h-4 text-[#0071E3] shrink-0" />
+                          <Package className="w-4 h-4 text-brand shrink-0" />
                           <span>{shp.shipmentNumber}</span>
                         </Link>
                       </td>
 
                       <td className="px-5 py-4">
-                        <div className="font-semibold text-[#1D1D1F]">{shp.importerName}</div>
-                        <div className="text-[11px] text-[#86868B]">
+                        <div className="font-semibold text-ink">{shp.importerName}</div>
+                        <div className="text-[11px] text-ink-muted">
                           {shp.countryOfExport || "Global"}
                         </div>
                       </td>
 
                       <td className="px-5 py-4">
                         <div>{shp.entryType}</div>
-                        <div className="text-[11px] text-[#86868B]">
+                        <div className="text-[11px] text-ink-muted">
                           {shp.poReference || "No PO"}
                         </div>
                       </td>
 
                       <td className="px-5 py-4">
                         <div>{shp.portOfEntry || "Port of LA"}</div>
-                        <div className="text-[11px] text-[#86868B]">
+                        <div className="text-[11px] text-ink-muted">
                           {shp.carrierName || "Ocean"}
                         </div>
                       </td>
 
                       <td className="px-5 py-4">
                         <div className="flex items-center space-x-2">
-                          <div className="w-16 bg-[#E5E5EA] h-1.5 rounded-full overflow-hidden">
+                          <div className="w-16 bg-border h-1.5 rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${
                                 isReady ? "bg-emerald-500" : isCritical ? "bg-red-500" : "bg-amber-500"
@@ -717,25 +717,25 @@ export function ShipmentsWorkbenchClient({
 
                       <td className="px-5 py-4">
                         {shp.client ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-brand/10 text-brand">
                             {shp.client.name}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-[#86868B]">—</span>
+                          <span className="text-[11px] text-ink-muted">—</span>
                         )}
                       </td>
 
                       {isEnterpriseAdmin && (
                         <td className="px-5 py-4">
                           <div className="flex items-center space-x-1.5 text-xs">
-                            <User className="w-3.5 h-3.5 text-[#86868B] shrink-0" />
+                            <User className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                             <select
                               value={shp.assignedBrokerId || "UNASSIGNED"}
                               onChange={async (e) => {
                                 const newBrokerId = e.target.value === "UNASSIGNED" ? null : e.target.value;
                                 await handleReassign(shp.id, newBrokerId);
                               }}
-                              className="bg-transparent border-b border-transparent hover:border-[#0071E3] py-0.5 focus:outline-none focus:border-[#0071E3] font-semibold text-[#1D1D1F] cursor-pointer"
+                              className="bg-transparent border-b border-transparent hover:border-brand py-0.5 focus:outline-none focus:border-brand font-semibold text-ink cursor-pointer"
                             >
                               <option value="UNASSIGNED">Unassigned</option>
                               {fullTeamList.map((m) => (

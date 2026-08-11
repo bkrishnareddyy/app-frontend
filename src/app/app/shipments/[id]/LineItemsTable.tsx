@@ -111,11 +111,11 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
 
   return (
     <div className="mt-4 space-y-2">
-      <div className="flex items-center justify-between text-xs font-bold text-[#1D1D1F]">
+      <div className="flex items-center justify-between text-xs font-bold text-ink">
         <span>Extracted Line Items ({lineItems.length})</span>
       </div>
       {lineItems.length > 0 ? (
-        <div className="border border-[#E5E5EA] rounded-xl text-xs max-h-96 overflow-y-auto">
+        <div className="border border-border rounded-xl text-xs max-h-96 overflow-y-auto">
           {/*
             Fixed layout with declared column widths, so the table is always exactly
             as wide as its container and never scrolls sideways.
@@ -127,7 +127,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
             that carried Total and Action out of sight. Widths must total 100.
           */}
           <table className="w-full table-fixed text-left border-collapse">
-            <thead className="bg-[#F5F5F7] text-[10px] font-bold text-[#86868B] uppercase border-b border-[#E5E5EA]">
+            <thead className="bg-surface-muted text-[10px] font-bold text-ink-muted uppercase border-b border-border">
               <tr>
                 <th className="p-2.5 w-[6%]">Line</th>
                 <th className="p-2.5 w-[30%]">Description</th>
@@ -138,19 +138,19 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                 <th className="p-2.5 w-[9%] text-center">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5EA]">
+            <tbody className="divide-y divide-border">
               {orderedLineItems.map((item) => {
                 const isEditing = editingItemId === item.id;
                 return (
-                  <tr key={item.id} className="hover:bg-[#F5F5F7]/30 transition-colors">
-                    <td className="p-2.5 font-mono text-[#86868B] font-semibold">{item.lineNumber}</td>
+                  <tr key={item.id} className="hover:bg-surface-muted/30 transition-colors">
+                    <td className="p-2.5 font-mono text-ink-muted font-semibold">{item.lineNumber}</td>
                     {/*
                       break-words, not truncate: descriptions arrive as long unbroken
                       runs like "TOPS,DRESSES,PULLOVERS,SUITS,C" that carry no space
                       to wrap at, and a customs description clipped mid-word is not a
                       description. The fixed column width bounds them instead.
                     */}
-                    <td className="p-2.5 font-bold text-[#1D1D1F] break-words">{item.description}</td>
+                    <td className="p-2.5 font-bold text-ink break-words">{item.description}</td>
                     
                     {/* HTS Code Column */}
                     <td className="p-2.5 font-mono relative">
@@ -161,13 +161,13 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                             value={editHts}
                             onChange={(e) => setEditHts(e.target.value)}
                             placeholder="Search HTS Code..."
-                            className="w-full min-w-0 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white font-mono text-[11px]"
+                            className="w-full min-w-0 px-2 py-1 border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white font-mono text-[11px]"
                             disabled={saveLoading}
                           />
                           {/* Autocomplete dropdown */}
                           {htsSuggestions.length > 0 && (
-                            <div className="absolute left-2.5 z-40 bg-white border border-[#E5E5EA] rounded-xl shadow-lg mt-1 w-64 p-1.5 space-y-1 max-h-48 overflow-y-auto">
-                              <p className="text-[9px] text-[#86868B] font-bold px-1.5 uppercase tracking-wider">HTS Code Suggestions</p>
+                            <div className="absolute left-2.5 z-40 bg-white border border-border rounded-xl shadow-lg mt-1 w-64 p-1.5 space-y-1 max-h-48 overflow-y-auto">
+                              <p className="text-[9px] text-ink-muted font-bold px-1.5 uppercase tracking-wider">HTS Code Suggestions</p>
                               {htsSuggestions.map((sugg) => (
                                 <button
                                   key={sugg.id}
@@ -175,17 +175,17 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                                     setEditHts(sugg.htsNumberDisplay);
                                     setHtsSuggestions([]);
                                   }}
-                                  className="w-full text-left p-1.5 rounded-lg hover:bg-[#F5F5F7] text-[10px] space-y-0.5 block transition-colors cursor-pointer"
+                                  className="w-full text-left p-1.5 rounded-lg hover:bg-surface-muted text-[10px] space-y-0.5 block transition-colors cursor-pointer"
                                 >
-                                  <span className="font-mono font-bold text-[#0071E3]">{sugg.htsNumberDisplay}</span>
-                                  <span className="text-[#86868B] block truncate leading-snug">{sugg.description}</span>
+                                  <span className="font-mono font-bold text-brand">{sugg.htsNumberDisplay}</span>
+                                  <span className="text-ink-muted block truncate leading-snug">{sugg.description}</span>
                                 </button>
                               ))}
                             </div>
                           )}
                         </div>
                       ) : (
-                        <span className="text-[#0071E3] font-semibold">{item.htsCode}</span>
+                        <span className="text-brand font-semibold">{item.htsCode}</span>
                       )}
                     </td>
 
@@ -197,11 +197,11 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                           value={editCoo}
                           onChange={(e) => setEditCoo(e.target.value)}
                           placeholder="e.g. Germany"
-                          className="w-full min-w-0 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white text-[11px]"
+                          className="w-full min-w-0 px-2 py-1 border border-brand rounded-lg focus:outline-none focus:ring-1 focus:ring-brand bg-white text-[11px]"
                           disabled={saveLoading}
                         />
                       ) : (
-                        <span className="font-medium text-[#1D1D1F]">{item.countryOfOrigin}</span>
+                        <span className="font-medium text-ink">{item.countryOfOrigin}</span>
                       )}
                     </td>
 
@@ -211,7 +211,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                         const amount = extendedAmount(item);
                         if (amount === null) {
                           return (
-                            <span className="text-[#86868B] font-normal" title="No amount on the source document">
+                            <span className="text-ink-muted font-normal" title="No amount on the source document">
                               —
                             </span>
                           );
@@ -246,7 +246,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                       ) : (
                         <button
                           onClick={() => handleStartEdit(item)}
-                          className="p-1 rounded-lg hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
+                          className="p-1 rounded-lg hover:bg-surface-muted text-ink-muted hover:text-ink transition-colors cursor-pointer"
                           title="Edit HTS & Origin"
                         >
                           <Edit2 className="w-3.5 h-3.5" />

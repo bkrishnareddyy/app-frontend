@@ -63,7 +63,7 @@ export function ShipmentTitleEditor({
               setTitle(initialShipmentNumber);
             }
           }}
-          className="px-3 py-1 text-2xl font-extrabold text-[#1D1D1F] border border-[#0071E3] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white w-72"
+          className="px-3 py-1 text-2xl font-extrabold text-ink border border-brand rounded-xl focus:outline-none focus:ring-1 focus:ring-brand bg-white w-72"
           disabled={loading}
           autoFocus
         />
@@ -90,13 +90,13 @@ export function ShipmentTitleEditor({
 
   return (
     <div className="flex items-center space-x-2 group">
-      <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight">
+      <h1 className="text-2xl font-extrabold text-ink tracking-tight">
         {title}
       </h1>
       {isEnterpriseAdmin && (
         <button
           onClick={() => setIsEditing(true)}
-          className="p-1.5 rounded-lg hover:bg-[#F5F5F7] text-[#86868B]/80 hover:text-[#1D1D1F] transition-all cursor-pointer"
+          className="p-1.5 rounded-lg hover:bg-surface-muted text-ink-muted/80 hover:text-ink transition-all cursor-pointer"
           title="Rename Shipment"
         >
           <Edit2 className="w-4 h-4" />

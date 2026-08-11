@@ -10,13 +10,13 @@ interface RolesPermissionsPanelProps extends RolesPermissionsData {
 
 function RoleCard({ role }: { role: FormattedRole }) {
   return (
-    <section className="rounded-2xl bg-white border border-[#E5E5EA] p-5 space-y-3">
+    <section className="rounded-2xl bg-white border border-border p-5 space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-bold text-[#1D1D1F]">{role.name}</h2>
-        <span className="px-2 py-0.5 rounded-full border border-[#E5E5EA] text-[11px] font-semibold text-[#6E6E73]">
+        <h2 className="text-lg font-bold text-ink">{role.name}</h2>
+        <span className="px-2 py-0.5 rounded-full border border-border text-[11px] font-semibold text-[#6E6E73]">
           {role.isSystem ? "System" : "Custom"}
         </span>
-        <span className="inline-flex items-center gap-1 text-xs text-[#86868B]">
+        <span className="inline-flex items-center gap-1 text-xs text-ink-muted">
           <Users className="w-3.5 h-3.5" aria-hidden="true" />
           {role.memberCount} {role.memberCount === 1 ? "member" : "members"} in this account
         </span>
@@ -25,7 +25,7 @@ function RoleCard({ role }: { role: FormattedRole }) {
       {role.description && <p className="text-sm text-[#6E6E73]">{role.description}</p>}
 
       {role.granted.length === 0 ? (
-        <p className="text-sm text-[#86868B]">
+        <p className="text-sm text-ink-muted">
           This role holds no permissions. Members who only hold it can read what the app shows
           them and nothing more.
         </p>
@@ -33,8 +33,8 @@ function RoleCard({ role }: { role: FormattedRole }) {
         <ul className="space-y-1.5">
           {role.granted.map((permission) => (
             <li key={permission.name} className="flex flex-wrap items-baseline gap-2 text-sm">
-              <span className="font-mono text-xs text-[#1D1D1F]">{permission.name}</span>
-              <span className="text-[#86868B]">{permission.description}</span>
+              <span className="font-mono text-xs text-ink">{permission.name}</span>
+              <span className="text-ink-muted">{permission.description}</span>
             </li>
           ))}
         </ul>
@@ -72,15 +72,15 @@ export function RolesPermissionsPanel({
         />
       ) : (
         <div>
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[#0071E3] text-xs font-semibold mb-3">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-brand text-xs font-semibold mb-3">
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>Roles & Permissions</span>
           </div>
-          <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">Role Definitions</h1>
-          <p className="text-[#86868B] text-sm mt-1">
+          <h1 className="text-3xl font-extrabold text-ink tracking-tight">Role Definitions</h1>
+          <p className="text-ink-muted text-sm mt-1">
             What each role in {accountName} is allowed to do. Grants are read-only here —
             assign roles to people from{" "}
-            <Link href="/app/admin/users" className="font-semibold text-[#0071E3]">
+            <Link href="/app/admin/users" className="font-semibold text-brand">
               User Management
             </Link>
             .
@@ -103,7 +103,7 @@ export function RolesPermissionsPanel({
       )}
 
       {coverage.unknown.length > 0 && (
-        <div role="status" className="rounded-2xl bg-white border border-[#E5E5EA] p-4 text-sm text-[#6E6E73]">
+        <div role="status" className="rounded-2xl bg-white border border-border p-4 text-sm text-[#6E6E73]">
           Permission rows that are no longer in the catalogue:{" "}
           <span className="font-mono">{coverage.unknown.join(", ")}</span>
         </div>
@@ -115,8 +115,8 @@ export function RolesPermissionsPanel({
         ))}
       </div>
 
-      <section className="rounded-2xl bg-white border border-[#E5E5EA] p-5 space-y-3">
-        <h2 className="text-lg font-bold text-[#1D1D1F]">Permission catalogue</h2>
+      <section className="rounded-2xl bg-white border border-border p-5 space-y-3">
+        <h2 className="text-lg font-bold text-ink">Permission catalogue</h2>
         <p className="text-sm text-[#6E6E73]">
           Every permission this application gates on, and the roles that receive it when the
           catalogue is synced. {coverage.seeded} of {coverage.total} exist in the database.
@@ -124,7 +124,7 @@ export function RolesPermissionsPanel({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs font-semibold uppercase tracking-wider text-[#86868B]">
+              <tr className="text-left text-xs font-semibold uppercase tracking-wider text-ink-muted">
                 <th className="py-2 pr-4">Permission</th>
                 <th className="py-2 pr-4">Category</th>
                 <th className="py-2 pr-4">Default roles</th>
@@ -133,8 +133,8 @@ export function RolesPermissionsPanel({
             </thead>
             <tbody>
               {permissionCatalogue.map((permission) => (
-                <tr key={permission.name} className="border-t border-[#E5E5EA] align-top">
-                  <td className="py-2 pr-4 font-mono text-xs text-[#1D1D1F] whitespace-nowrap">
+                <tr key={permission.name} className="border-t border-border align-top">
+                  <td className="py-2 pr-4 font-mono text-xs text-ink whitespace-nowrap">
                     {permission.name}
                   </td>
                   <td className="py-2 pr-4 text-[#6E6E73] whitespace-nowrap">{permission.category}</td>

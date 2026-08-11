@@ -66,15 +66,15 @@ export function Header({
   ];
 
   return (
-    <header className="h-16 shrink-0 border-b border-[#E5E5EA] bg-[#F5F5F7]/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4 z-30">
+    <header className="h-16 shrink-0 border-b border-border bg-surface-muted/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4 z-30">
       <div className="flex items-center min-w-0">
-        <div className="flex items-center space-x-2 text-[#86868B] text-sm font-medium min-w-0">
-          <Building2 className="w-4 h-4 shrink-0 text-[#0071E3]" />
-          <span className="text-[#1D1D1F] font-semibold truncate" title={tenantName}>
+        <div className="flex items-center space-x-2 text-ink-muted text-sm font-medium min-w-0">
+          <Building2 className="w-4 h-4 shrink-0 text-brand" />
+          <span className="text-ink font-semibold truncate" title={tenantName}>
             {tenantName}
           </span>
-          <span className="text-[#86868B] shrink-0">/</span>
-          <span className="text-[#86868B] text-xs px-2.5 py-0.5 rounded-full bg-white border border-[#E5E5EA] font-medium shadow-2xs shrink-0 whitespace-nowrap">
+          <span className="text-ink-muted shrink-0">/</span>
+          <span className="text-ink-muted text-xs px-2.5 py-0.5 rounded-full bg-white border border-border font-medium shadow-2xs shrink-0 whitespace-nowrap">
             Account Isolated
           </span>
         </div>
@@ -94,41 +94,41 @@ export function Header({
             <img
               src={user.imageUrl}
               alt=""
-              className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs object-cover"
+              className="w-8 h-8 rounded-full border border-border shadow-xs object-cover"
             />
           ) : (
             <div
               aria-hidden="true"
-              className="w-8 h-8 rounded-full border border-[#E5E5EA] shadow-xs bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-xs font-bold"
+              className="w-8 h-8 rounded-full border border-border shadow-xs bg-brand/10 text-brand flex items-center justify-center text-xs font-bold"
             >
               {userName.charAt(0).toUpperCase()}
             </div>
           )}
-          <span className="text-xs font-semibold text-[#1D1D1F] hidden sm:inline">{userName}</span>
+          <span className="text-xs font-semibold text-ink hidden sm:inline">{userName}</span>
           <span className="sr-only sm:hidden">{userName}</span>
         </button>
 
         {isMenuOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
-            <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E5E5EA] rounded-2xl shadow-lg z-20 overflow-hidden">
-              <div className="p-4 border-b border-[#E5E5EA] flex items-center space-x-3">
+            <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-border rounded-2xl shadow-lg z-20 overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center space-x-3">
                 {user?.imageUrl ? (
                   // Same Clerk CDN avatar as above, at 40px. See the note there.
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={user.imageUrl}
                     alt={userName}
-                    className="w-10 h-10 rounded-full border border-[#E5E5EA] object-cover"
+                    className="w-10 h-10 rounded-full border border-border object-cover"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-full border border-[#E5E5EA] bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center text-sm font-bold">
+                  <div className="w-10 h-10 rounded-full border border-border bg-brand/10 text-brand flex items-center justify-center text-sm font-bold">
                     {userName.charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#1D1D1F] truncate">{userName}</p>
-                  <p className="text-xs text-[#86868B] truncate">
+                  <p className="text-sm font-semibold text-ink truncate">{userName}</p>
+                  <p className="text-xs text-ink-muted truncate">
                     {user?.primaryEmailAddress?.emailAddress}
                   </p>
                 </div>
@@ -142,15 +142,15 @@ export function Header({
                       setIsMenuOpen(false);
                       action.onClick();
                     }}
-                    className="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-left text-sm font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors cursor-pointer"
+                    className="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-left text-sm font-medium text-ink hover:bg-surface-muted transition-colors cursor-pointer"
                   >
-                    <action.icon className="w-4 h-4 text-[#0071E3]" />
+                    <action.icon className="w-4 h-4 text-brand" />
                     <span>{action.label}</span>
                   </button>
                 ))}
               </div>
 
-              <div className="p-1.5 border-t border-[#E5E5EA]">
+              <div className="p-1.5 border-t border-border">
                 <button
                   onClick={() => {
                     setIsMenuOpen(false);

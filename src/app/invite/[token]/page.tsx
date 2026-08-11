@@ -3,6 +3,8 @@ import { getAccountContext } from "@/lib/auth";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ShieldCheck, AlertCircle, Building2 } from "lucide-react";
+import { buttonVariants } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
 
 export default async function InvitationPage({
   params,
@@ -18,18 +20,18 @@ export default async function InvitationPage({
 
   if (!invitation || invitation.status !== "PENDING" || invitation.expiresAt < new Date()) {
     return (
-      <div className="min-h-screen bg-[#F5F5F7] flex flex-col justify-center items-center px-6">
+      <div className="min-h-screen bg-surface-muted flex flex-col justify-center items-center px-6">
         <div className="apple-card p-8 rounded-3xl border border-red-200 bg-white max-w-md text-center space-y-4 shadow-sm">
           <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mx-auto">
             <AlertCircle className="w-6 h-6" />
           </div>
-          <h1 className="text-xl font-extrabold text-[#1D1D1F]">Invalid or Expired Invitation</h1>
-          <p className="text-sm text-[#86868B]">
+          <h1 className="text-xl font-extrabold text-ink">Invalid or Expired Invitation</h1>
+          <p className="text-sm text-ink-muted">
             This invitation link is invalid, expired, or has already been accepted.
           </p>
           <Link
             href="/sign-in"
-            className="inline-block px-6 py-3 bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-full text-xs font-semibold shadow-md shadow-[#0071E3]/20"
+            className={cn(buttonVariants({ variant: "primary", size: "lg" }), "inline-block px-6 text-xs shadow-md shadow-brand/20")}
           >
             Go to Sign In
           </Link>
@@ -48,21 +50,21 @@ export default async function InvitationPage({
 
     if (signedInEmail !== invitedEmail) {
       return (
-        <div className="min-h-screen bg-[#F5F5F7] flex flex-col justify-center items-center px-6">
+        <div className="min-h-screen bg-surface-muted flex flex-col justify-center items-center px-6">
           <div className="apple-card p-8 rounded-3xl border border-red-200 bg-white max-w-md text-center space-y-4 shadow-sm">
             <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <h1 className="text-xl font-extrabold text-[#1D1D1F]">Email Mismatch</h1>
-            <p className="text-sm text-[#86868B]">
+            <h1 className="text-xl font-extrabold text-ink">Email Mismatch</h1>
+            <p className="text-sm text-ink-muted">
               This invitation was sent to{" "}
-              <strong className="text-[#1D1D1F]">{invitation.email}</strong>, but you are signed in as{" "}
-              <strong className="text-[#1D1D1F]">{context.email}</strong>. Please sign in with the
+              <strong className="text-ink">{invitation.email}</strong>, but you are signed in as{" "}
+              <strong className="text-ink">{context.email}</strong>. Please sign in with the
               correct account or contact your workspace administrator.
             </p>
             <Link
               href="/sign-in"
-              className="inline-block px-6 py-3 bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-full text-xs font-semibold shadow-md shadow-[#0071E3]/20"
+              className={cn(buttonVariants({ variant: "primary", size: "lg" }), "inline-block px-6 text-xs shadow-md shadow-brand/20")}
             >
               Sign In with Different Account
             </Link>
@@ -120,41 +122,41 @@ export default async function InvitationPage({
 
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] flex flex-col justify-center items-center px-6 py-12">
+    <div className="min-h-screen bg-surface-muted flex flex-col justify-center items-center px-6 py-12">
       <div className="mb-8 text-center max-w-md">
         <div className="inline-flex items-center space-x-3 group mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#0071E3] flex items-center justify-center text-white shadow-md shadow-[#0071E3]/20">
+          <div className="w-12 h-12 rounded-2xl bg-brand flex items-center justify-center text-white shadow-md shadow-brand/20">
             <ShieldCheck className="w-7 h-7" />
           </div>
-          <span className="text-2xl font-extrabold tracking-tight text-[#1D1D1F]">Qubere</span>
+          <span className="text-2xl font-extrabold tracking-tight text-ink">Qubere</span>
         </div>
-        <h1 className="text-2xl font-bold text-[#1D1D1F]">Account Invitation</h1>
-        <p className="text-[#86868B] text-sm mt-1">You have been invited to join an enterprise workspace</p>
+        <h1 className="text-2xl font-bold text-ink">Account Invitation</h1>
+        <p className="text-ink-muted text-sm mt-1">You have been invited to join an enterprise workspace</p>
       </div>
 
-      <div className="apple-card p-8 rounded-3xl border border-[#E5E5EA] max-w-md w-full text-center space-y-6 bg-white shadow-sm">
-        <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] mx-auto">
+      <div className="apple-card p-8 rounded-3xl border border-border max-w-md w-full text-center space-y-6 bg-white shadow-sm">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-brand mx-auto">
           <Building2 className="w-6 h-6" />
         </div>
 
         <div>
-          <h2 className="text-lg font-bold text-[#1D1D1F]">{invitation.account.name}</h2>
-          <p className="text-xs text-[#86868B] mt-1">
-            Invited as <strong className="text-[#0071E3]">{invitation.role.name}</strong>
+          <h2 className="text-lg font-bold text-ink">{invitation.account.name}</h2>
+          <p className="text-xs text-ink-muted mt-1">
+            Invited as <strong className="text-brand">{invitation.role.name}</strong>
           </p>
-          <p className="text-xs text-[#86868B] font-mono mt-2">{invitation.email}</p>
+          <p className="text-xs text-ink-muted font-mono mt-2">{invitation.email}</p>
         </div>
 
         <div className="pt-2 space-y-3">
           <Link
             href={`/sign-in?redirect_url=/invite/${token}`}
-            className="w-full py-3 bg-[#0071E3] hover:bg-[#0077ED] text-white font-semibold rounded-full text-sm shadow-md shadow-[#0071E3]/20 flex items-center justify-center space-x-2 transition-all block"
+            className={cn(buttonVariants({ variant: "primary", size: "lg" }), "w-full shadow-md shadow-brand/20")}
           >
             <span>Accept Invitation & Sign In</span>
           </Link>
           <Link
             href={`/sign-up?redirect_url=/invite/${token}`}
-            className="w-full py-3 bg-white hover:bg-slate-50 text-[#1D1D1F] border border-[#E5E5EA] font-semibold rounded-full text-xs block shadow-2xs"
+            className={cn(buttonVariants({ variant: "secondary", size: "lg" }), "w-full hover:bg-slate-50 text-xs shadow-2xs")}
           >
             Create New Account
           </Link>

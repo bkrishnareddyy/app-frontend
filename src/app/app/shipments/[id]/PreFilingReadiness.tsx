@@ -129,7 +129,7 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E5E5EA] shadow-2xs overflow-hidden transition-all">
+    <div className="bg-white rounded-2xl border border-border shadow-2xs overflow-hidden transition-all">
       {/* Header Banner Ribbon */}
       <div
         onClick={() => setIsTableExpanded(!isTableExpanded)}
@@ -155,25 +155,25 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
         {metrics && (
           <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-current/20" onClick={(e) => e.stopPropagation()}>
             <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
-              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">Filing Readiness</span>
-              <span className="text-xs font-black text-[#1D1D1F]">{metrics.filingReadinessScore}%</span>
-              <span className="text-[10px] font-bold text-[#86868B]">
+              <span className="text-[9px] font-extrabold uppercase text-ink-muted">Filing Readiness</span>
+              <span className="text-xs font-black text-ink">{metrics.filingReadinessScore}%</span>
+              <span className="text-[10px] font-bold text-ink-muted">
                 {metrics.blockerCount > 0 ? `${metrics.blockerCount} Blockers` : "No Blockers"}
               </span>
             </div>
 
             <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
-              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">Data Completeness</span>
-              <span className="text-xs font-black text-[#1D1D1F]">{metrics.completenessScore}%</span>
-              <span className="text-[10px] font-bold text-[#86868B]">Customs Fields</span>
+              <span className="text-[9px] font-extrabold uppercase text-ink-muted">Data Completeness</span>
+              <span className="text-xs font-black text-ink">{metrics.completenessScore}%</span>
+              <span className="text-[10px] font-bold text-ink-muted">Customs Fields</span>
             </div>
 
             <a
               href="#exceptions-panel"
               className="bg-white/80 hover:bg-white rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5 transition-colors"
             >
-              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">Compliance Risk</span>
-              <span className="text-xs font-black text-[#1D1D1F]">{metrics.complianceRiskScore}</span>
+              <span className="text-[9px] font-extrabold uppercase text-ink-muted">Compliance Risk</span>
+              <span className="text-xs font-black text-ink">{metrics.complianceRiskScore}</span>
               <span
                 className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${
                   metrics.complianceRiskBand === "LOW"
@@ -183,7 +183,7 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
               >
                 {metrics.complianceRiskBand}
               </span>
-              <span className="text-[10px] font-bold text-[#0071E3] hover:underline">
+              <span className="text-[10px] font-bold text-brand hover:underline">
                 {metrics.blockerCount > 0
                   ? `${metrics.blockerCount} blockers`
                   : metrics.warningCount > 0
@@ -194,16 +194,16 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
             </a>
 
             <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
-              <span className="text-[9px] font-extrabold uppercase text-[#86868B]">HTS Confidence</span>
+              <span className="text-[9px] font-extrabold uppercase text-ink-muted">HTS Confidence</span>
               {metrics.classificationVerified ? (
                 <>
-                  <span className="text-xs font-black text-[#1D1D1F]">{metrics.classificationConfidenceScore}%</span>
-                  <span className="text-[10px] font-bold text-[#86868B]">Model Score</span>
+                  <span className="text-xs font-black text-ink">{metrics.classificationConfidenceScore}%</span>
+                  <span className="text-[10px] font-bold text-ink-muted">Model Score</span>
                 </>
               ) : (
                 <>
                   <span className="text-xs font-black text-slate-500">Unverified</span>
-                  <span className="text-[10px] font-bold text-[#86868B]">No document attached</span>
+                  <span className="text-[10px] font-bold text-ink-muted">No document attached</span>
                 </>
               )}
             </div>
@@ -213,7 +213,7 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
 
       {/* Categories Table */}
       {isTableExpanded && (
-        <div className="divide-y divide-[#E5E5EA]">
+        <div className="divide-y divide-border">
           {categories.map((cat) => {
             const isExpanded = expandedId === cat.id;
             return (
@@ -223,8 +223,8 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
                   className="flex items-center justify-between p-4 cursor-pointer select-none text-xs"
                 >
                   <div className="flex items-center space-x-4 min-w-0 pr-4">
-                    <div className="w-48 font-bold text-[#1D1D1F] shrink-0 truncate">{cat.name}</div>
-                    <div className="text-[#86868B] truncate">{cat.result}</div>
+                    <div className="w-48 font-bold text-ink shrink-0 truncate">{cat.name}</div>
+                    <div className="text-ink-muted truncate">{cat.result}</div>
                   </div>
                   <div className="flex items-center space-x-3 shrink-0">
                     {getStatusBadge(cat.status)}
@@ -240,13 +240,13 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
                         <span>{visibleEvidenceId === cat.id ? "Hide Evidence" : "Evidence"}</span>
                       </button>
                     )}
-                    {isExpanded ? <ChevronUp className="w-4 h-4 text-[#86868B]" /> : <ChevronDown className="w-4 h-4 text-[#86868B]" />}
+                    {isExpanded ? <ChevronUp className="w-4 h-4 text-ink-muted" /> : <ChevronDown className="w-4 h-4 text-ink-muted" />}
                   </div>
                 </div>
 
                 {/* Evidence Details Collapsible (Toggled by "Evidence" button next to "Ready" status) */}
                 {visibleEvidenceId === cat.id && cat.evidence && (
-                  <div className="mx-4 mb-4 p-4 bg-emerald-50/40 border border-emerald-200 rounded-2xl text-xs space-y-3 shadow-2xs text-[#1D1D1F]">
+                  <div className="mx-4 mb-4 p-4 bg-emerald-50/40 border border-emerald-200 rounded-2xl text-xs space-y-3 shadow-2xs text-ink">
                     <div className="flex justify-between items-center">
                       <div>
                         <h5 className="font-extrabold text-[10px] text-emerald-800 uppercase tracking-wider mb-0.5">Auditable Data Source</h5>
@@ -255,33 +255,33 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
                       <span className="text-[9px] uppercase font-extrabold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">Compliance Audit Evidence</span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2 border-t border-[#E5E5EA]">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2 border-t border-border">
                       {cat.evidence.fields.map((f, idx) => (
                         <div key={idx} className="space-y-0.5">
-                          <p className="text-[9px] text-[#86868B] font-extrabold uppercase">{f.label}</p>
+                          <p className="text-[9px] text-ink-muted font-extrabold uppercase">{f.label}</p>
                           <p className="font-bold truncate">{f.value || "N/A"}</p>
                         </div>
                       ))}
                     </div>
 
                     {cat.evidence.documentName && (
-                      <div className="pt-2.5 border-t border-[#E5E5EA] flex items-center justify-between text-[10px]">
-                        <span className="text-[#86868B]">Go to Evidence</span>
+                      <div className="pt-2.5 border-t border-border flex items-center justify-between text-[10px]">
+                        <span className="text-ink-muted">Go to Evidence</span>
                         {cat.evidence.documentUrl ? (
                           <a
                             href={cat.evidence.documentUrl}
                             {...(cat.evidence.documentUrl.startsWith("/app/")
                               ? {}
                               : { target: "_blank", rel: "noopener noreferrer" })}
-                            className="font-bold text-[#0071E3] hover:underline flex items-center space-x-1"
+                            className="font-bold text-brand hover:underline flex items-center space-x-1"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <FileText className="w-3.5 h-3.5 text-[#0071E3]" />
+                            <FileText className="w-3.5 h-3.5 text-brand" />
                             <span>{cat.evidence.documentName}</span>
                           </a>
                         ) : (
-                          <span className="font-bold text-[#0071E3] flex items-center space-x-1">
-                            <FileText className="w-3.5 h-3.5 text-[#0071E3]" />
+                          <span className="font-bold text-brand flex items-center space-x-1">
+                            <FileText className="w-3.5 h-3.5 text-brand" />
                             <span>{cat.evidence.documentName}</span>
                           </span>
                         )}
@@ -291,18 +291,18 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
                 )}
 
                 {isExpanded && (
-                  <div className="p-4 bg-[#F5F5F7] border-t border-[#E5E5EA] text-xs space-y-4">
+                  <div className="p-4 bg-surface-muted border-t border-border text-xs space-y-4">
                     {/* Detailed columns */}
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                       {/* Findings & Why It Matters */}
                       <div className="md:col-span-8 space-y-3">
                         <div>
-                          <h4 className="font-extrabold text-[#1D1D1F] uppercase text-[10px] tracking-wider mb-1">Finding Description</h4>
-                          <p className="text-[#1D1D1F] leading-relaxed">{cat.details}</p>
+                          <h4 className="font-extrabold text-ink uppercase text-[10px] tracking-wider mb-1">Finding Description</h4>
+                          <p className="text-ink leading-relaxed">{cat.details}</p>
                         </div>
                         <div>
-                          <h4 className="font-extrabold text-[#1D1D1F] uppercase text-[10px] tracking-wider mb-1">Why It Matters</h4>
-                          <p className="text-[#86868B] leading-relaxed">{cat.whyItMatters}</p>
+                          <h4 className="font-extrabold text-ink uppercase text-[10px] tracking-wider mb-1">Why It Matters</h4>
+                          <p className="text-ink-muted leading-relaxed">{cat.whyItMatters}</p>
                         </div>
 
                         {/* HTS Questionnaire Checklist */}
@@ -314,8 +314,8 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
                             </h4>
                             <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-3 space-y-2">
                               {cat.questionnaire.map((q, idx) => (
-                                <label key={idx} className="flex items-start space-x-2 text-[#1D1D1F] cursor-pointer">
-                                  <input type="checkbox" className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 border-[#E5E5EA]" />
+                                <label key={idx} className="flex items-start space-x-2 text-ink cursor-pointer">
+                                  <input type="checkbox" className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 border-border" />
                                   <span>{q}</span>
                                 </label>
                               ))}
@@ -325,17 +325,17 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
                       </div>
 
                       {/* Action & Owner */}
-                      <div className="md:col-span-4 space-y-3 border-t md:border-t-0 md:border-l border-[#E5E5EA] pt-3 md:pt-0 md:pl-4">
+                      <div className="md:col-span-4 space-y-3 border-t md:border-t-0 md:border-l border-border pt-3 md:pt-0 md:pl-4">
                         <div className="flex items-center space-x-2">
-                          <User className="w-4 h-4 text-[#86868B]" />
+                          <User className="w-4 h-4 text-ink-muted" />
                           <div>
-                            <h4 className="font-extrabold text-[#1D1D1F] uppercase text-[10px] tracking-wider">Action Owner</h4>
-                            <p className="font-bold text-[#1D1D1F]">{cat.actionOwner}</p>
+                            <h4 className="font-extrabold text-ink uppercase text-[10px] tracking-wider">Action Owner</h4>
+                            <p className="font-bold text-ink">{cat.actionOwner}</p>
                           </div>
                         </div>
                         <div>
-                          <h4 className="font-extrabold text-[#1D1D1F] uppercase text-[10px] tracking-wider mb-1">Resolution Required</h4>
-                          <p className="text-[#1D1D1F] leading-relaxed bg-white border border-[#E5E5EA] rounded-lg p-2 font-medium">
+                          <h4 className="font-extrabold text-ink uppercase text-[10px] tracking-wider mb-1">Resolution Required</h4>
+                          <p className="text-ink leading-relaxed bg-white border border-border rounded-lg p-2 font-medium">
                             {cat.actionRequired || "No action required. Category is compliant."}
                           </p>
                         </div>
@@ -343,7 +343,7 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
                     </div>
 
                     {/* Audit Metadata Footer */}
-                    <div className="flex justify-between items-center text-[10px] text-[#86868B] pt-2 border-t border-[#E5E5EA]">
+                    <div className="flex justify-between items-center text-[10px] text-ink-muted pt-2 border-t border-border">
                       <span>Source: {cat.source}</span>
                       <span>Last Evaluated: {new Date(cat.timestamp).toLocaleString()}</span>
                     </div>

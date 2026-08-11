@@ -275,25 +275,25 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E5E5EA] shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-border shadow-xs">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide uppercase bg-blue-50 text-[#0071E3] border border-blue-100">
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide uppercase bg-blue-50 text-brand border border-blue-100">
               Agent 1 & 2 Ingestion
             </span>
-            <span className="text-xs text-[#86868B]">150+ Dynamic Trade Document Types</span>
+            <span className="text-xs text-ink-muted">150+ Dynamic Trade Document Types</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight mt-1">
+          <h1 className="text-2xl font-extrabold text-ink tracking-tight mt-1">
             {t.documents.title}
           </h1>
-          <p className="text-xs text-[#86868B] mt-0.5">
+          <p className="text-xs text-ink-muted mt-0.5">
             {t.documents.subtitle}
           </p>
         </div>
 
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-full bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer"
+          className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-full bg-brand hover:bg-brand-hover text-white text-xs font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>{t.documents.uploadButton}</span>
@@ -302,20 +302,20 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
       {/* Enterprise Admin Top Filter Controls */}
       {isEnterpriseAdmin && (
-        <div className="bg-white p-4 rounded-3xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-white p-4 rounded-3xl border border-border shadow-2xs flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center space-x-2.5">
-            <Users className="w-4 h-4 text-[#0071E3]" />
-            <span className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider">
+            <Users className="w-4 h-4 text-brand" />
+            <span className="text-xs font-bold text-ink uppercase tracking-wider">
               Assignee View
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs">
+            <div className="flex bg-surface-muted p-1 rounded-xl border border-border text-xs">
               <button
                 onClick={() => setSelectedUserIds([])}
                 className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  selectedUserIds.length === 0 ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
+                  selectedUserIds.length === 0 ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
                 }`}
               >
                 All Documents
@@ -324,8 +324,8 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                 onClick={() => setSelectedUserIds([context.userId])}
                 className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                   selectedUserIds.length === 1 && selectedUserIds[0] === context.userId
-                    ? "bg-white text-[#1D1D1F] shadow-3xs"
-                    : "text-[#86868B]"
+                    ? "bg-white text-ink shadow-3xs"
+                    : "text-ink-muted"
                 }`}
               >
                 My Documents
@@ -333,10 +333,10 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             </div>
 
             <div className="flex items-center space-x-2 text-xs relative">
-              <span className="text-[#86868B] font-semibold">Team Members:</span>
+              <span className="text-ink-muted font-semibold">Team Members:</span>
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="px-3.5 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
+                className="px-3.5 py-1.5 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
               >
                 <span>
                   {selectedUserIds.length === 0
@@ -352,25 +352,25 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                         })()
                     : `${selectedUserIds.length} Selected`}
                 </span>
-                <span className="text-[#86868B] text-[9px]">▼</span>
+                <span className="text-ink-muted text-[9px]">▼</span>
               </button>
 
               {isDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E5E5EA] rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
-                    <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-2 mb-1 text-[10px] font-bold text-[#86868B] uppercase">
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-border rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-border pb-2 mb-1 text-[10px] font-bold text-ink-muted uppercase">
                       <span>Select Members</span>
                       <div className="space-x-2">
                         <button
                           onClick={() => setSelectedUserIds(fullTeamList.map((t) => t.userId))}
-                          className="text-[#0071E3] hover:underline cursor-pointer"
+                          className="text-brand hover:underline cursor-pointer"
                         >
                           All
                         </button>
                         <button
                           onClick={() => setSelectedUserIds([])}
-                          className="text-[#0071E3] hover:underline cursor-pointer"
+                          className="text-brand hover:underline cursor-pointer"
                         >
                           Clear
                         </button>
@@ -388,20 +388,20 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                         return (
                           <label
                             key={member.userId}
-                            className="flex items-center space-x-2.5 p-2 hover:bg-[#F5F5F7] rounded-xl cursor-pointer text-left transition-colors"
+                            className="flex items-center space-x-2.5 p-2 hover:bg-surface-muted rounded-xl cursor-pointer text-left transition-colors"
                           >
                             <input
                               type="checkbox"
                               checked={isChecked}
                               onChange={() => toggleUser(member.userId)}
-                              className="rounded border-[#E5E5EA] text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                              className="rounded border-border text-brand focus:ring-brand cursor-pointer"
                             />
                             <div className="truncate">
-                              <p className="font-bold text-[#1D1D1F] text-xs truncate">
+                              <p className="font-bold text-ink text-xs truncate">
                                 {memberName}
                                 {member.userId === context.userId && " (Me)"}
                               </p>
-                              <p className="text-[10px] text-[#86868B] truncate">
+                              <p className="text-[10px] text-ink-muted truncate">
                                 {member.email}
                               </p>
                             </div>
@@ -421,13 +421,13 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         {/* Search */}
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#86868B]" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
           <input
             type="text"
             placeholder={t.documents.searchPlaceholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] transition-colors"
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand transition-colors"
           />
         </div>
 
@@ -436,7 +436,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+            className="px-3 py-2 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand cursor-pointer font-medium"
           >
             <option value="ALL">{t.documents.allTypes}</option>
             <option value="COMMERCIAL_INVOICE">Commercial Invoice</option>
@@ -449,7 +449,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
           <select
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+            className="px-3 py-2 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand cursor-pointer font-medium"
           >
             <option value="ALL">All Clients</option>
             <option value="UNASSIGNED">No Client</option>
@@ -463,7 +463,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
           <select
             value={selectedShipmentId}
             onChange={(e) => setSelectedShipmentId(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+            className="px-3 py-2 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand cursor-pointer font-medium"
           >
             <option value="ALL">All Shipments</option>
             <option value="UNATTACHED">Unattached</option>
@@ -477,7 +477,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
           <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] cursor-pointer font-medium"
+            className="px-3 py-2 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand cursor-pointer font-medium"
           >
             <option value="ALL">All Statuses</option>
             {availableStatuses.map((status) => (
@@ -490,19 +490,19 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
           <button
             onClick={fetchDocuments}
             disabled={isLoading}
-            className="p-2 rounded-xl border border-[#E5E5EA] bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] transition-colors cursor-pointer"
+            className="p-2 rounded-xl border border-border bg-white hover:bg-surface-muted text-ink transition-colors cursor-pointer"
             title="Refresh List"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-[#0071E3]" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-brand" : ""}`} />
           </button>
         </div>
       </div>
 
       {/* Document Roster Table */}
-      <div className="bg-white rounded-3xl border border-[#E5E5EA] shadow-xs overflow-hidden">
+      <div className="bg-white rounded-3xl border border-border shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-[#1D1D1F]">
-            <thead className="bg-[#F5F5F7] border-b border-[#E5E5EA] text-[11px] font-semibold text-[#86868B] uppercase tracking-wider">
+          <table className="w-full text-left text-xs text-ink">
+            <thead className="bg-surface-muted border-b border-border text-[11px] font-semibold text-ink-muted uppercase tracking-wider">
               <tr>
                 <th className="py-3 px-5">{t.documents.colName}</th>
                 <th className="py-3 px-5">{t.documents.colType}</th>
@@ -513,37 +513,37 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                 <th className="py-3 px-5">{t.documents.colDate}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5EA]">
+            <tbody className="divide-y divide-border">
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={isEnterpriseAdmin ? 7 : 6} className="py-12 text-center text-[#86868B]">
-                    <FileText className="w-8 h-8 mx-auto text-[#86868B]/40 mb-2" />
-                    <p className="font-semibold text-xs text-[#1D1D1F]">No Trade Documents Uploaded Yet</p>
-                    <p className="text-[11px] text-[#86868B] mt-1">
-                      Click <strong className="text-[#0071E3]">Upload Document</strong> above to ingest a file and trigger Agent 1.
+                  <td colSpan={isEnterpriseAdmin ? 7 : 6} className="py-12 text-center text-ink-muted">
+                    <FileText className="w-8 h-8 mx-auto text-ink-muted/40 mb-2" />
+                    <p className="font-semibold text-xs text-ink">No Trade Documents Uploaded Yet</p>
+                    <p className="text-[11px] text-ink-muted mt-1">
+                      Click <strong className="text-brand">Upload Document</strong> above to ingest a file and trigger Agent 1.
                     </p>
                   </td>
                 </tr>
               ) : (
                 filteredDocs.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-[#F5F5F7]/50 transition-colors">
+                  <tr key={doc.id} className="hover:bg-surface-muted/50 transition-colors">
                     {/* Document Name Click triggers Modal */}
-                    <td className="py-3.5 px-5 font-semibold text-[#1D1D1F]">
+                    <td className="py-3.5 px-5 font-semibold text-ink">
                       <button
                         onClick={() => setPreviewDoc(doc)}
-                        className="flex items-center space-x-2.5 hover:text-[#0071E3] transition-colors text-left group cursor-pointer"
+                        className="flex items-center space-x-2.5 hover:text-brand transition-colors text-left group cursor-pointer"
                         title="Click to view document in modal"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] shrink-0 group-hover:scale-105 transition-transform">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-brand shrink-0 group-hover:scale-105 transition-transform">
                           <FileText className="w-4 h-4" />
                         </div>
                         <span className="truncate max-w-xs group-hover:underline">{doc.name}</span>
-                        <Eye className="w-3.5 h-3.5 text-[#86868B] opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <Eye className="w-3.5 h-3.5 text-ink-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
                     </td>
 
-                    <td className="py-3.5 px-5 font-medium text-[#86868B]">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#F5F5F7] border border-[#E5E5EA] text-[#1D1D1F]">
+                    <td className="py-3.5 px-5 font-medium text-ink-muted">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-surface-muted border border-border text-ink">
                         {doc.type}
                       </span>
                     </td>
@@ -554,7 +554,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                           Unattached
                         </span>
                       ) : (
-                        <Link href={`/app/shipments/${doc.shipmentId}`} className="text-[#0071E3] hover:underline">
+                        <Link href={`/app/shipments/${doc.shipmentId}`} className="text-brand hover:underline">
                           {doc.shipmentRef}
                         </Link>
                       )}
@@ -569,21 +569,21 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
                     <td className="py-3.5 px-5">
                       {doc.clientId ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#0071E3]/10 text-[#0071E3]">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand/10 text-brand">
                           {doc.clientName}
                         </span>
                       ) : (
-                        <span className="text-[11px] text-[#86868B]">—</span>
+                        <span className="text-[11px] text-ink-muted">—</span>
                       )}
                     </td>
 
                     {isEnterpriseAdmin && (
-                      <td className="py-3.5 px-5 font-semibold text-[#1D1D1F]">
+                      <td className="py-3.5 px-5 font-semibold text-ink">
                         {doc.assignedBrokerName}
                       </td>
                     )}
 
-                    <td className="py-3.5 px-5 text-[#86868B]">{doc.uploadedAt}</td>
+                    <td className="py-3.5 px-5 text-ink-muted">{doc.uploadedAt}</td>
                   </tr>
                 ))
               )}

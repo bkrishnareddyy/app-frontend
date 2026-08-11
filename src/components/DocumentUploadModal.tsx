@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Upload, X, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, Link2 } from "lucide-react";
-import { useDialogFocus, dialogSurfaceProps } from "@/lib/useDialogFocus";
+import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, Link2 } from "lucide-react";
+import { Modal, ModalHeader, ModalFooter } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input, Select, Label, FormField } from "@/components/ui/Input";
+import { cn } from "@/lib/utils";
 
 interface UploadOutcome {
   fileName: string;
@@ -29,6 +32,8 @@ interface DocumentUploadModalProps {
   shipments?: ShipmentOption[];
   onUploadSuccess?: () => void;
 }
+
+const TITLE_ID = "upload-document-title";
 
 export function DocumentUploadModal({
   isOpen,
@@ -57,10 +62,6 @@ export function DocumentUploadModal({
     setMode("UPLOAD");
     onClose();
   }, [onClose]);
-
-  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, () => {
-    if (!isUploading) closeModal();
-  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -225,313 +226,263 @@ export function DocumentUploadModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isUploading) {
-          closeModal();
-        }
-      }}
-    >
-      <div
-        ref={dialogRef}
-        {...dialogSurfaceProps("upload-document-title")}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-lg w-full p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
-      >
-        {/* Header */}
-        <div className="shrink-0 flex items-center justify-between border-b border-[#E5E5EA] pb-3">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3]">
-              <Upload className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 id="upload-document-title" className="text-base font-extrabold text-[#1D1D1F]">Upload Trade Documents</h3>
-              <p className="text-xs text-[#86868B]">Add one or more invoices, bills of lading, or certificates</p>
-            </div>
-          </div>
-          <button
-            onClick={closeModal}
-            disabled={isUploading}
-            aria-label="Close upload dialog"
-            className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors disabled:opacity-40"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <Modal isOpen={isOpen} onClose={closeModal} titleId={TITLE_ID} closeDisabled={isUploading}>
+      <ModalHeader
+        titleId={TITLE_ID}
+        title="Upload Trade Documents"
+        subtitle="Add one or more invoices, bills of lading, or certificates"
+        icon={<Upload className="w-5 h-5" />}
+        onClose={closeModal}
+        closeDisabled={isUploading}
+      />
+
+      {/* Alerts */}
+      {error && (
+        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
         </div>
+      )}
 
-        {/*
-          The dialog is centred, so content taller than the viewport used to be
-          clipped at the top and the bottom at once with nothing to scroll — on a
-          1080p screen at 100% zoom the upload button was off-screen. The header
-          stays pinned and everything below it scrolls instead.
-        */}
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pt-5 pr-1">
-        {/* Alerts */}
-        {error && (
-          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {successMsg && (
-          <div
-            role="status"
-            className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center space-x-2"
-          >
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {outcomes.length > 0 && (
-          <ul className="space-y-1.5" aria-live="polite">
-            {outcomes.map((outcome) => (
-              <li
-                key={outcome.fileName}
-                className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
-                  outcome.ok
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                    : "bg-red-50 border-red-200 text-red-700"
-                }`}
-              >
-                {outcome.ok ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-                )}
-                <span>
-                  <span className="font-semibold">{outcome.fileName}</span> — {outcome.message}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Mode Tabs */}
-        <div className="flex bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs">
-          <button
-            onClick={() => setMode("UPLOAD")}
-            className={`flex-1 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              mode === "UPLOAD" ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
-            }`}
-          >
-            Upload New
-          </button>
-          <button
-            onClick={() => setMode("ATTACH_EXISTING")}
-            className={`flex-1 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              mode === "ATTACH_EXISTING" ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
-            }`}
-          >
-            Attach Existing ({unattachedDocs.length})
-          </button>
+      {successMsg && (
+        <div
+          role="status"
+          className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center space-x-2"
+        >
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{successMsg}</span>
         </div>
+      )}
 
-        {mode === "UPLOAD" ? (
-          <>
-            {/* Shipment Selection */}
-            <div className="space-y-1.5">
-              <label htmlFor="upload-shipment-search" className="text-xs font-semibold text-[#1D1D1F] ml-1">
-                Find a shipment
-              </label>
+      {outcomes.length > 0 && (
+        <ul className="space-y-1.5" aria-live="polite">
+          {outcomes.map((outcome) => (
+            <li
+              key={outcome.fileName}
+              className={cn(
+                "p-2.5 rounded-xl border text-xs flex items-start gap-2",
+                outcome.ok
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-red-50 border-red-200 text-red-700"
+              )}
+            >
+              {outcome.ok ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+              )}
+              <span>
+                <span className="font-semibold">{outcome.fileName}</span> — {outcome.message}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Mode Tabs */}
+      <div className="flex bg-surface-muted p-1 rounded-xl border border-border text-xs">
+        <button
+          onClick={() => setMode("UPLOAD")}
+          className={cn(
+            "flex-1 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer",
+            mode === "UPLOAD" ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
+          )}
+        >
+          Upload New
+        </button>
+        <button
+          onClick={() => setMode("ATTACH_EXISTING")}
+          className={cn(
+            "flex-1 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer",
+            mode === "ATTACH_EXISTING" ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
+          )}
+        >
+          Attach Existing ({unattachedDocs.length})
+        </button>
+      </div>
+
+      {mode === "UPLOAD" ? (
+        <>
+          {/* Shipment Selection */}
+          <FormField>
+            <Label htmlFor="upload-shipment-search" className="ml-1">
+              Find a shipment
+            </Label>
+            <Input
+              id="upload-shipment-search"
+              type="search"
+              value={shipmentSearch}
+              onChange={(e) => setShipmentSearch(e.target.value)}
+              placeholder="Shipment number or importer"
+              className="bg-white"
+            />
+            <Label htmlFor="upload-shipment" className="ml-1 block pt-1">
+              Target Shipment
+            </Label>
+            <Select
+              id="upload-shipment"
+              value={selectedShipmentId}
+              onChange={(e) => setSelectedShipmentId(e.target.value)}
+              className="bg-white"
+            >
+              <option value="" disabled>Select a Shipment</option>
+              {(availableShipments.length > 0 ? availableShipments : shipments).map((shp) => (
+                <option key={shp.id} value={shp.id}>
+                  {shp.shipmentNumber ?? shp.id}
+                  {shp.status ? ` (${shp.status})` : ""}
+                </option>
+              ))}
+            </Select>
+            {shipmentTotal !== null && shipmentTotal > availableShipments.length && (
+              <p role="status" className="text-xs text-ink-muted ml-1">
+                Showing {availableShipments.length} of {shipmentTotal} shipments. Search to narrow
+                the list.
+              </p>
+            )}
+            {shipmentTotal === 0 && (
+              <p role="status" className="text-xs text-ink-muted ml-1">
+                No shipment matches that search.
+              </p>
+            )}
+          </FormField>
+
+          {/* Document Type Dropdown */}
+          <FormField>
+            <Label className="font-bold">Document Type</Label>
+            <Select value={docType} onChange={(e) => setDocType(e.target.value)}>
+              <option value="AUTO_DETECT">✨ Auto-Detect Document Type (AI Agent Classification)</option>
+              <option value="Bill of Lading">Bill of Lading (B/L)</option>
+              <option value="Commercial Invoice">Commercial Invoice</option>
+              <option value="Packing List">Packing List</option>
+              <option value="Arrival Notice">Arrival Notice</option>
+              <option value="Insurance Certificate">Insurance Certificate</option>
+              <option value="Certificate of Origin">Certificate of Origin</option>
+              <option value="Customs Entry Summary">Customs Entry Summary (CBP 7501)</option>
+            </Select>
+          </FormField>
+
+          {/* Drag and Drop File Input */}
+          <FormField>
+            <Label className="font-bold">Select Files</Label>
+            <div className="relative border-2 border-dashed border-border hover:border-brand rounded-2xl p-6 text-center bg-surface-muted transition-all cursor-pointer group">
               <input
-                id="upload-shipment-search"
-                type="search"
-                value={shipmentSearch}
-                onChange={(e) => setShipmentSearch(e.target.value)}
-                placeholder="Shipment number or importer"
-                className="w-full px-4 py-2.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/20 transition-all"
+                type="file"
+                multiple
+                onChange={handleFileChange}
+                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.edi"
+                aria-label="Select one or more documents to upload"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
-              <label htmlFor="upload-shipment" className="text-xs font-semibold text-[#1D1D1F] ml-1 block pt-1">
-                Target Shipment
-              </label>
-              <select
-                id="upload-shipment"
-                value={selectedShipmentId}
-                onChange={(e) => setSelectedShipmentId(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-[#E5E5EA] bg-white text-xs text-[#1D1D1F] focus:outline-none focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/20 transition-all"
-              >
-                <option value="" disabled>Select a Shipment</option>
-                {(availableShipments.length > 0 ? availableShipments : shipments).map((shp) => (
-                  <option key={shp.id} value={shp.id}>
-                    {shp.shipmentNumber ?? shp.id}
-                    {shp.status ? ` (${shp.status})` : ""}
-                  </option>
-                ))}
-              </select>
-              {shipmentTotal !== null && shipmentTotal > availableShipments.length && (
-                <p role="status" className="text-xs text-[#86868B] ml-1">
-                  Showing {availableShipments.length} of {shipmentTotal} shipments. Search to narrow
-                  the list.
-                </p>
-              )}
-              {shipmentTotal === 0 && (
-                <p role="status" className="text-xs text-[#86868B] ml-1">
-                  No shipment matches that search.
-                </p>
-              )}
-            </div>
-
-            {/* Document Type Dropdown */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1D1D1F]">Document Type</label>
-              <select
-                value={docType}
-                onChange={(e) => setDocType(e.target.value)}
-                className="w-full p-3 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3] font-medium"
-              >
-                <option value="AUTO_DETECT">✨ Auto-Detect Document Type (AI Agent Classification)</option>
-                <option value="Bill of Lading">Bill of Lading (B/L)</option>
-                <option value="Commercial Invoice">Commercial Invoice</option>
-                <option value="Packing List">Packing List</option>
-                <option value="Arrival Notice">Arrival Notice</option>
-                <option value="Insurance Certificate">Insurance Certificate</option>
-                <option value="Certificate of Origin">Certificate of Origin</option>
-                <option value="Customs Entry Summary">Customs Entry Summary (CBP 7501)</option>
-              </select>
-            </div>
-
-            {/* Drag and Drop File Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1D1D1F]">Select Files</label>
-              <div className="relative border-2 border-dashed border-[#E5E5EA] hover:border-[#0071E3] rounded-2xl p-6 text-center bg-[#F5F5F7] transition-all cursor-pointer group">
-                <input
-                  type="file"
-                  multiple
-                  onChange={handleFileChange}
-                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.edi"
-                  aria-label="Select one or more documents to upload"
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
-                <div className="flex flex-col items-center justify-center space-y-2">
-                  <div className="w-12 h-12 rounded-full bg-white border border-[#E5E5EA] flex items-center justify-center text-[#0071E3] group-hover:scale-110 transition-transform">
-                    <FileText className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-[#1D1D1F]">
-                      {files.length === 0
-                        ? "Click to upload or drag & drop"
-                        : files.length === 1
-                          ? files[0].name
-                          : `${files.length} files selected`}
-                    </p>
-                    <p className="text-xs text-[#86868B] mt-0.5">
-                      {files.length === 0
-                        ? "PDF, PNG, JPG, XLSX or EDI up to 25MB each"
-                        : `${(files.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1)} KB total`}
-                    </p>
-                  </div>
+              <div className="flex flex-col items-center justify-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-white border border-border flex items-center justify-center text-brand group-hover:scale-110 transition-transform">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-ink">
+                    {files.length === 0
+                      ? "Click to upload or drag & drop"
+                      : files.length === 1
+                        ? files[0].name
+                        : `${files.length} files selected`}
+                  </p>
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    {files.length === 0
+                      ? "PDF, PNG, JPG, XLSX or EDI up to 25MB each"
+                      : `${(files.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1)} KB total`}
+                  </p>
                 </div>
               </div>
-              {files.length > 1 && (
-                <ul className="text-xs text-[#86868B] space-y-0.5 pt-1">
-                  {files.map((f) => (
-                    <li key={f.name} className="truncate">
-                      {f.name} — {(f.size / 1024).toFixed(1)} KB
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
+            {files.length > 1 && (
+              <ul className="text-xs text-ink-muted space-y-0.5 pt-1">
+                {files.map((f) => (
+                  <li key={f.name} className="truncate">
+                    {f.name} — {(f.size / 1024).toFixed(1)} KB
+                  </li>
+                ))}
+              </ul>
+            )}
+          </FormField>
 
-            {/* AI Auto-Extraction Notice */}
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-[#0071E3] shrink-0" />
+          {/* AI Auto-Extraction Notice */}
+          <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center space-x-2">
+            <Sparkles className="w-4 h-4 text-brand shrink-0" />
+            <span>
+              Uploaded documents will be automatically parsed by the <strong>Document Intelligence Agent</strong>.
+            </span>
+          </div>
+
+          {/* Modal Action Buttons */}
+          <ModalFooter>
+            <Button variant="secondary" onClick={closeModal} disabled={isUploading}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpload} disabled={isUploading || files.length === 0} loading={isUploading}>
+              {!isUploading && <Upload className="w-4 h-4" />}
               <span>
-                Uploaded documents will be automatically parsed by the <strong>Document Intelligence Agent</strong>.
+                {isUploading
+                  ? `Uploading ${uploadingName ?? ""}…`
+                  : files.length > 1
+                    ? `Upload ${files.length} files`
+                    : "Upload & Parse"}
               </span>
-            </div>
+            </Button>
+          </ModalFooter>
+        </>
+      ) : (
+        <>
+          {/* Attach Existing Unattached Document */}
+          <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center space-x-2">
+            <Link2 className="w-4 h-4 text-brand shrink-0" />
+            <span>
+              Reattaching ports over the document&apos;s existing extracted data as-is and triggers
+              the same agents a fresh upload would — no re-extraction needed.
+            </span>
+          </div>
 
-            {/* Modal Action Buttons */}
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                onClick={closeModal}
-                disabled={isUploading}
-                className="px-4 py-2.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-semibold rounded-xl transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpload}
-                disabled={isUploading || files.length === 0}
-                className="px-5 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center space-x-2 transition-all"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Uploading {uploadingName ?? ""}…</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    <span>
-                      {files.length > 1 ? `Upload ${files.length} files` : "Upload & Parse"}
-                    </span>
-                  </>
-                )}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Attach Existing Unattached Document */}
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center space-x-2">
-              <Link2 className="w-4 h-4 text-[#0071E3] shrink-0" />
-              <span>
-                Reattaching ports over the document&apos;s existing extracted data as-is and triggers
-                the same agents a fresh upload would — no re-extraction needed.
-              </span>
-            </div>
-
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {unattachedDocs.length === 0 ? (
-                <div className="p-4 text-center text-xs text-[#86868B]">
-                  No detached documents available to attach.
-                </div>
-              ) : (
-                unattachedDocs.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="p-3 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] flex items-center justify-between gap-2"
-                  >
-                    <div className="flex items-center space-x-2.5 min-w-0">
-                      <FileText className="w-4 h-4 text-[#0071E3] shrink-0" />
-                      <div className="min-w-0">
-                        <p className="font-bold text-[#1D1D1F] text-xs truncate">{doc.docType}</p>
-                        <p className="text-[10px] text-[#86868B] truncate">{doc.fileName}</p>
-                      </div>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {unattachedDocs.length === 0 ? (
+              <div className="p-4 text-center text-xs text-ink-muted">
+                No detached documents available to attach.
+              </div>
+            ) : (
+              unattachedDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="p-3 rounded-xl bg-surface-muted border border-border flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <FileText className="w-4 h-4 text-brand shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-bold text-ink text-xs truncate">{doc.docType}</p>
+                      <p className="text-[10px] text-ink-muted truncate">{doc.fileName}</p>
                     </div>
-                    <button
-                      onClick={() => handleAttachExisting(doc.id)}
-                      disabled={attachingId === doc.id}
-                      className="px-3 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-50 text-white text-[11px] font-semibold rounded-lg shrink-0 flex items-center space-x-1.5 cursor-pointer"
-                    >
-                      {attachingId === doc.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Link2 className="w-3.5 h-3.5" />
-                      )}
-                      <span>Attach</span>
-                    </button>
                   </div>
-                ))
-              )}
-            </div>
+                  <Button
+                    size="sm"
+                    onClick={() => handleAttachExisting(doc.id)}
+                    disabled={attachingId === doc.id}
+                    className="shrink-0"
+                  >
+                    {attachingId === doc.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Link2 className="w-3.5 h-3.5" />
+                    )}
+                    <span>Attach</span>
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
 
-            <div className="flex items-center justify-end pt-2">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2.5 bg-white border border-[#E5E5EA] hover:bg-[#F5F5F7] text-[#1D1D1F] text-xs font-semibold rounded-xl transition-all"
-              >
-                Close
-              </button>
-            </div>
-          </>
-        )}
-        </div>
-      </div>
-    </div>
+          <ModalFooter>
+            <Button variant="secondary" onClick={closeModal}>
+              Close
+            </Button>
+          </ModalFooter>
+        </>
+      )}
+    </Modal>
   );
 }

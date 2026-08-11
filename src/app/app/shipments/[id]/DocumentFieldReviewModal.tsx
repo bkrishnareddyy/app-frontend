@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { X, CheckCircle2, AlertTriangle, FileText, Sparkles, Pencil } from "lucide-react";
+import { CheckCircle2, AlertTriangle, FileText, Sparkles, Pencil } from "lucide-react";
+import { Modal, ModalHeader } from "@/components/ui/Modal";
+import { Badge } from "@/components/ui/Badge";
 import { caughtMessage } from "@/lib/utils";
 
 export interface FieldSummaryItem {
@@ -28,10 +30,10 @@ interface DocumentFieldReviewModalProps {
   summary: DocumentFieldSummary | null;
 }
 
-const STATUS_STYLES: Record<FieldSummaryItem["status"], string> = {
-  MISSING: "bg-red-50 text-red-700 border-red-200",
-  NEEDS_REVIEW: "bg-amber-50 text-amber-700 border-amber-200",
-  CONFIRMED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+const STATUS_VARIANTS: Record<FieldSummaryItem["status"], "danger" | "warning" | "success"> = {
+  MISSING: "danger",
+  NEEDS_REVIEW: "warning",
+  CONFIRMED: "success",
 };
 
 const STATUS_LABELS: Record<FieldSummaryItem["status"], string> = {
@@ -39,6 +41,8 @@ const STATUS_LABELS: Record<FieldSummaryItem["status"], string> = {
   NEEDS_REVIEW: "Needs Review",
   CONFIRMED: "Confirmed",
 };
+
+const TITLE_ID = "document-field-review-title";
 
 export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary }: DocumentFieldReviewModalProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -69,42 +73,16 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-xl w-full p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
-      >
-        <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3 shrink-0">
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3] shrink-0">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-base font-extrabold text-[#1D1D1F] truncate">{summary.fileName}</h3>
-              <p className="text-xs text-[#86868B]">Expected fields from this document</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} titleId={TITLE_ID} className="max-w-xl space-y-4">
+      <ModalHeader
+        titleId={TITLE_ID}
+        title={summary.fileName}
+        subtitle="Expected fields from this document"
+        icon={<FileText className="w-5 h-5" />}
+        onClose={onClose}
+      />
 
-        {/*
-          A document can expect many fields, so this list is the part that grows
-          past the viewport. The dialog is centred, which clips overflow at the
-          top and bottom at once, so the list scrolls between a pinned header
-          and footer rather than running off-screen.
-        */}
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pt-4 pr-1">
-        {error && (
+      {error && (
           <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-start space-x-2">
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
             <span>{error}</span>
@@ -117,23 +95,21 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
             const isSaving = savingKey === field.key;
 
             return (
-              <div key={field.key} className="p-4 rounded-xl bg-[#F5F5F7] border border-[#E5E5EA] space-y-2.5">
+              <div key={field.key} className="p-4 rounded-xl bg-surface-muted border border-border space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#1D1D1F]">{field.label}</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${STATUS_STYLES[field.status]}`}
-                  >
+                  <span className="text-xs font-bold text-ink">{field.label}</span>
+                  <Badge variant={STATUS_VARIANTS[field.status]} className="px-2 font-extrabold tracking-normal">
                     {STATUS_LABELS[field.status]}
-                  </span>
+                  </Badge>
                 </div>
 
                 {!isEditing ? (
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       {field.value ? (
-                        <p className="text-sm font-mono font-bold text-[#1D1D1F] truncate">{field.value}</p>
+                        <p className="text-sm font-mono font-bold text-ink truncate">{field.value}</p>
                       ) : (
-                        <p className="text-xs text-[#86868B] italic">Not found on document</p>
+                        <p className="text-xs text-ink-muted italic">Not found on document</p>
                       )}
                       {field.status === "CONFIRMED" && field.approvedByName && field.approvedAt && (
                         <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">
@@ -158,7 +134,7 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
                           setEditingKey(field.key);
                         }}
                         disabled={isSaving}
-                        className="px-3 py-1.5 border border-[#E5E5EA] hover:bg-white text-[#1D1D1F] text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                        className="px-3 py-1.5 border border-border hover:bg-white text-ink text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                         <span>{field.value ? "Edit" : "Provide"}</span>
@@ -173,21 +149,21 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
                       onChange={(e) => setDraftValue(e.target.value)}
                       placeholder={`Enter ${field.label}`}
                       autoFocus
-                      className="w-full px-3.5 py-2.5 border border-[#0071E3] rounded-xl outline-none font-mono font-bold bg-white text-[12px]"
+                      className="w-full px-3.5 py-2.5 border border-brand rounded-xl outline-none font-mono font-bold bg-white text-[12px]"
                       disabled={isSaving}
                     />
                     <div className="flex items-center justify-end space-x-2">
                       <button
                         onClick={() => setEditingKey(null)}
                         disabled={isSaving}
-                        className="px-3 py-1.5 text-xs font-semibold text-[#86868B] hover:text-[#1D1D1F] transition-colors cursor-pointer"
+                        className="px-3 py-1.5 text-xs font-semibold text-ink-muted hover:text-ink transition-colors cursor-pointer"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={() => submit(field.key, "EDIT", draftValue.trim())}
                         disabled={isSaving || !draftValue.trim()}
-                        className="px-4 py-1.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                        className="px-4 py-1.5 bg-brand hover:bg-brand-hover text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                       >
                         {isSaving ? "Saving..." : "Save"}
                       </button>
@@ -198,13 +174,11 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
             );
           })}
         </div>
-        </div>
 
-        <div className="shrink-0 flex items-start space-x-2 text-[10px] text-[#86868B] mt-4 pt-2 border-t border-[#E5E5EA]">
+        <div className="flex items-start space-x-2 text-[10px] text-ink-muted pt-2 border-t border-border">
           <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span>These are the fields Qubere expects to find on this document. Approving confirms the extracted value is correct; editing corrects it.</span>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
