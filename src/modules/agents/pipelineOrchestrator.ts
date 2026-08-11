@@ -13,7 +13,7 @@ import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentSe
 import { ShipmentEventBus, ShipmentEventType } from "@/modules/events/shipmentEventBus";
 import { FactService, RecordFactInput } from "@/modules/shipment/factService";
 import { LineItemReconciler, lineItemFactField } from "@/modules/shipment/lineItemReconciler";
-import { buildAgentContext, ShipmentAgentContext, factValue } from "./agentContext";
+import { buildAgentContext, ShipmentAgentContext, factValue, latestTradeMetadata } from "./agentContext";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { captureShipmentOutputFacts } from "./outputCapture";
 
@@ -74,6 +74,10 @@ function numOrNull(v: string | null | undefined): number | null {
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
 }
 
 async function computeDutyDue(context: ShipmentAgentContext): Promise<number | null> {
@@ -505,6 +509,7 @@ export class PipelineOrchestrator {
       case "Compliance Audit Agent": {
         const context = await buildAgentContext(shipmentId);
         const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
+        const logistics = latestTradeMetadata(context);
         const agentInput = {
           accountId,
           userId,
@@ -523,6 +528,10 @@ export class PipelineOrchestrator {
           incoterm: factValue(context, "incoterm"),
           exporterName: factValue(context, "exporterName"),
           supplierName: factValue(context, "exporterName") ?? undefined,
+          portOfLoading: strOrNull(logistics?.portOfLoading),
+          portOfDischarge: strOrNull(logistics?.portOfDischarge),
+          carrier: strOrNull(logistics?.carrier),
+          transportDocumentNumber: strOrNull(logistics?.transportDocumentNumber),
           isHtsBlocked,
         };
         const output: ComplianceAuditOutput = await ComplianceAuditAgent.execute(agentInput);
@@ -560,6 +569,7 @@ export class PipelineOrchestrator {
         const context = await buildAgentContext(shipmentId);
         const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
         const isOriginBlocked = !factValue(context, "countryOfOrigin");
+        const logistics = latestTradeMetadata(context);
         const agentInput = {
           accountId,
           userId,
@@ -573,6 +583,10 @@ export class PipelineOrchestrator {
           isOriginBlocked,
           isComplianceBlocked: scratch.isComplianceBlocked ?? false,
           entryType: payload?.entryType,
+          portOfLoading: strOrNull(logistics?.portOfLoading),
+          portOfDischarge: strOrNull(logistics?.portOfDischarge),
+          carrier: strOrNull(logistics?.carrier),
+          transportDocumentNumber: strOrNull(logistics?.transportDocumentNumber),
         };
         const output = await FilingReadinessAgent.execute(agentInput);
         await captureShipmentOutputFacts({

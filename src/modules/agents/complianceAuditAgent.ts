@@ -43,6 +43,10 @@ export interface ComplianceAuditInput {
   incoterm?: string | null;
   exporterName?: string | null;
   supplierName?: string | null;
+  portOfLoading?: string | null;
+  portOfDischarge?: string | null;
+  carrier?: string | null;
+  transportDocumentNumber?: string | null;
   isHtsBlocked?: boolean;
 }
 
@@ -385,6 +389,10 @@ export class ComplianceAuditAgent {
             importerName: input.importerName ?? null,
             incoterm: input.incoterm ?? null,
             exporterName: input.exporterName ?? null,
+            portOfLoading: input.portOfLoading ?? null,
+            portOfDischarge: input.portOfDischarge ?? null,
+            carrier: input.carrier ?? null,
+            transportDocumentNumber: input.transportDocumentNumber ?? null,
           },
           findings: auditResults,
           embargoRulesLoaded: embargoRules.length,
