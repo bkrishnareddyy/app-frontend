@@ -15,6 +15,7 @@ import { FactService, RecordFactInput } from "@/modules/shipment/factService";
 import { LineItemReconciler, lineItemFactField } from "@/modules/shipment/lineItemReconciler";
 import { buildAgentContext, ShipmentAgentContext, factValue } from "./agentContext";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+import { captureShipmentOutputFacts } from "./outputCapture";
 
 /**
  * Replaces ComplianceWorkflowEngine/AgentOrchestrator (the fixed 10-step
@@ -288,6 +289,13 @@ export class PipelineOrchestrator {
         };
         const output = await DocumentIntakeAgent.execute(agentInput);
         scratch.packetId = output.packetId;
+        await captureShipmentOutputFacts({
+          shipmentId,
+          documentId,
+          agentKey: "documentIntake",
+          output: output as unknown as Record<string, unknown>,
+          exclude: ["shipmentDocumentId", "packetId"],
+        });
         return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, input: agentInput, output };
       }
 
@@ -304,6 +312,26 @@ export class PipelineOrchestrator {
         };
         const output = await DocumentIntelligenceAgent.execute(agentInput);
         await this.persistIntelligence(shipmentId, accountId, documentId, output);
+        await captureShipmentOutputFacts({
+          shipmentId,
+          documentId,
+          agentKey: "documentIntelligence",
+          output: output as unknown as Record<string, unknown>,
+          exclude: [
+            "exporterName",
+            "importerName",
+            "originCountry",
+            "destinationCountry",
+            "incoterm",
+            "currency",
+            "invoiceSubtotal",
+            "invoiceNumber",
+            "invoiceDate",
+            "lineItems",
+            "rawDiscoveredKeyValues",
+            "packetId",
+          ],
+        });
         return {
           decisionId: output.agentDecisionId,
           aiProviderUsed: output.aiProviderUsed,
@@ -373,6 +401,11 @@ export class PipelineOrchestrator {
             manufacturingCountry: li.countryOfOrigin !== "Unknown" ? li.countryOfOrigin : factValue(context, "countryOfOrigin"),
             rawMaterialOrigin: context.facts[lineItemFactField(li.lineNumber, "rawMaterialOrigin")]?.value,
             standardDutyRate: context.facts[lineItemFactField(li.lineNumber, "dutyRate")]?.value,
+            description: li.description,
+            sku: li.partNumber,
+            materialComposition: context.facts[lineItemFactField(li.lineNumber, "materialComposition")]?.value ?? null,
+            essentialCharacter: context.facts[lineItemFactField(li.lineNumber, "essentialCharacter")]?.value ?? null,
+            endUse: context.facts[lineItemFactField(li.lineNumber, "endUse")]?.value ?? null,
           })),
         };
         const output: OriginRulesOutput = await OriginRulesAgent.execute(agentInput);
@@ -383,6 +416,9 @@ export class PipelineOrchestrator {
             preferenceCriterion: q.preferenceCriterion,
             tariffShiftMet: q.tariffShiftMet == null ? null : String(q.tariffShiftMet),
             estimatedSavings: q.estimatedSavings,
+            standardDutyRate: q.standardDutyRate,
+            ftaDutyRate: q.ftaDutyRate,
+            countryOfOrigin: q.countryOfOrigin,
           });
         }
         return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
@@ -397,6 +433,12 @@ export class PipelineOrchestrator {
           invoiceSubtotal: numOrNull(factValue(context, "invoiceSubtotal")),
           oceanFreight: numOrNull(factValue(context, "oceanFreight")) ?? undefined,
           buyerAssists: numOrNull(factValue(context, "buyerAssists")) ?? undefined,
+          lineItems: context.lineItems.map((li) => ({
+            lineNumber: li.lineNumber,
+            totalValue: li.totalValue,
+            quantity: li.quantity,
+            unitPrice: li.unitPrice,
+          })),
         };
         const output: ValuationAssistsOutput = await ValuationAssistsAgent.execute(agentInput);
         if (output.enteredCustomsValue != null) {
@@ -408,6 +450,13 @@ export class PipelineOrchestrator {
             documentId,
           });
         }
+        await captureShipmentOutputFacts({
+          shipmentId,
+          documentId,
+          agentKey: "valuationAssists",
+          output: output as unknown as Record<string, unknown>,
+          exclude: ["enteredCustomsValue", "shipmentId"],
+        });
         return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
       }
 
@@ -435,6 +484,25 @@ export class PipelineOrchestrator {
         };
         const output: ComplianceAuditOutput = await ComplianceAuditAgent.execute(agentInput);
         scratch.isComplianceBlocked = output.status === "BLOCKED_DEPENDENCY";
+        await captureShipmentOutputFacts({
+          shipmentId,
+          documentId,
+          agentKey: "complianceAudit",
+          output: output as unknown as Record<string, unknown>,
+          exclude: ["auditResults", "flags"],
+        });
+        const findingsByLine = new Map<number, typeof output.auditResults>();
+        for (const result of output.auditResults) {
+          if (result.lineNumber == null) continue;
+          const existing = findingsByLine.get(result.lineNumber) ?? [];
+          existing.push(result);
+          findingsByLine.set(result.lineNumber, existing);
+        }
+        for (const [lineNumber, findings] of findingsByLine) {
+          await recordLineItemFacts(shipmentId, documentId, "AGENT_PROPOSED", lineNumber, {
+            complianceFindings: JSON.stringify(findings),
+          });
+        }
         return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: null, input: agentInput, output };
       }
 
@@ -456,6 +524,12 @@ export class PipelineOrchestrator {
           entryType: payload?.entryType,
         };
         const output = await FilingReadinessAgent.execute(agentInput);
+        await captureShipmentOutputFacts({
+          shipmentId,
+          documentId,
+          agentKey: "filingReadiness",
+          output: output as unknown as Record<string, unknown>,
+        });
         return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.readinessScore, input: agentInput, output };
       }
 
@@ -528,6 +602,7 @@ export class PipelineOrchestrator {
         finish: profile.finish,
         casNumber: profile.casNumber,
         endUse: profile.endUse,
+        confidence: profile.confidence,
       });
     }
   }
@@ -543,6 +618,11 @@ export class PipelineOrchestrator {
         htsDescription: c.htsDescription,
         dutyRate: c.dutyRate,
         legalRationale: c.legalRationale,
+        griCitations: c.griCitations?.length ? JSON.stringify(c.griCitations) : null,
+        crossRulings: c.crossRulings?.length ? JSON.stringify(c.crossRulings) : null,
+        evaluatorScore: c.evaluatorScore,
+        evaluatorCritique: c.evaluatorCritique,
+        refinementTurns: c.refinementTurns,
       });
     }
     await LineItemReconciler.applyDiscoveries({
