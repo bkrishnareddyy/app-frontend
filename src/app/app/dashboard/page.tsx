@@ -2,6 +2,7 @@ import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
+import { extractedCurrency } from "@/modules/documents/extractedCurrency";
 import { CommandCenterClient } from "./CommandCenterClient";
 import type { TeamMember } from "@/lib/team";
 
@@ -93,6 +94,10 @@ export default async function CommandCenterPage() {
       exporterName: s.importerName, // matches previous fallback naming
       primaryHtsCode: primaryLineItem?.htsCode ?? "Not Yet Classified",
       totalValue,
+      // Per shipment, from its own documents. The table used to print "$" over
+      // every entered value; this account's invoice is denominated in EUR, so
+      // that figure was being reported in the wrong currency.
+      currency: extractedCurrency(s.documents),
       readinessScore,
       status: s.status,
       healthStatus: s.healthStatus,

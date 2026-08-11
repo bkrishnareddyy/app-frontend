@@ -18,7 +18,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { displayDate } from "@/lib/honest";
+import { displayCurrency, displayDate } from "@/lib/honest";
+import { commonExtractedCurrency } from "@/modules/documents/extractedCurrency";
 import type { MultiDimensionalMetrics } from "@/modules/shipment/canonicalShipmentService";
 
 type Urgency = "Critical" | "At Risk" | "Healthy";
@@ -34,6 +35,20 @@ function urgencyOf(s: CommandCenterShipment): Urgency {
     if (s.riskScore >= 50) return "At Risk";
   }
   return "Healthy";
+}
+
+/**
+ * A shipment's entered value, in the currency its documents actually declared.
+ *
+ * The figure itself is the sum of the shipment's persisted line-item totals; only
+ * the symbol was wrong. Falls back to a bare number when no currency is known,
+ * because a shipment whose documents never stated one is not thereby in dollars.
+ */
+function shipmentValue(shipment: CommandCenterShipment): string {
+  const amount = shipment.totalValue ?? 0;
+  return shipment.currency
+    ? displayCurrency(amount, shipment.currency)
+    : amount.toLocaleString();
 }
 
 const URGENCY_BADGE_CLASS: Record<Urgency, string> = {
@@ -59,6 +74,12 @@ interface CommandCenterShipment {
   exporterName: string;
   primaryHtsCode: string;
   totalValue: number;
+  /**
+   * ISO code the shipment's documents are denominated in, or null when they
+   * declared none or disagreed. Null renders a bare number: this table printed
+   * "$" over every entered value regardless, which misreports a EUR invoice.
+   */
+  currency: string | null;
   readinessScore: number;
   status: string;
   healthStatus: string | null;
@@ -251,6 +272,10 @@ export function CommandCenterClient({
   const notReadyShipments = filteredShipments.filter((s) => s.readinessScore < 85);
   const clearedShipments = filteredShipments.filter((s) => s.readinessScore >= 85);
   const valueAtRisk = notReadyShipments.reduce((sum, s) => sum + (s.totalValue || 0), 0);
+  // Only labelled with a currency when every contributing shipment shares one.
+  // Adding EUR to USD produces a number that denominates nothing, so a mixed set
+  // is shown unlabelled rather than stamped with whichever code came first.
+  const valueAtRiskCurrency = commonExtractedCurrency(notReadyShipments);
 
   const reviewRequiredDecisions = filteredDecisions.filter(
     (d) => d.status === "Review Required" || d.status === "Needs Review"
@@ -447,7 +472,9 @@ export function CommandCenterClient({
             <DollarSign className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-ink">
-            ${valueAtRisk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {valueAtRiskCurrency
+              ? displayCurrency(Math.round(valueAtRisk), valueAtRiskCurrency)
+              : valueAtRisk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </p>
           <div className="flex flex-wrap items-center justify-between mt-2 gap-x-2 gap-y-1">
             <span className="text-[10px] text-ink-muted truncate">
@@ -597,7 +624,7 @@ export function CommandCenterClient({
                       {shp.primaryHtsCode ?? "Not Yet Classified"}
                     </td>
                     <td className="py-3 px-4 font-semibold">
-                      ${(shp.totalValue ?? 0).toLocaleString()}
+                      {shipmentValue(shp)}
                     </td>
                     <td className="py-3 px-4 font-bold text-emerald-600">
                       {shp.readinessScore ?? 0}%
@@ -682,7 +709,7 @@ export function CommandCenterClient({
                             </span>
                           </td>
                           <td className="py-3 px-4 font-semibold">
-                            ${(shp.totalValue ?? 0).toLocaleString()}
+                            {shipmentValue(shp)}
                           </td>
                           <td className="py-3 px-4">
                             {shp.receivedDocCount}/{shp.totalRequiredDocs} docs

@@ -28,6 +28,7 @@ import { PreFilingReadiness } from "./PreFilingReadiness";
 import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
 import { buildAgentInvocations } from "./agentInvocations";
 import { displayCurrency } from "@/lib/honest";
+import { extractedCurrency } from "@/modules/documents/extractedCurrency";
 import type { ShipmentLineItemRow } from "./workspaceTypes";
 import type { CategoryDetail } from "./PreFilingReadiness";
 
@@ -57,29 +58,6 @@ function numberOrNull(value: number | string | null | undefined): number | null 
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
   return Number.isNaN(numeric) ? null : numeric;
-}
-
-/**
- * The currency the shipment's documents are denominated in.
- *
- * Nothing on Shipment or ShipmentLineItem stores a currency, so the only honest
- * source is what the extractor read off the documents themselves. Returns null
- * when no document declared one, or when two disagree — a guessed currency
- * misstates every amount on the screen, so a bare number is the safer answer.
- */
-function extractedCurrency(documents: Array<{ extractedJson?: string | null }>): string | null {
-  const found = new Set<string>();
-  for (const doc of documents) {
-    if (!doc.extractedJson) continue;
-    try {
-      const parsed = JSON.parse(doc.extractedJson);
-      const code = parsed?.tradeMetadata?.currency ?? parsed?.currency;
-      if (typeof code === "string" && code.trim()) found.add(code.trim().toUpperCase());
-    } catch {
-      // A document with unparseable JSON simply contributes no currency.
-    }
-  }
-  return found.size === 1 ? [...found][0] : null;
 }
 
 /**
