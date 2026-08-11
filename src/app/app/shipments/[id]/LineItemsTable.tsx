@@ -109,44 +109,42 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
         <span>Extracted Line Items ({lineItems.length})</span>
       </div>
       {lineItems.length > 0 ? (
-        <div className="border border-[#E5E5EA] rounded-xl overflow-visible text-xs max-h-96 overflow-y-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="border border-[#E5E5EA] rounded-xl text-xs max-h-96 overflow-y-auto">
+          {/*
+            Fixed layout with declared column widths, so the table is always exactly
+            as wide as its container and never scrolls sideways.
+
+            With automatic layout the columns sized themselves to their content, the
+            row outgrew the panel -- opening a row for edit swaps two text cells for
+            inputs and adds around 9rem -- and because overflow-y-auto makes
+            overflow-x compute to auto, the overflow became a horizontal scrollbar
+            that carried Total and Action out of sight. Widths must total 100.
+          */}
+          <table className="w-full table-fixed text-left border-collapse">
             <thead className="bg-[#F5F5F7] text-[10px] font-bold text-[#86868B] uppercase border-b border-[#E5E5EA]">
               <tr>
-                <th className="p-2.5">Line</th>
-                <th className="p-2.5">Description</th>
-                <th className="p-2.5">HTS Code</th>
-                <th className="p-2.5">Origin</th>
-                <th className="p-2.5 text-right">Qty</th>
-                {/*
-                  Amount and Action are pinned to the right edge. Opening a row for
-                  edit swaps two short text cells for inputs and widens the row past
-                  the container, and because overflow-y-auto makes overflow-x compute
-                  to auto, both columns used to slide out of view -- leaving no way to
-                  save without scrolling sideways first. The offset here must match
-                  the Action column's own width.
-                */}
-                {/*
-                  An inset shadow marks the pinned edge rather than border-l: this
-                  table sets border-collapse, and collapsed borders on a sticky cell
-                  are dropped by some browsers.
-                */}
-                <th className="p-2.5 text-right sticky right-20 bg-[#F5F5F7] z-10 shadow-[inset_1px_0_0_0_#E5E5EA]">
-                  Total
-                </th>
-                <th className="p-2.5 text-center sticky right-0 w-20 bg-[#F5F5F7] z-10">Action</th>
+                <th className="p-2.5 w-[6%]">Line</th>
+                <th className="p-2.5 w-[30%]">Description</th>
+                <th className="p-2.5 w-[20%]">HTS Code</th>
+                <th className="p-2.5 w-[12%]">Origin</th>
+                <th className="p-2.5 w-[8%] text-right">Qty</th>
+                <th className="p-2.5 w-[15%] text-right">Total</th>
+                <th className="p-2.5 w-[9%] text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5EA]">
               {lineItems.map((item) => {
                 const isEditing = editingItemId === item.id;
                 return (
-                  // `group` lets the pinned cells below repaint their own background
-                  // on hover; an opaque background is what stops the scrolling
-                  // columns showing through them.
-                  <tr key={item.id} className="group hover:bg-[#F5F5F7]/30 transition-colors">
+                  <tr key={item.id} className="hover:bg-[#F5F5F7]/30 transition-colors">
                     <td className="p-2.5 font-mono text-[#86868B] font-semibold">{item.lineNumber}</td>
-                    <td className="p-2.5 font-bold text-[#1D1D1F] max-w-xs break-words">{item.description}</td>
+                    {/*
+                      break-words, not truncate: descriptions arrive as long unbroken
+                      runs like "TOPS,DRESSES,PULLOVERS,SUITS,C" that carry no space
+                      to wrap at, and a customs description clipped mid-word is not a
+                      description. The fixed column width bounds them instead.
+                    */}
+                    <td className="p-2.5 font-bold text-[#1D1D1F] break-words">{item.description}</td>
                     
                     {/* HTS Code Column */}
                     <td className="p-2.5 font-mono relative">
@@ -157,7 +155,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                             value={editHts}
                             onChange={(e) => setEditHts(e.target.value)}
                             placeholder="Search HTS Code..."
-                            className="w-28 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white font-mono text-[11px]"
+                            className="w-full min-w-0 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white font-mono text-[11px]"
                             disabled={saveLoading}
                           />
                           {/* Autocomplete dropdown */}
@@ -193,7 +191,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                           value={editCoo}
                           onChange={(e) => setEditCoo(e.target.value)}
                           placeholder="e.g. Germany"
-                          className="w-20 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white text-[11px]"
+                          className="w-full min-w-0 px-2 py-1 border border-[#0071E3] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0071E3] bg-white text-[11px]"
                           disabled={saveLoading}
                         />
                       ) : (
@@ -202,7 +200,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                     </td>
 
                     <td className="p-2.5 text-right font-mono">{item.quantity}</td>
-                    <td className="p-2.5 text-right font-mono font-bold sticky right-20 bg-white group-hover:bg-[#FCFCFD] z-10 shadow-[inset_1px_0_0_0_#E5E5EA]">
+                    <td className="p-2.5 text-right font-mono font-bold">
                       {(() => {
                         const amount = extendedAmount(item);
                         if (amount === null) {
@@ -219,7 +217,7 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                     </td>
                     
                     {/* Inline edit actions */}
-                    <td className="p-2.5 text-center sticky right-0 w-20 bg-white group-hover:bg-[#FCFCFD] z-10">
+                    <td className="p-2.5 text-center">
                       {isEditing ? (
                         <div className="flex items-center justify-center space-x-1.5">
                           <button
