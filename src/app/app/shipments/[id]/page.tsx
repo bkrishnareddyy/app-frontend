@@ -16,6 +16,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
+import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
@@ -530,25 +531,10 @@ export default async function ShipmentWorkspacePage(props: {
   // ShipmentDocumentsSection does, so its "Missing required" callout and
   // the Exceptions panel above always agree instead of being two
   // independently-computed, silently-diverging checks.
-  const requiredDocTypes = ["Commercial Invoice", "Packing List", "Bill of Lading"];
-  if (originStatus !== "Not Applicable") requiredDocTypes.push("Certificate of Origin");
-
-  const isDocReceived = (d: any) =>
-    d.status !== "Missing" &&
-    Boolean(d.fileUrl || d.status === "Received" || d.status === "Processed" || d.status === "Review Required" || d.status === "Completed");
-
-  const missingDocTypes = requiredDocTypes.filter((req) => {
-    return !documents.some((d: any) => {
-      if (!isDocReceived(d)) return false;
-      const type = (d.docType || "").toLowerCase();
-      const name = (d.fileName || "").toLowerCase();
-      if (req === "Commercial Invoice") return type.includes("invoice") || name.includes("invoice");
-      if (req === "Packing List") return type.includes("packing") || name.includes("packing");
-      if (req === "Bill of Lading") return type.includes("lading") || type.includes("transport") || name.includes("lading") || name.includes("instructions") || name.includes("waybill");
-      if (req === "Certificate of Origin") return type.includes("origin") || type.includes("coo") || name.includes("origin") || name.includes("coo");
-      return false;
-    });
-  });
+  const { requiredTypes: requiredDocTypes, missingTypes: missingDocTypes } = checkRequiredDocumentTypes(
+    documents,
+    originStatus !== "Not Applicable"
+  );
 
   // 9. Admissibility, PGA & Trade Restrictions
   let pgaStatus: "Ready" | "Needs Review" | "Needs Information" = "Ready";

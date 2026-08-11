@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo } from "react";
 import Link from "next/link";
 import {
   FileText,
@@ -14,11 +14,43 @@ import {
   ShieldCheck,
   Send,
   ChevronRight,
-  Users,
+  ChevronDown,
+  Inbox,
   DollarSign,
   Plus,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { displayDate } from "@/lib/honest";
+
+type Urgency = "Critical" | "At Risk" | "Healthy";
+
+const URGENCY_RANK: Record<Urgency, number> = { Critical: 0, "At Risk": 1, Healthy: 2 };
+
+function urgencyOf(s: any): Urgency {
+  if (s.healthStatus === "Critical") return "Critical";
+  if (s.healthStatus === "At Risk") return "At Risk";
+  if (s.healthStatus === "Healthy") return "Healthy";
+  if (typeof s.riskScore === "number") {
+    if (s.riskScore >= 75) return "Critical";
+    if (s.riskScore >= 50) return "At Risk";
+  }
+  return "Healthy";
+}
+
+const URGENCY_BADGE_CLASS: Record<Urgency, string> = {
+  Critical: "bg-red-50 text-red-700 border-red-200",
+  "At Risk": "bg-amber-50 text-amber-700 border-amber-200",
+  Healthy: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+function ScorePill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-white p-3 rounded-xl border border-[#E5E5EA]">
+      <p className="text-[10px] font-semibold text-[#86868B] uppercase tracking-wider">{label}</p>
+      <p className="text-sm font-extrabold text-[#1D1D1F] mt-0.5">{value}</p>
+    </div>
+  );
+}
 
 interface CommandCenterClientProps {
   accountName: string;
@@ -79,6 +111,27 @@ export function CommandCenterClient({
   );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("ALL");
+  const [activeView, setActiveView] = useState<"overview" | "work">("overview");
+
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [rowMetrics, setRowMetrics] = useState<
+    Record<string, { status: "loading" | "loaded" | "error"; metrics?: any }>
+  >({});
+
+  const toggleExpandRow = (id: string) => {
+    setExpandedRowId((prev) => (prev === id ? null : id));
+    if (!rowMetrics[id]) {
+      setRowMetrics((prev) => ({ ...prev, [id]: { status: "loading" } }));
+      fetch(`/api/shipments/${id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setRowMetrics((prev) => ({ ...prev, [id]: { status: "loaded", metrics: data.metrics } }));
+        })
+        .catch(() => {
+          setRowMetrics((prev) => ({ ...prev, [id]: { status: "error" } }));
+        });
+    }
+  };
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
@@ -106,6 +159,22 @@ export function CommandCenterClient({
       return true;
     });
   }, [initialShipments, selectedUserIds, selectedClientId, isEnterpriseAdmin]);
+
+  // Shipments assigned to the logged-in user, sorted most-urgent and
+  // soonest-arriving first -- this is what "My Work" shows, independent of
+  // the Overview scope filters above.
+  const myShipments = useMemo(() => {
+    return initialShipments
+      .filter((s) => s.assignedBrokerId === context.userId)
+      .slice()
+      .sort((a, b) => {
+        const rankDiff = URGENCY_RANK[urgencyOf(a)] - URGENCY_RANK[urgencyOf(b)];
+        if (rankDiff !== 0) return rankDiff;
+        const aTime = a.estimatedArrival ? new Date(a.estimatedArrival).getTime() : Infinity;
+        const bTime = b.estimatedArrival ? new Date(b.estimatedArrival).getTime() : Infinity;
+        return aTime - bTime;
+      });
+  }, [initialShipments, context.userId]);
 
   // Filter decisions dynamically based on checked team members
   const filteredDecisions = useMemo(() => {
@@ -151,16 +220,23 @@ export function CommandCenterClient({
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
       {/* Top Banner Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-2xs">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-extrabold text-[#1D1D1F] tracking-tight">
-              {t.dashboard.commandCenter}
-            </h1>
-          </div>
-          <p className="text-xs text-[#86868B] mt-1">
-            {t.dashboard.subtitle}{" "}
-            <strong className="text-[#1D1D1F]">{accountName}</strong>
-          </p>
+        <div className="flex bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5EA] text-xs">
+          <button
+            onClick={() => setActiveView("overview")}
+            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              activeView === "overview" ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveView("work")}
+            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              activeView === "work" ? "bg-white text-[#1D1D1F] shadow-3xs" : "text-[#86868B]"
+            }`}
+          >
+            My Work
+          </button>
         </div>
 
         <div className="flex items-center space-x-3">
@@ -184,16 +260,9 @@ export function CommandCenterClient({
         </div>
       </div>
 
-      {/* Task Scope & Assignment -- assignee controls for enterprise admins, client scope for everyone */}
-      {(isEnterpriseAdmin || clients.length > 0) && (
-        <div className="bg-white p-4 rounded-2xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center space-x-2.5">
-            <Users className="w-4 h-4 text-[#0071E3]" />
-            <span className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider">
-              Task Scope &amp; Assignment
-            </span>
-          </div>
-
+      {/* Assignee/client scope controls -- Overview only; My Work is always scoped to the current user */}
+      {activeView === "overview" && (isEnterpriseAdmin || clients.length > 0) && (
+        <div className="bg-white p-3 rounded-2xl border border-[#E5E5EA] shadow-2xs flex flex-wrap items-center justify-end gap-4">
           <div className="flex flex-wrap items-center gap-3">
             {isEnterpriseAdmin && (
               <>
@@ -324,6 +393,8 @@ export function CommandCenterClient({
         </div>
       )}
 
+      {activeView === "overview" && (
+      <>
       {/* Top KPI Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* 1. Value at Risk */}
@@ -510,6 +581,161 @@ export function CommandCenterClient({
           </table>
         </div>
       </div>
+      </>
+      )}
+
+      {activeView === "work" && (
+        <div className="bg-white p-6 rounded-3xl border border-[#E5E5EA] shadow-2xs space-y-4">
+          <div className="border-b border-[#E5E5EA] pb-4">
+            <h3 className="text-base font-extrabold text-[#1D1D1F] tracking-tight">My Work</h3>
+            <p className="text-xs text-[#86868B]">
+              {myShipments.length} shipment{myShipments.length === 1 ? "" : "s"} assigned to you
+            </p>
+          </div>
+
+          {myShipments.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center space-y-2">
+              <Inbox className="w-8 h-8 text-[#86868B]" />
+              <p className="text-sm font-semibold text-[#1D1D1F]">No shipments assigned to you</p>
+              <p className="text-xs text-[#86868B]">Shipments assigned to you will show up here.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-[#1D1D1F]">
+                <thead className="bg-[#F5F5F7] border-b border-[#E5E5EA] text-[11px] font-semibold text-[#86868B] uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Shipment</th>
+                    <th className="py-3 px-4">Arrival</th>
+                    <th className="py-3 px-4">Value</th>
+                    <th className="py-3 px-4">Pending</th>
+                    <th className="py-3 px-4">Urgency</th>
+                    <th className="py-3 px-4 w-8" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E5E5EA]">
+                  {myShipments.map((shp: any) => {
+                    const urgency = urgencyOf(shp);
+                    const isExpanded = expandedRowId === shp.id;
+                    const rowState = rowMetrics[shp.id];
+
+                    return (
+                      <Fragment key={shp.id}>
+                        <tr
+                          onClick={() => toggleExpandRow(shp.id)}
+                          className="hover:bg-[#F5F5F7]/50 transition-colors cursor-pointer"
+                        >
+                          <td className="py-3 px-4 font-mono font-bold text-[#0071E3]">
+                            <Link
+                              href={`/app/shipments/${shp.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="hover:underline"
+                            >
+                              {shp.referenceNumber || shp.shipmentNumber || shp.id.slice(0, 10)}
+                            </Link>
+                          </td>
+                          <td className="py-3 px-4 text-[#86868B]">
+                            <span className="inline-flex items-center space-x-1.5">
+                              <Clock className="w-3.5 h-3.5 text-[#86868B]" />
+                              <span>{displayDate(shp.estimatedArrival)}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-semibold">
+                            ${(shp.totalValue ?? 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4">
+                            {shp.receivedDocCount}/{shp.totalRequiredDocs} docs
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${URGENCY_BADGE_CLASS[urgency]}`}
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              <span>{urgency}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <ChevronDown
+                              className={`w-4 h-4 text-[#86868B] transition-transform inline-block ${
+                                isExpanded ? "rotate-180" : ""
+                              }`}
+                            />
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${shp.id}-expanded`}>
+                            <td colSpan={6} className="bg-[#F5F5F7]/60 px-4 py-4">
+                              {(!rowState || rowState.status === "loading") && (
+                                <p className="text-xs text-[#86868B]">Loading readiness…</p>
+                              )}
+                              {rowState?.status === "error" && (
+                                <p className="text-xs text-red-600">Couldn&apos;t load readiness data.</p>
+                              )}
+                              {rowState?.status === "loaded" && rowState.metrics && (
+                                <div className="space-y-3">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <ScorePill
+                                      label="Filing Readiness"
+                                      value={`${rowState.metrics.filingReadinessScore}%`}
+                                    />
+                                    <ScorePill
+                                      label="Completeness"
+                                      value={`${rowState.metrics.completenessScore}%`}
+                                    />
+                                    <ScorePill
+                                      label="Compliance Risk"
+                                      value={`${rowState.metrics.complianceRiskBand} (${rowState.metrics.complianceRiskScore})`}
+                                    />
+                                    <ScorePill
+                                      label="HTS Confidence"
+                                      value={
+                                        rowState.metrics.classificationVerified
+                                          ? `${rowState.metrics.classificationConfidenceScore}%`
+                                          : "Unverified"
+                                      }
+                                    />
+                                  </div>
+                                  <p className="text-[11px] text-[#86868B]">
+                                    {rowState.metrics.blockerCount} blocker
+                                    {rowState.metrics.blockerCount === 1 ? "" : "s"} ·{" "}
+                                    {rowState.metrics.warningCount} warning
+                                    {rowState.metrics.warningCount === 1 ? "" : "s"}
+                                  </p>
+                                  {shp.missingDocTypes.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="text-[11px] font-semibold text-[#86868B]">
+                                        Missing:
+                                      </span>
+                                      {shp.missingDocTypes.map((docType: string) => (
+                                        <span
+                                          key={docType}
+                                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200"
+                                        >
+                                          {docType}
+                                        </span>
+                                      ))}
+                                      <Link
+                                        href={`/app/shipments/${shp.id}?view=workspace`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-[11px] text-[#0071E3] font-semibold hover:underline"
+                                      >
+                                        Add Document →
+                                      </Link>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

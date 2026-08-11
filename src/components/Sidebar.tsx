@@ -130,7 +130,7 @@ export function Sidebar({
       >
         <div className="h-16 px-4 flex items-center justify-between border-b border-[#E5E5EA]">
           <Link
-            href="/app/work"
+            href="/app/dashboard"
             onClick={() => setMobileOpen(false)}
             className="flex items-center space-x-3 group min-w-0"
           >

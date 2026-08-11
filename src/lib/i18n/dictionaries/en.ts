@@ -1,7 +1,6 @@
 export const en = {
   // Navigation
   nav: {
-    myWork: "My Work",
     commandCenter: "Command Center",
     shipments: "Shipments",
     clients: "Clients",
@@ -31,9 +30,7 @@ export const en = {
   },
   // Dashboard
   dashboard: {
-    commandCenter: "Command Center",
     demoMode: "Demo Mode",
-    subtitle: "Real-time visibility and control across all customs filing operations for",
     newShipment: "Add Shipment",
     activeShipments: "Active Customs Filings & Pipeline",
     searchPlaceholder: "Search coming soon...",
