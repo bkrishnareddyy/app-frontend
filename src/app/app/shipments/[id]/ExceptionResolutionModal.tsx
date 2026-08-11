@@ -200,7 +200,7 @@ export function ExceptionResolutionModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-xl w-full p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3 shrink-0">
@@ -221,6 +221,13 @@ export function ExceptionResolutionModal({
           </button>
         </div>
 
+        {/*
+          The resolution body varies by exception type and the mismatch and POA
+          branches run tall. The dialog is centred, so overflow was clipped at the
+          top and bottom at once — leaving Resolve & Save off-screen. The body
+          scrolls between a pinned header and a pinned footer instead.
+        */}
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pt-4 pr-1">
         {/* Warning Details Panel */}
         <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 text-xs text-amber-800 leading-normal flex items-start space-x-2.5">
           <AlertTriangle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
@@ -402,9 +409,10 @@ export function ExceptionResolutionModal({
             </div>
           )}
         </div>
+        </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end space-x-3 pt-3 border-t border-[#E5E5EA]">
+        <div className="shrink-0 flex items-center justify-end space-x-3 mt-4 pt-3 border-t border-[#E5E5EA]">
           <button
             onClick={onClose}
             disabled={saveLoading}

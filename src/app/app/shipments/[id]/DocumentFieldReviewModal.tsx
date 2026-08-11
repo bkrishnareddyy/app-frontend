@@ -77,7 +77,7 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-xl w-full p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
       >
         <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3 shrink-0">
           <div className="flex items-center space-x-2.5 min-w-0">
@@ -97,6 +97,13 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
           </button>
         </div>
 
+        {/*
+          A document can expect many fields, so this list is the part that grows
+          past the viewport. The dialog is centred, which clips overflow at the
+          top and bottom at once, so the list scrolls between a pinned header
+          and footer rather than running off-screen.
+        */}
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pt-4 pr-1">
         {error && (
           <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-start space-x-2">
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
@@ -191,8 +198,9 @@ export function DocumentFieldReviewModal({ isOpen, onClose, shipmentId, summary 
             );
           })}
         </div>
+        </div>
 
-        <div className="flex items-start space-x-2 text-[10px] text-[#86868B] pt-2 border-t border-[#E5E5EA]">
+        <div className="shrink-0 flex items-start space-x-2 text-[10px] text-[#86868B] mt-4 pt-2 border-t border-[#E5E5EA]">
           <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span>These are the fields Qubere expects to find on this document. Approving confirms the extracted value is correct; editing corrects it.</span>
         </div>

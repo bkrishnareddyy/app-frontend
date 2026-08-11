@@ -237,10 +237,10 @@ export function DocumentUploadModal({
         ref={dialogRef}
         {...dialogSurfaceProps("upload-document-title")}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-lg w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl border border-[#E5E5EA] shadow-2xl max-w-lg w-full p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#E5E5EA] pb-3">
+        <div className="shrink-0 flex items-center justify-between border-b border-[#E5E5EA] pb-3">
           <div className="flex items-center space-x-2.5">
             <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0071E3]">
               <Upload className="w-5 h-5" />
@@ -260,6 +260,13 @@ export function DocumentUploadModal({
           </button>
         </div>
 
+        {/*
+          The dialog is centred, so content taller than the viewport used to be
+          clipped at the top and the bottom at once with nothing to scroll — on a
+          1080p screen at 100% zoom the upload button was off-screen. The header
+          stays pinned and everything below it scrolls instead.
+        */}
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pt-5 pr-1">
         {/* Alerts */}
         {error && (
           <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center space-x-2">
@@ -523,6 +530,7 @@ export function DocumentUploadModal({
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );
