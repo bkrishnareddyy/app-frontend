@@ -90,7 +90,7 @@ export function PipelineProgressTracker({ shipmentId }: { shipmentId: string }) 
     <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-3 text-blue-900">
-          <RefreshCw className="w-5 h-5 animate-spin text-[#0071E3]" />
+          <RefreshCw className="w-5 h-5 animate-spin text-brand" />
           <div>
             <h4 className="text-sm font-bold">Autonomous AI Pipeline Running</h4>
             <p className="text-xs opacity-80">
@@ -98,11 +98,11 @@ export function PipelineProgressTracker({ shipmentId }: { shipmentId: string }) 
             </p>
           </div>
         </div>
-        <span className="text-sm font-bold text-[#0071E3]">{progressPercent}%</span>
+        <span className="text-sm font-bold text-brand">{progressPercent}%</span>
       </div>
       <div className="w-full bg-blue-200/50 rounded-full h-2">
         <div
-          className="bg-[#0071E3] h-2 rounded-full transition-all duration-500 ease-in-out"
+          className="bg-brand h-2 rounded-full transition-all duration-500 ease-in-out"
           style={{ width: `${progressPercent}%` }}
         />
       </div>

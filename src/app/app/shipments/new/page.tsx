@@ -3,7 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Package, ShieldCheck, AlertCircle } from "lucide-react";
+import { Card, CardHeader, CardHeaderIcon } from "@/components/ui/Card";
+import { Button, buttonVariants } from "@/components/ui/Button";
+import { Input, Select, Label, FormField } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 
 export default function NewShipmentPage() {
   const router = useRouter();
@@ -68,17 +72,13 @@ export default function NewShipmentPage() {
       <div className="flex items-center space-x-4">
         <Link
           href="/app/dashboard"
-          className="p-2 bg-white border border-[#E5E5EA] rounded-xl hover:bg-[#F5F5F7] transition-all text-[#1D1D1F]"
+          className="p-2 bg-white border border-border rounded-xl hover:bg-surface-muted transition-all text-ink"
         >
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#0071E3]/10 text-[#0071E3]">
-              Shipment Management
-            </span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#1D1D1F] mt-1">Create New Shipment</h1>
+          <Badge variant="info">Shipment Management</Badge>
+          <h1 className="text-2xl font-bold tracking-tight text-ink mt-1">Create New Shipment</h1>
         </div>
       </div>
 
@@ -90,162 +90,124 @@ export default function NewShipmentPage() {
       )}
 
       {/* Form Card */}
-      <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-6">
-        <div className="border-b border-[#E5E5EA] pb-4 flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center">
-            <Package className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-[#1D1D1F]">Shipment & Importer Details</h2>
-            <p className="text-xs text-[#86868B]">Enter logistics details to initialize compliance checking & document ingestion.</p>
-          </div>
-        </div>
+      <form onSubmit={handleSubmit}>
+        <Card>
+          <CardHeader>
+            <CardHeaderIcon>
+              <Package className="w-5 h-5" />
+            </CardHeaderIcon>
+            <div>
+              <h2 className="text-base font-semibold text-ink">Shipment & Importer Details</h2>
+              <p className="text-xs text-ink-muted">Enter logistics details to initialize compliance checking & document ingestion.</p>
+            </div>
+          </CardHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Importer Name */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Importer of Record Name *</label>
-            <input
-              type="text"
-              required
-              value={formData.importerName}
-              onChange={(e) => setFormData({ ...formData, importerName: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-              placeholder="e.g. ABC Manufacturing India Pvt Ltd"
-            />
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField>
+              <Label>Importer of Record Name *</Label>
+              <Input
+                required
+                value={formData.importerName}
+                onChange={(e) => setFormData({ ...formData, importerName: e.target.value })}
+                placeholder="e.g. ABC Manufacturing India Pvt Ltd"
+              />
+            </FormField>
 
-          {/* PO Reference */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Purchase Order (PO) Reference</label>
-            <input
-              type="text"
-              value={formData.poReference}
-              onChange={(e) => setFormData({ ...formData, poReference: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-              placeholder="e.g. PO-778899"
-            />
-          </div>
+            <FormField>
+              <Label>Purchase Order (PO) Reference</Label>
+              <Input
+                value={formData.poReference}
+                onChange={(e) => setFormData({ ...formData, poReference: e.target.value })}
+                placeholder="e.g. PO-778899"
+              />
+            </FormField>
 
-          {/* Entry Type */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Customs Entry Type</label>
-            <select
-              value={formData.entryType}
-              onChange={(e) => setFormData({ ...formData, entryType: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-            >
-              <option value="Consumption Entry">Consumption Entry (Type 01)</option>
-              <option value="Informal Entry">Informal Entry (Type 11)</option>
-              <option value="In-Bond Entry">In-Bond Entry (Type 61)</option>
-              <option value="Foreign Trade Zone Entry">Foreign Trade Zone (Type 06)</option>
-              <option value="Temporary Importation under Bond">TIB Entry (Type 23)</option>
-            </select>
-          </div>
+            <FormField>
+              <Label>Customs Entry Type</Label>
+              <Select
+                value={formData.entryType}
+                onChange={(e) => setFormData({ ...formData, entryType: e.target.value })}
+              >
+                <option value="Consumption Entry">Consumption Entry (Type 01)</option>
+                <option value="Informal Entry">Informal Entry (Type 11)</option>
+                <option value="In-Bond Entry">In-Bond Entry (Type 61)</option>
+                <option value="Foreign Trade Zone Entry">Foreign Trade Zone (Type 06)</option>
+                <option value="Temporary Importation under Bond">TIB Entry (Type 23)</option>
+              </Select>
+            </FormField>
 
-          {/* Incoterm */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Incoterms & Delivery Port</label>
-            <input
-              type="text"
-              value={formData.incoterm}
-              onChange={(e) => setFormData({ ...formData, incoterm: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-              placeholder="e.g. CIF Los Angeles"
-            />
-          </div>
+            <FormField>
+              <Label>Incoterms & Delivery Port</Label>
+              <Input
+                value={formData.incoterm}
+                onChange={(e) => setFormData({ ...formData, incoterm: e.target.value })}
+                placeholder="e.g. CIF Los Angeles"
+              />
+            </FormField>
 
-          {/* Port of Entry */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">US Port of Entry</label>
-            <input
-              type="text"
-              value={formData.portOfEntry}
-              onChange={(e) => setFormData({ ...formData, portOfEntry: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-              placeholder="e.g. Port of Los Angeles (2704)"
-            />
-          </div>
+            <FormField>
+              <Label>US Port of Entry</Label>
+              <Input
+                value={formData.portOfEntry}
+                onChange={(e) => setFormData({ ...formData, portOfEntry: e.target.value })}
+                placeholder="e.g. Port of Los Angeles (2704)"
+              />
+            </FormField>
 
-          {/* Carrier Name */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Carrier / Ocean Vessel</label>
-            <input
-              type="text"
-              value={formData.carrierName}
-              onChange={(e) => setFormData({ ...formData, carrierName: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-              placeholder="e.g. Maersk Line"
-            />
-          </div>
+            <FormField>
+              <Label>Carrier / Ocean Vessel</Label>
+              <Input
+                value={formData.carrierName}
+                onChange={(e) => setFormData({ ...formData, carrierName: e.target.value })}
+                placeholder="e.g. Maersk Line"
+              />
+            </FormField>
 
-          {/* Country of Export */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Country of Export</label>
-            <input
-              type="text"
-              value={formData.countryOfExport}
-              onChange={(e) => setFormData({ ...formData, countryOfExport: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-              placeholder="e.g. Germany"
-            />
-          </div>
+            <FormField>
+              <Label>Country of Export</Label>
+              <Input
+                value={formData.countryOfExport}
+                onChange={(e) => setFormData({ ...formData, countryOfExport: e.target.value })}
+                placeholder="e.g. Germany"
+              />
+            </FormField>
 
-          {/* Estimated Arrival */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Estimated Date of Arrival (ETA)</label>
-            <input
-              type="date"
-              value={formData.estimatedArrival}
-              onChange={(e) => setFormData({ ...formData, estimatedArrival: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-            />
+            <FormField>
+              <Label>Estimated Date of Arrival (ETA)</Label>
+              <Input
+                type="date"
+                value={formData.estimatedArrival}
+                onChange={(e) => setFormData({ ...formData, estimatedArrival: e.target.value })}
+              />
+            </FormField>
+
+            <FormField>
+              <Label>Client</Label>
+              <Select
+                value={formData.clientId}
+                onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+              >
+                <option value="">No Client</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
           </div>
 
-          {/* Client */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#1D1D1F]">Client</label>
-            <select
-              value={formData.clientId}
-              onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#F5F5F7] border border-[#E5E5EA] rounded-xl text-xs text-[#1D1D1F] focus:outline-hidden focus:border-[#0071E3]"
-            >
-              <option value="">No Client</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+          {/* Submit Actions */}
+          <div className="pt-6 mt-6 border-t border-border flex items-center justify-end space-x-3">
+            <Link href="/app/dashboard" className={buttonVariants({ variant: "secondary", size: "md" })}>
+              Cancel
+            </Link>
+            <Button type="submit" loading={loading}>
+              {!loading && <ShieldCheck className="w-4 h-4" />}
+              <span>{loading ? "Creating Shipment..." : "Initialize Shipment"}</span>
+            </Button>
           </div>
-        </div>
-
-        {/* Submit Actions */}
-        <div className="pt-4 border-t border-[#E5E5EA] flex items-center justify-end space-x-3">
-          <Link
-            href="/app/dashboard"
-            className="px-4 py-2.5 border border-[#E5E5EA] text-[#1D1D1F] hover:bg-[#F5F5F7] text-xs font-semibold rounded-xl transition-all"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-5 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-2 disabled:opacity-50"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Creating Shipment...</span>
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="w-4 h-4" />
-                <span>Initialize Shipment</span>
-              </>
-            )}
-          </button>
-        </div>
+        </Card>
       </form>
     </div>
   );

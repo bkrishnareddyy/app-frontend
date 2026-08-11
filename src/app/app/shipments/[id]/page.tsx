@@ -16,6 +16,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
+import { Badge } from "@/components/ui/Badge";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
@@ -886,17 +887,17 @@ export default async function ShipmentWorkspacePage(props: {
       <PipelineProgressTracker shipmentId={shipment.id} />
 
       {/* Top Banner & Multi-Dimensional Readiness Header */}
-      <div className="bg-white p-6 rounded-3xl border border-[#E5E5EA] shadow-2xs space-y-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E5E5EA] pb-5">
+      <div className="bg-white p-6 rounded-3xl border border-border shadow-2xs space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
           <div className="flex items-center space-x-3">
             <ShipmentTitleEditor
               shipmentId={shipment.id}
               initialShipmentNumber={shipment.shipmentNumber}
               isEnterpriseAdmin={isEnterpriseAdmin}
             />
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Badge variant="success" className="text-xs tracking-normal">
               {shipment.status}
-            </span>
+            </Badge>
             <ShipmentClientEditor
               shipmentId={shipment.id}
               initialClientId={shipment.clientId}
@@ -910,7 +911,7 @@ export default async function ShipmentWorkspacePage(props: {
             {metrics.isReadyForFiling ? (
               <Link
                 href={`/app/filing?shipmentId=${shipment.id}`}
-                className="px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center space-x-2 bg-[#0071E3] text-white hover:bg-[#0071E3]/90"
+                className="px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center space-x-2 bg-brand text-white hover:bg-brand/90"
               >
                 <span>Send to Customs Filing</span>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -968,13 +969,13 @@ export default async function ShipmentWorkspacePage(props: {
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center space-x-2 pt-2 border-t border-[#E5E5EA]">
+        <div className="flex items-center space-x-2 pt-2 border-t border-border">
           <Link
             href={`/app/shipments/${shipment.id}?view=workspace`}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
               activeTab === "workspace"
-                ? "bg-[#0071E3] text-white"
-                : "bg-slate-100 text-[#86868B] hover:text-[#1D1D1F]"
+                ? "bg-brand text-white"
+                : "bg-slate-100 text-ink-muted hover:text-ink"
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
@@ -984,8 +985,8 @@ export default async function ShipmentWorkspacePage(props: {
             href={`/app/shipments/${shipment.id}?view=filing`}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
               activeTab === "filing"
-                ? "bg-[#0071E3] text-white"
-                : "bg-slate-100 text-[#86868B] hover:text-[#1D1D1F]"
+                ? "bg-brand text-white"
+                : "bg-slate-100 text-ink-muted hover:text-ink"
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
@@ -995,8 +996,8 @@ export default async function ShipmentWorkspacePage(props: {
             href={`/app/shipments/${shipment.id}?view=audit`}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
               activeTab === "audit"
-                ? "bg-[#0071E3] text-white"
-                : "bg-slate-100 text-[#86868B] hover:text-[#1D1D1F]"
+                ? "bg-brand text-white"
+                : "bg-slate-100 text-ink-muted hover:text-ink"
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
@@ -1009,50 +1010,50 @@ export default async function ShipmentWorkspacePage(props: {
         <>
           {/* Shipment Identity & Importer Overview Card */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm space-y-4">
-              <h3 className="text-xs font-extrabold text-[#1D1D1F] uppercase tracking-wider flex items-center space-x-2">
-                <Truck className="w-4 h-4 text-[#0071E3]" />
+            <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
+              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
+                <Truck className="w-4 h-4 text-brand" />
                 <span>Logistics & Entry Identity</span>
               </h3>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">Entry Type</span>
-                  <span className="font-mono text-[#1D1D1F] font-bold">
-                    {shipment.entryType || <span className="text-[#86868B]/70 italic font-normal">Not set</span>}
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">Entry Type</span>
+                  <span className="font-mono text-ink font-bold">
+                    {shipment.entryType || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">Port of Entry</span>
-                  <span className="font-medium text-[#1D1D1F]">
-                    {shipment.portOfEntry || <span className="text-[#86868B]/70 italic font-normal">Not set</span>}
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">Port of Entry</span>
+                  <span className="font-medium text-ink">
+                    {shipment.portOfEntry || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">Carrier</span>
-                  <span className="font-medium text-[#1D1D1F]">
-                    {shipment.carrierName || <span className="text-[#86868B]/70 italic font-normal">Not set</span>}
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">Carrier</span>
+                  <span className="font-medium text-ink">
+                    {shipment.carrierName || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
                   </span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-[#86868B] font-bold">Incoterm</span>
-                  <span className="font-mono font-bold text-[#0071E3]">
-                    {shipment.incoterm || <span className="text-[#86868B]/70 italic font-normal">Not set</span>}
+                  <span className="text-ink-muted font-bold">Incoterm</span>
+                  <span className="font-mono font-bold text-brand">
+                    {shipment.incoterm || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div id="importer-of-record-card" className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm space-y-4">
-              <h3 className="text-xs font-extrabold text-[#1D1D1F] uppercase tracking-wider flex items-center space-x-2">
-                <Building2 className="w-4 h-4 text-[#0071E3]" />
+            <div id="importer-of-record-card" className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
+              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
+                <Building2 className="w-4 h-4 text-brand" />
                 <span>Importer of Record Entity</span>
               </h3>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7] items-start">
-                  <span className="text-[#86868B] font-bold">Importer</span>
+                <div className="flex justify-between py-1 border-b border-surface-muted items-start">
+                  <span className="text-ink-muted font-bold">Importer</span>
                   <span className="text-right">
-                    <span className="font-bold text-[#1D1D1F] block">
-                      {importerDisplay.name || <span className="text-[#86868B]/70 italic font-normal">Not set</span>}
+                    <span className="font-bold text-ink block">
+                      {importerDisplay.name || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
                     </span>
                     {importerDisplay.sourceLabel && (
                       <span className="text-[9px] text-amber-600 font-semibold uppercase tracking-wide">
@@ -1061,16 +1062,16 @@ export default async function ShipmentWorkspacePage(props: {
                     )}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">CBP Importer #</span>
-                  <span className="font-mono text-[#1D1D1F]">
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">CBP Importer #</span>
+                  <span className="font-mono text-ink">
                     {importerOfRecord?.cbpImporterNumber || (
-                      <span className="text-[#86868B]/70 italic font-normal font-sans">Not set</span>
+                      <span className="text-ink-muted/70 italic font-normal font-sans">Not set</span>
                     )}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">POA Status</span>
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">POA Status</span>
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
                       poaStatusDisplay === "VALID"
@@ -1082,30 +1083,30 @@ export default async function ShipmentWorkspacePage(props: {
                   </span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-[#86868B] font-bold">Bond Type</span>
-                  <span className="font-medium text-[#1D1D1F]">
-                    {bondTypeDisplay || <span className="text-[#86868B]/70 italic font-normal">Not on file</span>}
+                  <span className="text-ink-muted font-bold">Bond Type</span>
+                  <span className="font-medium text-ink">
+                    {bondTypeDisplay || <span className="text-ink-muted/70 italic font-normal">Not on file</span>}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm space-y-4">
-              <h3 className="text-xs font-extrabold text-[#1D1D1F] uppercase tracking-wider flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-[#0071E3]" />
+            <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
+              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
+                <FileText className="w-4 h-4 text-brand" />
                 <span>Commercial Summary</span>
               </h3>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">Line Items</span>
-                  <span className="font-mono text-[#1D1D1F] font-bold">{displayLineItems.length} Lines</span>
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">Line Items</span>
+                  <span className="font-mono text-ink font-bold">{displayLineItems.length} Lines</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">Classification Approval</span>
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">Classification Approval</span>
                   <span
                     className={
                       displayLineItems.length === 0
-                        ? "text-[#86868B]/70 italic font-normal"
+                        ? "text-ink-muted/70 italic font-normal"
                         : classificationUnverified
                         ? "font-extrabold text-slate-500 uppercase text-[10px] tracking-wider"
                         : vagueItems.length > 0
@@ -1122,19 +1123,19 @@ export default async function ShipmentWorkspacePage(props: {
                       : "Approved"}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">Total Invoice Value</span>
-                  <span className="font-mono font-bold text-[#1D1D1F]">${totalInvoiceAmount.toLocaleString()}</span>
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">Total Invoice Value</span>
+                  <span className="font-mono font-bold text-ink">${totalInvoiceAmount.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#F5F5F7]">
-                  <span className="text-[#86868B] font-bold">Country of Export</span>
-                  <span className="font-medium text-[#1D1D1F]">
-                    {shipment.countryOfExport || <span className="text-[#86868B]/70 italic font-normal">Not set</span>}
+                <div className="flex justify-between py-1 border-b border-surface-muted">
+                  <span className="text-ink-muted font-bold">Country of Export</span>
+                  <span className="font-medium text-ink">
+                    {shipment.countryOfExport || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
                   </span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-[#86868B] font-bold">Documents Vault</span>
-                  <span className="font-mono font-bold text-[#0071E3]">{documents.length} Files</span>
+                  <span className="text-ink-muted font-bold">Documents Vault</span>
+                  <span className="font-mono font-bold text-brand">{documents.length} Files</span>
                 </div>
               </div>
             </div>
@@ -1162,7 +1163,7 @@ export default async function ShipmentWorkspacePage(props: {
             </div>
 
             {/* Center Column: Embedded Document Viewer */}
-            <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-[#E5E5EA] shadow-2xs space-y-4 flex flex-col justify-between overflow-hidden min-h-[480px]">
+            <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-border shadow-2xs space-y-4 flex flex-col justify-between overflow-hidden min-h-[480px]">
               {primaryDoc ? (
                 (() => {
                   const proxyUrl = primaryDoc.fileUrl?.includes("vercel-storage.com")
@@ -1211,7 +1212,7 @@ export default async function ShipmentWorkspacePage(props: {
                     <div className="flex flex-col justify-between h-full space-y-4">
                       <div>
                         {/* Document type, name, and tabbed preview / key-value / raw JSON */}
-                        <div className="h-[620px] flex flex-col border-b border-[#E5E5EA] pb-4 overflow-hidden">
+                        <div className="h-[620px] flex flex-col border-b border-border pb-4 overflow-hidden">
                           <DocumentReviewPanel
                             documentId={primaryDoc.id}
                             fileName={primaryDoc.fileName || "Trade Document"}
@@ -1227,9 +1228,9 @@ export default async function ShipmentWorkspacePage(props: {
                         </div>
 
                         {/* Document Metadata Details */}
-                        <div className="mt-4 p-4 rounded-xl bg-[#F9F9FB] border border-[#E5E5EA] space-y-3">
-                          <div className="flex items-center justify-between text-xs pb-2 border-b border-[#E5E5EA]">
-                            <span className="text-[#86868B]">Document Status</span>
+                        <div className="mt-4 p-4 rounded-xl bg-[#F9F9FB] border border-border space-y-3">
+                          <div className="flex items-center justify-between text-xs pb-2 border-b border-border">
+                            <span className="text-ink-muted">Document Status</span>
                             {primaryDoc.extractedJson ? (
                               <span className="font-bold text-emerald-600">Verified & Ingested (AI Vision Parsed)</span>
                             ) : (
@@ -1238,12 +1239,12 @@ export default async function ShipmentWorkspacePage(props: {
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-xs">
                             <div>
-                              <p className="text-[10px] text-[#86868B] uppercase font-bold">Page Count</p>
-                              <p className="font-mono text-[#1D1D1F]">{primaryDoc.pageCount ? `${primaryDoc.pageCount} Pages` : "1 Page"}</p>
+                              <p className="text-[10px] text-ink-muted uppercase font-bold">Page Count</p>
+                              <p className="font-mono text-ink">{primaryDoc.pageCount ? `${primaryDoc.pageCount} Pages` : "1 Page"}</p>
                             </div>
                             <div>
-                              <p className="text-[10px] text-[#86868B] uppercase font-bold">Uploaded Date</p>
-                              <p className="text-[#1D1D1F]">{new Date(primaryDoc.createdAt).toLocaleDateString()}</p>
+                              <p className="text-[10px] text-ink-muted uppercase font-bold">Uploaded Date</p>
+                              <p className="text-ink">{new Date(primaryDoc.createdAt).toLocaleDateString()}</p>
                             </div>
                           </div>
                         </div>
@@ -1267,7 +1268,7 @@ export default async function ShipmentWorkspacePage(props: {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-[#86868B] pt-3 border-t border-[#E5E5EA]">
+                      <div className="flex items-center justify-between text-xs text-ink-muted pt-3 border-t border-border">
                         <span>Vault Document ID: {primaryDoc.id.slice(0, 16)}...</span>
                         <span>Qubere Document Vault</span>
                       </div>
@@ -1276,10 +1277,10 @@ export default async function ShipmentWorkspacePage(props: {
                 })()
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-12 text-xs">
-                  <FileText className="w-10 h-10 text-[#86868B] opacity-50" />
+                  <FileText className="w-10 h-10 text-ink-muted opacity-50" />
                   <div className="space-y-1">
-                    <h4 className="font-extrabold text-[#1D1D1F]">No Trade Documents Attached</h4>
-                    <p className="text-[#86868B] text-[11px]">Upload a Commercial Invoice, Bill of Lading, or Packing List to run vision extraction.</p>
+                    <h4 className="font-extrabold text-ink">No Trade Documents Attached</h4>
+                    <p className="text-ink-muted text-[11px]">Upload a Commercial Invoice, Bill of Lading, or Packing List to run vision extraction.</p>
                   </div>
                 </div>
               )}
@@ -1291,12 +1292,12 @@ export default async function ShipmentWorkspacePage(props: {
               items, independent of whichever document happens to be
               selected above (that panel shows one document's raw, possibly
               wrong-shipment extraction; this is ground truth). */}
-          <div className="bg-white p-6 rounded-3xl border border-[#E5E5EA] shadow-sm">
-            <h3 className="text-xs font-extrabold text-[#1D1D1F] uppercase tracking-wider flex items-center space-x-2 mb-1">
-              <CheckCircle2 className="w-4 h-4 text-[#0071E3]" />
+          <div className="bg-white p-6 rounded-3xl border border-border shadow-sm">
+            <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2 mb-1">
+              <CheckCircle2 className="w-4 h-4 text-brand" />
               <span>Verified Line Items</span>
             </h3>
-            <p className="text-[11px] text-[#86868B] mb-2">
+            <p className="text-[11px] text-ink-muted mb-2">
               This shipment's confirmed line items, regardless of which document is selected in the viewer above.
             </p>
             <LineItemsTable
@@ -1308,19 +1309,19 @@ export default async function ShipmentWorkspacePage(props: {
         </>
       ) : (
         /* Secondary Audit Tab: Agent Executions & Event Logs */
-        <div className="apple-card p-6 rounded-3xl border border-[#E5E5EA] bg-white shadow-sm space-y-6">
+        <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-6">
           <div>
-            <h3 className="text-lg font-bold text-[#1D1D1F] flex items-center space-x-2">
-              <Layers className="w-5 h-5 text-[#0071E3]" />
+            <h3 className="text-lg font-bold text-ink flex items-center space-x-2">
+              <Layers className="w-5 h-5 text-brand" />
               <span>Agent Execution Runs</span>
             </h3>
-            <p className="text-xs text-[#86868B] mt-0.5">
+            <p className="text-xs text-ink-muted mt-0.5">
               Every agent run on this shipment, grouped by invocation. Expand a run to see the per-agent waterfall.
             </p>
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-xs font-extrabold uppercase text-[#86868B] tracking-wider">
+            <h4 className="text-xs font-extrabold uppercase text-ink-muted tracking-wider">
               Run History ({agentInvocations.length})
             </h4>
             <AgentExecutionTimeline invocations={agentInvocations} />

@@ -11,20 +11,20 @@ export function PanelHeading({ icon: Icon, badge, title, subtitle, compact }: Pa
   if (compact) {
     return (
       <div>
-        <h1 className="text-lg font-bold text-[#1D1D1F] tracking-tight">{title}</h1>
-        <p className="text-[#86868B] text-xs mt-0.5">{subtitle}</p>
+        <h1 className="text-lg font-bold text-ink tracking-tight">{title}</h1>
+        <p className="text-ink-muted text-xs mt-0.5">{subtitle}</p>
       </div>
     );
   }
 
   return (
     <div>
-      <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[#0071E3] text-xs font-semibold mb-3">
+      <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-brand text-xs font-semibold mb-3">
         <Icon className="w-3.5 h-3.5" />
         <span>{badge}</span>
       </div>
-      <h1 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">{title}</h1>
-      <p className="text-[#86868B] text-sm mt-1">{subtitle}</p>
+      <h1 className="text-3xl font-extrabold text-ink tracking-tight">{title}</h1>
+      <p className="text-ink-muted text-sm mt-1">{subtitle}</p>
     </div>
   );
 }

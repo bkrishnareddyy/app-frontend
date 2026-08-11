@@ -30,10 +30,10 @@ export function AccountProfilePanel({ accountName, account, userRole, onSaved, c
       />
 
       {!compact && (
-        <div className="p-4 bg-white border border-[#E5E5EA] rounded-2xl text-xs text-[#86868B] flex items-center space-x-3 shadow-xs">
-          <Info className="w-5 h-5 text-[#0071E3] shrink-0" />
+        <div className="p-4 bg-white border border-border rounded-2xl text-xs text-ink-muted flex items-center space-x-3 shadow-xs">
+          <Info className="w-5 h-5 text-brand shrink-0" />
           <span>
-            <strong className="text-[#1D1D1F]">Audit Compliance Notice:</strong> Any modification to account attributes or operational status is immutably logged to the account audit trail.
+            <strong className="text-ink">Audit Compliance Notice:</strong> Any modification to account attributes or operational status is immutably logged to the account audit trail.
           </span>
         </div>
       )}

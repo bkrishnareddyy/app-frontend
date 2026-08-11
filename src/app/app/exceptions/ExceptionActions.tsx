@@ -83,7 +83,7 @@ export function ExceptionActions({
   }, [open, hasShipment, shipmentSearch]);
 
   if (!canWrite) {
-    return <p className="text-sm text-[#86868B] pt-1">{readOnlyMessage}</p>;
+    return <p className="text-sm text-ink-muted pt-1">{readOnlyMessage}</p>;
   }
 
   if (!open) {
@@ -91,7 +91,7 @@ export function ExceptionActions({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-sm font-semibold text-[#0071E3] hover:underline pt-1"
+        className="text-sm font-semibold text-brand hover:underline pt-1"
       >
         Update this exception
       </button>
@@ -157,12 +157,12 @@ export function ExceptionActions({
   };
 
   return (
-    <div className="pt-3 mt-2 border-t border-[#E5E5EA] space-y-3">
+    <div className="pt-3 mt-2 border-t border-border space-y-3">
       <div className="flex flex-wrap gap-3">
         <div>
           <label
             htmlFor={`status-${exceptionId}`}
-            className="block text-xs font-semibold text-[#86868B] mb-1"
+            className="block text-xs font-semibold text-ink-muted mb-1"
           >
             Status
           </label>
@@ -170,7 +170,7 @@ export function ExceptionActions({
             id={`status-${exceptionId}`}
             value={nextStatus}
             onChange={(e) => setNextStatus(normalizeExceptionStatus(e.target.value) ?? nextStatus)}
-            className="h-10 px-3 rounded-xl border border-[#E5E5EA] text-sm bg-white"
+            className="h-10 px-3 rounded-xl border border-border text-sm bg-white"
           >
             {EXCEPTION_STATES.map((state) => (
               <option key={state} value={state}>
@@ -185,7 +185,7 @@ export function ExceptionActions({
             <div>
               <label
                 htmlFor={`shipment-search-${exceptionId}`}
-                className="block text-xs font-semibold text-[#86868B] mb-1"
+                className="block text-xs font-semibold text-ink-muted mb-1"
               >
                 Find a shipment
               </label>
@@ -194,13 +194,13 @@ export function ExceptionActions({
                 type="search"
                 value={shipmentSearch}
                 onChange={(e) => setShipmentSearch(e.target.value)}
-                className="h-10 px-3 rounded-xl border border-[#E5E5EA] text-sm"
+                className="h-10 px-3 rounded-xl border border-border text-sm"
               />
             </div>
             <div>
               <label
                 htmlFor={`shipment-${exceptionId}`}
-                className="block text-xs font-semibold text-[#86868B] mb-1"
+                className="block text-xs font-semibold text-ink-muted mb-1"
               >
                 Attach to shipment
               </label>
@@ -208,7 +208,7 @@ export function ExceptionActions({
                 id={`shipment-${exceptionId}`}
                 value={shipmentId}
                 onChange={(e) => setShipmentId(e.target.value)}
-                className="h-10 px-3 rounded-xl border border-[#E5E5EA] text-sm bg-white max-w-xs"
+                className="h-10 px-3 rounded-xl border border-border text-sm bg-white max-w-xs"
               >
                 <option value="">Leave unattached</option>
                 {shipments.map((s) => (
@@ -224,7 +224,7 @@ export function ExceptionActions({
       </div>
 
       {!hasShipment && shipmentTotal !== null && shipmentTotal > shipments.length && (
-        <p role="status" className="text-sm text-[#86868B]">
+        <p role="status" className="text-sm text-ink-muted">
           Showing {shipments.length} of {shipmentTotal} shipments. Search to narrow the list.
         </p>
       )}
@@ -240,7 +240,7 @@ export function ExceptionActions({
         <div>
           <label
             htmlFor={`reason-${exceptionId}`}
-            className="block text-xs font-semibold text-[#86868B] mb-1"
+            className="block text-xs font-semibold text-ink-muted mb-1"
           >
             Why is this being closed? Stored in the audit log, because no column holds it.
           </label>
@@ -249,7 +249,7 @@ export function ExceptionActions({
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 rounded-xl border border-[#E5E5EA] text-sm"
+            className="w-full px-3 py-2 rounded-xl border border-border text-sm"
           />
         </div>
       )}
@@ -270,7 +270,7 @@ export function ExceptionActions({
           type="button"
           onClick={submit}
           disabled={submitting}
-          className="h-10 px-4 rounded-xl bg-[#0071E3] text-white text-sm font-semibold disabled:opacity-60"
+          className="h-10 px-4 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-60"
         >
           {submitting ? "Saving…" : "Save"}
         </button>

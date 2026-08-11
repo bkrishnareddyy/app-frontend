@@ -31,7 +31,7 @@ export function ClientFilter({ clients }: ClientFilterProps) {
             tableHref(pathname, searchParams, resetPage({ client: event.target.value || null }))
           )
         }
-        className="px-3 py-1.5 rounded-xl border border-[#E5E5EA] bg-white text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071E3]"
+        className="px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold text-ink hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <option value="">All Clients</option>
         <option value="UNASSIGNED">No Client</option>
