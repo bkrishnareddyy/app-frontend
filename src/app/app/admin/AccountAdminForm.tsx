@@ -77,23 +77,16 @@ export function AccountAdminForm({ account, userRole, onSaved }: AccountAdminFor
         </div>
       )}
 
-      {/* Read-only Metadata Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-4 bg-white border border-border rounded-2xl shadow-xs">
-          <span className="text-xs font-bold text-ink-muted uppercase tracking-wider block mb-1">
-            Account ID
-          </span>
+      {/* Account Identity Card */}
+      <div className="p-4 bg-white border border-border rounded-2xl shadow-xs flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-bold text-ink uppercase tracking-wider">Account ID</span>
+            <Badge variant="warning" className="shrink-0 font-semibold">Enterprise</Badge>
+          </div>
           <p className="font-mono text-xs text-ink select-all">{account.id}</p>
         </div>
-
-        <div className="p-4 bg-white border border-border rounded-2xl shadow-xs">
-          <span className="text-xs font-bold text-ink-muted uppercase tracking-wider block mb-1">
-            Account Type
-          </span>
-          <Badge variant="info" className="font-mono normal-case">
-            {account.type}
-          </Badge>
-        </div>
+        <Badge variant="info" className="font-mono normal-case shrink-0">{account.type}</Badge>
       </div>
 
       {/* Country & Language Localization Preference (New Profile Section) */}
@@ -159,7 +152,7 @@ export function AccountAdminForm({ account, userRole, onSaved }: AccountAdminFor
         </h3>
 
         <div>
-          <Label className="block mb-1.5">Account / Workspace Name</Label>
+          <Label className="block mb-1.5">Account Name</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}

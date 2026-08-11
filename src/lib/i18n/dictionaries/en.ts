@@ -52,11 +52,11 @@ export const en = {
   },
   // Documents Page
   documents: {
-    title: "Trade Documents & AI Ingestion",
-    subtitle: "Click document names to view in modal. Click Action buttons to open in a new tab.",
+    title: "Trade Documents",
+    subtitle: "",
     uploadButton: "Upload Document",
     searchPlaceholder: "Search documents by name, type, or shipment...",
-    allTypes: "All Document Types (150+)",
+    allTypes: "All Document Types",
     colName: "Document Name",
     colType: "Type / Category",
     colShipment: "Target Shipment",

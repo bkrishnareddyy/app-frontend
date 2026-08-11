@@ -58,7 +58,7 @@ export const es: TranslationKeys = {
     subtitle: "Haga clic en los nombres para ver la vista previa. Haga clic en Acciones para abrir en una nueva pestaña.",
     uploadButton: "Subir Documento",
     searchPlaceholder: "Buscar documentos por nombre, tipo o embarque...",
-    allTypes: "Todos los Tipos de Documentos (150+)",
+    allTypes: "Todos los Tipos de Documentos",
     colName: "Nombre del Documento",
     colType: "Tipo / Categoría",
     colShipment: "Embarque Destino",

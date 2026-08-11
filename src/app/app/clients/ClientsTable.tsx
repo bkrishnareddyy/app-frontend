@@ -296,9 +296,6 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                         <Building2 className="w-3.5 h-3.5 text-brand" />
                         <span>Legal Entities & Customs Profiles under {c.name}</span>
                       </h4>
-                      <span className="text-[11px] text-ink-muted">
-                        Domain Rule: <strong className="text-ink">Client ≠ Importer of Record</strong>
-                      </span>
                     </div>
 
                     {c.legalEntities.length === 0 ? (

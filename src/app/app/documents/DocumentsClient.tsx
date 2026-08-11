@@ -20,6 +20,8 @@ import {
   FileCheck2,
   Maximize2,
   Users,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { documentViewUrl } from "@/lib/documentUrl";
@@ -181,6 +183,8 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     }
   };
 
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedType, selectedClientId, selectedShipmentId, selectedStatus, selectedUserIds]);
+
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
@@ -241,6 +245,11 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     return matchesSearch && matchesType && matchesClient && matchesShipment && matchesStatus;
   });
 
+  const PAGE_SIZE = 15;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filteredDocs.length / PAGE_SIZE));
+  const pagedDocs = filteredDocs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   const isImageFile = (url: string, name: string) => {
     const ext = (url || name).toLowerCase();
     return ext.includes(".png") || ext.includes(".jpg") || ext.includes(".jpeg") || ext.includes(".webp");
@@ -254,27 +263,16 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-border shadow-xs">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide uppercase bg-blue-50 text-brand border border-blue-100">
-              Agent 1 & 2 Ingestion
-            </span>
-            <span className="text-xs text-ink-muted">150+ Dynamic Trade Document Types</span>
-          </div>
-          <h1 className="text-2xl font-extrabold text-ink tracking-tight mt-1">
-            {t.documents.title}
-          </h1>
-          <p className="text-xs text-ink-muted mt-0.5">
-            {t.documents.subtitle}
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-4 bg-white px-5 py-3 rounded-2xl border border-border shadow-xs">
+        <h1 className="text-base font-bold text-ink tracking-tight">
+          {t.documents.title}
+        </h1>
 
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-full bg-brand hover:bg-brand-hover text-white text-xs font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer"
+          className="inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-full bg-brand hover:bg-brand-hover text-white text-xs font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>{t.documents.uploadButton}</span>
         </button>
       </div>
@@ -504,7 +502,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                   </td>
                 </tr>
               ) : (
-                filteredDocs.map((doc) => (
+                pagedDocs.map((doc) => (
                   <tr key={doc.id} className="hover:bg-surface-muted/50 transition-colors">
                     {/* Document Name Click triggers Modal */}
                     <td className="py-3.5 px-5 font-semibold text-ink">
@@ -569,6 +567,39 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+            <span className="text-xs text-ink-muted">
+              {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredDocs.length)} of {filteredDocs.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg hover:bg-surface-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4 text-ink-muted" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setCurrentPage(p)}
+                  className={`w-7 h-7 rounded-lg text-xs font-semibold transition-colors ${p === currentPage ? "bg-brand text-white" : "hover:bg-surface-muted text-ink-muted"}`}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg hover:bg-surface-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4 text-ink-muted" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Reusable Document Viewer Modal */}
