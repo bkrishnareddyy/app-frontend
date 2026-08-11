@@ -16,6 +16,7 @@ export interface MemberItem {
   lastName?: string | null;
   status: string;
   createdAt: string;
+  updatedAt?: string | null;
   // A membership can hold multiple roles simultaneously (e.g. Admin + Agent).
   roleNames: string[];
 }
@@ -36,10 +37,13 @@ export function UserManagementTable({ members, currentUserId, availableRoles, on
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState(availableRoles.find((r) => r !== "OWNER") ?? availableRoles[0] ?? "");
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   const [loadingMembershipId, setLoadingMembershipId] = useState<string | null>(null);
   const [, setSelectedMember] = useState<MemberItem | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const visibleMembers = showInactive ? members : members.filter((m) => m.status === "ACTIVE");
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,11 +214,20 @@ export function UserManagementTable({ members, currentUserId, availableRoles, on
 
       {/* Members Table */}
       <div className="apple-card rounded-3xl border border-border bg-white shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-border">
+        <div className="p-6 border-b border-border flex items-center justify-between gap-4">
           <h3 className="text-lg font-bold text-ink flex items-center space-x-2">
             <Users className="w-5 h-5 text-brand" />
-            <span>Account Members ({members.length})</span>
+            <span>Active Account Members ({visibleMembers.length})</span>
           </h3>
+          <label className="flex items-center gap-2 text-xs font-semibold text-ink-muted cursor-pointer select-none">
+            <div
+              onClick={() => setShowInactive((v) => !v)}
+              className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${showInactive ? "bg-brand" : "bg-border"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${showInactive ? "translate-x-4" : ""}`} />
+            </div>
+            Show inactive users
+          </label>
         </div>
 
         <div className="overflow-x-auto">
@@ -223,13 +236,12 @@ export function UserManagementTable({ members, currentUserId, availableRoles, on
               <tr>
                 <th className="px-6 py-4">User Identity</th>
                 <th className="px-6 py-4">Role</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Joined Date</th>
+                <th className="px-6 py-4">Membership Dates</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {members.map((m) => {
+              {visibleMembers.map((m) => {
                 const name =
                   m.firstName || m.lastName
                     ? `${m.firstName ?? ""} ${m.lastName ?? ""}`.trim()
@@ -237,8 +249,10 @@ export function UserManagementTable({ members, currentUserId, availableRoles, on
 
                 const isSelf = m.userId === currentUserId;
 
+                const isInactive = m.status !== "ACTIVE";
+
                 return (
-                  <tr key={m.membershipId} className="hover:bg-slate-50 transition-colors">
+                  <tr key={m.membershipId} className={`hover:bg-slate-50 transition-colors ${isInactive ? "opacity-50" : ""}`}>
                     <td className="px-6 py-4">
                       <div className="font-bold text-ink flex items-center space-x-2">
                         <span>{name}</span>
@@ -275,12 +289,15 @@ export function UserManagementTable({ members, currentUserId, availableRoles, on
                       </div>
                     </td>
 
-                    <td className="px-6 py-4">
-                      <Badge variant={m.status === "ACTIVE" ? "success" : "danger"}>{m.status}</Badge>
-                    </td>
-
                     <td className="px-6 py-4 text-xs text-ink-muted">
-                      {formatDate(m.createdAt)}
+                      <div>
+                        <span className="font-semibold text-ink-muted">Start:</span> {formatDate(m.createdAt)}
+                      </div>
+                      {isInactive && m.updatedAt && (
+                        <div>
+                          <span className="font-semibold text-ink-muted">Disabled:</span> {formatDate(m.updatedAt)}
+                        </div>
+                      )}
                     </td>
 
                     <td className="px-6 py-4 text-right space-x-2">

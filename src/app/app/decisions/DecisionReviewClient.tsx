@@ -364,7 +364,6 @@ export function DecisionReviewClient({
             </div>
             <div>
               <h1 className="text-xl font-extrabold text-ink tracking-tight">Document &amp; Agent Decision Review Center</h1>
-              <p className="text-xs text-ink-muted">One card per uploaded document — every agent check it triggered, reviewed together.</p>
             </div>
           </div>
         </div>
@@ -443,19 +442,10 @@ export function DecisionReviewClient({
                         <span className="font-extrabold text-ink min-w-0 break-all">{g.documentName}</span>
                       </div>
                       <span
-                        className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${
-                          g.status === "Needs Review" ? "bg-amber-100 text-amber-900 border-amber-300" : "bg-emerald-100 text-emerald-900 border-emerald-300"
+                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                          g.status === "Needs Review" ? "bg-amber-400" : "bg-emerald-500"
                         }`}
-                      >
-                        {g.status}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center space-x-1.5 text-[10px] font-bold text-brand">
-                      <Layers className="w-3 h-3" />
-                      <span>
-                        {approvedCount} of {g.decisions.length} agent checks approved
-                      </span>
+                      />
                     </div>
 
                     <div className="flex items-center justify-between pt-1 text-[10px]">

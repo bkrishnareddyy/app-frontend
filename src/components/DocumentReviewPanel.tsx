@@ -664,12 +664,8 @@ export function DocumentReviewPanel({
             <p id={titleId} className="text-xs text-ink-muted mt-0.5">
               {hasFieldReview ? (
                 <>
-                  {mechanicalDecisions.length + reviewableDecisions.length} agent checks
                   {shipmentNumber && (
-                    <>
-                      {" · "}
-                      <span className="font-mono text-brand font-bold">{shipmentNumber}</span>
-                    </>
+                    <span className="font-mono text-brand font-bold">{shipmentNumber}</span>
                   )}
                 </>
               ) : (

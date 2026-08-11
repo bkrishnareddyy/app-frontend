@@ -311,23 +311,12 @@ export function ShipmentsWorkbenchClient({
   );
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-brand/10 text-brand">
-              Shipment Operations Console
-            </span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink mt-1">
-            Shipment Workbench
-          </h1>
-          <p className="text-xs text-ink-muted">
-            Active shipment management, document intake status, and readiness tracking for{" "}
-            <strong className="text-ink">{context.accountName}</strong>.
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold tracking-tight text-ink">
+          Shipment Workbench
+        </h1>
 
         <div className="flex items-center space-x-3">
           <Link
@@ -499,7 +488,7 @@ export function ShipmentsWorkbenchClient({
       {/* Main Table Section */}
       <div className="bg-white rounded-2xl border border-border shadow-2xs overflow-hidden">
         {/* Table Header Bar */}
-        <div className="p-4 md:p-5 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#FAF9F6]/50">
+        <div className="px-4 py-2.5 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#FAF9F6]/50">
           <div className="flex items-center space-x-2">
             <h2 className="text-sm font-bold text-ink">All Shipments</h2>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-border text-ink">
