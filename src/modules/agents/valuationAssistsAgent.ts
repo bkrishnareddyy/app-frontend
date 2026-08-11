@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
+import { Prisma } from "@prisma/client";
 
 export interface ValuationAdjustment {
   type: string;
@@ -178,6 +179,11 @@ export class ValuationAssistsAgent {
                 ]
               : []),
           ],
+          evidenceItems: {
+            enteredCustomsValue,
+            valuationMethod: "METHOD_1_TRANSACTION_VALUE",
+            adjustments,
+          } as unknown as Prisma.InputJsonValue,
         },
       });
       agentDecisionId = agentDecision.id;

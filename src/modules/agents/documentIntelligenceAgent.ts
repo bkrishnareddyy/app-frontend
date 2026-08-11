@@ -712,6 +712,8 @@ INSTRUCTIONS:
             incoterm: incoterm || null,
             hasCommercialInvoice,
             lineItemCount: lineItems.length,
+            primaryAgency: filingDetermination?.primaryAgency || "CBP",
+            rawKeyValueCount: Object.keys(rawDiscoveredKeyValues).length,
           },
         },
       });
