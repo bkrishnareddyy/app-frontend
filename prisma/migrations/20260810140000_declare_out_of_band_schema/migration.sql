@@ -58,6 +58,27 @@ ALTER TABLE "AgentExecutionLog" ADD COLUMN IF NOT EXISTS "runId" TEXT,
 -- AlterTable
 ALTER TABLE "AgentExecutionRecord" ADD COLUMN IF NOT EXISTS "runId" TEXT;
 
+-- CreateTable (HtsRelease also created out-of-band)
+CREATE TABLE IF NOT EXISTS "HtsRelease" (
+    "id" TEXT NOT NULL,
+    "country" TEXT NOT NULL DEFAULT 'US',
+    "editionYear" INTEGER NOT NULL,
+    "revisionNumber" INTEGER NOT NULL,
+    "releaseName" TEXT NOT NULL,
+    "effectiveFrom" TIMESTAMP(3) NOT NULL,
+    "publishedAt" TIMESTAMP(3),
+    "sourceUrl" TEXT NOT NULL,
+    "sourceFormat" TEXT NOT NULL,
+    "sha256" TEXT NOT NULL,
+    "rawObjectKey" TEXT,
+    "retrievedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "validationStatus" TEXT NOT NULL,
+    "publicationStatus" TEXT NOT NULL DEFAULT 'DRAFT',
+    "supersedesReleaseId" TEXT,
+
+    CONSTRAINT "HtsRelease_pkey" PRIMARY KEY ("id")
+);
+
 -- AlterTable
 ALTER TABLE "HtsRelease" ADD COLUMN IF NOT EXISTS "country" TEXT NOT NULL DEFAULT 'US';
 
