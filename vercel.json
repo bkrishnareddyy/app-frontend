@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/document-processing",
       "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/inbound-email-processing",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
