@@ -30,6 +30,7 @@ import { DomainError } from "@/lib/api/error";
 import {
   parseCsv,
   validateImport,
+  hasCsvExtension,
   type ImportProductRow,
   type ImportRowError,
   type ImportRowResult,
@@ -107,9 +108,22 @@ export async function previewImport(
   content: string,
   fileName: string | null
 ): Promise<ImportPreview> {
+  const counts = emptyCounts();
+
+  if (fileName !== null && !hasCsvExtension(fileName)) {
+    return {
+      contentDigest: digestContent(content),
+      fileName,
+      totalRows: 0,
+      counts,
+      rows: [],
+      unmappedHeaders: [],
+      fileErrors: [{ column: null, message: "Please upload a CSV file (.csv)." }],
+    };
+  }
+
   const parsed = parseOrThrow(content);
   const validation = validateImport(parsed);
-  const counts = emptyCounts();
 
   if (validation.fileErrors.length > 0) {
     return {
@@ -216,6 +230,10 @@ export async function commitImport(
       "PRODUCT_IMPORT_DIGEST_MISMATCH",
       409
     );
+  }
+
+  if (fileName !== null && !hasCsvExtension(fileName)) {
+    throw new DomainError("Please upload a CSV file (.csv).", "PRODUCT_IMPORT_INVALID_FILE", 400);
   }
 
   const parsed = parseOrThrow(content);
@@ -371,4 +389,103 @@ function toCreateInput(row: ImportProductRow): CreateProductInput {
 /** Products that were never checked against the catalogue, for the import screen. */
 export async function countProducts(actor: ProductActor): Promise<number> {
   return db.product.count({ where: { accountId: actor.accountId, deletedAt: null } });
+}
+
+export interface BulkCreateProductItemResult {
+  index: number;
+  outcome: ImportRowOutcome;
+  productId: string | null;
+  matchExplanation: string | null;
+  error: string | null;
+}
+
+export interface BulkCreateProductResult {
+  counts: Record<ImportRowOutcome, number>;
+  results: readonly BulkCreateProductItemResult[];
+  createdProductIds: readonly string[];
+}
+
+/**
+ * Creates products straight from JSON — the machine-integration counterpart
+ * to the CSV importer, for a caller that already has structured records
+ * rather than a spreadsheet. Mirrors `bulkCreateParties`: each item goes
+ * through the same matcher a CSV row goes through before anything is
+ * written, an `EXACT_MATCH` is reported `ALREADY_PRESENT` and left alone, a
+ * `POSSIBLE_MATCH`/`AMBIGUOUS` is reported `NEEDS_REVIEW` and left alone, and
+ * only `NO_MATCH` items are created. This is insert-only, never an update of
+ * a matched product. There is no `classifications` field here, same as the
+ * single-item `POST /api/products`: a tariff classification has its own
+ * lifecycle and its own endpoint, not something a create payload can carry.
+ *
+ * One item failing on a constraint the schema could not see (e.g. a race on
+ * `internalSku`) is reported as that item's own `FAILED` outcome; it does not
+ * abort the rest of the batch.
+ */
+export async function bulkCreateProducts(
+  actor: ProductActor,
+  items: readonly CreateProductInput[]
+): Promise<BulkCreateProductResult> {
+  const counts = emptyCounts();
+  const results: BulkCreateProductItemResult[] = [];
+  const createdProductIds: string[] = [];
+
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!;
+
+    const match = await findProductMatches(actor, {
+      identifiers: (item.identifiers ?? []).map((identifier) => ({
+        identifierType: identifier.identifierType,
+        value: identifier.value,
+      })),
+      productName: item.productName,
+      brand: item.brand ?? null,
+    });
+
+    if (match.status !== "NO_MATCH") {
+      const outcome: ImportRowOutcome = match.status === "EXACT_MATCH" ? "ALREADY_PRESENT" : "NEEDS_REVIEW";
+      const first = match.candidates[0] ?? null;
+      counts[outcome] += 1;
+      results.push({
+        index,
+        outcome,
+        productId: outcome === "ALREADY_PRESENT" ? (first?.productId ?? null) : null,
+        matchExplanation: first?.explanation ?? null,
+        error: null,
+      });
+      continue;
+    }
+
+    try {
+      const created = await createProduct(actor, item);
+      createdProductIds.push(created.id);
+      counts.CREATED += 1;
+      results.push({ index, outcome: "CREATED", productId: created.id, matchExplanation: null, error: null });
+    } catch (error) {
+      counts.FAILED += 1;
+      results.push({
+        index,
+        outcome: "FAILED",
+        productId: null,
+        matchExplanation: null,
+        error: error instanceof Error ? error.message : "The item could not be written.",
+      });
+    }
+  }
+
+  await createAuditLog({
+    accountId: actor.accountId,
+    userId: actor.userId,
+    action: "product.bulk.create",
+    entity: "Product",
+    entityId: actor.requestId ?? "bulk-create",
+    metadata: {
+      counts,
+      itemCount: items.length,
+      // Item *contents* are deliberately absent, matching the CSV import audit
+      // entry: this carries commercial detail, not something to duplicate here.
+    },
+    requestId: actor.requestId ?? null,
+  });
+
+  return { counts, results, createdProductIds };
 }

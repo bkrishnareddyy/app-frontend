@@ -50,6 +50,19 @@ export class CsvParseError extends Error {
 }
 
 /**
+ * Whether a browser-reported file name looks like a CSV export, not a rename
+ * of some other file type. This is not a content sniff — a `.csv`-named file
+ * can still fail to parse, and that failure is reported on its own terms by
+ * `parseCsv`. What this catches is the file a user picked with "All Files"
+ * and never meant to be read as a spreadsheet: an `.xlsx`, a `.pdf`, an image.
+ * Those decode to garbled text and would otherwise fail as an opaque "missing
+ * SKU column" error instead of the specific problem it actually is.
+ */
+export function hasCsvExtension(fileName: string): boolean {
+  return /\.csv$/i.test(fileName.trim());
+}
+
+/**
  * An RFC 4180 reader: quoted fields, doubled quotes inside them, embedded commas
  * and newlines. Written out rather than pulled in as a dependency because the
  * grammar is small and the failure modes of a loose split-on-comma — a product

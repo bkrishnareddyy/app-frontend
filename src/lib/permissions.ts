@@ -20,7 +20,7 @@ export interface PermissionDefinition {
   /** What holding it lets a person do, in the words the admin screen shows. */
   description: string;
   /** Grouping for display only. */
-  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence" | "Products";
+  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence" | "Products" | "Parties";
   /** Roles that receive it when the catalogue is synced. */
   defaultRoles: readonly SystemRole[];
 }
@@ -137,6 +137,42 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     name: "products.origin.verify",
     description: "Mark a product's claimed country of origin as verified against its evidence.",
     category: "Products",
+    defaultRoles: ADMIN_ONLY,
+  },
+  {
+    name: "parties.create",
+    description: "Add a party to the party master.",
+    category: "Parties",
+    defaultRoles: ALL_BUT_VIEWER,
+  },
+  {
+    name: "parties.edit",
+    description: "Change a party's names, identifiers, registrations, addresses, contacts, roles and relationships.",
+    category: "Parties",
+    defaultRoles: ALL_BUT_VIEWER,
+  },
+  {
+    name: "parties.import",
+    description: "Import parties in bulk from a spreadsheet.",
+    category: "Parties",
+    defaultRoles: ADMIN_ONLY,
+  },
+  {
+    name: "parties.review.approve",
+    description: "Approve a party's master data, making it the reviewed record of who this party is.",
+    category: "Parties",
+    defaultRoles: ADMIN_ONLY,
+  },
+  {
+    name: "parties.registration.verify",
+    description: "Mark a party's registration as verified against its evidence.",
+    category: "Parties",
+    defaultRoles: ADMIN_ONLY,
+  },
+  {
+    name: "parties.revalidation.resolve",
+    description: "Close a party revalidation flag after looking again. This is not a screening result.",
+    category: "Parties",
     defaultRoles: ADMIN_ONLY,
   },
 ] as const;

@@ -312,3 +312,16 @@ export const importCommitSchema = z.object({
   /** Rows the user chose to keep, by row number in the uploaded file. */
   acceptedRows: z.array(z.number().int().min(1)).max(50_000).optional(),
 });
+
+/**
+ * Kept well below the CSV path's implicit row count: this runs synchronously
+ * in one request, with no batching or background job behind it, so the limit
+ * is what one invocation can process rather than a business rule.
+ */
+export const BULK_CREATE_PRODUCT_MAX_ITEMS = 500;
+
+export const bulkCreateProductSchema = z.object({
+  items: z.array(createProductSchema).min(1).max(BULK_CREATE_PRODUCT_MAX_ITEMS),
+});
+
+export type BulkCreateProductInput = z.infer<typeof bulkCreateProductSchema>;

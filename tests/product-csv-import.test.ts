@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CsvParseError,
   IMPORT_TEMPLATE_HEADERS,
+  hasCsvExtension,
   importTemplateCsv,
   mapColumns,
   parseCsv,
@@ -41,6 +42,32 @@ describe("parseCsv", () => {
 
   it("refuses an empty file", () => {
     expect(() => parseCsv("\n\n")).toThrow(CsvParseError);
+  });
+});
+
+describe("hasCsvExtension", () => {
+  it("accepts a .csv file name", () => {
+    expect(hasCsvExtension("products.csv")).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    expect(hasCsvExtension("Products.CSV")).toBe(true);
+  });
+
+  it("ignores surrounding whitespace", () => {
+    expect(hasCsvExtension("  products.csv  ")).toBe(true);
+  });
+
+  it("rejects a non-CSV extension", () => {
+    expect(hasCsvExtension("products.xlsx")).toBe(false);
+  });
+
+  it("rejects a file name with no extension", () => {
+    expect(hasCsvExtension("products")).toBe(false);
+  });
+
+  it("rejects a name that merely contains csv, not ending in it", () => {
+    expect(hasCsvExtension("products.csv.pdf")).toBe(false);
   });
 });
 

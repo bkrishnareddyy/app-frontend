@@ -88,6 +88,19 @@ model Account {
   productChangeEvents      ProductChangeEvent[]
   productRevalidationFlags ProductRevalidationFlag[]
 
+  parties                 Party[]
+  partyNames              PartyName[]
+  partyIdentifiers        PartyIdentifier[]
+  partyRegistrations      PartyRegistration[]
+  partyAddresses          PartyAddress[]
+  partyContacts           PartyContact[]
+  partyRoles              PartyRole[]
+  partySites              PartySite[]
+  partyRelationships      PartyRelationship[]
+  partyEvidence           PartyEvidence[]
+  partyChangeEvents       PartyChangeEvent[]
+  partyRevalidationFlags  PartyRevalidationFlag[]
+
   @@index([type])
   @@index([slug])
   @@index([ownerUserId])
@@ -404,6 +417,7 @@ model ShipmentDocument {
   agentDecisions     AgentDecision[]
   inboundAttachment  InboundAttachment?
   productEvidence    ProductEvidence[]
+  partyEvidence      PartyEvidence[]
   shipmentCandidates DocumentShipmentCandidate[]
 
   @@index([shipmentId])
@@ -1038,6 +1052,13 @@ model LegalEntity {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  /// Nullable backfill pointer at the Global Party Master, mirroring
+  /// `CanonicalProduct.productId`. Nothing in this record's own fields is
+  /// replaced by it; `ShipmentParty` and `ProductParty` keep reading
+  /// `LegalEntity` exactly as they always have.
+  partyId String?
+  party   Party?  @relation(fields: [partyId], references: [id], onDelete: SetNull)
+
   customsProfiles    CustomsProfile[]
   shipmentParties    ShipmentParty[]
   productParties     ProductParty[]
@@ -1046,6 +1067,7 @@ model LegalEntity {
   @@index([accountId])
   @@index([clientId])
   @@index([legalName])
+  @@index([partyId])
 }
 
 model CustomsProfile {
@@ -1984,6 +2006,7 @@ model ExtractedFact {
   case            ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
   document        CaseDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
   productEvidence ProductEvidence[]
+  partyEvidence   PartyEvidence[]
 
   @@index([caseId])
   @@index([factType])
@@ -2708,5 +2731,608 @@ model ProductRevalidationFlag {
   updatedAt DateTime @updatedAt
 
   @@index([productId, status])
+  @@index([accountId, status, flag])
+}
+
+// ---------------------------------------------------------------------------
+// Global Party Master
+//
+// One record per organisation or individual, per tenant, separate from any
+// role it plays. `LegalEntity` is the existing party record used today by
+// `ShipmentParty`, `ProductParty` and `CustomsProfile` -- it is untouched and
+// still standing, exactly as `CanonicalProduct` still stands next to
+// `Product`. `LegalEntity.partyId` is the only new link, a nullable backfill
+// pointer at the master, mirroring `CanonicalProduct.productId`.
+// ---------------------------------------------------------------------------
+
+enum PartyKind {
+  ORGANIZATION
+  INDIVIDUAL
+}
+
+enum PartyStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  SUPERSEDED
+  ARCHIVED
+}
+
+/// Human review state of the party's master data. Never set by an agent.
+enum PartyReviewStatus {
+  UNREVIEWED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_REVIEW
+}
+
+enum PartyNameType {
+  LEGAL
+  TRADE
+  DBA
+  FORMER_LEGAL
+  TRANSLATED
+}
+
+enum PartyIdentifierType {
+  EORI
+  DUNS
+  LEI
+  VAT
+  TAX_ID
+  CUSTOMS_ID
+  INTERNAL_PARTY_CODE
+  CUSTOMER_NUMBER
+  SUPPLIER_NUMBER
+  OTHER
+}
+
+/// Whether a stored fact is the one in force. Facts are superseded, never
+/// overwritten, so the prior value stays readable in history.
+enum PartyFactStatus {
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+/// Where a fact came from. Sources are not equally authoritative and the UI
+/// says which one it was; nothing here collapses them into "known".
+enum PartySourceType {
+  DOCUMENT
+  EXTRACTED_FACT
+  ERP
+  CRM
+  USER
+  CUSTOMER_DECLARATION
+  SUPPLIER_DECLARATION
+  EXTERNAL_REGISTRY
+  IMPORT
+  AGENT
+  OTHER
+}
+
+/// CLAIMED is what a source stated. VERIFIED means a person checked it against
+/// evidence -- never set by import, and never set just because a registration
+/// number matches a pattern.
+enum PartyRegistrationStatus {
+  CLAIMED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  SUPERSEDED
+}
+
+enum PartyAddressType {
+  REGISTERED
+  MAILING
+  BILLING
+  SITE
+  OPERATING
+}
+
+/// What a party does, not who it is. The same party can hold more than one of
+/// these across different products or shipments.
+enum PartyRoleType {
+  IMPORTER
+  EXPORTER
+  MANUFACTURER
+  SUPPLIER
+  CUSTOMER
+  CONSIGNEE
+  CONSIGNOR
+  CARRIER
+  FREIGHT_FORWARDER
+  CUSTOMS_BROKER
+  BUYER
+  SELLER
+  NOTIFY_PARTY
+  OTHER
+}
+
+/// A stated relationship between two parties. Never a beneficial-ownership
+/// graph and never inferred -- only recorded when a source stated it.
+enum PartyRelationshipType {
+  PARENT_OF
+  SUBSIDIARY_OF
+  AFFILIATE_OF
+  AGENT_OF
+  SUCCESSOR_OF
+  PREDECESSOR_OF
+}
+
+/// How much compliance attention a change deserves. COMPLIANCE_SIGNIFICANT
+/// means the changed fact is one identity, registration or screening work is
+/// built on -- it does not mean any of those has actually changed.
+enum PartyChangeSignificance {
+  NON_MATERIAL
+  POTENTIALLY_COMPLIANCE_SIGNIFICANT
+  COMPLIANCE_SIGNIFICANT
+}
+
+/// Workflow signals raised when a compliance-significant fact changes. These
+/// are requests for a person to look again. SCREENING_REVALIDATION_REQUIRED is
+/// not a screening result and never a permanent party status -- it is a
+/// resolvable flag like the other three, cleared by a person, never inferred
+/// into a pass/fail.
+enum PartyImpactFlag {
+  IDENTITY_REVALIDATION_REQUIRED
+  REGISTRATION_REVALIDATION_REQUIRED
+  ADDRESS_REVALIDATION_REQUIRED
+  SCREENING_REVALIDATION_REQUIRED
+}
+
+enum PartyRevalidationStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+/// Outcome of deterministic identifier/name matching. AMBIGUOUS is a real
+/// answer and is never collapsed into a match.
+enum PartyMatchStatus {
+  EXACT_MATCH
+  POSSIBLE_MATCH
+  AMBIGUOUS
+  NO_MATCH
+}
+
+/// The logical organisation or individual. Holds identity only: every name,
+/// identifier, registration, address, contact, role and relationship that
+/// varies by jurisdiction, source or time lives in a child table with its own
+/// status, effective dates and evidence. There is deliberately no name and no
+/// country column here, for the same reason there is no `Product.hsCode`.
+model Party {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// Convenience copy of the INTERNAL_PARTY_CODE identifier, kept unique per
+  /// account. The authoritative list of identifiers is still `identifiers`.
+  internalPartyCode String?
+
+  /// Individual vs organisation. Not a role -- a role is what a party does on
+  /// a shipment or product; this is what kind of legal actor it is.
+  partyKind PartyKind @default(ORGANIZATION)
+
+  status       PartyStatus       @default(DRAFT)
+  reviewStatus PartyReviewStatus @default(UNREVIEWED)
+
+  /// Incremented by the service on every recorded change, so a change event
+  /// can name the version it produced.
+  currentVersion Int @default(1)
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  legalEntities     LegalEntity[]
+  names             PartyName[]
+  identifiers       PartyIdentifier[]
+  registrations     PartyRegistration[]
+  addresses         PartyAddress[]
+  contacts          PartyContact[]
+  roles             PartyRole[]
+  sites             PartySite[]
+  evidence          PartyEvidence[]
+  changeEvents      PartyChangeEvent[]
+  revalidationFlags PartyRevalidationFlag[]
+  relationshipsFrom PartyRelationship[]     @relation("PartyRelationshipFrom")
+  relationshipsTo   PartyRelationship[]     @relation("PartyRelationshipTo")
+
+  /// Postgres treats NULLs as distinct, so any number of parties may have no
+  /// internal code while no two may share one.
+  @@unique([accountId, internalPartyCode])
+  @@index([accountId, deletedAt])
+  @@index([accountId, status])
+  @@index([accountId, reviewStatus])
+  @@index([accountId, updatedAt])
+}
+
+/// One of the many names a party is known by. A party is never identified by
+/// name alone -- the matcher only treats a name as strong evidence when paired
+/// with a country of registration or a verified address.
+model PartyName {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  nameType PartyNameType
+
+  rawName String
+
+  /// Deterministically normalized: trimmed, upper-cased, punctuation and
+  /// legal suffixes (Inc, Ltd, GmbH, SA, ...) folded. Matching reads this;
+  /// people read `rawName`.
+  normalizedName String
+
+  language  String?
+  isPrimary Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, nameType, status])
+  @@index([accountId, normalizedName])
+}
+
+/// A jurisdiction identifier or external number -- EORI, DUNS, LEI, VAT, a
+/// customer/supplier number a counterpart assigned. Never a name.
+model PartyIdentifier {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  identifierType PartyIdentifierType
+
+  value           String
+  normalizedValue String
+
+  /// Where the identifier was issued, e.g. the EORI's member state. A fact
+  /// about the identifier, not about where the party is located -- never
+  /// conflated with an address country.
+  issuingCountry   String?
+  issuingAuthority String?
+
+  isPrimary Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([partyId, identifierType, normalizedValue])
+  @@index([accountId, identifierType, normalizedValue])
+  @@index([accountId, normalizedValue])
+  @@index([partyId])
+}
+
+/// A business registration in one jurisdiction: a registry number issued by a
+/// named authority, plus the country of registration the matcher pairs with a
+/// normalized legal name. Never inferred from an address.
+model PartyRegistration {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  registrationNumber   String
+  registeringAuthority String?
+  country              String
+  legalForm            String?
+
+  status PartyRegistrationStatus @default(CLAIMED)
+
+  registeredOn DateTime?
+
+  verifiedByUserId String?
+  verifiedAt       DateTime?
+
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, status])
+  @@index([accountId, country, registrationNumber])
+}
+
+/// An address the party gave for a specific purpose. Address country is its
+/// own fact, separate from country of registration and from any identifier's
+/// issuing country -- never derived from either.
+model PartyAddress {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  addressType PartyAddressType
+
+  addressLine1  String
+  addressLine2  String?
+  city          String?
+  stateProvince String?
+  postalCode    String?
+  country       String
+
+  isPrimary  Boolean @default(false)
+  isVerified Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sites PartySite[]
+
+  @@index([partyId, addressType, status])
+  @@index([accountId, country])
+}
+
+model PartyContact {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  name  String?
+  title String?
+  email String?
+  phone String?
+
+  isPrimary Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, status])
+}
+
+/// What a party does, kept apart from who it is. The same Party can hold
+/// MANUFACTURER on one product family and SUPPLIER on another without a
+/// second Party record, and losing a role never touches identity.
+model PartyRole {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  roleType PartyRoleType
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, roleType, status])
+  @@index([accountId, roleType])
+}
+
+/// A stated relationship between two parties in this master, e.g. subsidiary
+/// or agent. Never a beneficial-ownership graph and never inferred.
+model PartyRelationship {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  fromPartyId String
+  fromParty   Party  @relation("PartyRelationshipFrom", fields: [fromPartyId], references: [id], onDelete: Cascade)
+  toPartyId   String
+  toParty     Party  @relation("PartyRelationshipTo", fields: [toPartyId], references: [id], onDelete: Cascade)
+
+  relationshipType PartyRelationshipType
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fromPartyId, relationshipType])
+  @@index([toPartyId, relationshipType])
+  @@index([accountId])
+}
+
+/// An operating facility or site, at an address the party already has on
+/// file. Free-standing rather than duplicating address fields.
+model PartySite {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  siteName  String
+  addressId String?
+  address   PartyAddress? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, status])
+  @@index([addressId])
+}
+
+model PartyEvidence {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  sourceType PartySourceType
+
+  sourceDocumentId String?
+  sourceDocument   ShipmentDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  sourceExtractedFactId String?
+  sourceExtractedFact   ExtractedFact? @relation(fields: [sourceExtractedFactId], references: [id], onDelete: SetNull)
+
+  /// For sources that are not Qubere documents: an ERP object key, a registry
+  /// reference, a supplier declaration reference.
+  sourceReference String?
+  sourceUrl       String?
+
+  page        Int?
+  boundingBox Json?
+  tableId     String?
+  rowIndex    Int?
+  columnIndex Int?
+
+  description String?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  names         PartyName[]
+  identifiers   PartyIdentifier[]
+  registrations PartyRegistration[]
+  addresses     PartyAddress[]
+  roles         PartyRole[]
+  relationships PartyRelationship[]
+
+  @@index([partyId])
+  @@index([accountId, sourceType])
+  @@index([sourceDocumentId])
+  @@index([sourceExtractedFactId])
+}
+
+/// An append-only record of what changed on a party, what it changed from and
+/// to, and how much compliance attention that deserves. Nothing here deletes a
+/// prior value; this is where the prior value stays legible.
+model PartyChangeEvent {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  /// The `Party.currentVersion` this change produced.
+  versionNumber Int
+
+  /// The record that changed, e.g. "Party", "PartyName:LEGAL",
+  /// "PartyRegistration:DE".
+  entity String
+  /// The specific field, e.g. "normalizedName", "country", "status".
+  field  String
+
+  oldValue String?
+  newValue String?
+
+  significance PartyChangeSignificance @default(NON_MATERIAL)
+  impactFlags  PartyImpactFlag[]
+
+  changeReason    String?
+  changedByUserId String?
+  correlationId   String?
+
+  createdAt DateTime @default(now())
+
+  revalidationFlags PartyRevalidationFlag[]
+
+  @@index([partyId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([partyId, versionNumber])
+  @@index([accountId, significance])
+}
+
+/// An open request to revalidate something because a fact underneath it
+/// moved. A workflow signal only: raising one never changes an identity, a
+/// registration, or a review state, and resolving one never approves
+/// anything. SCREENING_REVALIDATION_REQUIRED specifically is a request to look
+/// again, never a screening result and never a permanent party status.
+model PartyRevalidationFlag {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  flag   PartyImpactFlag
+  status PartyRevalidationStatus @default(OPEN)
+
+  /// Why it was raised, in the words shown to the reviewer.
+  reason String
+
+  triggeredByChangeEventId String?
+  triggeredByChangeEvent   PartyChangeEvent? @relation(fields: [triggeredByChangeEventId], references: [id], onDelete: SetNull)
+
+  resolvedByUserId String?
+  resolvedAt       DateTime?
+  resolutionNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partyId, status])
   @@index([accountId, status, flag])
 }

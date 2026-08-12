@@ -154,6 +154,31 @@ to a product is reported `ALREADY_PRESENT` and skipped. Re-uploading the same
 file creates nothing. A row that matches a product only possibly is skipped as
 `NEEDS_REVIEW` rather than guessed at.
 
+## Bulk JSON create
+
+`POST /api/products/bulk` takes `{ items: CreateProductInput[] }` — up to
+`BULK_CREATE_PRODUCT_MAX_ITEMS` (500) per request, the same shape as the body
+of a single `POST /api/products`, just batched. It exists for a caller that
+already has structured records (an ERP export, another system's API) rather
+than a spreadsheet to fill in by hand. There is no `classifications` field
+here, same as the single-item create: a tariff classification has its own
+lifecycle and its own endpoint.
+
+`bulkCreateProducts` mirrors `bulkCreateParties`: each item runs through the
+same matcher a CSV row goes through before writing anything — `EXACT_MATCH`
+is `ALREADY_PRESENT` and left untouched, `POSSIBLE_MATCH`/`AMBIGUOUS` is
+`NEEDS_REVIEW` and left untouched, only `NO_MATCH` items are created. This is
+insert-only, never an update of a matched product. One item failing on a
+constraint the schema could not see is reported as that item's own `FAILED`
+outcome, not an abort of the batch.
+
+Authenticated exactly like every other route in this codebase: a Clerk
+session, not an API key or service credential. That means it is not, today,
+callable by a genuinely external system — only by something that can act as
+an authenticated user of this app. It is shaped so that adding an API-key
+layer later changes only how the caller authenticates, not this request or
+response contract.
+
 ## API
 
 All under `/api/products`, all through `withAuthenticatedRoute`, all scoped to
@@ -172,6 +197,7 @@ All under `/api/products`, all through `withAuthenticatedRoute`, all scoped to
 | `/api/products/match` | Deterministic match for a description of goods |
 | `/api/products/line-items/[lineItemId]` | `GET` what the matcher makes of a shipment line; `POST` to attach it (or detach with `null`) |
 | `/api/products/import/{template,preview,commit}` | CSV round trip |
+| `POST /api/products/bulk` | Bulk create from a JSON array, no CSV in between |
 | `/api/products/capabilities` | What the intelligence registry can and cannot do |
 
 A product in another account is reported `PRODUCT_NOT_FOUND` with 404, never
