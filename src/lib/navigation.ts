@@ -41,6 +41,8 @@ export interface NavSection {
   items: NavItem[];
   /** Rendered by the header account menu instead, but still authorizes its routes. */
   hiddenFromSidebar?: boolean;
+  /** Render items as horizontal pills instead of full-width links. */
+  renderAs?: "pills";
 }
 
 export const ACCOUNT_ADMIN_ROLES = ["OWNER", "ADMIN"];
@@ -51,17 +53,22 @@ export const NAV_SECTIONS: NavSection[] = [
     labelKey: "mainOperations",
     items: [
       { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
-      { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
-      { id: "documents", labelKey: "tradeDocuments", href: "/app/documents", icon: "documents" },
       { id: "actions", labelKey: "actions", href: "/app/actions", icon: "actions" },
+      { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
-      // Readable by everyone with an account, like shipments. The write actions
-      // on the page are gated individually by products.* permissions.
-      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
-      // Readable by everyone with an account, like products. The write actions
-      // on the page are gated individually by parties.* permissions.
-      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
       { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },
+    ],
+  },
+  {
+    id: "tooling",
+    labelKey: "toolingAndDocs",
+    renderAs: "pills",
+    items: [
+      { id: "documents", labelKey: "tradeDocs", href: "/app/documents", icon: "documents" },
+      // Readable by everyone; write actions gated individually by products.* permissions.
+      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
+      // Readable by everyone; write actions gated individually by parties.* permissions.
+      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
     ],
   },
   {

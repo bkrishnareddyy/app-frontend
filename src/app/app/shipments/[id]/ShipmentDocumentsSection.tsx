@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
@@ -24,7 +23,8 @@ interface ShipmentDocumentsSectionProps {
   shipmentId: string;
   documents: DocumentItem[];
   originStatus?: string;
-  selectedDocId?: string;
+  activeDocId: string | undefined;
+  onSelectDoc: (docId: string) => void;
 }
 
 const DETACH_TITLE_ID = "detach-document-title";
@@ -33,10 +33,10 @@ export function ShipmentDocumentsSection({
   shipmentId,
   documents: initialDocs,
   originStatus = "Not Applicable",
+  activeDocId,
+  onSelectDoc,
 }: ShipmentDocumentsSectionProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const activeDocId = searchParams.get("docId") || initialDocs[0]?.id;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [detachingId, setDetachingId] = useState<string | null>(null);
   const [docPendingDetach, setDocPendingDetach] = useState<{ id: string; fileName: string } | null>(null);
@@ -120,10 +120,18 @@ export function ShipmentDocumentsSection({
             const isSelected = activeDocId === doc.id;
             
             return (
-              <Link
+              <div
                 key={doc.id}
-                href={`?docId=${doc.id}`}
-                className={`p-3 rounded-xl block border flex items-center justify-between text-xs transition-colors hover:border-brand ${
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectDoc(doc.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelectDoc(doc.id);
+                  }
+                }}
+                className={`p-3 rounded-xl block border flex items-center justify-between text-xs transition-colors hover:border-brand cursor-pointer ${
                   isSelected
                     ? "bg-blue-50/50 border-brand shadow-2xs"
                     : "bg-surface-muted border-border"
@@ -171,7 +179,7 @@ export function ShipmentDocumentsSection({
                     )}
                   </button>
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>

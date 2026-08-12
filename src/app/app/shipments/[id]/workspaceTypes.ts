@@ -36,6 +36,34 @@ export interface ShipmentLineItemRow {
 }
 
 /**
+ * A line item as persisted inside a document's `extractedJson`.
+ *
+ * Historical rows carry either the current `totalAmount`/`sku` names or the older
+ * `totalValue`/`partNumber` ones, so both are accepted and readers fall back
+ * across them. Numbers may arrive as strings from the extractor, which is why
+ * `numberOrNull` is applied at every use.
+ */
+export interface ExtractedLineItem {
+  lineNumber?: number | null;
+  sku?: string | null;
+  partNumber?: string | null;
+  description?: string | null;
+  quantity?: number | string | null;
+  unitPrice?: number | string | null;
+  totalAmount?: number | string | null;
+  totalValue?: number | string | null;
+  countryOfOrigin?: string | null;
+  htsCode?: string | null;
+}
+
+/** Reads a numeric field that may be absent, keeping "missing" distinct from 0. */
+export function numberOrNull(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isNaN(numeric) ? null : numeric;
+}
+
+/**
  * A line's extended amount, or null when no source carried one.
  *
  * Prefers the total the document stated over one multiplied out here — the two

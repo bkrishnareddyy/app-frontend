@@ -803,7 +803,7 @@ function AgentResultCard({
           ? "border-red-300 bg-red-50/60"
           : "border-amber-200 bg-amber-50/40"
     }`}>
-      {/* Header: doc link + status */}
+      {/* Card header: doc link + approved pill */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-0.5">
           {item.documentName && docId ? (

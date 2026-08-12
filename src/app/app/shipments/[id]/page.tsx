@@ -1,6 +1,5 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { documentViewUrl } from "@/lib/documentUrl";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -11,14 +10,11 @@ import {
   Activity,
   Layers,
   ChevronRight,
-  AlertTriangle,
 } from "lucide-react";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
 import { Badge } from "@/components/ui/Badge";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
-import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
-import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
 import { ShipmentClientEditor } from "./ShipmentClientEditor";
 import { ExceptionsDrawer } from "./ExceptionsDrawer";
@@ -29,36 +25,9 @@ import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
 import { buildAgentInvocations } from "./agentInvocations";
 import { displayCurrency } from "@/lib/honest";
 import { extractedCurrency } from "@/modules/documents/extractedCurrency";
-import type { ShipmentLineItemRow } from "./workspaceTypes";
+import { DocumentWorkspacePanel } from "./DocumentWorkspacePanel";
+import type { ExtractedLineItem } from "./workspaceTypes";
 import type { CategoryDetail } from "./PreFilingReadiness";
-
-/**
- * A line item as persisted inside a document's `extractedJson`.
- *
- * Historical rows carry either the current `totalAmount`/`sku` names or the older
- * `totalValue`/`partNumber` ones, so both are accepted and the read below falls
- * back across them. Numbers may arrive as strings from the extractor, which is
- * why `Number(...)` is applied at every use.
- */
-interface ExtractedLineItem {
-  lineNumber?: number | null;
-  sku?: string | null;
-  partNumber?: string | null;
-  description?: string | null;
-  quantity?: number | string | null;
-  unitPrice?: number | string | null;
-  totalAmount?: number | string | null;
-  totalValue?: number | string | null;
-  countryOfOrigin?: string | null;
-  htsCode?: string | null;
-}
-
-/** Reads a numeric field that may be absent, keeping "missing" distinct from 0. */
-function numberOrNull(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const numeric = Number(value);
-  return Number.isNaN(numeric) ? null : numeric;
-}
 
 /**
  * Sums the quantities on a document's extracted line items.
@@ -93,6 +62,8 @@ export default async function ShipmentWorkspacePage(props: {
       OR: [{ id: params.id }, { shipmentNumber: params.id }],
       deletedAt: null,
     },
+    // filingDeadline is in the Prisma schema but not yet applied to the live DB
+    omit: { filingDeadline: true },
   });
 
   if (!shipment) notFound();
@@ -953,13 +924,6 @@ export default async function ShipmentWorkspacePage(props: {
     overallStatusType = "READY";
   }
 
-  const primaryDoc = docId
-    ? documents.find((d) => d.id === docId) || documents[0]
-    : documents.find((d) => d.status === "Received") ||
-      documents.find((d) => d.status === "Processed") ||
-      documents.find((d) => d.status === "Review Required") ||
-      documents[0];
-
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
       <PipelineProgressTracker shipmentId={shipment.id} />
@@ -1216,204 +1180,20 @@ export default async function ShipmentWorkspacePage(props: {
         </>
       ) : activeTab === "workspace" ? (
         <>
-          {/* Main Workspace: Documents + Embedded Viewer */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Documents Set Summary */}
-            <div className="lg:col-span-4">
-              <ShipmentDocumentsSection
-                shipmentId={shipment.id}
-                documents={documents}
-                selectedDocId={docId}
-                originStatus={originStatus}
-              />
-            </div>
-
-            {/* Center Column: Embedded Document Viewer */}
-            <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-border shadow-2xs space-y-4 flex flex-col justify-between overflow-hidden min-h-[480px]">
-              {primaryDoc ? (
-                (() => {
-                  const proxyUrl = primaryDoc.fileUrl?.includes("vercel-storage.com")
-                    ? documentViewUrl(primaryDoc.id)
-                    : primaryDoc.fileUrl || "#";
-
-                  let docLineItems: ShipmentLineItemRow[] = [];
-                  // Set only when this document's extraction actually produced
-                  // HTS-bearing line items (a Bill of Lading or Packing List
-                  // won't) -- null averageConfidence means those lines exist
-                  // but haven't been matched to a classified persisted line yet.
-                  let docHtsScore: { averageConfidence: number | null; classifiedCount: number; totalCount: number } | null = null;
-                  if (primaryDoc.extractedJson) {
-                    try {
-                      const parsed = JSON.parse(primaryDoc.extractedJson);
-                      if (parsed.lineItems && Array.isArray(parsed.lineItems)) {
-                        const extracted = parsed.lineItems as ExtractedLineItem[];
-
-                        // A document's stored extraction is often thinner than the
-                        // curated record built from it -- this invoice's JSON kept a
-                        // total for 57 of its 68 lines and a unit price for none,
-                        // while all 68 persisted rows carry both. Where a persisted
-                        // row is unambiguously the same line, its price is this
-                        // document's price and gets shown rather than a dash.
-                        const persistedByLine = new Map(
-                          displayLineItems.map((row) => [row.lineNumber, row] as const)
-                        );
-                        const sameLine = (a: string, b: string) =>
-                          a.trim().toLowerCase() === b.trim().toLowerCase();
-
-                        docLineItems = extracted.map((li, idx: number) => {
-                          const lineNumber = li.lineNumber || idx + 1;
-                          const description = li.description || "Product";
-
-                          // Matched on description as well as line number, so a
-                          // shipment carrying several invoices can never borrow a
-                          // price from a different document's line 1.
-                          const persisted = persistedByLine.get(lineNumber);
-                          const counterpart =
-                            persisted && sameLine(persisted.description, description) ? persisted : null;
-
-                          return {
-                            id: `extracted-${primaryDoc.id}-${idx}`,
-                            lineNumber,
-                            partNumber: li.sku || li.partNumber || "",
-                            description,
-                            quantity: Number(li.quantity || 0),
-                            // Null, never 0, when neither source has a price: "0"
-                            // would state the line was free of charge.
-                            unitPrice: numberOrNull(li.unitPrice) ?? counterpart?.unitPrice ?? null,
-                            totalValue:
-                              numberOrNull(li.totalAmount) ??
-                              numberOrNull(li.totalValue) ??
-                              counterpart?.totalValue ??
-                              null,
-                            countryOfOrigin: li.countryOfOrigin || "",
-                            htsCode: li.htsCode || (li.sku && /^\d{4}/.test(li.sku) ? li.sku : ""),
-                            htsConfidence: 95,
-                          };
-                        });
-
-                        const classifiableLines = docLineItems.filter((li) => li.htsCode);
-                        if (classifiableLines.length > 0) {
-                          const realConfidences = classifiableLines
-                            .map((li) => {
-                              const raw = rawHtsConfidenceByLine.get(li.lineNumber);
-                              return raw && sameLine(raw.description, li.description) ? raw.htsConfidence : null;
-                            })
-                            .filter((c): c is number => typeof c === "number");
-
-                          docHtsScore = {
-                            averageConfidence:
-                              realConfidences.length > 0
-                                ? Math.round(realConfidences.reduce((a, b) => a + b, 0) / realConfidences.length)
-                                : null,
-                            classifiedCount: realConfidences.length,
-                            totalCount: classifiableLines.length,
-                          };
-                        }
-                      }
-                    } catch {}
-                  }
-
-                  // Flag when a document's extracted products have nothing
-                  // to do with the shipment's own verified line items --
-                  // usually means the wrong file got attached to this
-                  // shipment, not that extraction is broken.
-                  const docHtsChapters = new Set(
-                    docLineItems.map((li) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
-                  );
-                  const shipmentHtsChapters = new Set(
-                    displayLineItems.map((li) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
-                  );
-                  const showMismatchWarning =
-                    docLineItems.length > 0 &&
-                    displayLineItems.length > 0 &&
-                    docHtsChapters.size > 0 &&
-                    shipmentHtsChapters.size > 0 &&
-                    ![...docHtsChapters].some((ch) => shipmentHtsChapters.has(ch));
-
-                  return (
-                    <div className="flex flex-col justify-between h-full space-y-4">
-                      <div>
-                        {/* Document type, name, and tabbed preview / key-value / raw JSON */}
-                        <div className="h-[620px] flex flex-col border-b border-border pb-4 overflow-hidden">
-                          <DocumentReviewPanel
-                            documentId={primaryDoc.id}
-                            fileName={primaryDoc.fileName || "Trade Document"}
-                            docType={
-                              !primaryDoc.docType || primaryDoc.docType === "AUTO_DETECT"
-                                ? "Commercial Invoice"
-                                : primaryDoc.docType
-                            }
-                            fileUrl={primaryDoc.fileUrl}
-                            proxyUrl={proxyUrl}
-                            shipmentNumber={shipment.shipmentNumber}
-                            htsScore={docHtsScore ?? undefined}
-                          />
-                        </div>
-
-                        {/* Document Metadata Details */}
-                        <div className="mt-4 p-4 rounded-xl bg-[#F9F9FB] border border-border space-y-3">
-                          <div className="flex items-center justify-between text-xs pb-2 border-b border-border">
-                            <span className="text-ink-muted">Document Status</span>
-                            {primaryDoc.extractedJson ? (
-                              <span className="font-bold text-emerald-600">Verified & Ingested (AI Vision Parsed)</span>
-                            ) : (
-                              <span className="font-bold text-amber-600 font-mono">Received (Pending Vision Processing)</span>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <p className="text-[10px] text-ink-muted uppercase font-bold">Page Count</p>
-                              <p className="font-mono text-ink">{primaryDoc.pageCount ? `${primaryDoc.pageCount} Pages` : "1 Page"}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-ink-muted uppercase font-bold">Uploaded Date</p>
-                              <p className="text-ink">{new Date(primaryDoc.createdAt).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {showMismatchWarning && (
-                          <div className="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start space-x-2 text-xs text-amber-800">
-                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                            <div>
-                              <p className="font-bold">This document doesn&apos;t match the shipment&apos;s line items</p>
-                              <p className="text-[11px] mt-0.5">
-                                The products extracted here don&apos;t correspond to the shipment&apos;s verified cargo
-                                {displayLineItems[0]?.description ? ` (${displayLineItems[0].description})` : ""}. It may be attached to the wrong shipment.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Extracted Line Items for this Document */}
-                        <div id="extracted-line-items-section">
-                          <LineItemsTable
-                            shipmentId={shipment.id}
-                            initialLineItems={docLineItems}
-                            currency={lineItemCurrency}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs text-ink-muted pt-3 border-t border-border">
-                        <span>Vault Document ID: {primaryDoc.id.slice(0, 16)}...</span>
-                        <span>Qubere Document Vault</span>
-                      </div>
-                    </div>
-                  );
-                })()
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-12 text-xs">
-                  <FileText className="w-10 h-10 text-ink-muted opacity-50" />
-                  <div className="space-y-1">
-                    <h4 className="font-extrabold text-ink">No Trade Documents Attached</h4>
-                    <p className="text-ink-muted text-[11px]">Upload a Commercial Invoice, Bill of Lading, or Packing List to run vision extraction.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
+          {/* Main Workspace: Documents + Embedded Viewer -- document
+              selection lives entirely client-side in this panel so
+              switching documents never re-runs this server component
+              (which would re-fetch and re-render the whole page). */}
+          <DocumentWorkspacePanel
+            shipmentId={shipment.id}
+            shipmentNumber={shipment.shipmentNumber}
+            documents={documents}
+            originStatus={originStatus}
+            displayLineItems={displayLineItems}
+            rawHtsConfidenceByLine={Array.from(rawHtsConfidenceByLine.entries())}
+            lineItemCurrency={lineItemCurrency}
+            initialDocId={docId}
+          />
 
           {/* Verified Line Items -- the shipment's real, canonical line
               items, independent of whichever document happens to be

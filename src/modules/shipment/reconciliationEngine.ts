@@ -51,6 +51,7 @@ export class ReconciliationEngine {
   static async reconcileShipment(shipmentId: string, triggerSource: string = "SYSTEM"): Promise<ReconciliationResult> {
     const shipment = await db.shipment.findUnique({
       where: { id: shipmentId },
+      omit: { filingDeadline: true },
       include: {
         documents: { include: { parseVersions: true } },
         exceptionItems: { where: { status: { not: "Resolved" } } },
