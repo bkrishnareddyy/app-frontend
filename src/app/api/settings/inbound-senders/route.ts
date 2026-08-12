@@ -9,12 +9,30 @@ import { normalizeSenderEmail } from "@/modules/inbound/emailNormalization";
 import { Prisma } from "@prisma/client";
 
 export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
-  const routes = await db.inboundSenderRoute.findMany({
-    where: { accountId: ctx.accountId },
-    include: { defaultAssignedToUser: { select: { id: true, email: true, firstName: true, lastName: true } } },
-    orderBy: { createdAt: "desc" },
+  const [routes, memberships] = await Promise.all([
+    db.inboundSenderRoute.findMany({
+      where: { accountId: ctx.accountId },
+      include: { defaultAssignedToUser: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.accountMembership.findMany({
+      where: { accountId: ctx.accountId, status: "ACTIVE" },
+      include: { user: true },
+    }),
+  ]);
+
+  return NextResponse.json({
+    requestId,
+    accountName: ctx.accountName,
+    publicDocumentAddress: process.env.RESEND_PUBLIC_DOCUMENT_ADDRESS ?? "docs@inbound.qubere.ai",
+    routes,
+    teamMembers: memberships.map((m) => ({
+      userId: m.user.id,
+      email: m.user.email,
+      firstName: m.user.firstName,
+      lastName: m.user.lastName,
+    })),
   });
-  return NextResponse.json({ routes, requestId });
 }, { permission: "settings.manage" });
 
 const createSchema = z.object({

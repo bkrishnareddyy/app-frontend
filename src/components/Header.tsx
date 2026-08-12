@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { Building2, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, Archive, type LucideIcon } from "lucide-react";
+import { Building2, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, Archive, Mail, type LucideIcon } from "lucide-react";
 import { ManageAccountModal, type ManageAccountPanelItem, type PanelItemId } from "./ManageAccountModal";
 import { accountAdminItems } from "@/lib/navigation";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -20,6 +20,7 @@ const PANEL_META: Record<PanelItemId, { icon: LucideIcon; description: string; e
   users: { icon: Users, description: "Members, roles & invitations", endpoint: "/api/admin/users" },
   roles: { icon: ShieldCheck, description: "Role definitions & permission grants", endpoint: "/api/admin/roles" },
   settings: { icon: Settings2, description: "Configuration & audit log", endpoint: "/api/admin/settings" },
+  documentEmail: { icon: Mail, description: "Inbound document email routing", endpoint: "/api/settings/inbound-senders" },
   clients: { icon: Contact2, description: "Manage your customer portfolio", endpoint: "/api/clients" },
 };
 
