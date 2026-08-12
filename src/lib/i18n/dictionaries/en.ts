@@ -16,6 +16,7 @@ export const en = {
     userManagement: "User Management",
     rolesPermissions: "Roles & Permissions",
     settingsAudit: "Settings & Audit",
+    documentEmail: "Document Email",
     mainOperations: "Main Operations",
     accountAdmin: "Account Admin",
     platformAdmin: "Platform Admin",

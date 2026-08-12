@@ -10,12 +10,13 @@ import { UserManagementPanel } from "@/app/app/admin/users/UserManagementPanel";
 import { type MemberItem } from "@/app/app/admin/users/UserManagementTable";
 import { RolesPermissionsPanel } from "@/app/app/admin/roles/RolesPermissionsPanel";
 import { SettingsAuditPanel } from "@/app/app/admin/settings/SettingsAuditPanel";
+import { DocumentEmailPanel, type InboundSenderRouteRow, type TeamMemberOption } from "@/app/app/admin/settings/DocumentEmailPanel";
 import { ClientsPanel } from "@/app/app/clients/ClientsPanel";
 import type { RolesPermissionsData } from "@/lib/admin/rolesData";
 import type { FormattedAuditLog } from "@/lib/admin/auditData";
 import type { FormattedClient } from "@/lib/clients/clientsData";
 
-export type PanelItemId = "account" | "users" | "roles" | "settings" | "clients";
+export type PanelItemId = "account" | "users" | "roles" | "settings" | "documentEmail" | "clients";
 
 interface AccountApiResponse {
   accountName: string;
@@ -39,6 +40,13 @@ interface SettingsApiResponse {
   auditLogs: FormattedAuditLog[];
 }
 
+interface DocumentEmailApiResponse {
+  accountName: string;
+  publicDocumentAddress: string;
+  routes: InboundSenderRouteRow[];
+  teamMembers: TeamMemberOption[];
+}
+
 interface ClientsApiResponse {
   accountName: string;
   clients: FormattedClient[];
@@ -49,6 +57,7 @@ type PanelApiResponse =
   | UsersApiResponse
   | RolesApiResponse
   | SettingsApiResponse
+  | DocumentEmailApiResponse
   | ClientsApiResponse;
 
 export interface ManageAccountPanelItem {
@@ -211,6 +220,17 @@ export function ManageAccountModal({ isOpen, onClose, accountName, items, extern
       case "settings": {
         const data = entry.data as SettingsApiResponse;
         return <SettingsAuditPanel accountName={data.accountName} auditLogs={data.auditLogs} compact />;
+      }
+      case "documentEmail": {
+        const data = entry.data as DocumentEmailApiResponse;
+        return (
+          <DocumentEmailPanel
+            publicDocumentAddress={data.publicDocumentAddress}
+            initialRoutes={data.routes}
+            teamMembers={data.teamMembers}
+            compact
+          />
+        );
       }
       case "clients": {
         const data = entry.data as ClientsApiResponse;
