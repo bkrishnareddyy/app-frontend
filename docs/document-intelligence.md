@@ -241,10 +241,47 @@ an example.
 
 The worker runs either way:
 
-- **Serverless (Vercel)** — `/api/cron/document-processing` is scheduled every
-  minute in `vercel.json`. `CRON_SECRET` must be set.
+- **Serverless (Vercel)** — the request path drives it, and cron is a daily
+  backstop. See "What advances a run on Vercel" below. `CRON_SECRET` must be set.
 - **Long-running host** — `npm run worker:documents`. Safe to run alongside the
-  cron; both advance the same durable runs and cannot double-apply a transition.
+  cron and alongside the request-path drains; all three advance the same durable
+  runs and cannot double-apply a transition. Each loop also ticks inbound email
+  ingestion, so a persistent process is a complete pipeline on its own and needs
+  no cron slot for either queue.
+
+### What advances a run on Vercel
+
+Vercel's Hobby plan schedules cron **once a day**, so cron cannot be the
+pipeline. It is worse than slow: submission sets `nextPollAt` a few seconds
+ahead, so the poll that retrieves the result belongs to a *later* tick, and a
+daily cron therefore parses a document two days after it was uploaded.
+
+So three things advance a run, in descending order of how much work they do:
+
+| Trigger | When | What it does |
+| --- | --- | --- |
+| `advanceDocumentProcessing()` after an upload or a reprocess | Immediately, after the 202 is sent | Submits the new run to the parser and keeps polling for up to 30s. A quick conversion finishes inside this invocation. |
+| The same call on `GET /api/documents/[id]/processing` | While a client polls a document that is still in flight | Drains again, throttled to one drain per 4s per instance |
+| `/api/cron/document-processing` | Daily (`0 9 * * *`) | The backstop: runs abandoned by a crashed worker, and conversions that outlived the invocation that started them. Also carries the inbound-email backstop tick, because Hobby allows only two cron entries in total |
+
+The drain runs in Next's [`after()`](https://nextjs.org/docs/app/api-reference/functions/after),
+which Vercel implements with `waitUntil` — the response has already been sent, so
+the user waits for nothing, and the invocation stays alive to finish the work. It
+is the same `runWorkerTick()` in every case; every transition is a conditional
+update, so overlapping callers cannot double-apply one.
+
+Two consequences worth knowing:
+
+- The drain is **not** scoped to the caller's tenant. It is a system worker
+  started by a request, and each run is processed in its own account's context.
+  Scoping it per tenant would strand an idle tenant's documents.
+- The budget is bounded by the route's `maxDuration`, set to **60s** — the Hobby
+  ceiling. On Pro, raise `maxDuration` to 300 and `DEFAULT_BUDGET_MS` in
+  `processing/advanceProcessing.ts` to match, or restore a per-minute cron in
+  `vercel.json`, which Pro allows.
+
+If a document must be parsed within seconds regardless of who is watching, run
+the long-lived worker on an always-on host instead. That is what it is for.
 
 **No Python service, no self-hosted Docling deployment, and no Docling
 microservice is introduced or required.**

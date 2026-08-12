@@ -60,30 +60,70 @@ To ensure data privacy within multi-tenant accounts:
 - **Row-Level Security (Data Segregation)**: Planners can only access their own assigned records (e.g., shipments), while Admins can view all data within the account.
 - **Capability Gating**: API routes strictly enforce capabilities via `hasPermission()` checks (e.g., `documents.create`, `filings.submit`, `intel.read`), returning `403 Forbidden` if a user lacks the necessary privilege.
 
+### 7. Global Product / Item Master
+
+One product record per tenant holds what is true about the goods everywhere;
+jurisdiction-specific customs positions hang off it separately. There is no
+`Product.hsCode` — a product has a US classification, an EU classification and
+so on, each with its own status, reviewer and effective window, and only
+`APPROVED` counts. Country of manufacture and country of origin are stored as
+different facts, and origin is never inferred from a manufacturer, supplier,
+seller, export or shipping country.
+
+See [docs/product-master.md](docs/product-master.md) for the domain model,
+matching rules, change-detection signals, CSV import, and what is deliberately
+not implemented.
+
+### 8. Global Party Master
+
+One party record per tenant holds who they are — identity, roles, and
+registrations are kept as separate axes rather than a single "verified"
+flag. `PartyRole` records that a party acts as a supplier, importer,
+carrier, broker and so on (a party is not one fixed "type"), and
+`PartyRegistration` tracks per-country registration claims through their
+own `CLAIMED → UNDER_REVIEW → VERIFIED` lifecycle, independent of the
+party's own `UNREVIEWED → IN_REVIEW → APPROVED` review status. A name match
+alone is never treated as legal-identity proof.
+
+See [docs/party-master.md](docs/party-master.md) for the domain model,
+matching rules, change-detection signals, CSV import, and what is
+deliberately not implemented.
+
 ---
 
 ## 📁 Repository Structure
 
 ```text
+├── docs/
+│   ├── product-master.md    # Global Product / Item Master domain reference
+│   ├── party-master.md      # Global Party Master domain reference
+│   └── document-intelligence.md # Document parsing pipeline reference
 ├── prisma/
 │   ├── schema.prisma        # Prisma data models & database relationships
+│   ├── migrations/          # Versioned schema migrations
 │   └── seed.ts              # Database seed script for test accounts & RBAC
 ├── scripts/
-│   └── seed-clerk-users.ts  # Programmatic Clerk user provisioning script
+│   ├── seed-clerk-users.ts  # Programmatic Clerk user provisioning script
+│   └── seed-qubere-trade-network.ts # Demo product/party network seed
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/          # Clerk Auth routes (/sign-in, /sign-up)
-│   │   ├── api/             # Internal API routes (account, users, platform-admin)
-│   │   ├── app/             # Application Console (/app/dashboard, /app/admin, /app/admin/users)
+│   │   ├── api/             # Internal API routes (account, users, platform-admin,
+│   │   │                    #   products, parties, documents, shipments, filing, …)
+│   │   ├── app/             # Application Console — dashboard, admin, products,
+│   │   │                    #   parties, shipments, documents, filing, actions
 │   │   ├── invite/[token]/  # Token-based secure invitation acceptance
 │   │   ├── platform-admin/  # Qubere Platform Admin Console
 │   │   ├── globals.css      # Design tokens & Apple light theme
 │   │   └── page.tsx         # Landing page & auto-redirect guard
-│   ├── components/          # Reusable UI components (Sidebar, Header, AccountSwitcher)
-│   ├── lib/                 # Core utilities (auth context, audit logger, db client)
+│   ├── components/          # Reusable UI components (Sidebar, Header, AccountSwitcher,
+│   │                        #   table/BulkSelection, …)
+│   ├── lib/                 # Core utilities (auth context, audit logger, db client,
+│   │                        #   csvExport, i18n)
+│   ├── modules/             # Domain logic (product, party, shipment, documents,
+│   │                        #   tables, …), independent of the route layer
 │   └── middleware.ts        # Route protection middleware
-├── tests/
-│   └── multi-tenant.test.ts # Vitest multi-tenant unit tests
+├── tests/                   # Vitest unit and integration tests
 └── package.json
 ```
 
@@ -123,6 +163,27 @@ DIRECT_URL="postgresql://postgres.cqrhojmrdbrfrgtkurzj:[PASSWORD]@aws-1-us-west-
 # be triggered by anyone who finds the URL.
 CRON_SECRET=
 ```
+
+The block above is enough to run the app with auth, RBAC, and the core
+product/party/shipment/filing flows. The variables below turn on specific
+integrations — each one is optional, and every feature it gates reports
+itself as unavailable (never a silent fallback) when unset. See each
+feature's linked doc for what "unconfigured" looks like in the UI.
+
+| Variable | Gates | Notes |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | AI agents (classification, document intelligence, normalization, product intelligence, HTS classification) | No default; agent calls fail closed without it |
+| `GEMINI_MODEL` | Same agents | Defaults to a built-in model name per agent if unset |
+| `BLOB_READ_WRITE_TOKEN` | Document upload storage (Vercel Blob) | Required for any document upload in production; see [docs/document-intelligence.md](docs/document-intelligence.md) |
+| `MAX_UPLOAD_BYTES` | Upload size limit | Defaults to 50 MB |
+| `DOCUMENT_PARSER_PROVIDER` | Document Intelligence parsing pipeline | `ibm-docling` \| `mock` \| `none` (default `none` — see [docs/document-intelligence.md](docs/document-intelligence.md)) |
+| `DOCLING_API_BASE_URL`, `DOCLING_API_KEY`, `DOCLING_AUTH_HEADER_NAME`, `DOCLING_AUTH_HEADER_SCHEME`, `DOCLING_SUBMIT_PATH`, `DOCLING_STATUS_PATH`, `DOCLING_RESULT_PATH`, `DOCLING_SOURCE_DELIVERY`, `DOCLING_SUBMIT_ENCODING` | IBM-hosted Docling connection, only read when `DOCUMENT_PARSER_PROVIDER=ibm-docling` | All but base URL and API key have working defaults |
+| `DOCUMENT_PARSER_REQUEST_TIMEOUT_MS` | Docling request timeout | Defaults to 60000 |
+| `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` | Inbound email → document intake | Required to receive documents by email |
+| `RESEND_ALLOWED_INBOUND_RECIPIENTS`, `RESEND_PUBLIC_DOCUMENT_ADDRESS` | Inbound email allow-list / displayed address | Optional even with Resend configured |
+| `ALLOW_DEMO_SEEDING` | Enables demo/mock seeding routines outside of `NODE_ENV=development` | Always blocked in production regardless of this flag — see `src/lib/environment.ts` |
+| `PLATFORM_ADMIN_EMAIL` | `scripts/bootstrap-admin.ts` | Only used by that one-off script |
+| `ENABLE_LEGACY_CLASSIFICATION_MOCK` | Legacy `/api/classification/classify` mock path | Dev/testing only |
 
 ### 3. Install Dependencies
 
@@ -177,7 +238,8 @@ curl -X GET "https://<your-deployment>/api/cron/hts-refresh" \
 ### Document Processing Worker
 `GET|POST /api/cron/document-processing` advances the Document Intelligence pipeline by one bounded pass: it submits queued documents to the configured parser provider, polls in-flight conversions, retrieves and persists completed results, runs the quality gate, and reclaims work abandoned by a crashed worker.
 
-- **Schedule**: every minute, defined in `vercel.json`. On other hosts, run the long-lived worker instead: `npm run worker:documents`. Both drive the same durable Postgres state and are safe to run simultaneously.
+- **Schedule**: daily, defined in `vercel.json` (`0 9 * * *`). This endpoint is a **backstop, not the pipeline** — Vercel's Hobby plan allows two cron entries, each at most once a day, which is nowhere near enough to carry a document through submit-then-poll. What actually drives the pipeline on Vercel is the request path: uploading, reprocessing, or polling a document's processing status schedules a bounded drain via Next's `after()`, so a document reaches the parser within seconds. Cron then sweeps up what no request will ever touch — runs abandoned by a crashed worker, and conversions that outlived the invocation that started them. It also carries the inbound-email backstop tick, which has no cron entry of its own for the same reason.
+- **On other hosts**, run the long-lived worker instead: `npm run worker:documents`. All three paths drive the same durable Postgres state and are safe to run simultaneously; every transition is a conditional update, so no two callers can double-apply one.
 - **Auth**: requires `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set.
 - **No work without a provider**: returns HTTP 503 with an explicit blocker when `DOCUMENT_PARSER_PROVIDER` is unset or IBM Docling is not configured, rather than a 200 that looks like an idle queue.
 - **Does not hold the request open** waiting for the parser, and creates no documents, exceptions, or demo data.

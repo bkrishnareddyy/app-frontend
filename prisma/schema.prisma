@@ -77,6 +77,30 @@ model Account {
   documentShipmentCandidates DocumentShipmentCandidate[]
   notifications              Notification[]
 
+  products                 Product[]
+  productIdentifiers       ProductIdentifier[]
+  productAttributes        ProductAttribute[]
+  productCompositions      ProductComposition[]
+  productParties           ProductParty[]
+  productCountryFacts      ProductCountryFact[]
+  productClassifications   ProductClassification[]
+  productEvidence          ProductEvidence[]
+  productChangeEvents      ProductChangeEvent[]
+  productRevalidationFlags ProductRevalidationFlag[]
+
+  parties                 Party[]
+  partyNames              PartyName[]
+  partyIdentifiers        PartyIdentifier[]
+  partyRegistrations      PartyRegistration[]
+  partyAddresses          PartyAddress[]
+  partyContacts           PartyContact[]
+  partyRoles              PartyRole[]
+  partySites              PartySite[]
+  partyRelationships      PartyRelationship[]
+  partyEvidence           PartyEvidence[]
+  partyChangeEvents       PartyChangeEvent[]
+  partyRevalidationFlags  PartyRevalidationFlag[]
+
   @@index([type])
   @@index([slug])
   @@index([ownerUserId])
@@ -392,6 +416,8 @@ model ShipmentDocument {
   fieldApprovals     FieldApproval[]
   agentDecisions     AgentDecision[]
   inboundAttachment  InboundAttachment?
+  productEvidence    ProductEvidence[]
+  partyEvidence      PartyEvidence[]
   shipmentCandidates DocumentShipmentCandidate[]
 
   @@index([shipmentId])
@@ -535,12 +561,23 @@ model ShipmentLineItem {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  /// Optional link to the tenant's Product Master. Null means the line has not
+  /// been matched to a product yet -- never a reason to withhold the line, and
+  /// never a licence to invent one. `productMatchStatus` records what the
+  /// deterministic matcher concluded, including AMBIGUOUS, which must not be
+  /// resolved by guessing.
+  productId          String?
+  product            Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productMatchStatus ProductMatchStatus?
+  productMatchedAt   DateTime?
+
   origins         OriginDetermination[]
   drawbackMatches DrawbackMatch[]
   pgaRequirements PgaRequirement[]
 
   @@index([shipmentId])
   @@index([accountId])
+  @@index([productId])
 }
 
 model AgentDecision {
@@ -1015,12 +1052,22 @@ model LegalEntity {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  customsProfiles CustomsProfile[]
-  shipmentParties ShipmentParty[]
+  /// Nullable backfill pointer at the Global Party Master, mirroring
+  /// `CanonicalProduct.productId`. Nothing in this record's own fields is
+  /// replaced by it; `ShipmentParty` and `ProductParty` keep reading
+  /// `LegalEntity` exactly as they always have.
+  partyId String?
+  party   Party?  @relation(fields: [partyId], references: [id], onDelete: SetNull)
+
+  customsProfiles    CustomsProfile[]
+  shipmentParties    ShipmentParty[]
+  productParties     ProductParty[]
+  productIdentifiers ProductIdentifier[]
 
   @@index([accountId])
   @@index([clientId])
   @@index([legalName])
+  @@index([partyId])
 }
 
 model CustomsProfile {
@@ -1364,9 +1411,18 @@ model CanonicalProduct {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  /// Bridge to the Global Product Master. `CanonicalProduct` predates it and
+  /// carries a single `htsCode`/`countryOfOrigin` pair, which is only ever
+  /// valid for one jurisdiction and one claim. The row is kept rather than
+  /// dropped so nothing is lost, and this column names the Product that now
+  /// holds the same facts under jurisdictional separation.
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
   aliases ProductAlias[]
 
   @@index([accountId])
+  @@index([productId])
 }
 
 model ProductAlias {
@@ -1947,8 +2003,10 @@ model ExtractedFact {
   verificationStatus  String  @default("UNVERIFIED") // UNVERIFIED, VERIFIED, CORRECTED
   verifiedByUserId    String?
 
-  case     ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  document CaseDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  case            ClassificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  document        CaseDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  productEvidence ProductEvidence[]
+  partyEvidence   PartyEvidence[]
 
   @@index([caseId])
   @@index([factType])
@@ -2080,4 +2138,1201 @@ model FilingSnapshot {
   createdAt    DateTime      @default(now())
 
   @@index([filingId])
+}
+
+// ============================================================================
+// GLOBAL PRODUCT / ITEM MASTER
+//
+// "Global" means one tenant's product master serves that tenant's trade across
+// many countries and customs jurisdictions. It does not mean products are
+// visible between tenants: every model below carries `accountId` and every
+// query in `src/modules/product` filters on it.
+//
+// The organising principle is that global product facts and jurisdictional
+// customs decisions are different things and live in different tables. There is
+// deliberately no `Product.hsCode` column -- an HTS number is only ever true for
+// one jurisdiction under one nomenclature at one point in time, so it lives on
+// `ProductClassification` and nowhere else.
+// ============================================================================
+
+/// Operational lifecycle of the product record. Separate from review state: a
+/// product can be ACTIVE and still UNREVIEWED, which is the common case for
+/// anything that arrived by import.
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  SUPERSEDED
+  ARCHIVED
+}
+
+/// Human review state of the product's master data. Never set by an agent.
+enum ProductReviewStatus {
+  UNREVIEWED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_REVIEW
+}
+
+enum ProductIdentifierType {
+  INTERNAL_SKU
+  CUSTOMER_SKU
+  SUPPLIER_SKU
+  MANUFACTURER_PART_NUMBER
+  MODEL_NUMBER
+  GTIN
+  UPC
+  EAN
+  STYLE_NUMBER
+  OTHER
+}
+
+enum ProductAttributeValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  DATE
+  ENUM
+  JSON
+}
+
+/// Whether a stored fact is the one in force. Facts are superseded, never
+/// overwritten, so the prior value stays readable in history.
+enum ProductFactStatus {
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+/// Where a fact or decision came from. Sources are not equally authoritative and
+/// the UI says which one it was; nothing here collapses them into "known".
+enum ProductSourceType {
+  DOCUMENT
+  EXTRACTED_FACT
+  ERP
+  PIM
+  USER
+  MANUFACTURER_DATASHEET
+  SUPPLIER_DECLARATION
+  CUSTOMS_RULING
+  REGULATORY_SOURCE
+  IMPORT
+  AGENT
+  OTHER
+}
+
+/// A supplier is not a manufacturer and a brand owner is not either. Keeping the
+/// roles distinct is what lets origin and classification work be attributed to
+/// the party that actually made the goods.
+enum ProductPartyRole {
+  MANUFACTURER
+  SUPPLIER
+  BRAND_OWNER
+}
+
+/// Country of manufacture is a manufacturing fact. Country of origin is a legal
+/// conclusion. They are separate members of this enum because conflating them is
+/// the single most common way a customs origin statement goes wrong.
+enum ProductCountryFactType {
+  MANUFACTURE_COUNTRY
+  PRODUCTION_COUNTRY
+  ORIGIN_CLAIM
+}
+
+enum ProductCountryFactStatus {
+  CLAIMED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  SUPERSEDED
+}
+
+/// Only APPROVED is an approved customs classification. CANDIDATE and PROPOSED
+/// are working state and must never be read as a filing position.
+enum ProductClassificationStatus {
+  CANDIDATE
+  PROPOSED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SUPERSEDED
+  EXPIRED
+}
+
+enum ProductClassificationMethod {
+  MANUAL
+  IMPORT
+  AGENT_PROPOSED
+  RULING_BASED
+}
+
+/// How much customs attention a change deserves. CUSTOMS_SIGNIFICANT means the
+/// changed fact is one that classification or origin analysis is built on -- it
+/// does not mean the code or the origin has changed.
+enum ProductChangeSignificance {
+  NON_MATERIAL
+  POTENTIALLY_CUSTOMS_SIGNIFICANT
+  CUSTOMS_SIGNIFICANT
+}
+
+/// Workflow signals raised when a customs-significant fact changes. These are
+/// requests for a person to look again. They are not customs decisions and they
+/// never alter one.
+enum ProductImpactFlag {
+  CLASSIFICATION_REVALIDATION_REQUIRED
+  ORIGIN_REVALIDATION_REQUIRED
+  REGULATORY_REVALIDATION_REQUIRED
+  VALUATION_REVIEW_REQUIRED
+}
+
+enum ProductRevalidationStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+/// Outcome of deterministic identifier matching. AMBIGUOUS is a real answer and
+/// is never collapsed into a match.
+enum ProductMatchStatus {
+  EXACT_MATCH
+  POSSIBLE_MATCH
+  AMBIGUOUS
+  NO_MATCH
+}
+
+/// The logical, reusable item. Holds identity and description only: every fact
+/// that varies by source, jurisdiction, or time lives in a child table with its
+/// own status, effective dates, and evidence.
+model Product {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// Convenience copy of the INTERNAL_SKU identifier, kept unique per account so
+  /// the database refuses a second product under the same internal SKU. The
+  /// authoritative list of identifiers is still `identifiers`.
+  internalSku String?
+
+  productName String
+
+  /// Four descriptions, deliberately not one. The customs description is written
+  /// for a classifier and is never generated from the commercial one.
+  commercialDescription String?
+  technicalDescription  String?
+  customsDescription    String?
+
+  brand String?
+  model String?
+
+  status       ProductStatus       @default(DRAFT)
+  reviewStatus ProductReviewStatus @default(UNREVIEWED)
+
+  /// Incremented by the service on every recorded change, so a change event can
+  /// name the version it produced.
+  currentVersion Int @default(1)
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  identifiers       ProductIdentifier[]
+  attributes        ProductAttribute[]
+  compositions      ProductComposition[]
+  parties           ProductParty[]
+  countryFacts      ProductCountryFact[]
+  classifications   ProductClassification[]
+  evidence          ProductEvidence[]
+  changeEvents      ProductChangeEvent[]
+  revalidationFlags ProductRevalidationFlag[]
+  shipmentLineItems ShipmentLineItem[]
+  canonicalProducts CanonicalProduct[]
+
+  /// Postgres treats NULLs as distinct, so any number of products may have no
+  /// internal SKU while no two may share one.
+  @@unique([accountId, internalSku])
+  @@index([accountId, deletedAt])
+  @@index([accountId, status])
+  @@index([accountId, reviewStatus])
+  @@index([accountId, productName])
+  @@index([accountId, updatedAt])
+  @@index([accountId, brand])
+  @@index([accountId, model])
+}
+
+/// One of the many ways a product is named. A product is never identified by SKU
+/// alone: the same part number belongs to different products at different
+/// manufacturers, which is why `issuerPartyId` exists.
+model ProductIdentifier {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  identifierType  ProductIdentifierType
+  /// As supplied. Never rewritten.
+  value           String
+  /// Deterministically normalized (trimmed, upper-cased, separators removed for
+  /// GTIN-family codes). Matching reads this; people read `value`.
+  normalizedValue String
+
+  /// The manufacturer or supplier whose numbering this is, where known. A
+  /// manufacturer part number without an issuer proves far less than one with.
+  issuerPartyId String?
+  issuerParty   LegalEntity? @relation(fields: [issuerPartyId], references: [id], onDelete: SetNull)
+
+  isPrimary  Boolean           @default(false)
+  sourceType ProductSourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  /// Scoped to the product, not the account: the same value legitimately recurs
+  /// across products from different manufacturers. Cross-product uniqueness for
+  /// genuinely unique schemes (GTIN, internal SKU) is enforced in the service,
+  /// where the manufacturer can be taken into account.
+  @@unique([productId, identifierType, normalizedValue])
+  @@index([accountId, identifierType, normalizedValue])
+  @@index([accountId, normalizedValue])
+  @@index([productId])
+}
+
+/// A typed product characteristic. Deliberately a table rather than columns:
+/// a valve, a textile, and a chemical need different facts, and a column per
+/// industry produces a product table nobody can read.
+model ProductAttribute {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// Stable machine code, e.g. MATERIAL, VOLTAGE, PRIMARY_FUNCTION. Codes in the
+  /// catalogue in `src/modules/product/productAttributes.ts` get a display name
+  /// and unit handling; codes outside it are still accepted and stored as given.
+  attributeCode String
+  attributeName String
+
+  rawValue        String
+  normalizedValue String?
+  valueType       ProductAttributeValueType @default(STRING)
+  rawUnit         String?
+  normalizedUnit  String?
+
+  status     ProductFactStatus @default(ACTIVE)
+  sourceType ProductSourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   ProductEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([productId, attributeCode, status])
+  @@index([accountId, attributeCode])
+  @@index([accountId, attributeCode, normalizedValue])
+}
+
+/// What the product is made of. Percentages are optional and are never invented
+/// to make a declaration total 100%.
+model ProductComposition {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  material           String
+  componentName      String?
+  percentage         Decimal? @db.Decimal(7, 4)
+  quantity           Decimal? @db.Decimal(18, 6)
+  unit               String?
+  normalizedUnit     String?
+  grade              String?
+  alloy              String?
+  chemicalIdentifier String?
+
+  /// True only when the source stated a complete composition. Only then is a
+  /// percentage total meaningful, and even then it is reported, not enforced.
+  isCompleteDeclaration Boolean @default(false)
+
+  status     ProductFactStatus @default(ACTIVE)
+  sourceType ProductSourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   ProductEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([productId, status])
+  @@index([accountId, material])
+}
+
+/// Links a product to an organisation in the existing Party domain
+/// (`LegalEntity`). No manufacturer or supplier entity is duplicated here.
+model ProductParty {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  legalEntityId String
+  legalEntity   LegalEntity @relation(fields: [legalEntityId], references: [id], onDelete: Cascade)
+
+  role ProductPartyRole
+
+  /// The plant or site, where the tenant tracks it. Free text rather than a
+  /// second address model: the address of record stays on `LegalEntity`.
+  manufacturingSite String?
+
+  status     ProductFactStatus @default(ACTIVE)
+  sourceType ProductSourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   ProductEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([productId, role, status])
+  @@index([accountId, legalEntityId])
+}
+
+/// Country facts, kept apart by type. A MANUFACTURE_COUNTRY row is a statement
+/// about where goods were made; an ORIGIN_CLAIM row is somebody's assertion of
+/// legal origin. Neither is derived from the other, and neither is derived from
+/// a supplier address, a seller country, or a port of loading.
+model ProductCountryFact {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  factType ProductCountryFactType
+
+  /// As stated by the source, e.g. "Germany".
+  rawCountry  String
+  /// ISO 3166-1 alpha-2 where the raw value resolves deterministically, else
+  /// null. An unrecognised country is left unresolved rather than guessed.
+  countryCode String?
+
+  status          ProductCountryFactStatus @default(CLAIMED)
+  sourceType      ProductSourceType        @default(USER)
+  /// Free-text description of the claim's provenance, e.g. "Supplier
+  /// declaration dated 2026-02-11".
+  sourceReference String?
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   ProductEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([productId, factType, status])
+  @@index([accountId, factType, countryCode])
+}
+
+/// A customs classification for one jurisdiction under one nomenclature. There
+/// is one row per jurisdiction, so a US HTSUS decision and an EU CN decision
+/// coexist and neither overwrites the other.
+model ProductClassification {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// ISO 3166-1 alpha-2, or a customs union code such as "EU". Not assumed to
+  /// determine the nomenclature.
+  jurisdiction String
+  /// HTSUS, CN, TARIC, UKGT, ... Extensible; nothing here is hard-coded to a
+  /// fixed list of countries.
+  nomenclature String
+
+  classificationCode String
+  /// Digits only, for lookup and comparison. `classificationCode` keeps the
+  /// dotted form the source used.
+  normalizedCode     String
+  description        String?
+
+  status          ProductClassificationStatus @default(CANDIDATE)
+  decisionSource  ProductSourceType           @default(USER)
+  decisionMethod  ProductClassificationMethod @default(MANUAL)
+  decisionVersion Int                         @default(1)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+
+  /// Set when a later decision replaces this one. The superseded row is kept.
+  supersededById String?                @unique
+  supersededBy   ProductClassification? @relation("ClassificationSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes     ProductClassification? @relation("ClassificationSupersession")
+
+  evidenceId String?
+  evidence   ProductEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([productId, jurisdiction, status])
+  @@index([accountId, jurisdiction, nomenclature, normalizedCode])
+  @@index([accountId, status])
+  @@index([productId, effectiveFrom])
+}
+
+/// Provenance for a product fact or decision. Where Document Intelligence
+/// produced the fact, the row points at the document or the extracted fact
+/// itself rather than restating it, so the lineage back to the page and region
+/// stays intact.
+model ProductEvidence {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  sourceType ProductSourceType
+
+  sourceDocumentId String?
+  sourceDocument   ShipmentDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  sourceExtractedFactId String?
+  sourceExtractedFact   ExtractedFact? @relation(fields: [sourceExtractedFactId], references: [id], onDelete: SetNull)
+
+  /// For sources that are not Qubere documents: an ERP object key, a ruling
+  /// number, a supplier declaration reference.
+  sourceReference String?
+  sourceUrl       String?
+
+  /// Location within the source document, when the extraction reported one.
+  page        Int?
+  boundingBox Json?
+  tableId     String?
+  rowIndex    Int?
+  columnIndex Int?
+
+  description String?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  attributes      ProductAttribute[]
+  compositions    ProductComposition[]
+  parties         ProductParty[]
+  countryFacts    ProductCountryFact[]
+  classifications ProductClassification[]
+
+  @@index([productId])
+  @@index([accountId, sourceType])
+  @@index([sourceDocumentId])
+  @@index([sourceExtractedFactId])
+}
+
+/// An append-only record of what changed on a product, what it changed from and
+/// to, and how much customs attention that deserves. Nothing in the Product
+/// Master deletes a prior value; this is where the prior value stays legible.
+model ProductChangeEvent {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// The `Product.currentVersion` this change produced.
+  versionNumber Int
+
+  /// The record that changed, e.g. "Product", "ProductAttribute:MATERIAL",
+  /// "ProductClassification:US/HTSUS".
+  entity String
+  /// The specific field, e.g. "material", "countryOfManufacture", "status".
+  field  String
+
+  oldValue String?
+  newValue String?
+
+  significance ProductChangeSignificance @default(NON_MATERIAL)
+  impactFlags  ProductImpactFlag[]
+
+  changeReason    String?
+  changedByUserId String?
+  correlationId   String?
+
+  createdAt DateTime @default(now())
+
+  revalidationFlags ProductRevalidationFlag[]
+
+  @@index([productId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([productId, versionNumber])
+  @@index([accountId, significance])
+}
+
+/// An open request to revalidate something because a fact underneath it moved.
+/// A workflow signal only: raising one never changes a classification, an origin
+/// claim, or a review state, and resolving one never approves anything.
+model ProductRevalidationFlag {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  flag   ProductImpactFlag
+  status ProductRevalidationStatus @default(OPEN)
+
+  /// Why it was raised, in the words shown to the reviewer.
+  reason String
+
+  triggeredByChangeEventId String?
+  triggeredByChangeEvent   ProductChangeEvent? @relation(fields: [triggeredByChangeEventId], references: [id], onDelete: SetNull)
+
+  resolvedByUserId String?
+  resolvedAt       DateTime?
+  resolutionNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, status])
+  @@index([accountId, status, flag])
+}
+
+// ---------------------------------------------------------------------------
+// Global Party Master
+//
+// One record per organisation or individual, per tenant, separate from any
+// role it plays. `LegalEntity` is the existing party record used today by
+// `ShipmentParty`, `ProductParty` and `CustomsProfile` -- it is untouched and
+// still standing, exactly as `CanonicalProduct` still stands next to
+// `Product`. `LegalEntity.partyId` is the only new link, a nullable backfill
+// pointer at the master, mirroring `CanonicalProduct.productId`.
+// ---------------------------------------------------------------------------
+
+enum PartyKind {
+  ORGANIZATION
+  INDIVIDUAL
+}
+
+enum PartyStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  SUPERSEDED
+  ARCHIVED
+}
+
+/// Human review state of the party's master data. Never set by an agent.
+enum PartyReviewStatus {
+  UNREVIEWED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_REVIEW
+}
+
+enum PartyNameType {
+  LEGAL
+  TRADE
+  DBA
+  FORMER_LEGAL
+  TRANSLATED
+}
+
+enum PartyIdentifierType {
+  EORI
+  DUNS
+  LEI
+  VAT
+  TAX_ID
+  CUSTOMS_ID
+  INTERNAL_PARTY_CODE
+  CUSTOMER_NUMBER
+  SUPPLIER_NUMBER
+  OTHER
+}
+
+/// Whether a stored fact is the one in force. Facts are superseded, never
+/// overwritten, so the prior value stays readable in history.
+enum PartyFactStatus {
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+/// Where a fact came from. Sources are not equally authoritative and the UI
+/// says which one it was; nothing here collapses them into "known".
+enum PartySourceType {
+  DOCUMENT
+  EXTRACTED_FACT
+  ERP
+  CRM
+  USER
+  CUSTOMER_DECLARATION
+  SUPPLIER_DECLARATION
+  EXTERNAL_REGISTRY
+  IMPORT
+  AGENT
+  OTHER
+}
+
+/// CLAIMED is what a source stated. VERIFIED means a person checked it against
+/// evidence -- never set by import, and never set just because a registration
+/// number matches a pattern.
+enum PartyRegistrationStatus {
+  CLAIMED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  SUPERSEDED
+}
+
+enum PartyAddressType {
+  REGISTERED
+  MAILING
+  BILLING
+  SITE
+  OPERATING
+}
+
+/// What a party does, not who it is. The same party can hold more than one of
+/// these across different products or shipments.
+enum PartyRoleType {
+  IMPORTER
+  EXPORTER
+  MANUFACTURER
+  SUPPLIER
+  CUSTOMER
+  CONSIGNEE
+  CONSIGNOR
+  CARRIER
+  FREIGHT_FORWARDER
+  CUSTOMS_BROKER
+  BUYER
+  SELLER
+  NOTIFY_PARTY
+  OTHER
+}
+
+/// A stated relationship between two parties. Never a beneficial-ownership
+/// graph and never inferred -- only recorded when a source stated it.
+enum PartyRelationshipType {
+  PARENT_OF
+  SUBSIDIARY_OF
+  AFFILIATE_OF
+  AGENT_OF
+  SUCCESSOR_OF
+  PREDECESSOR_OF
+}
+
+/// How much compliance attention a change deserves. COMPLIANCE_SIGNIFICANT
+/// means the changed fact is one identity, registration or screening work is
+/// built on -- it does not mean any of those has actually changed.
+enum PartyChangeSignificance {
+  NON_MATERIAL
+  POTENTIALLY_COMPLIANCE_SIGNIFICANT
+  COMPLIANCE_SIGNIFICANT
+}
+
+/// Workflow signals raised when a compliance-significant fact changes. These
+/// are requests for a person to look again. SCREENING_REVALIDATION_REQUIRED is
+/// not a screening result and never a permanent party status -- it is a
+/// resolvable flag like the other three, cleared by a person, never inferred
+/// into a pass/fail.
+enum PartyImpactFlag {
+  IDENTITY_REVALIDATION_REQUIRED
+  REGISTRATION_REVALIDATION_REQUIRED
+  ADDRESS_REVALIDATION_REQUIRED
+  SCREENING_REVALIDATION_REQUIRED
+}
+
+enum PartyRevalidationStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+/// Outcome of deterministic identifier/name matching. AMBIGUOUS is a real
+/// answer and is never collapsed into a match.
+enum PartyMatchStatus {
+  EXACT_MATCH
+  POSSIBLE_MATCH
+  AMBIGUOUS
+  NO_MATCH
+}
+
+/// The logical organisation or individual. Holds identity only: every name,
+/// identifier, registration, address, contact, role and relationship that
+/// varies by jurisdiction, source or time lives in a child table with its own
+/// status, effective dates and evidence. There is deliberately no name and no
+/// country column here, for the same reason there is no `Product.hsCode`.
+model Party {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// Convenience copy of the INTERNAL_PARTY_CODE identifier, kept unique per
+  /// account. The authoritative list of identifiers is still `identifiers`.
+  internalPartyCode String?
+
+  /// Individual vs organisation. Not a role -- a role is what a party does on
+  /// a shipment or product; this is what kind of legal actor it is.
+  partyKind PartyKind @default(ORGANIZATION)
+
+  status       PartyStatus       @default(DRAFT)
+  reviewStatus PartyReviewStatus @default(UNREVIEWED)
+
+  /// Incremented by the service on every recorded change, so a change event
+  /// can name the version it produced.
+  currentVersion Int @default(1)
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  legalEntities     LegalEntity[]
+  names             PartyName[]
+  identifiers       PartyIdentifier[]
+  registrations     PartyRegistration[]
+  addresses         PartyAddress[]
+  contacts          PartyContact[]
+  roles             PartyRole[]
+  sites             PartySite[]
+  evidence          PartyEvidence[]
+  changeEvents      PartyChangeEvent[]
+  revalidationFlags PartyRevalidationFlag[]
+  relationshipsFrom PartyRelationship[]     @relation("PartyRelationshipFrom")
+  relationshipsTo   PartyRelationship[]     @relation("PartyRelationshipTo")
+
+  /// Postgres treats NULLs as distinct, so any number of parties may have no
+  /// internal code while no two may share one.
+  @@unique([accountId, internalPartyCode])
+  @@index([accountId, deletedAt])
+  @@index([accountId, status])
+  @@index([accountId, reviewStatus])
+  @@index([accountId, updatedAt])
+}
+
+/// One of the many names a party is known by. A party is never identified by
+/// name alone -- the matcher only treats a name as strong evidence when paired
+/// with a country of registration or a verified address.
+model PartyName {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  nameType PartyNameType
+
+  rawName String
+
+  /// Deterministically normalized: trimmed, upper-cased, punctuation and
+  /// legal suffixes (Inc, Ltd, GmbH, SA, ...) folded. Matching reads this;
+  /// people read `rawName`.
+  normalizedName String
+
+  language  String?
+  isPrimary Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, nameType, status])
+  @@index([accountId, normalizedName])
+}
+
+/// A jurisdiction identifier or external number -- EORI, DUNS, LEI, VAT, a
+/// customer/supplier number a counterpart assigned. Never a name.
+model PartyIdentifier {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  identifierType PartyIdentifierType
+
+  value           String
+  normalizedValue String
+
+  /// Where the identifier was issued, e.g. the EORI's member state. A fact
+  /// about the identifier, not about where the party is located -- never
+  /// conflated with an address country.
+  issuingCountry   String?
+  issuingAuthority String?
+
+  isPrimary Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([partyId, identifierType, normalizedValue])
+  @@index([accountId, identifierType, normalizedValue])
+  @@index([accountId, normalizedValue])
+  @@index([partyId])
+}
+
+/// A business registration in one jurisdiction: a registry number issued by a
+/// named authority, plus the country of registration the matcher pairs with a
+/// normalized legal name. Never inferred from an address.
+model PartyRegistration {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  registrationNumber   String
+  registeringAuthority String?
+  country              String
+  legalForm            String?
+
+  status PartyRegistrationStatus @default(CLAIMED)
+
+  registeredOn DateTime?
+
+  verifiedByUserId String?
+  verifiedAt       DateTime?
+
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, status])
+  @@index([accountId, country, registrationNumber])
+}
+
+/// An address the party gave for a specific purpose. Address country is its
+/// own fact, separate from country of registration and from any identifier's
+/// issuing country -- never derived from either.
+model PartyAddress {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  addressType PartyAddressType
+
+  addressLine1  String
+  addressLine2  String?
+  city          String?
+  stateProvince String?
+  postalCode    String?
+  country       String
+
+  isPrimary  Boolean @default(false)
+  isVerified Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sites PartySite[]
+
+  @@index([partyId, addressType, status])
+  @@index([accountId, country])
+}
+
+model PartyContact {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  name  String?
+  title String?
+  email String?
+  phone String?
+
+  isPrimary Boolean @default(false)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, status])
+}
+
+/// What a party does, kept apart from who it is. The same Party can hold
+/// MANUFACTURER on one product family and SUPPLIER on another without a
+/// second Party record, and losing a role never touches identity.
+model PartyRole {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  roleType PartyRoleType
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, roleType, status])
+  @@index([accountId, roleType])
+}
+
+/// A stated relationship between two parties in this master, e.g. subsidiary
+/// or agent. Never a beneficial-ownership graph and never inferred.
+model PartyRelationship {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  fromPartyId String
+  fromParty   Party  @relation("PartyRelationshipFrom", fields: [fromPartyId], references: [id], onDelete: Cascade)
+  toPartyId   String
+  toParty     Party  @relation("PartyRelationshipTo", fields: [toPartyId], references: [id], onDelete: Cascade)
+
+  relationshipType PartyRelationshipType
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  evidenceId String?
+  evidence   PartyEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fromPartyId, relationshipType])
+  @@index([toPartyId, relationshipType])
+  @@index([accountId])
+}
+
+/// An operating facility or site, at an address the party already has on
+/// file. Free-standing rather than duplicating address fields.
+model PartySite {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  siteName  String
+  addressId String?
+  address   PartyAddress? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  status     PartyFactStatus @default(ACTIVE)
+  sourceType PartySourceType @default(USER)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyId, status])
+  @@index([addressId])
+}
+
+model PartyEvidence {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  sourceType PartySourceType
+
+  sourceDocumentId String?
+  sourceDocument   ShipmentDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  sourceExtractedFactId String?
+  sourceExtractedFact   ExtractedFact? @relation(fields: [sourceExtractedFactId], references: [id], onDelete: SetNull)
+
+  /// For sources that are not Qubere documents: an ERP object key, a registry
+  /// reference, a supplier declaration reference.
+  sourceReference String?
+  sourceUrl       String?
+
+  page        Int?
+  boundingBox Json?
+  tableId     String?
+  rowIndex    Int?
+  columnIndex Int?
+
+  description String?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  names         PartyName[]
+  identifiers   PartyIdentifier[]
+  registrations PartyRegistration[]
+  addresses     PartyAddress[]
+  roles         PartyRole[]
+  relationships PartyRelationship[]
+
+  @@index([partyId])
+  @@index([accountId, sourceType])
+  @@index([sourceDocumentId])
+  @@index([sourceExtractedFactId])
+}
+
+/// An append-only record of what changed on a party, what it changed from and
+/// to, and how much compliance attention that deserves. Nothing here deletes a
+/// prior value; this is where the prior value stays legible.
+model PartyChangeEvent {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  /// The `Party.currentVersion` this change produced.
+  versionNumber Int
+
+  /// The record that changed, e.g. "Party", "PartyName:LEGAL",
+  /// "PartyRegistration:DE".
+  entity String
+  /// The specific field, e.g. "normalizedName", "country", "status".
+  field  String
+
+  oldValue String?
+  newValue String?
+
+  significance PartyChangeSignificance @default(NON_MATERIAL)
+  impactFlags  PartyImpactFlag[]
+
+  changeReason    String?
+  changedByUserId String?
+  correlationId   String?
+
+  createdAt DateTime @default(now())
+
+  revalidationFlags PartyRevalidationFlag[]
+
+  @@index([partyId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([partyId, versionNumber])
+  @@index([accountId, significance])
+}
+
+/// An open request to revalidate something because a fact underneath it
+/// moved. A workflow signal only: raising one never changes an identity, a
+/// registration, or a review state, and resolving one never approves
+/// anything. SCREENING_REVALIDATION_REQUIRED specifically is a request to look
+/// again, never a screening result and never a permanent party status.
+model PartyRevalidationFlag {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  flag   PartyImpactFlag
+  status PartyRevalidationStatus @default(OPEN)
+
+  /// Why it was raised, in the words shown to the reviewer.
+  reason String
+
+  triggeredByChangeEventId String?
+  triggeredByChangeEvent   PartyChangeEvent? @relation(fields: [triggeredByChangeEventId], references: [id], onDelete: SetNull)
+
+  resolvedByUserId String?
+  resolvedAt       DateTime?
+  resolutionNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partyId, status])
+  @@index([accountId, status, flag])
 }

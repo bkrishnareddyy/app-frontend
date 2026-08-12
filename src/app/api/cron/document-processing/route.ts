@@ -7,10 +7,10 @@ import { parserConfigurationReport } from "@/modules/documents/parser/config";
 /**
  * Drives the document processing pipeline one bounded pass at a time.
  *
- * This is how the worker runs on a serverless host (see vercel.json). On a
- * long-running host, `src/worker/documentWorker.ts` calls the same
- * `runWorkerTick()` in a loop; both are safe to run simultaneously because every
- * state transition is a conditional update against the durable Postgres run.
+ * On a long-running host, `src/worker/documentWorker.ts` calls the same
+ * `runWorkerTick()` in a loop, and request handlers call it too; all three are
+ * safe to run simultaneously because every state transition is a conditional
+ * update against the durable Postgres run.
  *
  * A tick does not wait for the parser: it submits what is due, polls what is
  * due, finishes what is ready, and returns. A document mid-conversion is picked
@@ -21,6 +21,16 @@ import { parserConfigurationReport } from "@/modules/documents/parser/config";
  * work that already exists: it advances durable runs and never creates
  * documents, demo data, exceptions, or shipments.
  *
+ * On Vercel this is a **daily backstop, not the pipeline**. Hobby schedules cron
+ * at most once a day, and one tick cannot finish a document anyway: submission
+ * sets `nextPollAt` a few seconds out, so the poll that retrieves the result
+ * belongs to a later tick. The pipeline is driven from the request path instead
+ * — see `advanceDocumentProcessing()` in
+ * `src/modules/documents/processing/advanceProcessing.ts`. What this endpoint is
+ * for is the work no request will ever touch: runs abandoned by a crashed
+ * worker, and documents whose conversion outlived the invocation that uploaded
+ * them.
+ *
  * Also runs `runInboundEmailWorkerTick()` as the durable backstop for inbound
  * email ingestion. Vercel Hobby plans cap projects at 2 cron jobs, all daily,
  * so inbound email processing does not get its own vercel.json entry (see
@@ -28,8 +38,14 @@ import { parserConfigurationReport } from "@/modules/documents/parser/config";
  * Pro-plan-scheduled use) -- it piggybacks on this existing daily slot
  * instead. The webhook's own `after()` dispatch is what makes ingestion feel
  * immediate; this is only the once-a-day safety net for whatever that missed.
+ * Same arrangement as documents, arrived at independently: a request does the
+ * work, and this endpoint catches what no request will.
  */
-export const maxDuration = 300;
+
+// 60 seconds is the Hobby ceiling for a function; asking for more fails the
+// deployment rather than granting it. Raise this to 300 on Pro if the daily
+// backstop starts running out of time on a large backlog.
+export const maxDuration = 60;
 
 function unauthorized(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;

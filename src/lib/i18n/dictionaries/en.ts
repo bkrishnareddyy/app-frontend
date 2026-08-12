@@ -3,6 +3,8 @@ export const en = {
   nav: {
     commandCenter: "Command Center",
     shipments: "Shipments",
+    products: "Products",
+    parties: "Parties",
     clients: "Clients",
     tradeDocuments: "Trade Documents",
     actions: "Actions",

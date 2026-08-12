@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { parseArtifactIndex } from "@/modules/documents/parser/artifactStore";
 import { parserConfigurationReport } from "@/modules/documents/parser/config";
 import { qualityAssessmentSchema } from "@/modules/documents/parser/qualityGate";
+import { advanceDocumentProcessing } from "@/modules/documents/processing/advanceProcessing";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
 
@@ -21,7 +22,24 @@ const paramsSchema = z.object({ id: z.string().min(1) });
  * exist, their sizes and their hashes. A storage URL in a JSON response is a
  * storage credential leak waiting to happen; artifacts are fetched through the
  * tenant-scoped artifact route instead.
+ *
+ * Read-only from the caller's point of view, but polling it also advances the
+ * pipeline: on a serverless host with a daily cron, somebody watching a document
+ * convert is the most reliable signal that the work is worth doing now. The
+ * drain runs after the response, so this response describes the state as it was
+ * read and the next poll sees the progress.
  */
+
+// Covers the `after()` drain below, not the read, which is a handful of queries.
+export const maxDuration = 60;
+
+/**
+ * Collapses a burst of polls on one warm instance into a single drain. Slightly
+ * under the 5s cadence a polling client would use, so a steady poll still gets
+ * a drain each time rather than every other time.
+ */
+const READ_DRAIN_MIN_INTERVAL_MS = 4_000;
+
 export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
@@ -85,6 +103,18 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   });
 
   const configuration = parserConfigurationReport();
+
+  // Only when this document actually has something in flight. A poll against a
+  // finished document should cost a read and nothing more.
+  const inFlight = runs.some(
+    (run) => run.status === "QUEUED" || run.status === "SUBMITTED" || run.status === "POLLING"
+  );
+  if (inFlight) {
+    advanceDocumentProcessing({
+      reason: "document.processing.poll",
+      minIntervalMs: READ_DRAIN_MIN_INTERVAL_MS,
+    });
+  }
 
   return NextResponse.json({
     requestId,

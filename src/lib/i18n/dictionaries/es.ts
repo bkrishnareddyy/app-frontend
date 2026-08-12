@@ -5,6 +5,8 @@ export const es: TranslationKeys = {
   nav: {
     commandCenter: "Centro de Control",
     shipments: "Embarques",
+    products: "Productos",
+    parties: "Partes",
     clients: "Clientes",
     tradeDocuments: "Documentos Comerciales",
     actions: "Acciones",
