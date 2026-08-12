@@ -295,10 +295,18 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
   return fallback;
 }
 
+interface ExtractionFieldRow {
+  fieldName?: string;
+  value?: string;
+  pageNumber?: number | null;
+  confidence?: number | null;
+  bbox?: { x: number; y: number; width: number; height: number } | null;
+}
+
 interface ExtractionPayload {
   extractedJson?: Record<string, unknown> | null;
   rawContent?: string | null;
-  extractionFields?: Array<{ fieldName?: string; value?: string }>;
+  extractionFields?: Array<ExtractionFieldRow>;
 }
 
 type ReviewAction = "APPROVE" | "REJECT" | "RE_EVALUATE";
@@ -455,6 +463,15 @@ export function DocumentReviewPanel({
   // existing comments are never hidden behind an extra click.
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
 
+  // Click-to-provenance: which page is loaded in the PDF iframe, and which
+  // field is currently highlighted (null = no highlight).
+  const [pdfPage, setPdfPage] = useState(1);
+  const [activeProvenance, setActiveProvenance] = useState<{
+    name: string;
+    page: number | null;
+    bbox: { x: number; y: number; width: number; height: number } | null;
+  } | null>(null);
+
   // This panel can stay mounted across document selections when embedded
   // inline on a page (unlike a modal, which unmounts on close), so switching
   // documentId has to reset per-document UI state instead of relying on
@@ -469,6 +486,8 @@ export function DocumentReviewPanel({
     setMissingFieldValues({});
     setSavingMissingKey(null);
     setMissingFieldErrors({});
+    setPdfPage(1);
+    setActiveProvenance(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
 
@@ -701,6 +720,33 @@ export function DocumentReviewPanel({
 
     return Array.from(map.entries());
   }, [data?.extractionFields, parsedExtractedJson]);
+
+  // Index of field→provenance metadata. Only the most-recently-written row per
+  // field is kept (agents overwrite on re-run; newest row wins).
+  const provenanceMap = useMemo(() => {
+    const map = new Map<string, { page: number | null; confidence: number | null; bbox: { x: number; y: number; width: number; height: number } | null }>();
+    if (!Array.isArray(data?.extractionFields)) return map;
+    for (const field of data.extractionFields) {
+      if (!field.fieldName) continue;
+      const page = field.pageNumber ?? null;
+      const bbox = field.bbox && typeof field.bbox === "object" &&
+        "x" in field.bbox && "y" in field.bbox &&
+        "width" in field.bbox && "height" in field.bbox
+        ? (field.bbox as { x: number; y: number; width: number; height: number })
+        : null;
+      // Later rows in the array are more recent; always overwrite.
+      map.set(field.fieldName, { page, confidence: field.confidence ?? null, bbox });
+    }
+    return map;
+  }, [data?.extractionFields]);
+
+  function jumpToField(name: string) {
+    const prov = provenanceMap.get(name);
+    if (!prov) return;
+    setActiveProvenance({ name, page: prov.page, bbox: prov.bbox });
+    if (prov.page) setPdfPage(prov.page);
+    setActiveTab("DOC");
+  }
 
   const isPending = parsedExtractedJson?.extractionStatus === "PENDING_VISION_PROCESSING";
 
@@ -1107,9 +1153,8 @@ export function DocumentReviewPanel({
                 </div>
               ) : isPdfFile(proxyUrl, fileName) ? (
                 (() => {
-                  const pdfUrlWithParams = proxyUrl.includes("#")
-                    ? proxyUrl
-                    : `${proxyUrl}#view=FitH&toolbar=1`;
+                  const baseUrl = proxyUrl.split("#")[0];
+                  const pdfUrlWithParams = `${baseUrl}#page=${pdfPage}&view=FitH&toolbar=1`;
                   return (
                     <div className="flex-1 w-full h-full flex flex-col overflow-hidden">
                       {/* PDF Action Bar */}
@@ -1117,11 +1162,23 @@ export function DocumentReviewPanel({
                         <div className="flex items-center space-x-2.5 min-w-0">
                           <FileText className="w-4 h-4 text-brand shrink-0" />
                           <span className="text-xs font-bold truncate text-slate-100">{fileName}</span>
-                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-white/10 text-slate-300 shrink-0">
-                            Fit Width Enabled
-                          </span>
+                          {pdfPage > 1 && (
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-brand/30 text-brand-light shrink-0">
+                              p.{pdfPage}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2 shrink-0">
+                          {pdfPage > 1 && (
+                            <button
+                              onClick={() => { setPdfPage(1); setActiveProvenance(null); }}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors cursor-pointer"
+                              title="Back to page 1"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Reset</span>
+                            </button>
+                          )}
                           <a
                             href={proxyUrl}
                             target="_blank"
@@ -1135,9 +1192,37 @@ export function DocumentReviewPanel({
                         </div>
                       </div>
 
-                      {/* PDF Canvas iFrame */}
+                      {/* Provenance banner — shown when a field was clicked in the KV tab */}
+                      {activeProvenance && (
+                        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between gap-3 shrink-0">
+                          <div className="flex items-center gap-2 min-w-0 text-xs">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-bold text-[10px] uppercase shrink-0">
+                              Source
+                            </span>
+                            <span className="font-semibold text-amber-900 truncate">{activeProvenance.name}</span>
+                            {activeProvenance.page && (
+                              <span className="text-amber-700 shrink-0">— page {activeProvenance.page}</span>
+                            )}
+                            {activeProvenance.bbox && (
+                              <span className="text-amber-600 text-[10px] shrink-0 hidden sm:inline">
+                                ({Math.round(activeProvenance.bbox.x)}, {Math.round(activeProvenance.bbox.y)})
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setActiveProvenance(null)}
+                            className="text-amber-700 hover:text-amber-900 transition-colors cursor-pointer shrink-0"
+                            title="Dismiss"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* PDF Canvas iFrame — key forces remount on page change */}
                       <div className="flex-1 w-full h-full relative overflow-hidden bg-[#323639]">
                         <iframe
+                          key={pdfUrlWithParams}
                           src={pdfUrlWithParams}
                           className="w-full h-full border-none block min-h-[450px]"
                           title={fileName}
@@ -1178,16 +1263,33 @@ export function DocumentReviewPanel({
           <div className="flex-1 overflow-y-auto border border-border rounded-2xl p-4 bg-[#F9F9FB] space-y-3 text-xs">
             {kvEntries.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {kvEntries.map(([k, v], idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-white border border-border space-y-0.5 shadow-2xs">
-                    <p className="text-[11px] text-ink-muted font-bold uppercase">{k}</p>
-                    <p className="font-extrabold text-ink break-words">
-                      {v !== null && v !== undefined ? String(v) : (
-                        <span className="italic font-normal text-amber-700">Not Present (Null)</span>
-                      )}
-                    </p>
-                  </div>
-                ))}
+                {kvEntries.map(([k, v], idx) => {
+                  const prov = provenanceMap.get(k);
+                  return (
+                    <div key={idx} className="p-3 rounded-xl bg-white border border-border space-y-0.5 shadow-2xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-ink-muted font-bold uppercase truncate">{k}</p>
+                        {prov?.page && (
+                          <button
+                            onClick={() => jumpToField(k)}
+                            title={`Extracted from page ${prov.page}${prov.confidence != null ? ` · ${prov.confidence}% confidence` : ""}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer shrink-0"
+                          >
+                            p.{prov.page}
+                            {prov.confidence != null && (
+                              <span className="text-amber-500 font-normal">{prov.confidence}%</span>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      <p className="font-extrabold text-ink break-words">
+                        {v !== null && v !== undefined ? String(v) : (
+                          <span className="italic font-normal text-amber-700">Not Present (Null)</span>
+                        )}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="p-6 text-center text-ink-muted">

@@ -956,6 +956,28 @@ ${instructions}`;
               fileName: input.fileName || docToUpdate.fileName,
               fields: { exporterName, importerName, originCountry },
             });
+
+            // Write per-field ExtractionField rows from the entities array so
+            // the document viewer can show page-level provenance ("p.3") next
+            // to each extracted value and jump the PDF to that page on click.
+            // Human corrections carry their own source tag and are preserved.
+            if (entities && entities.length > 0) {
+              await db.extractionField.deleteMany({
+                where: { documentId: docToUpdate.id, source: "OCR_AI_AGENT" },
+              });
+              await db.extractionField.createMany({
+                data: entities
+                  .filter((e) => e.type && e.value)
+                  .map((e) => ({
+                    documentId: docToUpdate.id,
+                    fieldName: e.type,
+                    value: String(e.value),
+                    confidence: typeof e.confidence === "number" ? Math.round(e.confidence) : null,
+                    pageNumber: typeof e.page === "number" ? e.page : null,
+                    source: "OCR_AI_AGENT",
+                  })),
+              });
+            }
           }
         }
       }
