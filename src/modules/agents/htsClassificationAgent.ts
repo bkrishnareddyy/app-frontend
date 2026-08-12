@@ -5,6 +5,8 @@ import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
 import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
+import { applyAutoApprovalPolicy } from "@/modules/decisions/autoApprovalPolicy";
+import { matchPartMaster } from "@/modules/product/partMasterMatch";
 
 // Real, ingested HTS Master Release data (29k+ classifiable nodes, 50k+
 // parsed duty rate rows) -- looks up the General column rate for a
@@ -58,9 +60,18 @@ export interface HTSClassificationInput {
     finish?: string | null;
     carbonContentPercentage?: number | null;
     casNumber?: string | null;
+    /** Part number from the shipment line item, for product-master matching. */
+    partNumber?: string | null;
   }>;
   /** From the shipment's accumulated context, when known. */
   countryOfOrigin?: string | null;
+  /** Account's canonical products for part-master matching. Omit when not available. */
+  canonicalProducts?: Array<{
+    id: string;
+    partNumber: string | null;
+    htsCode: string | null;
+    aliases: { aliasName: string }[];
+  }>;
 }
 
 export interface HTSClassificationOutput {
@@ -178,6 +189,8 @@ export class HTSClassificationAgent {
             agentName: "HTS Classification Agent",
             agentIcon: "BookOpen",
             status: "Needs Review",
+            triageState: "BLOCKED",
+            blockedReason: "BLOCKED_MISSING_DESCRIPTION",
             confidence: 0,
             decisionSummary:
               "HTS Classification Gating: Paused because product description is missing or unverified.",
@@ -374,6 +387,22 @@ ${candidateContext}`;
     for (const result of results) {
       const lineRequiresReview = result.confidence < 70;
       try {
+        const profile = input.productProfiles.find((p) => p.lineNumber === result.lineNumber);
+        const pmMatch = matchPartMaster(
+          { partNumber: profile?.partNumber ?? null, proposedHtsCode: result.htsCode },
+          input.canonicalProducts ?? []
+        );
+        const policy = applyAutoApprovalPolicy({
+          confidence: result.confidence,
+          partMasterMatch: pmMatch.matched,
+          partMasterHtsAgrees: pmMatch.htsAgrees,
+          agentName: "HTS Classification Agent",
+        });
+
+        const triageState = policy.outcome === "AUTO" ? "AUTO_VERIFIED" : "NEEDS_REVIEW";
+        // "Approved" is reserved for human reviewers; AUTO_VERIFIED distinguishes machine confidence.
+        const status = policy.outcome === "AUTO" ? "AUTO_VERIFIED" : "Needs Review";
+
         const agentDecision = await db.agentDecision.create({
           data: {
             accountId: input.accountId,
@@ -381,7 +410,9 @@ ${candidateContext}`;
             documentId: input.documentId ?? null,
             agentName: "HTS Classification Agent",
             agentIcon: "BookOpen",
-            status: lineRequiresReview ? "Needs Review" : "Approved",
+            status,
+            triageState,
+            autoApprovalPolicy: policy.outcome === "AUTO" ? policy.policyId : null,
             confidence: result.confidence,
             lineNumber: result.lineNumber,
             decisionSummary: `Classification for line ${result.lineNumber} (${result.productDescription}): HTS ${result.htsCode} (Confidence: ${result.confidence}%).`,
@@ -393,7 +424,7 @@ ${candidateContext}`;
             proposedHtsCode: result.htsCode,
             proposedDescription: result.htsDescription,
             rulesApplied: ["GRI 1-6 Legal Verification", "HTSUS Chapter/Section Note Analysis"],
-            evidenceItems: { result, reasoningChain } as unknown as Prisma.InputJsonValue,
+            evidenceItems: { result, reasoningChain, autoApprovalPolicy: policy } as unknown as Prisma.InputJsonValue,
           },
         });
         agentDecisionId = agentDecisionId ?? agentDecision.id;
@@ -401,10 +432,19 @@ ${candidateContext}`;
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
-          action: "AGENT_EXECUTION_COMPLETED",
+          action: policy.outcome === "AUTO" ? "decision.auto_verified" : "AGENT_EXECUTION_COMPLETED",
           entity: "AGENT_DECISION",
           entityId: agentDecision.id,
-          metadata: { agentName: "HTS Classification Agent", lineNumber: result.lineNumber, confidence: result.confidence },
+          metadata: {
+            agentName: "HTS Classification Agent",
+            lineNumber: result.lineNumber,
+            confidence: result.confidence,
+            autoApprovalPolicy: policy.policyId,
+            autoApprovalOutcome: policy.outcome,
+            autoApprovalReason: policy.reason,
+            partMasterMatch: pmMatch.matched,
+            partMasterHtsAgrees: pmMatch.htsAgrees,
+          },
         }).catch((err) => {
           debugError = logAgentError("HTS Classification Agent", input.shipmentId, "createAuditLog", err);
         });

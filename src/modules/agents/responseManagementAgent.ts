@@ -80,7 +80,9 @@ export class ResponseManagementAgent {
           shipmentId: input.shipmentId,
           agentName: "Response Agent",
           agentIcon: "ReceiptCheck",
-          status: "Approved",
+          status: "AUTO_VERIFIED",
+          triageState: "AUTO_VERIFIED",
+          autoApprovalPolicy: "response-deterministic-v1",
           confidence: 100,
           decisionSummary: input.entryNumber
             ? `Post-Summary Scan Complete: Entry ${input.entryNumber} recorded. Live USTR/CBP integration required for refund claim.`
