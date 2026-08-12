@@ -22,13 +22,14 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     include: {
       snapshot: true,
       shipment: {
+        omit: { filingDeadline: true },
         include: {
           documents: true,
           // Ordered because the reads below treat lineItems[0] as the filing's
           // primary line: unordered rows made the declared primary HTS and
           // country of origin whichever line Postgres happened to return first.
           lineItems: { orderBy: { lineNumber: "asc" } },
-          agentDecisions: true,
+          agentDecisions: { omit: { triageState: true, blockedReason: true, autoApprovalPolicy: true } },
         },
       },
       responses: {
@@ -250,7 +251,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   const updatedFiling = await db.customsFiling.update({
     where: { id },
     data: updateData,
-    include: { responses: true, shipment: true },
+    include: { responses: true, shipment: { omit: { filingDeadline: true } } },
   });
 
   // Create Audit Log entry for status/details updates

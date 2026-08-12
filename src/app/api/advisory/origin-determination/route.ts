@@ -62,7 +62,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const lineItem = await db.shipmentLineItem.findFirst({
     where: { id: shipmentLineItemId, accountId: ctx.accountId },
-    include: { shipment: true },
+    // filingDeadline is in the Prisma schema but not yet applied to the live
+    // DB (migration pending) -- must stay omitted or this 500s.
+    include: { shipment: { omit: { filingDeadline: true } } },
   });
 
   if (!lineItem) {

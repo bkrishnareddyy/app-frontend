@@ -762,7 +762,9 @@ ${instructions}`;
           documentId: input.documentId ?? null,
           agentName: "Document Intelligence Agent",
           agentIcon: "Binary",
-          status: requiresReview ? "Needs Review" : "Approved",
+          status: requiresReview ? "Needs Review" : "AUTO_VERIFIED",
+          triageState: requiresReview ? "NEEDS_REVIEW" : "AUTO_VERIFIED",
+          ...(requiresReview ? {} : { autoApprovalPolicy: "doc-intelligence-v1" }),
           confidence,
           decisionSummary: `Discovered ${Object.keys(rawDiscoveredKeyValues).length} raw key-value pairs & mapped ${lineItems.length} line items. Primary Agency: ${filingDetermination?.primaryAgency || "CBP"}. Commercial Invoice Present: ${hasCommercialInvoice ? "YES" : "NO (Values Null)"}.`,
           purpose: "Multimodal visual extraction, trade taxonomy classification, partner agency routing, line item extraction, and Math Reconciliation",
@@ -972,6 +974,28 @@ ${instructions}`;
               fileName: input.fileName || docToUpdate.fileName,
               fields: { exporterName, importerName, originCountry },
             });
+
+            // Write per-field ExtractionField rows from the entities array so
+            // the document viewer can show page-level provenance ("p.3") next
+            // to each extracted value and jump the PDF to that page on click.
+            // Human corrections carry their own source tag and are preserved.
+            if (entities && entities.length > 0) {
+              await db.extractionField.deleteMany({
+                where: { documentId: docToUpdate.id, source: "OCR_AI_AGENT" },
+              });
+              await db.extractionField.createMany({
+                data: entities
+                  .filter((e) => e.type && e.value)
+                  .map((e) => ({
+                    documentId: docToUpdate.id,
+                    fieldName: e.type,
+                    value: String(e.value),
+                    confidence: typeof e.confidence === "number" ? Math.round(e.confidence) : null,
+                    pageNumber: typeof e.page === "number" ? e.page : null,
+                    source: "OCR_AI_AGENT",
+                  })),
+              });
+            }
           }
         }
       }

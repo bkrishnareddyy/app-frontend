@@ -12,7 +12,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId: ctx.accountId },
       include: {
-        shipment: { include: { lineItems: true, documents: true } },
+        shipment: { omit: { filingDeadline: true }, include: { lineItems: true, documents: true } },
         responses: true,
         complianceAuditRecords: true,
         complianceFindings: true,
@@ -22,7 +22,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     filing = await db.customsFiling.findFirst({
       where: { accountId: ctx.accountId },
       include: {
-        shipment: { include: { lineItems: true, documents: true } },
+        shipment: { omit: { filingDeadline: true }, include: { lineItems: true, documents: true } },
         responses: true,
         complianceAuditRecords: true,
         complianceFindings: true,

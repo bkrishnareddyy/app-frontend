@@ -1,6 +1,5 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { documentViewUrl } from "@/lib/documentUrl";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -8,18 +7,14 @@ import {
   CheckCircle2,
   Building2,
   Truck,
-  Activity,
   Layers,
   ChevronRight,
-  AlertTriangle,
 } from "lucide-react";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
 import { Badge } from "@/components/ui/Badge";
 import { CopilotContextRegistrar } from "@/components/copilot/CopilotContextRegistrar";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
-import { ShipmentDocumentsSection } from "./ShipmentDocumentsSection";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
-import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
 import { ShipmentClientEditor } from "./ShipmentClientEditor";
 import { ExceptionsDrawer } from "./ExceptionsDrawer";
@@ -30,36 +25,10 @@ import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
 import { buildAgentInvocations } from "./agentInvocations";
 import { displayCurrency } from "@/lib/honest";
 import { extractedCurrency } from "@/modules/documents/extractedCurrency";
-import type { ShipmentLineItemRow } from "./workspaceTypes";
+import { DocumentWorkspacePanel } from "./DocumentWorkspacePanel";
+import { ShipmentTabsPanel } from "./ShipmentTabsPanel";
+import type { ExtractedLineItem } from "./workspaceTypes";
 import type { CategoryDetail } from "./PreFilingReadiness";
-
-/**
- * A line item as persisted inside a document's `extractedJson`.
- *
- * Historical rows carry either the current `totalAmount`/`sku` names or the older
- * `totalValue`/`partNumber` ones, so both are accepted and the read below falls
- * back across them. Numbers may arrive as strings from the extractor, which is
- * why `Number(...)` is applied at every use.
- */
-interface ExtractedLineItem {
-  lineNumber?: number | null;
-  sku?: string | null;
-  partNumber?: string | null;
-  description?: string | null;
-  quantity?: number | string | null;
-  unitPrice?: number | string | null;
-  totalAmount?: number | string | null;
-  totalValue?: number | string | null;
-  countryOfOrigin?: string | null;
-  htsCode?: string | null;
-}
-
-/** Reads a numeric field that may be absent, keeping "missing" distinct from 0. */
-function numberOrNull(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const numeric = Number(value);
-  return Number.isNaN(numeric) ? null : numeric;
-}
 
 /**
  * Sums the quantities on a document's extracted line items.
@@ -94,6 +63,8 @@ export default async function ShipmentWorkspacePage(props: {
       OR: [{ id: params.id }, { shipmentNumber: params.id }],
       deletedAt: null,
     },
+    // filingDeadline is in the Prisma schema but not yet applied to the live DB
+    omit: { filingDeadline: true },
   });
 
   if (!shipment) notFound();
@@ -954,12 +925,215 @@ export default async function ShipmentWorkspacePage(props: {
     overallStatusType = "READY";
   }
 
-  const primaryDoc = docId
-    ? documents.find((d) => d.id === docId) || documents[0]
-    : documents.find((d) => d.status === "Received") ||
-      documents.find((d) => d.status === "Processed") ||
-      documents.find((d) => d.status === "Review Required") ||
-      documents[0];
+  // Pre-built once here (not inline in the ternary they replaced) so
+  // `ShipmentTabsPanel` -- a Client Component -- can hold which tab is active
+  // in local state and just toggle which of these three already-rendered
+  // trees is mounted, instead of a `?view=` searchParam driving this Server
+  // Component to re-fetch and re-render the entire page on every tab click.
+  const filingContent = (
+    <>
+      {/* Shipment Identity & Importer Overview Card */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
+          <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
+            <Truck className="w-4 h-4 text-brand" />
+            <span>Logistics & Entry Identity</span>
+          </h3>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">Entry Type</span>
+              <span className="font-mono text-ink font-bold">
+                {shipment.entryType || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
+              </span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">Port of Entry</span>
+              <span className="font-medium text-ink">
+                {shipment.portOfEntry || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
+              </span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">Carrier</span>
+              <span className="font-medium text-ink">
+                {shipment.carrierName || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
+              </span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-ink-muted font-bold">Incoterm</span>
+              <span className="font-mono font-bold text-brand">
+                {shipment.incoterm || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div id="importer-of-record-card" className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
+          <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
+            <Building2 className="w-4 h-4 text-brand" />
+            <span>Importer of Record Entity</span>
+          </h3>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between py-1 border-b border-surface-muted items-start">
+              <span className="text-ink-muted font-bold">Importer</span>
+              <span className="text-right">
+                <span className="font-bold text-ink block">
+                  {importerDisplay.name || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
+                </span>
+                {importerDisplay.sourceLabel && (
+                  <span className="text-[9px] text-amber-600 font-semibold uppercase tracking-wide">
+                    {importerDisplay.sourceLabel}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">CBP Importer #</span>
+              <span className="font-mono text-ink">
+                {importerOfRecord?.cbpImporterNumber || (
+                  <span className="text-ink-muted/70 italic font-normal font-sans">Not set</span>
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">POA Status</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
+                  poaStatusDisplay === "VALID"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-amber-50 text-amber-700 border-amber-200"
+                }`}
+              >
+                {poaStatusDisplay}
+              </span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-ink-muted font-bold">Bond Type</span>
+              <span className="font-medium text-ink">
+                {bondTypeDisplay || <span className="text-ink-muted/70 italic font-normal">Not on file</span>}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
+          <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
+            <FileText className="w-4 h-4 text-brand" />
+            <span>Commercial Summary</span>
+          </h3>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">Line Items</span>
+              <span className="font-mono text-ink font-bold">{displayLineItems.length} Lines</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">Classification Approval</span>
+              <span
+                className={
+                  displayLineItems.length === 0
+                    ? "text-ink-muted/70 italic font-normal"
+                    : classificationUnverified
+                    ? "font-extrabold text-slate-500 uppercase text-[10px] tracking-wider"
+                    : vagueItems.length > 0
+                    ? "font-extrabold text-amber-600 uppercase text-[10px] tracking-wider"
+                    : "font-extrabold text-emerald-600 uppercase text-[10px] tracking-wider"
+                }
+              >
+                {displayLineItems.length === 0
+                  ? "N/A"
+                  : classificationUnverified
+                  ? "Unverified"
+                  : vagueItems.length > 0
+                  ? "Pending"
+                  : "Approved"}
+              </span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">Total Invoice Value</span>
+              <span className="font-mono font-bold text-ink">{totalInvoiceDisplay}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-surface-muted">
+              <span className="text-ink-muted font-bold">Country of Export</span>
+              <span className="font-medium text-ink">
+                {shipment.countryOfExport || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
+              </span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-ink-muted font-bold">Documents Vault</span>
+              <span className="font-mono font-bold text-brand">{documents.length} Files</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Canonical Facts & Provenance */}
+      <CanonicalFactsSection
+        shipmentId={shipment.id}
+        facts={facts}
+        currentCountryOfOrigin={shipment.countryOfOrigin}
+      />
+    </>
+  );
+
+  const workspaceContent = (
+    <>
+      {/* Main Workspace: Documents + Embedded Viewer -- document
+          selection lives entirely client-side in this panel so
+          switching documents never re-runs this server component
+          (which would re-fetch and re-render the whole page). */}
+      <DocumentWorkspacePanel
+        shipmentId={shipment.id}
+        shipmentNumber={shipment.shipmentNumber}
+        documents={documents}
+        originStatus={originStatus}
+        displayLineItems={displayLineItems}
+        rawHtsConfidenceByLine={Array.from(rawHtsConfidenceByLine.entries())}
+        lineItemCurrency={lineItemCurrency}
+        initialDocId={docId}
+      />
+
+      {/* Verified Line Items -- the shipment's real, canonical line
+          items, independent of whichever document happens to be
+          selected above (that panel shows one document's raw, possibly
+          wrong-shipment extraction; this is ground truth). */}
+      <div className="bg-white p-6 rounded-3xl border border-border shadow-sm">
+        <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2 mb-1">
+          <CheckCircle2 className="w-4 h-4 text-brand" />
+          <span>Verified Line Items</span>
+        </h3>
+        <p className="text-[11px] text-ink-muted mb-2">
+          This shipment&apos;s confirmed line items, regardless of which document is selected in the viewer above.
+        </p>
+        <LineItemsTable
+          shipmentId={shipment.id}
+          initialLineItems={displayLineItems}
+          isEnterpriseAdmin={isEnterpriseAdmin}
+          currency={lineItemCurrency}
+        />
+      </div>
+    </>
+  );
+
+  const auditContent = (
+    /* Secondary Audit Tab: Agent Executions & Event Logs */
+    <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-6">
+      <div>
+        <h3 className="text-lg font-bold text-ink flex items-center space-x-2">
+          <Layers className="w-5 h-5 text-brand" />
+          <span>Agent Execution Runs</span>
+        </h3>
+        <p className="text-xs text-ink-muted mt-0.5">
+          Every agent run on this shipment, grouped by invocation. Expand a run to see the per-agent waterfall.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-xs font-extrabold uppercase text-ink-muted tracking-wider">
+          Run History ({agentInvocations.length})
+        </h4>
+        <AgentExecutionTimeline invocations={agentInvocations} shipmentId={shipment.id} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -1040,429 +1214,15 @@ export default async function ShipmentWorkspacePage(props: {
             documentFieldSummaries={documentFieldSummaries}
           />
         </div>
-
-        {/* View Switcher Tabs */}
-        <div className="flex items-center space-x-2 pt-2 border-t border-border">
-          <Link
-            href={`/app/shipments/${shipment.id}?view=workspace`}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-              activeTab === "workspace"
-                ? "bg-brand text-white"
-                : "bg-slate-100 text-ink-muted hover:text-ink"
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>Operational Workspace</span>
-          </Link>
-          <Link
-            href={`/app/shipments/${shipment.id}?view=filing`}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-              activeTab === "filing"
-                ? "bg-brand text-white"
-                : "bg-slate-100 text-ink-muted hover:text-ink"
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Filing Data</span>
-          </Link>
-          <Link
-            href={`/app/shipments/${shipment.id}?view=audit`}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-              activeTab === "audit"
-                ? "bg-brand text-white"
-                : "bg-slate-100 text-ink-muted hover:text-ink"
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Agent Executions & Audit Log ({agentInvocations.length})</span>
-          </Link>
-        </div>
       </div>
 
-      {activeTab === "filing" ? (
-        <>
-          {/* Shipment Identity & Importer Overview Card */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
-              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
-                <Truck className="w-4 h-4 text-brand" />
-                <span>Logistics & Entry Identity</span>
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Entry Type</span>
-                  <span className="font-mono text-ink font-bold">
-                    {shipment.entryType || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Port of Entry</span>
-                  <span className="font-medium text-ink">
-                    {shipment.portOfEntry || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Carrier</span>
-                  <span className="font-medium text-ink">
-                    {shipment.carrierName || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-ink-muted font-bold">Incoterm</span>
-                  <span className="font-mono font-bold text-brand">
-                    {shipment.incoterm || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div id="importer-of-record-card" className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
-              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
-                <Building2 className="w-4 h-4 text-brand" />
-                <span>Importer of Record Entity</span>
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-surface-muted items-start">
-                  <span className="text-ink-muted font-bold">Importer</span>
-                  <span className="text-right">
-                    <span className="font-bold text-ink block">
-                      {importerDisplay.name || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
-                    </span>
-                    {importerDisplay.sourceLabel && (
-                      <span className="text-[9px] text-amber-600 font-semibold uppercase tracking-wide">
-                        {importerDisplay.sourceLabel}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">CBP Importer #</span>
-                  <span className="font-mono text-ink">
-                    {importerOfRecord?.cbpImporterNumber || (
-                      <span className="text-ink-muted/70 italic font-normal font-sans">Not set</span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">POA Status</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                      poaStatusDisplay === "VALID"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : "bg-amber-50 text-amber-700 border-amber-200"
-                    }`}
-                  >
-                    {poaStatusDisplay}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-ink-muted font-bold">Bond Type</span>
-                  <span className="font-medium text-ink">
-                    {bondTypeDisplay || <span className="text-ink-muted/70 italic font-normal">Not on file</span>}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-4">
-              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-brand" />
-                <span>Commercial Summary</span>
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Line Items</span>
-                  <span className="font-mono text-ink font-bold">{displayLineItems.length} Lines</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Classification Approval</span>
-                  <span
-                    className={
-                      displayLineItems.length === 0
-                        ? "text-ink-muted/70 italic font-normal"
-                        : classificationUnverified
-                        ? "font-extrabold text-slate-500 uppercase text-[10px] tracking-wider"
-                        : vagueItems.length > 0
-                        ? "font-extrabold text-amber-600 uppercase text-[10px] tracking-wider"
-                        : "font-extrabold text-emerald-600 uppercase text-[10px] tracking-wider"
-                    }
-                  >
-                    {displayLineItems.length === 0
-                      ? "N/A"
-                      : classificationUnverified
-                      ? "Unverified"
-                      : vagueItems.length > 0
-                      ? "Pending"
-                      : "Approved"}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Total Invoice Value</span>
-                  <span className="font-mono font-bold text-ink">{totalInvoiceDisplay}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Country of Export</span>
-                  <span className="font-medium text-ink">
-                    {shipment.countryOfExport || <span className="text-ink-muted/70 italic font-normal">Not set</span>}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-ink-muted font-bold">Documents Vault</span>
-                  <span className="font-mono font-bold text-brand">{documents.length} Files</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Canonical Facts & Provenance */}
-          <CanonicalFactsSection
-            shipmentId={shipment.id}
-            facts={facts}
-            currentCountryOfOrigin={shipment.countryOfOrigin}
-          />
-        </>
-      ) : activeTab === "workspace" ? (
-        <>
-          {/* Main Workspace: Documents + Embedded Viewer */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Documents Set Summary */}
-            <div className="lg:col-span-4">
-              <ShipmentDocumentsSection
-                shipmentId={shipment.id}
-                documents={documents}
-                selectedDocId={docId}
-                originStatus={originStatus}
-              />
-            </div>
-
-            {/* Center Column: Embedded Document Viewer */}
-            <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-border shadow-2xs space-y-4 flex flex-col justify-between overflow-hidden min-h-[480px]">
-              {primaryDoc ? (
-                (() => {
-                  const proxyUrl = primaryDoc.fileUrl?.includes("vercel-storage.com")
-                    ? documentViewUrl(primaryDoc.id)
-                    : primaryDoc.fileUrl || "#";
-
-                  let docLineItems: ShipmentLineItemRow[] = [];
-                  // Set only when this document's extraction actually produced
-                  // HTS-bearing line items (a Bill of Lading or Packing List
-                  // won't) -- null averageConfidence means those lines exist
-                  // but haven't been matched to a classified persisted line yet.
-                  let docHtsScore: { averageConfidence: number | null; classifiedCount: number; totalCount: number } | null = null;
-                  if (primaryDoc.extractedJson) {
-                    try {
-                      const parsed = JSON.parse(primaryDoc.extractedJson);
-                      if (parsed.lineItems && Array.isArray(parsed.lineItems)) {
-                        const extracted = parsed.lineItems as ExtractedLineItem[];
-
-                        // A document's stored extraction is often thinner than the
-                        // curated record built from it -- this invoice's JSON kept a
-                        // total for 57 of its 68 lines and a unit price for none,
-                        // while all 68 persisted rows carry both. Where a persisted
-                        // row is unambiguously the same line, its price is this
-                        // document's price and gets shown rather than a dash.
-                        const persistedByLine = new Map(
-                          displayLineItems.map((row) => [row.lineNumber, row] as const)
-                        );
-                        const sameLine = (a: string, b: string) =>
-                          a.trim().toLowerCase() === b.trim().toLowerCase();
-
-                        docLineItems = extracted.map((li, idx: number) => {
-                          const lineNumber = li.lineNumber || idx + 1;
-                          const description = li.description || "Product";
-
-                          // Matched on description as well as line number, so a
-                          // shipment carrying several invoices can never borrow a
-                          // price from a different document's line 1.
-                          const persisted = persistedByLine.get(lineNumber);
-                          const counterpart =
-                            persisted && sameLine(persisted.description, description) ? persisted : null;
-
-                          return {
-                            id: `extracted-${primaryDoc.id}-${idx}`,
-                            lineNumber,
-                            partNumber: li.sku || li.partNumber || "",
-                            description,
-                            quantity: Number(li.quantity || 0),
-                            // Null, never 0, when neither source has a price: "0"
-                            // would state the line was free of charge.
-                            unitPrice: numberOrNull(li.unitPrice) ?? counterpart?.unitPrice ?? null,
-                            totalValue:
-                              numberOrNull(li.totalAmount) ??
-                              numberOrNull(li.totalValue) ??
-                              counterpart?.totalValue ??
-                              null,
-                            countryOfOrigin: li.countryOfOrigin || "",
-                            htsCode: li.htsCode || (li.sku && /^\d{4}/.test(li.sku) ? li.sku : ""),
-                            htsConfidence: 95,
-                          };
-                        });
-
-                        const classifiableLines = docLineItems.filter((li) => li.htsCode);
-                        if (classifiableLines.length > 0) {
-                          const realConfidences = classifiableLines
-                            .map((li) => {
-                              const raw = rawHtsConfidenceByLine.get(li.lineNumber);
-                              return raw && sameLine(raw.description, li.description) ? raw.htsConfidence : null;
-                            })
-                            .filter((c): c is number => typeof c === "number");
-
-                          docHtsScore = {
-                            averageConfidence:
-                              realConfidences.length > 0
-                                ? Math.round(realConfidences.reduce((a, b) => a + b, 0) / realConfidences.length)
-                                : null,
-                            classifiedCount: realConfidences.length,
-                            totalCount: classifiableLines.length,
-                          };
-                        }
-                      }
-                    } catch {}
-                  }
-
-                  // Flag when a document's extracted products have nothing
-                  // to do with the shipment's own verified line items --
-                  // usually means the wrong file got attached to this
-                  // shipment, not that extraction is broken.
-                  const docHtsChapters = new Set(
-                    docLineItems.map((li) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
-                  );
-                  const shipmentHtsChapters = new Set(
-                    displayLineItems.map((li) => (li.htsCode || "").replace(/\D/g, "").slice(0, 2)).filter(Boolean)
-                  );
-                  const showMismatchWarning =
-                    docLineItems.length > 0 &&
-                    displayLineItems.length > 0 &&
-                    docHtsChapters.size > 0 &&
-                    shipmentHtsChapters.size > 0 &&
-                    ![...docHtsChapters].some((ch) => shipmentHtsChapters.has(ch));
-
-                  return (
-                    <div className="flex flex-col justify-between h-full space-y-4">
-                      <div>
-                        {/* Document type, name, and tabbed preview / key-value / raw JSON */}
-                        <div className="h-[620px] flex flex-col border-b border-border pb-4 overflow-hidden">
-                          <DocumentReviewPanel
-                            documentId={primaryDoc.id}
-                            fileName={primaryDoc.fileName || "Trade Document"}
-                            docType={
-                              !primaryDoc.docType || primaryDoc.docType === "AUTO_DETECT"
-                                ? "Commercial Invoice"
-                                : primaryDoc.docType
-                            }
-                            fileUrl={primaryDoc.fileUrl}
-                            proxyUrl={proxyUrl}
-                            shipmentNumber={shipment.shipmentNumber}
-                            htsScore={docHtsScore ?? undefined}
-                          />
-                        </div>
-
-                        {/* Document Metadata Details */}
-                        <div className="mt-4 p-4 rounded-xl bg-[#F9F9FB] border border-border space-y-3">
-                          <div className="flex items-center justify-between text-xs pb-2 border-b border-border">
-                            <span className="text-ink-muted">Document Status</span>
-                            {primaryDoc.extractedJson ? (
-                              <span className="font-bold text-emerald-600">Verified & Ingested (AI Vision Parsed)</span>
-                            ) : (
-                              <span className="font-bold text-amber-600 font-mono">Received (Pending Vision Processing)</span>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <p className="text-[10px] text-ink-muted uppercase font-bold">Page Count</p>
-                              <p className="font-mono text-ink">{primaryDoc.pageCount ? `${primaryDoc.pageCount} Pages` : "1 Page"}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-ink-muted uppercase font-bold">Uploaded Date</p>
-                              <p className="text-ink">{new Date(primaryDoc.createdAt).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {showMismatchWarning && (
-                          <div className="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start space-x-2 text-xs text-amber-800">
-                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                            <div>
-                              <p className="font-bold">This document doesn&apos;t match the shipment&apos;s line items</p>
-                              <p className="text-[11px] mt-0.5">
-                                The products extracted here don&apos;t correspond to the shipment&apos;s verified cargo
-                                {displayLineItems[0]?.description ? ` (${displayLineItems[0].description})` : ""}. It may be attached to the wrong shipment.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Extracted Line Items for this Document */}
-                        <div id="extracted-line-items-section">
-                          <LineItemsTable
-                            shipmentId={shipment.id}
-                            initialLineItems={docLineItems}
-                            currency={lineItemCurrency}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs text-ink-muted pt-3 border-t border-border">
-                        <span>Vault Document ID: {primaryDoc.id.slice(0, 16)}...</span>
-                        <span>Qubere Document Vault</span>
-                      </div>
-                    </div>
-                  );
-                })()
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-12 text-xs">
-                  <FileText className="w-10 h-10 text-ink-muted opacity-50" />
-                  <div className="space-y-1">
-                    <h4 className="font-extrabold text-ink">No Trade Documents Attached</h4>
-                    <p className="text-ink-muted text-[11px]">Upload a Commercial Invoice, Bill of Lading, or Packing List to run vision extraction.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
-
-          {/* Verified Line Items -- the shipment's real, canonical line
-              items, independent of whichever document happens to be
-              selected above (that panel shows one document's raw, possibly
-              wrong-shipment extraction; this is ground truth). */}
-          <div className="bg-white p-6 rounded-3xl border border-border shadow-sm">
-            <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center space-x-2 mb-1">
-              <CheckCircle2 className="w-4 h-4 text-brand" />
-              <span>Verified Line Items</span>
-            </h3>
-            <p className="text-[11px] text-ink-muted mb-2">
-              This shipment&apos;s confirmed line items, regardless of which document is selected in the viewer above.
-            </p>
-            <LineItemsTable
-              shipmentId={shipment.id}
-              initialLineItems={displayLineItems}
-              isEnterpriseAdmin={isEnterpriseAdmin}
-              currency={lineItemCurrency}
-            />
-          </div>
-        </>
-      ) : (
-        /* Secondary Audit Tab: Agent Executions & Event Logs */
-        <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-6">
-          <div>
-            <h3 className="text-lg font-bold text-ink flex items-center space-x-2">
-              <Layers className="w-5 h-5 text-brand" />
-              <span>Agent Execution Runs</span>
-            </h3>
-            <p className="text-xs text-ink-muted mt-0.5">
-              Every agent run on this shipment, grouped by invocation. Expand a run to see the per-agent waterfall.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <h4 className="text-xs font-extrabold uppercase text-ink-muted tracking-wider">
-              Run History ({agentInvocations.length})
-            </h4>
-            <AgentExecutionTimeline invocations={agentInvocations} shipmentId={shipment.id} />
-          </div>
-        </div>
-      )}
+      <ShipmentTabsPanel
+        initialTab={activeTab}
+        auditCount={agentInvocations.length}
+        workspaceContent={workspaceContent}
+        filingContent={filingContent}
+        auditContent={auditContent}
+      />
     </div>
   );
 }

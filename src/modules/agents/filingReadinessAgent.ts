@@ -170,7 +170,9 @@ export class FilingReadinessAgent {
           documentId: input.documentId ?? null,
           agentName: "Filing Readiness Agent",
           agentIcon: "CheckCircle2",
-          status: readyForTransmission ? "Approved" : "Needs Review",
+          status: readyForTransmission ? "AUTO_VERIFIED" : "Needs Review",
+          triageState: readyForTransmission ? "AUTO_VERIFIED" : "NEEDS_REVIEW",
+          ...(readyForTransmission ? { autoApprovalPolicy: "filing-readiness-deterministic-v1" } : {}),
           confidence: readinessScore,
           decisionSummary: readyForTransmission
             ? `Form 7501 Entry Summary Verified (Readiness Score: ${readinessScore}%)`

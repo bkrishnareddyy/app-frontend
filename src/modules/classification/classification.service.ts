@@ -79,7 +79,7 @@ export class ClassificationService {
 
     let targetShipmentId: string | undefined = input.shipmentId;
     if (targetShipmentId) {
-      const shp = await db.shipment.findFirst({ where: { id: targetShipmentId, accountId } });
+      const shp = await db.shipment.findFirst({ where: { id: targetShipmentId, accountId }, select: { id: true } });
       if (!shp) targetShipmentId = undefined;
     }
 

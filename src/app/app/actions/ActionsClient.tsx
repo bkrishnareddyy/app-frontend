@@ -8,7 +8,9 @@ import { useDecisionActions } from "@/lib/decisions/useDecisionActions";
 import { ExceptionQuickActions } from "./ExceptionQuickActions";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { Modal, ModalHeader, ModalBody } from "@/components/ui/Modal";
+import { documentViewUrl } from "@/lib/documentUrl";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor } from "@/modules/decisions/editableFields";
+import { triageDecision, type TriageCategory } from "@/modules/decisions/decisionState";
 import type { ShipmentActionGroup, ActionItem } from "@/modules/actions/shipmentActions";
 import type { WorkPriority } from "@/modules/work/workQueue";
 
@@ -58,6 +60,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   const [docModal, setDocModal] = useState<{ documentId: string; fileName: string; fileUrl: string | null } | null>(null);
   const [notesByDecision, setNotesByDecision] = useState<Record<string, string>>({});
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [bulkApproveLoading, setBulkApproveLoading] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -162,6 +165,34 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
             : "Re-evaluation requested."
       );
       router.refresh();
+    }
+  };
+
+  const handleBulkApprove = async (decisionIds: string[]) => {
+    setBulkApproveLoading(true);
+    try {
+      const res = await fetch("/api/decisions/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisionIds, action: "APPROVE", humanNotes: "Sweep approved" }),
+      });
+      const data = await res.json() as { succeeded?: number; failed?: number };
+      if (res.ok) {
+        setLocalGroups((prev) =>
+          prev.map((g) => ({
+            ...g,
+            items: g.items.map((item) =>
+              item.kind === "decision" && decisionIds.includes(item.id)
+                ? { ...item, status: "APPROVED" }
+                : item
+            ),
+          }))
+        );
+        setActionSuccess(`${data.succeeded ?? decisionIds.length} decision${(data.succeeded ?? decisionIds.length) !== 1 ? "s" : ""} approved & signed into audit log.`);
+        router.refresh();
+      }
+    } finally {
+      setBulkApproveLoading(false);
     }
   };
 
@@ -412,7 +443,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                   return (
                     <div key={cat} className="space-y-2">
                       <div className="flex items-center gap-2 px-1">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                        <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${
                           cat === "blocked" ? "text-red-600" : cat === "review" ? "text-amber-600" : "text-emerald-600"
                         }`}>
                           {cat === "blocked" ? "Blocked" : cat === "review" ? "Needs Review" : "Verified"}
@@ -423,6 +454,21 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                         <span className={`text-[10px] font-semibold shrink-0 ${
                           cat === "blocked" ? "text-red-400" : cat === "review" ? "text-amber-400" : "text-emerald-400"
                         }`}>{catItems.length}</span>
+                        {cat === "review" && canWrite && (() => {
+                          const reviewDecisionIds = catItems
+                            .filter((i): i is Extract<ActionItem, { kind: "decision" }> => i.kind === "decision")
+                            .map((i) => i.id);
+                          if (reviewDecisionIds.length < 2) return null;
+                          return (
+                            <button
+                              onClick={() => handleBulkApprove(reviewDecisionIds)}
+                              disabled={bulkApproveLoading}
+                              className="shrink-0 px-2.5 py-1 rounded-lg bg-ink text-white text-[10px] font-bold disabled:opacity-40 hover:bg-ink/80 transition-colors whitespace-nowrap"
+                            >
+                              {bulkApproveLoading ? "Approving…" : `Approve All (${reviewDecisionIds.length})`}
+                            </button>
+                          );
+                        })()}
                       </div>
                       {catItems.map((item) =>
                         item.kind === "decision" ? (
@@ -485,6 +531,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                 documentId={docModal.documentId}
                 fileName={docModal.fileName}
                 fileUrl={docModal.fileUrl}
+                proxyUrl={documentViewUrl(docModal.documentId)}
                 decisions={modalDecisions}
                 onReviewAction={async (decisionId, action) => {
                   await handleDecisionAction(decisionId, action);
@@ -500,52 +547,18 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   );
 }
 
-const BLOCKED_SENTINELS = new Set([
-  "BLOCKED_DEPENDENCY",
-  "WAITING_FOR_EXTRACTION",
-  "BLOCKED_MISSING_DESCRIPTION",
-]);
-
-function categorize(item: ActionItem): "blocked" | "review" | "verified" {
+function categorize(item: ActionItem): TriageCategory {
   if (item.kind === "exception") {
+    // Critical exceptions block downstream work the same way a blocked decision does.
     if (item.severity === "Critical") return "blocked";
     return "review";
   }
 
-  const dec = item.raw as unknown as Record<string, unknown>;
-  const desc = typeof dec.proposedDescription === "string" ? dec.proposedDescription : "";
-  const summary = typeof dec.decisionSummary === "string" ? dec.decisionSummary : "";
-  const ev = (dec.evidenceItems && typeof dec.evidenceItems === "object"
-    ? dec.evidenceItems
-    : {}) as Record<string, unknown>;
-
-  // Gated execution sentinels or explicit pipeline blocks
-  if (
-    BLOCKED_SENTINELS.has(desc) ||
-    desc.includes("BLOCKED") ||
-    summary.includes("BLOCKED") ||
-    summary.includes("Gating:")
-  ) {
-    return "blocked";
-  }
-
-  // Missing commercial invoice, zero extracted line items, or skipped agent evaluation
-  if (
-    summary.includes("Skipped") ||
-    summary.includes("Paused") ||
-    ev.hasCommercialInvoice === false ||
-    (typeof ev.lineItemCount === "number" && ev.lineItemCount === 0)
-  ) {
-    return "review";
-  }
-
-  // Unresolved evidence flags
-  const flags = Array.isArray(ev.flags) ? (ev.flags as { severity: string; summary: string }[]) : [];
-  if (flags.length > 0) return "review";
-
-  if (item.status === "Approved") return "verified";
-  if (item.status === "Rejected") return "blocked";
-  return "review";
+  // Delegate to the single source of truth in decisionState.ts.
+  return triageDecision({
+    status: item.status,
+    proposedDescription: item.proposedDescription,
+  });
 }
 
 function ActionScorecard({
@@ -722,6 +735,43 @@ function Row({ label, value, highlight = false }: { label: string; value: string
   );
 }
 
+function ProvenanceFooter({ item }: { item: Extract<ActionItem, { kind: "decision" }> }) {
+  const confidence = typeof item.raw.confidence === "number" ? item.raw.confidence : null;
+  const reviewer = item.raw.reviewedByUser;
+  const reviewerName = reviewer
+    ? ([reviewer.firstName, reviewer.lastName].filter(Boolean).join(" ") || reviewer.email)
+    : null;
+  const isAutoVerified =
+    item.status === "AUTO_VERIFIED" || item.status === "Auto-Approved" || item.status === "Verified";
+
+  if (confidence === null && !reviewerName && !isAutoVerified) return null;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap pt-0.5 border-t border-border/40">
+      {confidence !== null && (
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+          confidence >= 90
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : confidence >= 70
+              ? "bg-amber-50 border-amber-200 text-amber-700"
+              : "bg-red-50 border-red-200 text-red-700"
+        }`}>
+          {confidence}% confident
+        </span>
+      )}
+      {reviewerName ? (
+        <span className="text-[10px] text-ink-muted font-medium">
+          Reviewed by <span className="font-semibold text-ink">{reviewerName}</span>
+        </span>
+      ) : isAutoVerified ? (
+        <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+          AI certified
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function AgentResultCard({
   item,
   note,
@@ -748,8 +798,14 @@ function AgentResultCard({
   const isApproved = effectiveCategory === "verified";
 
   return (
-    <div className={`border rounded-2xl p-4 space-y-3 ${verified ? "border-emerald-100 bg-emerald-50/20 opacity-80" : "border-border bg-white"}`}>
-      {/* Header: doc link + status */}
+    <div className={`border rounded-2xl p-4 space-y-3 ${
+      verified
+        ? "border-emerald-200 bg-emerald-50/40 opacity-80"
+        : effectiveCategory === "blocked"
+          ? "border-red-300 bg-red-50/60"
+          : "border-amber-200 bg-amber-50/40"
+    }`}>
+      {/* Card header: doc link + approved pill */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-0.5">
           {item.documentName && docId ? (
@@ -768,19 +824,18 @@ function AgentResultCard({
           ) : null}
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{label}</p>
         </div>
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${
-          effectiveCategory === "verified"
-            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-            : effectiveCategory === "blocked"
-              ? "bg-red-50 border-red-200 text-red-700"
-              : "bg-amber-50 border-amber-200 text-amber-700"
-        }`}>
-          {effectiveCategory === "verified" ? "Approved" : effectiveCategory === "blocked" ? "Blocked" : "Needs Review"}
-        </span>
+        {isApproved && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 bg-emerald-50 border-emerald-200 text-emerald-700">
+            Approved
+          </span>
+        )}
       </div>
 
       {/* Extracted data */}
       <DecisionBody item={item} />
+
+      {/* Provenance footer */}
+      <ProvenanceFooter item={item} />
 
       {/* Note */}
       {showNote && (
@@ -982,7 +1037,13 @@ function ExceptionCard({
         : "bg-gray-50 border-gray-200 text-gray-600";
 
   return (
-    <div className={`border rounded-2xl p-4 space-y-3 ${verified ? "border-emerald-100 bg-emerald-50/30 opacity-75" : "border-border bg-surface-muted/30"}`}>
+    <div className={`border rounded-2xl p-4 space-y-3 ${
+      verified
+        ? "border-emerald-200 bg-emerald-50/40 opacity-75"
+        : item.severity === "Critical"
+          ? "border-red-300 bg-red-50/60"
+          : "border-amber-200 bg-amber-50/40"
+    }`}>
       {/* Header: Category Badge + Title + Severity */}
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-0.5 min-w-0">

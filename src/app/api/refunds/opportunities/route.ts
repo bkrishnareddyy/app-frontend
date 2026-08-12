@@ -7,7 +7,9 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
     where: { accountId: ctx.accountId },
     include: {
       filing: {
-        include: { shipment: true },
+        // filingDeadline is in the Prisma schema but not yet applied to the
+        // live DB (migration pending) -- must stay omitted or this 500s.
+        include: { shipment: { omit: { filingDeadline: true } } },
       },
     },
     orderBy: { identifiedAt: "desc" },

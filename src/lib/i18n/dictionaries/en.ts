@@ -20,6 +20,8 @@ export const en = {
     settingsAudit: "Settings & Audit",
     documentEmail: "Document Email",
     mainOperations: "Main Operations",
+    toolingAndDocs: "Tooling & Docs",
+    tradeDocs: "Docs",
     accountAdmin: "Account Admin",
     platformAdmin: "Platform Admin",
     qubereConsole: "Qubere Console",

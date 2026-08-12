@@ -14,10 +14,13 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   const filing = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
     include: {
+      // filingDeadline is in the Prisma schema but not yet applied to the
+      // live DB (migration pending) -- must stay omitted or this 500s.
       shipment: {
         // The entry summary emits these as a numbered line list on the 7501, so
         // they have to come back in line order rather than heap order.
         include: { lineItems: { orderBy: { lineNumber: "asc" } } },
+        omit: { filingDeadline: true },
       },
       importerOfRecord: true,
       bond: true,

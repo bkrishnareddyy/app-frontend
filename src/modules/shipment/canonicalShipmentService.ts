@@ -22,7 +22,9 @@ const canonicalInclude = {
   // so an invoice's lines came back scrambled. Line numbering is the operator's
   // reference back to the paper document and has to match it.
   lineItems: { orderBy: { lineNumber: "asc" as const } },
-  agentDecisions: true,
+  // Explicit omit: triageState/blockedReason/autoApprovalPolicy are in the Prisma
+  // schema but not yet applied to the live DB (migration pending).
+  agentDecisions: { omit: { triageState: true, blockedReason: true, autoApprovalPolicy: true } },
   changeEvents: {
     include: {
       user: { select: { id: true, email: true, firstName: true, lastName: true } },
@@ -32,6 +34,7 @@ const canonicalInclude = {
   exceptionItems: {
     where: { status: { not: "Resolved" } },
     orderBy: { createdAt: "desc" },
+    omit: { resolutionReasonCode: true },
   },
   eventLogs: {
     orderBy: { createdAt: "desc" },
@@ -43,7 +46,10 @@ const canonicalInclude = {
   },
 } satisfies Prisma.ShipmentInclude;
 
-export type CanonicalShipment = Prisma.ShipmentGetPayload<{ include: typeof canonicalInclude }>;
+export type CanonicalShipment = Prisma.ShipmentGetPayload<{
+  include: typeof canonicalInclude;
+  omit: { filingDeadline: true };
+}>;
 
 /** The subset of a shipment the metric calculation actually reads. */
 export interface MetricsInput {
@@ -104,6 +110,7 @@ export class CanonicalShipmentService {
       db.shipment.findUnique({
         where: { id: shipmentId },
         include: canonicalInclude,
+        omit: { filingDeadline: true },
       }),
       db.agentExecutionLog.findMany({
         where: { shipmentId },

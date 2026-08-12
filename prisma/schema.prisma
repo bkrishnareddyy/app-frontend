@@ -328,6 +328,7 @@ model Shipment {
   countryOfExport    String?
   countryOfOrigin    String?
   estimatedArrival   DateTime?
+  filingDeadline     DateTime? // Broker-set CBP filing cutoff; drives queue urgency ranking
   status             String            @default("Draft") // Draft, In Progress, Ready to File, On Hold, Submitted, Completed
   healthStatus       String? // Healthy, At Risk, Critical — derived, null until evaluated
   readinessScore     Int? // 0 - 100 percentage, null until calculated
@@ -363,6 +364,7 @@ model Shipment {
   @@index([status])
   @@index([deletedAt])
   @@index([masterShipmentId])
+  @@index([filingDeadline])
 }
 
 model ShipmentDocument {
@@ -590,6 +592,17 @@ model AgentDecision {
   agentName           String // Document Intake Agent, Document Intelligence Agent, Product Intelligence Agent, Classification Agent, Origin Agent, Valuation Agent, Compliance Agent, Filing Readiness Agent, Customs Filing Agent, Response Management Agent
   agentIcon           String?
   status              String            @default("Review Required") // Completed, Review Required, Attention, In Progress, Pending, Approved
+  // Server-computed triage state — written by the agent at creation time so
+  // readers never parse prose. Values: NEEDS_REVIEW | AUTO_VERIFIED | BLOCKED |
+  // APPROVED | REJECTED | IN_PROGRESS | COMPLETED. Null on rows that predate this column.
+  triageState         String?
+  // Stable code written when the agent declined to run (a blocked sentinel).
+  // Replaces the hack of writing sentinel strings to proposedDescription.
+  // Values: BLOCKED_DEPENDENCY | WAITING_FOR_EXTRACTION | BLOCKED_MISSING_DESCRIPTION
+  blockedReason       String?
+  // Stable policy id when triageState = AUTO_VERIFIED, e.g. "hts-auto-v1".
+  // Lets an auditor reconstruct exactly which policy version fired.
+  autoApprovalPolicy  String?
   confidence          Int? // model confidence, null until the model reports one
   decisionSummary     String // e.g. 2 line items need review
   purpose             String? // e.g. Determine correct HS/HTS classification for all line items
@@ -625,6 +638,8 @@ model AgentDecision {
   @@index([shipmentId])
   @@index([accountId])
   @@index([status])
+  @@index([triageState])
+  @@index([accountId, triageState])
   @@index([documentId])
 }
 
@@ -1262,11 +1277,16 @@ model ExceptionItem {
   // Human-readable snapshot of who resolved this, taken at resolve time --
   // resolvedBy stores the userId (or "SYSTEM" for auto-resolves), this is
   // what's actually safe to render directly in the UI without a join.
-  resolvedByName   String?
-  resolutionNote   String?
+  resolvedByName      String?
+  resolutionNote      String?
+  // Picklist code from resolutionReasons.ts — stored alongside the free-text
+  // note so reason analytics are query-able. Null for pre-migration rows and for
+  // cancellations (which do not require a stated reason).
+  resolutionReasonCode String?
 
   @@index([accountId])
   @@index([status])
+  @@index([resolutionReasonCode])
   @@index([documentId, fieldKey])
 }
 

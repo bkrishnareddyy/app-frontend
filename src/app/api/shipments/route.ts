@@ -83,15 +83,16 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const shipments = await db.shipment.findMany({
     ...listArgs,
+    omit: { filingDeadline: true },
     include: {
       documents: true,
       lineItems: true,
-      agentDecisions: true,
+      agentDecisions: { omit: { triageState: true, blockedReason: true, autoApprovalPolicy: true } },
       customsFilings: true,
       assignedBroker: true,
       masterShipment: true,
       houseShipments: true,
-      exceptionItems: true,
+      exceptionItems: { omit: { resolutionReasonCode: true } },
       client: true,
     },
   });
@@ -146,6 +147,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   if (input.masterShipmentId) {
     const master = await db.shipment.findFirst({
       where: { id: input.masterShipmentId, accountId: ctx.accountId },
+      select: { id: true },
     });
     if (!master) {
       return NextResponse.json({ error: "Invalid masterShipmentId: Master shipment not found in this account" }, { status: 400 });

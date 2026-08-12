@@ -48,14 +48,38 @@ export default async function ActionsPage(props: {
     db.agentDecision.findMany({
       where: {
         accountId: context.accountId,
-        status: { in: [...DECISION_ACTIONABLE_STATUSES, "Approved"] },
+        // DECISION_ACTIONABLE_STATUSES now covers every legacy status string
+        // that maps to NEEDS_REVIEW or BLOCKED. "Approved" is still included so
+        // brokers can see recently-approved decisions in the verified section.
+        status: { in: [...DECISION_ACTIONABLE_STATUSES, "Approved", "AUTO_VERIFIED", "Auto-Approved", "Verified"] },
         ...(shipmentId ? { shipmentId } : {}),
       },
-      include: {
+      // Explicit select to avoid triageState/blockedReason/autoApprovalPolicy which
+      // are in the Prisma schema but not yet applied to the live DB (migration pending).
+      select: {
+        id: true,
+        accountId: true,
+        agentName: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        decisionSummary: true,
+        humanNotes: true,
+        currentHtsCode: true,
+        proposedHtsCode: true,
+        proposedDescription: true,
+        evidenceItems: true,
+        shipmentId: true,
+        documentId: true,
+        lineNumber: true,
+        confidence: true,
         shipment: {
-          include: {
-            documents: true,
-            lineItems: true,
+          select: {
+            id: true,
+            shipmentNumber: true,
+            documents: { select: { id: true, docType: true, fileName: true, status: true, fileUrl: true, extractedJson: true, shipmentId: true, createdAt: true, updatedAt: true } },
+            lineItems: { select: { id: true, lineNumber: true, htsCode: true, description: true, quantity: true, unitPrice: true, totalValue: true, countryOfOrigin: true, status: true } },
+            assignedBrokerId: true,
             assignedBroker: { select: { id: true, firstName: true, lastName: true, email: true } },
             client: { select: { id: true, name: true } },
           },

@@ -32,6 +32,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
 
   const targetShipment = await db.shipment.findFirst({
     where: { id: shipmentId, accountId: ctx.accountId, deletedAt: null },
+    select: { id: true },
   });
 
   if (!targetShipment) {
