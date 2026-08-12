@@ -822,15 +822,11 @@ function AgentResultCard({
           ) : null}
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{label}</p>
         </div>
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${
-          effectiveCategory === "verified"
-            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-            : effectiveCategory === "blocked"
-              ? "bg-red-50 border-red-200 text-red-700"
-              : "bg-amber-50 border-amber-200 text-amber-700"
-        }`}>
-          {effectiveCategory === "verified" ? "Approved" : effectiveCategory === "blocked" ? "Blocked" : "Needs Review"}
-        </span>
+        {isApproved && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 bg-emerald-50 border-emerald-200 text-emerald-700">
+            Approved
+          </span>
+        )}
       </div>
 
       {/* Extracted data */}
