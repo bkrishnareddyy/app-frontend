@@ -188,6 +188,30 @@ export function revalidationPresentation(flag: string): { label: string; descrip
   return REVALIDATION[flag] ?? { label: flag, description: "" };
 }
 
+/**
+ * A revalidation flag's `reason` is one or more `Entity.field: explanation`
+ * fragments concatenated by revalidationSignals() in productChangeDetection.ts.
+ * The `Entity.field` part is a technical identifier -- the History tab already
+ * renders it in monospace rather than as prose -- so it is split out here
+ * instead of being read as the start of a sentence.
+ */
+export interface ChangeReasonSegment {
+  source: string;
+  text: string;
+}
+
+const CHANGE_REASON_SEGMENT = /([A-Za-z]+(?::[A-Za-z0-9_]+)?\.[A-Za-z]+):\s*/g;
+
+export function parseChangeReason(reason: string): ChangeReasonSegment[] {
+  const matches = [...reason.matchAll(CHANGE_REASON_SEGMENT)];
+  if (matches.length === 0) return [{ source: "", text: reason }];
+  return matches.map((match, index) => {
+    const start = (match.index ?? 0) + match[0].length;
+    const end = index + 1 < matches.length ? matches[index + 1].index ?? reason.length : reason.length;
+    return { source: match[1], text: reason.slice(start, end).trim() };
+  });
+}
+
 const SOURCE_TYPE: Record<string, string> = {
   DOCUMENT: "Document",
   EXTRACTED_FACT: "Extracted from a document",
