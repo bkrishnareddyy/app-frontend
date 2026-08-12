@@ -6,6 +6,10 @@ export interface DecisionRow extends ReviewDecision {
   agentName: string;
   documentId?: string | null;
   shipment?: { shipmentNumber?: string | null } | null;
+  /** AI confidence score (0–100). Present on classification and extraction decisions. */
+  confidence?: number | null;
+  /** Set when a human reviewer has acted on this decision. */
+  reviewedByUser?: { firstName?: string | null; lastName?: string | null; email: string } | null;
 }
 
 export interface DecisionDocument {

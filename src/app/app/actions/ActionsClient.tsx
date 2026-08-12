@@ -733,6 +733,43 @@ function Row({ label, value, highlight = false }: { label: string; value: string
   );
 }
 
+function ProvenanceFooter({ item }: { item: Extract<ActionItem, { kind: "decision" }> }) {
+  const confidence = typeof item.raw.confidence === "number" ? item.raw.confidence : null;
+  const reviewer = item.raw.reviewedByUser;
+  const reviewerName = reviewer
+    ? ([reviewer.firstName, reviewer.lastName].filter(Boolean).join(" ") || reviewer.email)
+    : null;
+  const isAutoVerified =
+    item.status === "AUTO_VERIFIED" || item.status === "Auto-Approved" || item.status === "Verified";
+
+  if (confidence === null && !reviewerName && !isAutoVerified) return null;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap pt-0.5 border-t border-border/40">
+      {confidence !== null && (
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+          confidence >= 90
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : confidence >= 70
+              ? "bg-amber-50 border-amber-200 text-amber-700"
+              : "bg-red-50 border-red-200 text-red-700"
+        }`}>
+          {confidence}% confident
+        </span>
+      )}
+      {reviewerName ? (
+        <span className="text-[10px] text-ink-muted font-medium">
+          Reviewed by <span className="font-semibold text-ink">{reviewerName}</span>
+        </span>
+      ) : isAutoVerified ? (
+        <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+          AI certified
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function AgentResultCard({
   item,
   note,
@@ -792,6 +829,9 @@ function AgentResultCard({
 
       {/* Extracted data */}
       <DecisionBody item={item} />
+
+      {/* Provenance footer */}
+      <ProvenanceFooter item={item} />
 
       {/* Note */}
       {showNote && (

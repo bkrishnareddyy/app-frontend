@@ -105,6 +105,7 @@ const ACTIVE_STATUSES = new Set(["In Progress", "On Hold", "Ready to File", "Pen
 
 export function CommandCenterClient({
   initialShipments,
+  initialDecisions,
   teamMembers,
   clients,
   context,
@@ -189,6 +190,16 @@ export function CommandCenterClient({
   const clearedShipments = filteredShipments.filter((s) => s.readinessScore >= 85);
   const valueAtRisk = notReadyShipments.reduce((sum, s) => sum + (s.totalValue || 0), 0);
   const valueAtRiskCurrency = commonExtractedCurrency(notReadyShipments);
+
+  // ─── AI Throughput ────────────────────────────────────────────────────────
+
+  const AUTO_CERTIFIED_STATUSES = new Set(["AUTO_VERIFIED", "Auto-Approved", "Verified"]);
+  const HUMAN_REVIEWED_STATUSES = new Set(["Approved", "APPROVED", "Rejected", "REJECTED"]);
+
+  const autoCertified = initialDecisions.filter((d) => AUTO_CERTIFIED_STATUSES.has(d.status)).length;
+  const humanReviewed = initialDecisions.filter((d) => HUMAN_REVIEWED_STATUSES.has(d.status)).length;
+  const totalResolved = autoCertified + humanReviewed;
+  const touchRate = totalResolved > 0 ? Math.round((humanReviewed / totalResolved) * 100) : null;
 
   // ─── Team workload (manager only) ─────────────────────────────────────────
 
@@ -826,6 +837,44 @@ export function CommandCenterClient({
 
       {/* KPI tiles */}
       {kpiTiles}
+
+      {/* AI Throughput strip */}
+      {totalResolved > 0 && (
+        <div className="bg-white rounded-2xl border border-border shadow-2xs px-5 py-3 flex items-center gap-6 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-md bg-brand/10 flex items-center justify-center shrink-0">
+              <TrendingUp className="w-3 h-3 text-brand" />
+            </div>
+            <span className="text-[11px] font-bold text-ink uppercase tracking-wider">AI Throughput</span>
+          </div>
+          <div className="flex items-center gap-4 flex-wrap text-[11px]">
+            <span className="text-ink-muted">
+              Auto-certified:{" "}
+              <span className="font-bold text-emerald-700">{autoCertified}</span>
+            </span>
+            <span className="text-ink-muted">
+              Human reviewed:{" "}
+              <span className="font-bold text-ink">{humanReviewed}</span>
+            </span>
+            {touchRate !== null && (
+              <span className="text-ink-muted">
+                Touch rate:{" "}
+                <span className={`font-bold ${touchRate <= 20 ? "text-emerald-700" : touchRate <= 50 ? "text-amber-600" : "text-red-600"}`}>
+                  {touchRate}%
+                </span>
+              </span>
+            )}
+          </div>
+          {touchRate !== null && (
+            <div className="flex-1 min-w-24 max-w-48 h-1.5 rounded-full bg-surface-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-emerald-400 transition-all"
+                style={{ width: `${100 - touchRate}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main content — two-column for managers, full-width for solo brokers */}
       {isEnterpriseAdmin ? (
