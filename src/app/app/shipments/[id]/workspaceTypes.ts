@@ -29,7 +29,7 @@ export interface ShipmentLineItemRow {
   totalValue: number | null;
   countryOfOrigin: string;
   htsCode: string;
-  htsConfidence: number;
+  htsConfidence?: number | null;
   status?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;

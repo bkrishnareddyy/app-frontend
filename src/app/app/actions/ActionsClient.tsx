@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Scale, TriangleAlert, Search, CheckCircle2, FileText, X } from "lucide-react";
+import { Scale, TriangleAlert, Search, CheckCircle2, FileText, X, Upload } from "lucide-react";
 import { useDecisionActions } from "@/lib/decisions/useDecisionActions";
 import { ExceptionQuickActions } from "./ExceptionQuickActions";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
@@ -444,10 +444,16 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                           <ExceptionCard
                             key={item.id}
                             item={item}
+                            shipmentId={selectedGroup.shipmentId}
                             canWrite={canWrite}
                             canWaive={canWaive}
                             onResolved={() => handleExceptionResolved(item.id)}
                             verified={cat === "verified"}
+                            onDocClick={(docId, fileName) => {
+                              const doc = docLookup.get(docId);
+                              setDocModal({ documentId: docId, fileName, fileUrl: doc?.fileUrl ?? null });
+                            }}
+                            documents={documents}
                           />
                         )
                       )}
@@ -826,18 +832,121 @@ function AgentResultCard({
   );
 }
 
+function parseExceptionDetails(item: Extract<ActionItem, { kind: "exception" }>) {
+  const desc = item.description;
+  const notFoundMatch = desc.match(/^(.*?)\s+was not found on\s+(.*?)\.?$/i);
+  const isExtractedField = desc.includes("(Extracted from");
+  const isDocMissing = desc.toLowerCase().includes("missing:") || desc.toLowerCase().includes("missing");
+
+  const lineItemMatch = desc.match(/^(.*?)\s+could not be extracted for (.*?)\s+on\s+(.*?)\s*(--|$)/i);
+  if (lineItemMatch) {
+    const fieldName = lineItemMatch[1].trim();
+    const lineDetails = lineItemMatch[2].trim();
+    const docName = lineItemMatch[3].trim();
+
+    return {
+      category: "DATA MISMATCH",
+      title: `Line Item ${fieldName} Missing`,
+      sourceDoc: docName,
+      summaryPrefix: `${fieldName} could not be extracted for ${lineDetails} on `,
+      sourceDocText: docName,
+      summarySuffix: " -- confirm before filing.",
+      actionExpected: `Review line items on ${docName} and confirm ${fieldName.toLowerCase()} values.`,
+    };
+  }
+
+  const lineItemLegacyMatch = desc.match(/^(.*?)\s+could not be extracted for (.*?)$/i);
+  if (lineItemLegacyMatch) {
+    const fieldName = lineItemLegacyMatch[1].trim();
+    const rest = lineItemLegacyMatch[2].trim();
+
+    return {
+      category: "DATA MISMATCH",
+      title: `Line Item ${fieldName} Missing`,
+      sourceDoc: null,
+      summaryPrefix: `${fieldName} could not be extracted for ${rest}`,
+      sourceDocText: null,
+      summarySuffix: "",
+      actionExpected: `Review and confirm ${fieldName.toLowerCase()} for affected line items.`,
+    };
+  }
+
+  if (notFoundMatch) {
+    const fieldName = notFoundMatch[1].trim();
+    const docName = notFoundMatch[2].trim();
+
+    return {
+      category: "MISSING FIELD",
+      title: `Missing Field: ${fieldName}`,
+      sourceDoc: docName,
+      summaryPrefix: `'${fieldName}' was not found on `,
+      sourceDocText: docName,
+      summarySuffix: ".",
+      actionExpected: `Upload a revised document containing ${fieldName}, or resolve with verified value.`,
+    };
+  }
+
+  if (isExtractedField) {
+    const match = desc.match(/^(.*?)\s*\(Extracted from (.*?)\)$/);
+    const fieldName = match ? match[1].trim() : desc;
+    const docName = match ? match[2].trim() : "uploaded document";
+
+    return {
+      category: "MISSING FIELD",
+      title: `Missing Field: ${fieldName}`,
+      sourceDoc: docName,
+      summaryPrefix: `'${fieldName}' was not detected during extraction from `,
+      sourceDocText: docName,
+      summarySuffix: ".",
+      actionExpected: `Upload a revised document containing ${fieldName}, or resolve with verified value.`,
+    };
+  }
+
+  if (isDocMissing) {
+    const docTypeMatch = desc.match(/^(.*?\s+Missing):/i);
+    const title = docTypeMatch ? docTypeMatch[1].trim() : "Missing Document";
+    const docName = title.replace(/\s+Missing/i, "");
+
+    return {
+      category: "MISSING DOCUMENT",
+      title: title,
+      sourceDoc: null,
+      summaryPrefix: `Required document '${docName}' has not been uploaded.`,
+      sourceDocText: null,
+      summarySuffix: "",
+      actionExpected: `Upload ${docName} to clear pre-filing gate.`,
+    };
+  }
+
+  return {
+    category: item.type.replace(/_/g, " ").toUpperCase(),
+    title: item.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    sourceDoc: null,
+    summaryPrefix: desc,
+    sourceDocText: null,
+    summarySuffix: "",
+    actionExpected: "Review exception details and resolve or waive.",
+  };
+}
+
 function ExceptionCard({
   item,
+  shipmentId,
   canWrite,
   canWaive,
   onResolved,
   verified = false,
+  onDocClick,
+  documents = [],
 }: {
   item: Extract<ActionItem, { kind: "exception" }>;
+  shipmentId?: string;
   canWrite: boolean;
   canWaive: boolean;
   onResolved: () => void;
   verified?: boolean;
+  onDocClick?: (docId: string, fileName: string) => void;
+  documents?: DocSummary[];
 }) {
   const [resolved, setResolved] = useState(false);
 
@@ -852,6 +961,19 @@ function ExceptionCard({
     );
   }
 
+  const parsed = parseExceptionDetails(item);
+
+  // Find target document by ID, explicit filename match, or fallback to shipment's primary document
+  const targetDocId = item.documentId || item.raw.documentId;
+  const targetDoc = targetDocId
+    ? documents.find((d) => d.id === targetDocId)
+    : parsed.sourceDocText
+      ? documents.find((d) => d.fileName.toLowerCase() === parsed.sourceDocText!.toLowerCase()) || documents[0]
+      : documents[0];
+
+  const docNameToDisplay = parsed.sourceDocText || (targetDoc ? targetDoc.fileName : null);
+  const showOnPrefix = !parsed.sourceDocText && Boolean(targetDoc);
+
   const severityClass =
     item.severity === "Critical"
       ? "bg-red-50 border-red-200 text-red-700"
@@ -860,35 +982,74 @@ function ExceptionCard({
         : "bg-gray-50 border-gray-200 text-gray-600";
 
   return (
-    <div className={`border rounded-2xl p-4 space-y-2 ${verified ? "border-emerald-100 bg-emerald-50/30 opacity-75" : "border-border bg-surface-muted/30"}`}>
+    <div className={`border rounded-2xl p-4 space-y-3 ${verified ? "border-emerald-100 bg-emerald-50/30 opacity-75" : "border-border bg-surface-muted/30"}`}>
+      {/* Header: Category Badge + Title + Severity */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <TriangleAlert className="w-4 h-4 text-amber-500 shrink-0" />
-          <span className="text-sm font-semibold text-ink truncate">
-            {item.type.replace(/_/g, " ")}
+        <div className="space-y-0.5 min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600/90">
+            {parsed.category}
           </span>
+          <h4 className="text-sm font-bold text-ink truncate">
+            {parsed.title}
+          </h4>
         </div>
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${severityClass}`}>
           {item.severity}
         </span>
       </div>
 
-      <div className="flex items-center gap-1 text-xs text-ink-muted">
-        <span>Shipment-level</span>
-        <span>·</span>
-        <span>Open {new Date(item.createdAt).toLocaleDateString()}</span>
+      {/* Summary with Hyperlinked Document Name */}
+      <p className="text-xs text-ink leading-relaxed font-medium">
+        {parsed.summaryPrefix}
+        {showOnPrefix && " on "}
+        {docNameToDisplay ? (
+          targetDoc && onDocClick ? (
+            <button
+              onClick={() => onDocClick(targetDoc.id, targetDoc.fileName)}
+              className="font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer align-baseline"
+            >
+              <FileText className="w-3.5 h-3.5 shrink-0" />
+              <span>{docNameToDisplay}</span>
+            </button>
+          ) : (
+            <span className="font-bold text-ink">{docNameToDisplay}</span>
+          )
+        ) : null}
+        {parsed.summarySuffix}
+      </p>
+
+      {/* Action Expected Banner */}
+      <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-xs text-amber-900 flex items-start gap-2">
+        <Upload className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+        <div>
+          <span className="font-bold text-[10px] uppercase tracking-wider block text-amber-800">Action Required</span>
+          <span className="text-[11px]">{parsed.actionExpected}</span>
+        </div>
       </div>
 
-      <p className="text-xs text-ink-muted leading-relaxed">{item.description}</p>
+      {/* Date & Direct Action Link */}
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50 text-[11px] text-ink-muted">
+        <span>Open {new Date(item.createdAt).toLocaleDateString()}</span>
+        {shipmentId && (
+          <Link
+            href={`/app/shipments/${shipmentId}`}
+            className="text-brand font-semibold hover:underline flex items-center gap-1"
+          >
+            Go to Documents →
+          </Link>
+        )}
+      </div>
 
       {canWrite && (
         <ExceptionQuickActions
           exceptionId={item.id}
           version={item.version}
           canWaive={canWaive}
+          documentId={targetDoc?.id || item.documentId || item.raw.documentId}
           onResolved={() => { setResolved(true); onResolved(); }}
         />
       )}
     </div>
   );
 }
+

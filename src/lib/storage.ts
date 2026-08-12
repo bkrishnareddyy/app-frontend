@@ -32,6 +32,7 @@ const MAX_UPLOAD_BYTES = parseInt(process.env.MAX_UPLOAD_BYTES ?? "", 10) || 50 
 const ALLOWED_STORAGE_HOSTS = [
   "blob.vercel-storage.com",
   "public.blob.vercel-storage.com",
+  "storage.qubere.ai",
 ];
 
 export type RemoteStorageOrigin = "vercel-blob";
