@@ -1,5 +1,7 @@
 import type { DecisionGroup, DecisionRow } from "@/modules/decisions/groupDecisions";
 import { decisionPriority, exceptionPriority, DECISION_ACTIONABLE_STATUSES, type WorkPriority } from "@/modules/work/workQueue";
+import { reviewCategory } from "@/modules/decisions/editableFields";
+import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 
 export interface ExceptionRecord {
   id: string;
@@ -28,6 +30,7 @@ export type ActionItem =
       decisionSummary: string | null;
       status: string;
       createdAt: string | Date;
+      documentId: string | null;
       documentName: string | null;
       raw: DecisionRow;
     }
@@ -51,6 +54,8 @@ export interface ShipmentActionGroup {
   shipmentNumber: string;
   clientId: string | null;
   clientName: string | null;
+  assignedBrokerId: string | null;
+  assignedBrokerName: string | null;
   priority: WorkPriority;
   decisionCount: number;
   exceptionCount: number;
@@ -69,26 +74,70 @@ export function buildShipmentActionGroups(
 ): ShipmentActionGroup[] {
   const byShipment = new Map<
     string,
-    { shipmentNumber: string; clientId: string | null; clientName: string | null; items: ActionItem[] }
+    {
+      shipmentNumber: string;
+      clientId: string | null;
+      clientName: string | null;
+      assignedBrokerId: string | null;
+      assignedBrokerName: string | null;
+      items: ActionItem[];
+    }
   >();
 
   const ensure = (
     shipmentId: string,
     shipmentNumber: string,
     clientId: string | null,
-    clientName: string | null
+    clientName: string | null,
+    assignedBrokerId: string | null,
+    assignedBrokerName: string | null
   ) => {
     if (!byShipment.has(shipmentId)) {
-      byShipment.set(shipmentId, { shipmentNumber, clientId, clientName, items: [] });
+      byShipment.set(shipmentId, {
+        shipmentNumber,
+        clientId,
+        clientName,
+        assignedBrokerId,
+        assignedBrokerName,
+        items: [],
+      });
     }
-    return byShipment.get(shipmentId)!;
+    const bucket = byShipment.get(shipmentId)!;
+    if (!bucket.assignedBrokerId && assignedBrokerId) {
+      bucket.assignedBrokerId = assignedBrokerId;
+      bucket.assignedBrokerName = assignedBrokerName;
+    }
+    return bucket;
   };
 
   for (const group of decisionGroups) {
-    const rawShipment = (group.decisions[0] as unknown as { shipment?: { client?: { id: string; name: string } | null } })?.shipment;
+    const rawShipment = (
+      group.decisions[0] as unknown as {
+        shipment?: {
+          assignedBrokerId?: string | null;
+          assignedBroker?: { firstName?: string | null; lastName?: string | null; email?: string } | null;
+          client?: { id: string; name: string } | null;
+        };
+      }
+    )?.shipment;
     const client = rawShipment?.client ?? null;
-    const bucket = ensure(group.shipmentId, group.shipmentNumber, client?.id ?? null, client?.name ?? null);
+    const assignedBrokerId = rawShipment?.assignedBrokerId ?? null;
+    const assignedBroker = rawShipment?.assignedBroker ?? null;
+    const assignedBrokerName = assignedBroker
+      ? [assignedBroker.firstName, assignedBroker.lastName].filter(Boolean).join(" ") || assignedBroker.email
+      : null;
+
+    const bucket = ensure(
+      group.shipmentId,
+      group.shipmentNumber,
+      client?.id ?? null,
+      client?.name ?? null,
+      assignedBrokerId,
+      assignedBrokerName ?? null
+    );
     for (const dec of group.decisions) {
+      if (reviewCategory(dec) === "MECHANICAL") continue;
+      if (bucket.items.some((i) => i.id === dec.id)) continue;
       bucket.items.push({
         kind: "decision",
         id: dec.id,
@@ -96,6 +145,7 @@ export function buildShipmentActionGroups(
         decisionSummary: dec.decisionSummary ?? null,
         status: dec.status,
         createdAt: dec.createdAt,
+        documentId: group.documentId ?? dec.documentId ?? null,
         documentName: group.documentName,
         raw: dec,
       });
@@ -104,8 +154,27 @@ export function buildShipmentActionGroups(
 
   for (const exc of exceptions) {
     if (!exc.shipmentId || !exc.shipment) continue;
-    const client = exc.shipment.client ?? null;
-    const bucket = ensure(exc.shipmentId, exc.shipment.shipmentNumber, client?.id ?? null, client?.name ?? null);
+    const excShipment = exc.shipment as unknown as {
+      assignedBrokerId?: string | null;
+      assignedBroker?: { firstName?: string | null; lastName?: string | null; email?: string } | null;
+      client?: { id: string; name: string } | null;
+    };
+    const client = excShipment.client ?? null;
+    const assignedBrokerId = excShipment.assignedBrokerId ?? null;
+    const assignedBroker = excShipment.assignedBroker ?? null;
+    const assignedBrokerName = assignedBroker
+      ? [assignedBroker.firstName, assignedBroker.lastName].filter(Boolean).join(" ") || assignedBroker.email
+      : null;
+
+    const bucket = ensure(
+      exc.shipmentId,
+      exc.shipment.shipmentNumber,
+      client?.id ?? null,
+      client?.name ?? null,
+      assignedBrokerId,
+      assignedBrokerName ?? null
+    );
+    if (bucket.items.some((i) => i.id === exc.id)) continue;
     bucket.items.push({
       kind: "exception",
       id: exc.id,
@@ -122,8 +191,56 @@ export function buildShipmentActionGroups(
     });
   }
 
+  for (const [shipmentId, bucket] of byShipment) {
+    const docRows = bucket.items
+      .filter((i): i is Extract<ActionItem, { kind: "decision" }> => i.kind === "decision")
+      .map((i) => ({
+        docType: i.documentName,
+        fileName: i.documentName,
+        status: "Received",
+      }));
+
+    const { missingTypes } = checkRequiredDocumentTypes(docRows, false);
+
+    for (const reqDoc of missingTypes) {
+      if (bucket.items.some((i) => i.kind === "exception" && i.type.toLowerCase().includes(reqDoc.toLowerCase()))) continue;
+      if (bucket.items.some((i) => i.kind === "exception" && i.description.toLowerCase().includes(reqDoc.toLowerCase()))) continue;
+
+      const missingId = `missing-doc-${shipmentId}-${reqDoc}`;
+      if (bucket.items.some((i) => i.id === missingId)) continue;
+
+      bucket.items.push({
+        kind: "exception",
+        id: missingId,
+        type: "missing_document",
+        description: `${reqDoc} Missing: Required for customs entry filing. Upload the ${reqDoc} to clear this requirement.`,
+        severity: "Medium",
+        status: "OPEN",
+        version: 1,
+        createdAt: new Date(),
+        documentName: null,
+        assignedToUserId: bucket.assignedBrokerId,
+        assignedToUser: null,
+        raw: {
+          id: missingId,
+          type: "missing_document",
+          severity: "Medium",
+          description: `${reqDoc} Missing: Required for customs entry filing. Upload the ${reqDoc} to clear this requirement.`,
+          status: "OPEN",
+          version: 1,
+          createdAt: new Date(),
+          resolvedAt: null,
+          shipmentId,
+          assignedToUserId: bucket.assignedBrokerId,
+          shipment: { id: shipmentId, shipmentNumber: bucket.shipmentNumber, client: bucket.clientId ? { id: bucket.clientId, name: bucket.clientName || "" } : null },
+          assignedToUser: null,
+        },
+      });
+    }
+  }
+
   const groups: ShipmentActionGroup[] = [];
-  for (const [shipmentId, { shipmentNumber, clientId, clientName, items }] of byShipment) {
+  for (const [shipmentId, { shipmentNumber, clientId, clientName, assignedBrokerId, assignedBrokerName, items }] of byShipment) {
     if (items.length === 0) continue;
 
     const priorities = items.map((item) =>
@@ -148,6 +265,8 @@ export function buildShipmentActionGroups(
       shipmentNumber,
       clientId,
       clientName,
+      assignedBrokerId,
+      assignedBrokerName,
       priority: worstPriority(priorities),
       decisionCount,
       exceptionCount,

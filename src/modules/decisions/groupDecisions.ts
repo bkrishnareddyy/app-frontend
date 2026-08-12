@@ -125,7 +125,14 @@ export function groupDecisions(decisions: DecisionRow[], allDocuments: DecisionD
     if (!doc) continue;
     const shipmentId = docDecisions[0].shipmentId;
     const shipmentNumber = docDecisions[0].shipment?.shipmentNumber || shipmentId;
-    const allDecisionsForGroup = [...docDecisions, ...(shipmentScopedByShipment.get(shipmentId) ?? [])];
+    const combinedDecisions = [...docDecisions, ...(shipmentScopedByShipment.get(shipmentId) ?? [])];
+    const uniqueDecisionsMap = new Map<string, DecisionRow>();
+    for (const d of combinedDecisions) {
+      if (!uniqueDecisionsMap.has(d.id)) {
+        uniqueDecisionsMap.set(d.id, d);
+      }
+    }
+    const allDecisionsForGroup = Array.from(uniqueDecisionsMap.values());
     const allApproved = allDecisionsForGroup.every((d) => d.status === "Approved");
     const latestCreatedAt = allDecisionsForGroup.reduce(
       (latest, d) => (new Date(d.createdAt).getTime() > new Date(latest).getTime() ? d.createdAt : latest),

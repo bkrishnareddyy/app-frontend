@@ -1,41 +1,20 @@
 "use client";
 
-import { Fragment, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   FileText,
   TrendingUp,
   CheckCircle2,
   AlertCircle,
-  Search,
   Send,
   ChevronRight,
-  ChevronDown,
-  Inbox,
-  DollarSign,
+  ShieldAlert,
   Plus,
-  Clock,
-  AlertTriangle,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { displayCurrency, displayDate } from "@/lib/honest";
+import { displayCurrency } from "@/lib/honest";
 import { commonExtractedCurrency } from "@/modules/documents/extractedCurrency";
-import type { MultiDimensionalMetrics } from "@/modules/shipment/canonicalShipmentService";
-
-type Urgency = "Critical" | "At Risk" | "Healthy";
-
-const URGENCY_RANK: Record<Urgency, number> = { Critical: 0, "At Risk": 1, Healthy: 2 };
-
-function urgencyOf(s: CommandCenterShipment): Urgency {
-  if (s.healthStatus === "Critical") return "Critical";
-  if (s.healthStatus === "At Risk") return "At Risk";
-  if (s.healthStatus === "Healthy") return "Healthy";
-  if (typeof s.riskScore === "number") {
-    if (s.riskScore >= 75) return "Critical";
-    if (s.riskScore >= 50) return "At Risk";
-  }
-  return "Healthy";
-}
 
 /**
  * A shipment's entered value, in the currency its documents actually declared.
@@ -49,21 +28,6 @@ function shipmentValue(shipment: CommandCenterShipment): string {
   return shipment.currency
     ? displayCurrency(amount, shipment.currency)
     : amount.toLocaleString();
-}
-
-const URGENCY_BADGE_CLASS: Record<Urgency, string> = {
-  Critical: "bg-red-50 text-red-700 border-red-200",
-  "At Risk": "bg-amber-50 text-amber-700 border-amber-200",
-  Healthy: "bg-emerald-50 text-emerald-700 border-emerald-200",
-};
-
-function ScorePill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-white p-3 rounded-xl border border-[#E5E5EA]">
-      <p className="text-[10px] font-semibold text-[#86868B] uppercase tracking-wider">{label}</p>
-      <p className="text-sm font-extrabold text-[#1D1D1F] mt-0.5">{value}</p>
-    </div>
-  );
 }
 
 /** A shipment as the dashboard's server page serialises it for the KPI tiles. */
@@ -95,6 +59,11 @@ interface CommandCenterShipment {
   missingDocTypes: string[];
   receivedDocCount: number;
   totalRequiredDocs: number;
+  aiReview?: {
+    blocked: number;
+    needsReview: number;
+    verified: number;
+  };
 }
 
 /** An agent decision, reduced to what the dashboard counts. */
@@ -179,27 +148,6 @@ export function CommandCenterClient({
   );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("ALL");
-  const [activeView, setActiveView] = useState<"overview" | "work">("overview");
-
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
-  const [rowMetrics, setRowMetrics] = useState<
-    Record<string, { status: "loading" | "loaded" | "error"; metrics?: MultiDimensionalMetrics }>
-  >({});
-
-  const toggleExpandRow = (id: string) => {
-    setExpandedRowId((prev) => (prev === id ? null : id));
-    if (!rowMetrics[id]) {
-      setRowMetrics((prev) => ({ ...prev, [id]: { status: "loading" } }));
-      fetch(`/api/shipments/${id}`)
-        .then((res) => res.json())
-        .then((data) => {
-          setRowMetrics((prev) => ({ ...prev, [id]: { status: "loaded", metrics: data.metrics } }));
-        })
-        .catch(() => {
-          setRowMetrics((prev) => ({ ...prev, [id]: { status: "error" } }));
-        });
-    }
-  };
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
@@ -228,21 +176,7 @@ export function CommandCenterClient({
     });
   }, [initialShipments, selectedUserIds, selectedClientId, isEnterpriseAdmin]);
 
-  // Shipments assigned to the logged-in user, sorted most-urgent and
-  // soonest-arriving first -- this is what "My Work" shows, independent of
-  // the Overview scope filters above.
-  const myShipments = useMemo(() => {
-    return initialShipments
-      .filter((s) => s.assignedBrokerId === context.userId)
-      .slice()
-      .sort((a, b) => {
-        const rankDiff = URGENCY_RANK[urgencyOf(a)] - URGENCY_RANK[urgencyOf(b)];
-        if (rankDiff !== 0) return rankDiff;
-        const aTime = a.estimatedArrival ? new Date(a.estimatedArrival).getTime() : Infinity;
-        const bTime = b.estimatedArrival ? new Date(b.estimatedArrival).getTime() : Infinity;
-        return aTime - bTime;
-      });
-  }, [initialShipments, context.userId]);
+
 
   // Filter decisions dynamically based on checked team members
   const filteredDecisions = useMemo(() => {
@@ -283,183 +217,145 @@ export function CommandCenterClient({
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
-      {/* Top Banner Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-border shadow-2xs">
-        <div className="flex bg-surface-muted p-1 rounded-xl border border-border text-xs">
-          <button
-            onClick={() => setActiveView("overview")}
-            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              activeView === "overview" ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
-            }`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveView("work")}
-            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-              activeView === "work" ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
-            }`}
-          >
-            My Work
-          </button>
-        </div>
+      {/* Scope Controls & Add Shipment Button Bar */}
+      <div className="bg-white p-3 rounded-2xl border border-border shadow-2xs flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          {isEnterpriseAdmin && (
+            <>
+              <div className="flex bg-surface-muted p-1 rounded-xl border border-border text-xs">
+                <button
+                  onClick={() => setSelectedUserIds([context.userId])}
+                  className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    selectedUserIds.length === 1 && selectedUserIds[0] === context.userId
+                      ? "bg-white text-ink shadow-3xs"
+                      : "text-ink-muted"
+                  }`}
+                >
+                  My Tasks
+                </button>
+                <button
+                  onClick={() => setSelectedUserIds([])}
+                  className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    selectedUserIds.length === 0 ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
+                  }`}
+                >
+                  All Tasks
+                </button>
+              </div>
 
-        <div className="flex items-center space-x-3">
-          <div className="relative min-w-0 flex-1 max-w-72">
-            <Search className="w-4 h-4 text-ink-muted absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder={t.dashboard.searchPlaceholder}
-              disabled
-              className="pl-9 pr-4 py-2 bg-surface-muted border border-border rounded-xl text-xs text-ink-muted w-full opacity-50 cursor-not-allowed"
-            />
-          </div>
+              <div className="flex items-center space-x-2 text-xs relative">
+                <span className="text-ink-muted font-semibold">Team Members:</span>
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="px-3.5 py-1.5 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
+                >
+                  <span>
+                    {selectedUserIds.length === 0
+                      ? "All Team Members"
+                      : selectedUserIds.length === 1
+                      ? selectedUserIds[0] === context.userId
+                        ? `My Tasks (${context.firstName || "Me"})`
+                        : (() => {
+                            const user = fullTeamList.find((u) => u.userId === selectedUserIds[0]);
+                            return user
+                              ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email
+                              : "1 Selected";
+                          })()
+                      : `${selectedUserIds.length} Selected`}
+                  </span>
+                  <span className="text-ink-muted text-[9px]">▼</span>
+                </button>
 
-          <Link
-            href="/app/shipments/new"
-            className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 shrink-0 whitespace-nowrap cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{t.dashboard.newShipment}</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* Assignee/client scope controls -- Overview only; My Work is always scoped to the current user */}
-      {activeView === "overview" && (isEnterpriseAdmin || clients.length > 0) && (
-        <div className="bg-white p-3 rounded-2xl border border-border shadow-2xs flex flex-wrap items-center justify-end gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            {isEnterpriseAdmin && (
-              <>
-                <div className="flex bg-surface-muted p-1 rounded-xl border border-border text-xs">
-                  <button
-                    onClick={() => setSelectedUserIds([context.userId])}
-                    className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                      selectedUserIds.length === 1 && selectedUserIds[0] === context.userId
-                        ? "bg-white text-ink shadow-3xs"
-                        : "text-ink-muted"
-                    }`}
-                  >
-                    My Tasks
-                  </button>
-                  <button
-                    onClick={() => setSelectedUserIds([])}
-                    className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                      selectedUserIds.length === 0 ? "bg-white text-ink shadow-3xs" : "text-ink-muted"
-                    }`}
-                  >
-                    All Tasks
-                  </button>
-                </div>
-
-                <div className="flex items-center space-x-2 text-xs relative">
-                  <span className="text-ink-muted font-semibold">Team Members:</span>
-                  <button
-                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    className="px-3.5 py-1.5 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand font-semibold cursor-pointer flex items-center space-x-1.5 shadow-3xs"
-                  >
-                    <span>
-                      {selectedUserIds.length === 0
-                        ? "All Team Members"
-                        : selectedUserIds.length === 1
-                        ? selectedUserIds[0] === context.userId
-                          ? `My Tasks (${context.firstName || "Me"})`
-                          : (() => {
-                              const user = fullTeamList.find((u) => u.userId === selectedUserIds[0]);
-                              return user
-                                ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email
-                                : "1 Selected";
-                            })()
-                        : `${selectedUserIds.length} Selected`}
-                    </span>
-                    <span className="text-ink-muted text-[9px]">▼</span>
-                  </button>
-
-                  {isDropdownOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
-                      <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-border rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
-                        <div className="flex items-center justify-between border-b border-border pb-2 mb-1 text-[10px] font-bold text-ink-muted uppercase">
-                          <span>Select Members</span>
-                          <div className="space-x-2">
-                            <button
-                              onClick={() => setSelectedUserIds(fullTeamList.map((t) => t.userId))}
-                              className="text-brand hover:underline cursor-pointer"
-                            >
-                              All
-                            </button>
-                            <button
-                              onClick={() => setSelectedUserIds([])}
-                              className="text-brand hover:underline cursor-pointer"
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          {fullTeamList.map((member) => {
-                            const isChecked = selectedUserIds.includes(member.userId);
-                            const memberName =
-                              member.firstName || member.lastName
-                                ? `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim()
-                                : member.email;
-
-                            return (
-                              <label
-                                key={member.userId}
-                                className="flex items-center space-x-2.5 p-2 hover:bg-surface-muted rounded-xl cursor-pointer text-left transition-colors"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => toggleUser(member.userId)}
-                                  className="rounded border-border text-brand focus:ring-brand cursor-pointer"
-                                />
-                                <div className="truncate">
-                                  <p className="font-bold text-ink text-xs truncate">
-                                    {memberName}
-                                    {member.userId === context.userId && " (Me)"}
-                                  </p>
-                                  <p className="text-[10px] text-ink-muted truncate">
-                                    {member.email}
-                                  </p>
-                                </div>
-                              </label>
-                            );
-                          })}
+                {isDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-border rounded-2xl shadow-lg p-3 z-20 space-y-2 max-h-60 overflow-y-auto">
+                      <div className="flex items-center justify-between border-b border-border pb-2 mb-1 text-[10px] font-bold text-ink-muted uppercase">
+                        <span>Select Members</span>
+                        <div className="space-x-2">
+                          <button
+                            onClick={() => setSelectedUserIds(fullTeamList.map((t) => t.userId))}
+                            className="text-brand hover:underline cursor-pointer"
+                          >
+                            All
+                          </button>
+                          <button
+                            onClick={() => setSelectedUserIds([])}
+                            className="text-brand hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
                         </div>
                       </div>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
 
-            {clients.length > 0 && (
-              <div className="flex items-center space-x-2 text-xs">
-                <span className="text-ink-muted font-semibold">Client:</span>
-                <select
-                  value={selectedClientId}
-                  onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="px-3.5 py-1.5 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand cursor-pointer font-semibold"
-          >
-            <option value="ALL">All Clients</option>
-            <option value="UNASSIGNED">No Client</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-                </select>
+                      <div className="space-y-1">
+                        {fullTeamList.map((member) => {
+                          const isChecked = selectedUserIds.includes(member.userId);
+                          const memberName =
+                            member.firstName || member.lastName
+                              ? `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim()
+                              : member.email;
+
+                          return (
+                            <label
+                              key={member.userId}
+                              className="flex items-center space-x-2.5 p-2 hover:bg-surface-muted rounded-xl cursor-pointer text-left transition-colors"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleUser(member.userId)}
+                                className="rounded border-border text-brand focus:ring-brand cursor-pointer"
+                              />
+                              <div className="truncate">
+                                <p className="font-bold text-ink text-xs truncate">
+                                  {memberName}
+                                  {member.userId === context.userId && " (Me)"}
+                                </p>
+                                <p className="text-[10px] text-ink-muted truncate">
+                                  {member.email}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      )}
+            </>
+          )}
 
-      {activeView === "overview" && (
-      <>
+          {clients.length > 0 && (
+            <div className="flex items-center space-x-2 text-xs">
+              <span className="text-ink-muted font-semibold">Client:</span>
+              <select
+                value={selectedClientId}
+                onChange={(e) => setSelectedClientId(e.target.value)}
+                className="px-3.5 py-1.5 rounded-xl border border-border bg-white text-xs text-ink focus:outline-none focus:border-brand cursor-pointer font-semibold"
+              >
+                <option value="ALL">All Clients</option>
+                <option value="UNASSIGNED">No Client</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <Link
+          href="/app/shipments/new"
+          className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-1.5 shrink-0 whitespace-nowrap cursor-pointer ml-auto"
+        >
+          <Plus className="w-4 h-4" />
+          <span>{t.dashboard.newShipment}</span>
+        </Link>
+      </div>
+
       {/* Top KPI Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* 1. Value at Risk */}
@@ -469,7 +365,7 @@ export function CommandCenterClient({
         >
           <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-red-600">
             <span className="font-semibold min-w-0 leading-tight">Value at Risk</span>
-            <DollarSign className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
+            <ShieldAlert className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-extrabold text-ink">
             {valueAtRiskCurrency
@@ -593,9 +489,8 @@ export function CommandCenterClient({
               <tr>
                 <th className="py-3 px-4">{t.dashboard.colShipment}</th>
                 <th className="py-3 px-4">{t.dashboard.colExporter}</th>
-                <th className="py-3 px-4">{t.dashboard.colHts}</th>
+                <th className="py-3 px-4">AI Review</th>
                 <th className="py-3 px-4">{t.dashboard.colValue}</th>
-                <th className="py-3 px-4">{t.dashboard.colReadiness}</th>
                 <th className="py-3 px-4">{t.dashboard.colStatus}</th>
                 <th className="py-3 px-4">Client</th>
               </tr>
@@ -603,7 +498,7 @@ export function CommandCenterClient({
             <tbody className="divide-y divide-border">
               {filteredShipments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-ink-muted">
+                  <td colSpan={6} className="py-8 text-center text-ink-muted">
                     No active tasks found in this scope.
                   </td>
                 </tr>
@@ -616,18 +511,45 @@ export function CommandCenterClient({
                       </Link>
                     </td>
                     <td className="py-3 px-4 text-ink-muted">
-                      {/* `shp.shipper` used to be consulted here, but the page has
-                          never sent that field, so the term was always undefined. */}
                       {shp.exporterName || "Shenzhen Hardware Corp"}
                     </td>
-                    <td className="py-3 px-4 font-mono text-[11px] text-ink">
-                      {shp.primaryHtsCode ?? "Not Yet Classified"}
+                    <td className="py-3 px-4">
+                      <Link
+                        href={`/app/actions?shipmentId=${shp.id}`}
+                        className="flex flex-wrap items-center gap-1.5 font-semibold text-[11px] whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer group/air"
+                        title="View AI Actions & Review Items for this shipment"
+                      >
+                        <span
+                          className={`px-2 py-0.5 rounded-md transition-shadow group-hover/air:shadow-2xs ${
+                            (shp.aiReview?.blocked ?? 0) > 0
+                              ? "bg-red-50 text-red-700 border border-red-200 font-bold"
+                              : "bg-surface-muted text-ink-muted border border-border/50"
+                          }`}
+                        >
+                          {shp.aiReview?.blocked ?? 0} blocked
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md transition-shadow group-hover/air:shadow-2xs ${
+                            (shp.aiReview?.needsReview ?? 0) > 0
+                              ? "bg-amber-50 text-amber-700 border border-amber-200 font-bold"
+                              : "bg-surface-muted text-ink-muted border border-border/50"
+                          }`}
+                        >
+                          {shp.aiReview?.needsReview ?? 0} needs review
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md transition-shadow group-hover/air:shadow-2xs ${
+                            (shp.aiReview?.verified ?? 0) > 0
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold"
+                              : "bg-surface-muted text-ink-muted border border-border/50"
+                          }`}
+                        >
+                          {shp.aiReview?.verified ?? 0} verified
+                        </span>
+                      </Link>
                     </td>
                     <td className="py-3 px-4 font-semibold">
                       {shipmentValue(shp)}
-                    </td>
-                    <td className="py-3 px-4 font-bold text-emerald-600">
-                      {shp.readinessScore ?? 0}%
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -650,161 +572,6 @@ export function CommandCenterClient({
           </table>
         </div>
       </div>
-      </>
-      )}
-
-      {activeView === "work" && (
-        <div className="bg-white p-6 rounded-3xl border border-[#E5E5EA] shadow-2xs space-y-4">
-          <div className="border-b border-[#E5E5EA] pb-4">
-            <h3 className="text-base font-extrabold text-[#1D1D1F] tracking-tight">My Work</h3>
-            <p className="text-xs text-[#86868B]">
-              {myShipments.length} shipment{myShipments.length === 1 ? "" : "s"} assigned to you
-            </p>
-          </div>
-
-          {myShipments.length === 0 ? (
-            <div className="py-12 flex flex-col items-center justify-center text-center space-y-2">
-              <Inbox className="w-8 h-8 text-[#86868B]" />
-              <p className="text-sm font-semibold text-[#1D1D1F]">No shipments assigned to you</p>
-              <p className="text-xs text-[#86868B]">Shipments assigned to you will show up here.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-[#1D1D1F]">
-                <thead className="bg-[#F5F5F7] border-b border-[#E5E5EA] text-[11px] font-semibold text-[#86868B] uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Shipment</th>
-                    <th className="py-3 px-4">Arrival</th>
-                    <th className="py-3 px-4">Value</th>
-                    <th className="py-3 px-4">Pending</th>
-                    <th className="py-3 px-4">Urgency</th>
-                    <th className="py-3 px-4 w-8" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E5EA]">
-                  {myShipments.map((shp) => {
-                    const urgency = urgencyOf(shp);
-                    const isExpanded = expandedRowId === shp.id;
-                    const rowState = rowMetrics[shp.id];
-
-                    return (
-                      <Fragment key={shp.id}>
-                        <tr
-                          onClick={() => toggleExpandRow(shp.id)}
-                          className="hover:bg-[#F5F5F7]/50 transition-colors cursor-pointer"
-                        >
-                          <td className="py-3 px-4 font-mono font-bold text-[#0071E3]">
-                            <Link
-                              href={`/app/shipments/${shp.id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="hover:underline"
-                            >
-                              {shp.referenceNumber || shp.shipmentNumber || shp.id.slice(0, 10)}
-                            </Link>
-                          </td>
-                          <td className="py-3 px-4 text-[#86868B]">
-                            <span className="inline-flex items-center space-x-1.5">
-                              <Clock className="w-3.5 h-3.5 text-[#86868B]" />
-                              <span>{displayDate(shp.estimatedArrival)}</span>
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-semibold">
-                            {shipmentValue(shp)}
-                          </td>
-                          <td className="py-3 px-4">
-                            {shp.receivedDocCount}/{shp.totalRequiredDocs} docs
-                          </td>
-                          <td className="py-3 px-4">
-                            <span
-                              className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${URGENCY_BADGE_CLASS[urgency]}`}
-                            >
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>{urgency}</span>
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <ChevronDown
-                              className={`w-4 h-4 text-[#86868B] transition-transform inline-block ${
-                                isExpanded ? "rotate-180" : ""
-                              }`}
-                            />
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr key={`${shp.id}-expanded`}>
-                            <td colSpan={6} className="bg-[#F5F5F7]/60 px-4 py-4">
-                              {(!rowState || rowState.status === "loading") && (
-                                <p className="text-xs text-[#86868B]">Loading readiness…</p>
-                              )}
-                              {rowState?.status === "error" && (
-                                <p className="text-xs text-red-600">Couldn&apos;t load readiness data.</p>
-                              )}
-                              {rowState?.status === "loaded" && rowState.metrics && (
-                                <div className="space-y-3">
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                    <ScorePill
-                                      label="Filing Readiness"
-                                      value={`${rowState.metrics.filingReadinessScore}%`}
-                                    />
-                                    <ScorePill
-                                      label="Completeness"
-                                      value={`${rowState.metrics.completenessScore}%`}
-                                    />
-                                    <ScorePill
-                                      label="Compliance Risk"
-                                      value={`${rowState.metrics.complianceRiskBand} (${rowState.metrics.complianceRiskScore})`}
-                                    />
-                                    <ScorePill
-                                      label="HTS Confidence"
-                                      value={
-                                        rowState.metrics.classificationVerified
-                                          ? `${rowState.metrics.classificationConfidenceScore}%`
-                                          : "Unverified"
-                                      }
-                                    />
-                                  </div>
-                                  <p className="text-[11px] text-[#86868B]">
-                                    {rowState.metrics.blockerCount} blocker
-                                    {rowState.metrics.blockerCount === 1 ? "" : "s"} ·{" "}
-                                    {rowState.metrics.warningCount} warning
-                                    {rowState.metrics.warningCount === 1 ? "" : "s"}
-                                  </p>
-                                  {shp.missingDocTypes.length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-[11px] font-semibold text-[#86868B]">
-                                        Missing:
-                                      </span>
-                                      {shp.missingDocTypes.map((docType: string) => (
-                                        <span
-                                          key={docType}
-                                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200"
-                                        >
-                                          {docType}
-                                        </span>
-                                      ))}
-                                      <Link
-                                        href={`/app/shipments/${shp.id}?view=workspace`}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-[11px] text-[#0071E3] font-semibold hover:underline"
-                                      >
-                                        Add Document →
-                                      </Link>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

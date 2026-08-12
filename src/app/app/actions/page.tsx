@@ -26,6 +26,8 @@ const exceptionSelect = {
     select: {
       id: true,
       shipmentNumber: true,
+      assignedBrokerId: true,
+      assignedBroker: { select: { id: true, firstName: true, lastName: true, email: true } },
       client: { select: { id: true, name: true } },
     },
   },
@@ -54,6 +56,7 @@ export default async function ActionsPage(props: {
           include: {
             documents: true,
             lineItems: true,
+            assignedBroker: { select: { id: true, firstName: true, lastName: true, email: true } },
             client: { select: { id: true, name: true } },
           },
         },

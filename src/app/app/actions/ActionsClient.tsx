@@ -8,7 +8,7 @@ import { useDecisionActions } from "@/lib/decisions/useDecisionActions";
 import { ExceptionQuickActions } from "./ExceptionQuickActions";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { Modal, ModalHeader, ModalBody } from "@/components/ui/Modal";
-import { decisionGroupLabel, reviewCategory, reviewerLabel, editableFieldsFor } from "@/modules/decisions/editableFields";
+import { decisionGroupLabel, reviewerLabel, editableFieldsFor } from "@/modules/decisions/editableFields";
 import type { ShipmentActionGroup, ActionItem } from "@/modules/actions/shipmentActions";
 import type { WorkPriority } from "@/modules/work/workQueue";
 
@@ -60,25 +60,31 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalGroups(initialGroups);
   }, [initialGroups]);
 
-  // Derive available team members from exception assignees across all groups
-  const teamMembers = Array.from(
-    new Map(
-      localGroups.flatMap((g) =>
-        g.items
-          .filter((i): i is Extract<ActionItem, { kind: "exception" }> => i.kind === "exception" && i.assignedToUser !== null)
-          .map((i) => [
-            i.assignedToUser!.id ?? i.assignedToUserId ?? "",
-            {
-              id: i.assignedToUser!.id ?? i.assignedToUserId ?? "",
-              name: [i.assignedToUser!.firstName, i.assignedToUser!.lastName].filter(Boolean).join(" ") || i.assignedToUser!.email,
-            },
-          ])
-      )
-    ).values()
-  ).filter((m) => m.id);
+  // Derive available team members from both shipment assigned brokers and exception assignees
+  const teamMemberEntries: [string, { id: string; name: string }][] = [
+    ...localGroups
+      .filter((g) => g.assignedBrokerId)
+      .map((g): [string, { id: string; name: string }] => [
+        g.assignedBrokerId!,
+        { id: g.assignedBrokerId!, name: g.assignedBrokerName ?? g.assignedBrokerId! },
+      ]),
+    ...localGroups.flatMap((g) =>
+      g.items
+        .filter((i): i is Extract<ActionItem, { kind: "exception" }> => i.kind === "exception" && i.assignedToUser !== null)
+        .map((i): [string, { id: string; name: string }] => [
+          i.assignedToUser!.id ?? i.assignedToUserId ?? "",
+          {
+            id: i.assignedToUser!.id ?? i.assignedToUserId ?? "",
+            name: [i.assignedToUser!.firstName, i.assignedToUser!.lastName].filter(Boolean).join(" ") || i.assignedToUser!.email,
+          },
+        ])
+    ),
+  ];
+  const teamMembers = Array.from(new Map(teamMemberEntries).values()).filter((m) => m.id);
 
   // Derive available clients
   const clients = Array.from(
@@ -94,10 +100,11 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
     if (clientFilter !== "all" && g.clientId !== clientFilter) return false;
     if (taskFilter === "mine" || assigneeFilter !== "all") {
       const targetId = taskFilter === "mine" ? userId : assigneeFilter;
+      const isAssignedBroker = g.assignedBrokerId === targetId;
       const hasMatch = g.items.some(
         (item) => item.kind === "exception" && item.assignedToUserId === targetId
       );
-      if (!hasMatch) return false;
+      if (!isAssignedBroker && !hasMatch) return false;
     }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -362,9 +369,16 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                       {PRIORITY_LABEL[selectedGroup.priority]}
                     </span>
                   </div>
-                  <p className="text-xs text-ink-muted mt-0.5">
-                    {selectedGroup.items.length} open action{selectedGroup.items.length > 1 ? "s" : ""}
-                  </p>
+                  {(() => {
+                    const openCount = selectedGroup.items.filter((i) => categorize(i) !== "verified").length;
+                    const verifiedCount = selectedGroup.items.filter((i) => categorize(i) === "verified").length;
+                    return (
+                      <p className="text-xs text-ink-muted mt-0.5">
+                        <span className="font-semibold text-ink">{openCount}</span> open action{openCount !== 1 ? "s" : ""}
+                        {verifiedCount > 0 && <span className="text-emerald-700 font-semibold ml-2">· {verifiedCount} verified</span>}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <Link
                   href={`/app/shipments/${selectedGroup.shipmentId}`}
@@ -412,7 +426,6 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                       </div>
                       {catItems.map((item) =>
                         item.kind === "decision" ? (
-                          reviewCategory(item.raw) === "MECHANICAL" ? null : (
                           <AgentResultCard
                             key={item.id}
                             item={item}
@@ -426,7 +439,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                               const doc = docLookup.get(docId);
                               setDocModal({ documentId: docId, fileName, fileUrl: doc?.fileUrl ?? null });
                             }}
-                          />)
+                          />
                         ) : (
                           <ExceptionCard
                             key={item.id}
@@ -481,11 +494,49 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   );
 }
 
+const BLOCKED_SENTINELS = new Set([
+  "BLOCKED_DEPENDENCY",
+  "WAITING_FOR_EXTRACTION",
+  "BLOCKED_MISSING_DESCRIPTION",
+]);
+
 function categorize(item: ActionItem): "blocked" | "review" | "verified" {
   if (item.kind === "exception") {
     if (item.severity === "Critical") return "blocked";
     return "review";
   }
+
+  const dec = item.raw as unknown as Record<string, unknown>;
+  const desc = typeof dec.proposedDescription === "string" ? dec.proposedDescription : "";
+  const summary = typeof dec.decisionSummary === "string" ? dec.decisionSummary : "";
+  const ev = (dec.evidenceItems && typeof dec.evidenceItems === "object"
+    ? dec.evidenceItems
+    : {}) as Record<string, unknown>;
+
+  // Gated execution sentinels or explicit pipeline blocks
+  if (
+    BLOCKED_SENTINELS.has(desc) ||
+    desc.includes("BLOCKED") ||
+    summary.includes("BLOCKED") ||
+    summary.includes("Gating:")
+  ) {
+    return "blocked";
+  }
+
+  // Missing commercial invoice, zero extracted line items, or skipped agent evaluation
+  if (
+    summary.includes("Skipped") ||
+    summary.includes("Paused") ||
+    ev.hasCommercialInvoice === false ||
+    (typeof ev.lineItemCount === "number" && ev.lineItemCount === 0)
+  ) {
+    return "review";
+  }
+
+  // Unresolved evidence flags
+  const flags = Array.isArray(ev.flags) ? (ev.flags as { severity: string; summary: string }[]) : [];
+  if (flags.length > 0) return "review";
+
   if (item.status === "Approved") return "verified";
   if (item.status === "Rejected") return "blocked";
   return "review";
@@ -686,17 +737,19 @@ function AgentResultCard({
 }) {
   const [showNote, setShowNote] = useState(false);
   const label = reviewerLabel(item.raw);
-  const isApproved = item.status === "Approved";
+  const effectiveCategory = categorize(item);
+  const docId = item.documentId || item.raw.documentId;
+  const isApproved = effectiveCategory === "verified";
 
   return (
     <div className={`border rounded-2xl p-4 space-y-3 ${verified ? "border-emerald-100 bg-emerald-50/20 opacity-80" : "border-border bg-white"}`}>
       {/* Header: doc link + status */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-0.5">
-          {item.documentName && item.raw.documentId ? (
+          {item.documentName && docId ? (
             <button
-              onClick={() => onDocClick(item.raw.documentId!, item.documentName!)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-brand hover:underline cursor-pointer max-w-full"
+              onClick={() => onDocClick(docId, item.documentName!)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-brand hover:underline cursor-pointer max-w-full text-left"
             >
               <FileText className="w-3.5 h-3.5 shrink-0" />
               <span className="truncate">{item.documentName}</span>
@@ -710,13 +763,13 @@ function AgentResultCard({
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{label}</p>
         </div>
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${
-          isApproved
+          effectiveCategory === "verified"
             ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-            : item.status === "Rejected"
+            : effectiveCategory === "blocked"
               ? "bg-red-50 border-red-200 text-red-700"
               : "bg-amber-50 border-amber-200 text-amber-700"
         }`}>
-          {item.status}
+          {effectiveCategory === "verified" ? "Approved" : effectiveCategory === "blocked" ? "Blocked" : "Needs Review"}
         </span>
       </div>
 

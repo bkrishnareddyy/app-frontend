@@ -915,13 +915,19 @@ export default async function ShipmentWorkspacePage(props: {
   const reviewCount = readinessCategories.filter((c) => c.status === "Needs Review").length;
   const infoCount = readinessCategories.filter((c) => c.status === "Needs Information").length;
 
+  const missingDocExceptionsCount = missingDocTypes.filter(
+    (type) => !activeExceptions.some((ex) => ex.description?.toLowerCase().includes(type.toLowerCase()))
+  ).length;
+  const totalActionableExceptionsCount = activeExceptions.length + missingDocExceptionsCount;
+  const displayBlockerCount = Math.max(blockedCount, totalActionableExceptionsCount);
+
   let overallStatusText = "Ready to File";
   let overallStatusSubtext = "All categories ready and validated.";
   let overallStatusType: "BLOCKED" | "REVIEW_REQUIRED" | "INFO_REQUIRED" | "WARNINGS" | "READY" = "READY";
 
-  if (blockedCount > 0) {
+  if (displayBlockerCount > 0) {
     overallStatusText = "Not Ready to File";
-    overallStatusSubtext = `${readyCount} of ${totalCategories} categories ready · ${blockedCount} blockers · ${reviewCount} reviews required`;
+    overallStatusSubtext = `${readyCount} of ${totalCategories} categories ready · ${displayBlockerCount} blockers · ${reviewCount} reviews required`;
     overallStatusType = "BLOCKED";
   } else if (reviewCount > 0) {
     overallStatusText = "Not Ready to File";
@@ -1012,7 +1018,7 @@ export default async function ShipmentWorkspacePage(props: {
             complianceRiskBand: metrics.complianceRiskBand,
             classificationConfidenceScore: metrics.classificationConfidenceScore,
             classificationVerified: metrics.classificationVerified,
-            blockerCount: metrics.blockerCount,
+            blockerCount: displayBlockerCount,
             warningCount: metrics.warningCount,
           }}
         />

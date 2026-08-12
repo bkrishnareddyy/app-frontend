@@ -429,7 +429,7 @@ export class ComplianceAuditAgent {
     // too or it can read "Approved" next to a summary describing a blocking
     // issue.
     const requiresReview =
-      deterministicRequiresReview || flags.some((f) => f.severity === "CRITICAL" || f.severity === "HIGH");
+      deterministicRequiresReview || flags.length > 0;
 
     let agentDecisionId: string | null = null;
     try {

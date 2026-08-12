@@ -49,6 +49,7 @@ export default async function CommandCenterPage() {
       documents: { select: { docType: true, fileName: true, status: true, fileUrl: true, extractedJson: true } },
       lineItems: { select: { htsCode: true, countryOfOrigin: true, quantity: true, unitPrice: true, totalValue: true } },
       exceptionItems: { select: { status: true, severity: true } },
+      agentDecisions: { select: { id: true, agentName: true, status: true, createdAt: true } },
     },
     orderBy: { createdAt: "desc" },
     take: SHIPMENT_ROW_CAP,
@@ -89,7 +90,7 @@ export default async function CommandCenterPage() {
       include: { user: true },
     });
     teamMembers = memberships.map((m) => ({
-      userId: m.user.id,
+      userId: m.userId,
       email: m.user.email,
       firstName: m.user.firstName,
       lastName: m.user.lastName,
@@ -120,6 +121,49 @@ export default async function CommandCenterPage() {
     const includeCertificateOfOrigin =
       s.documents.length === 0 || s.lineItems.some((li) => li.htsCode?.startsWith("02"));
     const docCheck = checkRequiredDocumentTypes(s.documents, includeCertificateOfOrigin);
+
+    const activeExceptions = (s.exceptionItems || []).filter(
+      (e) => e.status !== "RESOLVED" && e.status !== "WAIVED" && e.status !== "Resolved"
+    );
+    const blockedExceptions = activeExceptions.filter(
+      (e) => e.severity === "Critical" || e.severity === "High"
+    );
+    const openExceptions = activeExceptions.filter(
+      (e) => e.severity !== "Critical" && e.severity !== "High"
+    );
+
+    const latestByAgent = new Map<string, typeof s.agentDecisions[number]>();
+    for (const d of s.agentDecisions || []) {
+      const existing = latestByAgent.get(d.agentName);
+      if (!existing || new Date(d.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+        latestByAgent.set(d.agentName, d);
+      }
+    }
+
+    let blockedDecisions = 0;
+    let needsReviewDecisions = 0;
+    let verifiedDecisions = 0;
+
+    for (const d of latestByAgent.values()) {
+      if (d.status === "Blocked" || d.status === "Rejected") blockedDecisions++;
+      else if (
+        d.status === "Review Required" ||
+        d.status === "Needs Review" ||
+        d.status === "Pending"
+      )
+        needsReviewDecisions++;
+      else if (
+        d.status === "Approved" ||
+        d.status === "Verified" ||
+        d.status === "Auto-Approved"
+      )
+        verifiedDecisions++;
+    }
+
+    const blockedCount = blockedExceptions.length + blockedDecisions;
+    const needsReviewCount = openExceptions.length + needsReviewDecisions;
+    const verifiedCount = verifiedDecisions;
+
     return {
       id: s.id,
       shipmentNumber: s.shipmentNumber,
@@ -150,6 +194,11 @@ export default async function CommandCenterPage() {
       missingDocTypes: docCheck.missingTypes,
       receivedDocCount: docCheck.receivedCount,
       totalRequiredDocs: docCheck.totalRequired,
+      aiReview: {
+        blocked: blockedCount,
+        needsReview: needsReviewCount,
+        verified: verifiedCount,
+      },
     };
   });
 

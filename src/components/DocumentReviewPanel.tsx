@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare, Sparkles } from "lucide-react";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
@@ -300,11 +300,9 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
 }
 
 interface ExtractionPayload {
-  extractedJson?: {
-    keyValuePairs?: Record<string, unknown>;
-    extractionStatus?: string;
-  } | null;
+  extractedJson?: Record<string, unknown> | null;
   rawContent?: string | null;
+  extractionFields?: Array<{ fieldName?: string; value?: string }>;
 }
 
 type ReviewAction = "APPROVE" | "REJECT" | "RE_EVALUATE";
@@ -416,9 +414,8 @@ export function DocumentReviewPanel({
     document.getElementById(`decision-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  // Field Review opens first when agent checks are available -- the whole
-  // point is to lead with results, not the raw document.
-  const [activeTab, setActiveTab] = useState<"FIELDS" | "DOC" | "KV" | "JSON">(hasFieldReview ? "FIELDS" : "DOC");
+  // Document tab opens first so clicking a document name surfaces the actual PDF viewer
+  const [activeTab, setActiveTab] = useState<"FIELDS" | "DOC" | "KV" | "JSON">("DOC");
 
   // Document renaming state. This holds only the in-progress edit; the name
   // shown everywhere else comes straight from the fileName prop.
@@ -639,9 +636,63 @@ export function DocumentReviewPanel({
     return ext.includes(".pdf");
   };
 
-  const kvPairs = data?.extractedJson?.keyValuePairs || {};
-  const kvEntries = Object.entries(kvPairs);
-  const isPending = data?.extractedJson?.extractionStatus === "PENDING_VISION_PROCESSING";
+  const parsedExtractedJson = useMemo(() => {
+    if (!data?.extractedJson) return null;
+    if (typeof data.extractedJson === "string") {
+      try {
+        return JSON.parse(data.extractedJson) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+    return data.extractedJson as Record<string, unknown>;
+  }, [data?.extractedJson]);
+
+  const kvEntries = useMemo(() => {
+    const map = new Map<string, string>();
+
+    // 1. From database extractionFields array
+    if (Array.isArray(data?.extractionFields)) {
+      for (const field of data.extractionFields) {
+        if (field.fieldName && field.value) {
+          map.set(field.fieldName, String(field.value));
+        }
+      }
+    }
+
+    // 2. From extractedJson.keyValuePairs
+    const kv = parsedExtractedJson?.keyValuePairs;
+    if (kv && typeof kv === "object") {
+      for (const [k, v] of Object.entries(kv as Record<string, unknown>)) {
+        if (k && v !== null && v !== undefined && String(v).trim()) {
+          map.set(k, String(v));
+        }
+      }
+    }
+
+    // 3. From extractedJson.tradeMetadata
+    const tm = parsedExtractedJson?.tradeMetadata;
+    if (tm && typeof tm === "object") {
+      for (const [k, v] of Object.entries(tm as Record<string, unknown>)) {
+        if (k && v !== null && v !== undefined && String(v).trim()) {
+          map.set(k, String(v));
+        }
+      }
+    }
+
+    // 4. Fallback if top-level parsedExtractedJson itself contains primitive pairs
+    if (map.size === 0 && parsedExtractedJson && typeof parsedExtractedJson === "object") {
+      for (const [k, v] of Object.entries(parsedExtractedJson)) {
+        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+          map.set(k, String(v));
+        }
+      }
+    }
+
+    return Array.from(map.entries());
+  }, [data?.extractionFields, parsedExtractedJson]);
+
+  const isPending = parsedExtractedJson?.extractionStatus === "PENDING_VISION_PROCESSING";
 
   return (
     <div className="flex flex-1 flex-col min-h-0 gap-4">
@@ -1008,31 +1059,60 @@ export function DocumentReviewPanel({
             })()}
           </div>
         ) : activeTab === "DOC" ? (
-          <div className="flex-1 overflow-y-auto bg-surface-muted rounded-2xl border border-border p-4 flex items-center justify-center min-h-[350px]">
+          <div className="flex-1 w-full h-full min-h-[480px] rounded-2xl border border-border bg-[#212328] flex flex-col overflow-hidden shadow-inner">
             {proxyUrl ? (
               isImageFile(proxyUrl, fileName) ? (
-                // next/image is deliberately not used: these are tenant documents
-                // served through an authenticated proxy, and routing them via the
-                // image optimizer would cache customs paperwork outside that path.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={proxyUrl}
-                  alt={fileName}
-                  className="max-h-[55vh] rounded-xl border border-border shadow-md object-contain"
-                />
+                <div className="flex-1 p-4 flex items-center justify-center overflow-auto">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={proxyUrl}
+                    alt={fileName}
+                    className="max-h-[65vh] rounded-xl border border-border shadow-md object-contain"
+                  />
+                </div>
               ) : isPdfFile(proxyUrl, fileName) ? (
-                // A fixed vh height here previously overflowed shorter
-                // containers (e.g. embedded on the shipment page at a fixed
-                // pixel height) since an iframe has no intrinsic size to
-                // shrink to. h-full defers to whatever height the container
-                // -- modal or inline panel -- actually provides.
-                <iframe
-                  src={proxyUrl}
-                  className="w-full h-full min-h-[350px] rounded-xl border border-border"
-                  title={fileName}
-                />
+                (() => {
+                  const pdfUrlWithParams = proxyUrl.includes("#")
+                    ? proxyUrl
+                    : `${proxyUrl}#view=FitH&toolbar=1`;
+                  return (
+                    <div className="flex-1 w-full h-full flex flex-col overflow-hidden">
+                      {/* PDF Action Bar */}
+                      <div className="bg-[#18191c] border-b border-white/10 px-4 py-2 flex items-center justify-between text-white shrink-0">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <FileText className="w-4 h-4 text-brand shrink-0" />
+                          <span className="text-xs font-bold truncate text-slate-100">{fileName}</span>
+                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-white/10 text-slate-300 shrink-0">
+                            Fit Width Enabled
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <a
+                            href={proxyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors cursor-pointer"
+                            title="Open full document in new tab"
+                          >
+                            <span>Open Full View</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* PDF Canvas iFrame */}
+                      <div className="flex-1 w-full h-full relative overflow-hidden bg-[#323639]">
+                        <iframe
+                          src={pdfUrlWithParams}
+                          className="w-full h-full border-none block min-h-[450px]"
+                          title={fileName}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
-                <div className="text-center p-8 space-y-3">
+                <div className="flex-1 text-center p-8 space-y-3 flex flex-col items-center justify-center">
                   <FileText className="w-12 h-12 text-brand mx-auto" />
                   <div>
                     <h4 className="font-extrabold text-ink text-sm">{fileName}</h4>
