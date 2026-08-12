@@ -74,30 +74,56 @@ See [docs/product-master.md](docs/product-master.md) for the domain model,
 matching rules, change-detection signals, CSV import, and what is deliberately
 not implemented.
 
+### 8. Global Party Master
+
+One party record per tenant holds who they are — identity, roles, and
+registrations are kept as separate axes rather than a single "verified"
+flag. `PartyRole` records that a party acts as a supplier, importer,
+carrier, broker and so on (a party is not one fixed "type"), and
+`PartyRegistration` tracks per-country registration claims through their
+own `CLAIMED → UNDER_REVIEW → VERIFIED` lifecycle, independent of the
+party's own `UNREVIEWED → IN_REVIEW → APPROVED` review status. A name match
+alone is never treated as legal-identity proof.
+
+See [docs/party-master.md](docs/party-master.md) for the domain model,
+matching rules, change-detection signals, CSV import, and what is
+deliberately not implemented.
+
 ---
 
 ## 📁 Repository Structure
 
 ```text
+├── docs/
+│   ├── product-master.md    # Global Product / Item Master domain reference
+│   ├── party-master.md      # Global Party Master domain reference
+│   └── document-intelligence.md # Document parsing pipeline reference
 ├── prisma/
 │   ├── schema.prisma        # Prisma data models & database relationships
+│   ├── migrations/          # Versioned schema migrations
 │   └── seed.ts              # Database seed script for test accounts & RBAC
 ├── scripts/
-│   └── seed-clerk-users.ts  # Programmatic Clerk user provisioning script
+│   ├── seed-clerk-users.ts  # Programmatic Clerk user provisioning script
+│   └── seed-qubere-trade-network.ts # Demo product/party network seed
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/          # Clerk Auth routes (/sign-in, /sign-up)
-│   │   ├── api/             # Internal API routes (account, users, platform-admin)
-│   │   ├── app/             # Application Console (/app/dashboard, /app/admin, /app/admin/users)
+│   │   ├── api/             # Internal API routes (account, users, platform-admin,
+│   │   │                    #   products, parties, documents, shipments, filing, …)
+│   │   ├── app/             # Application Console — dashboard, admin, products,
+│   │   │                    #   parties, shipments, documents, filing, actions
 │   │   ├── invite/[token]/  # Token-based secure invitation acceptance
 │   │   ├── platform-admin/  # Qubere Platform Admin Console
 │   │   ├── globals.css      # Design tokens & Apple light theme
 │   │   └── page.tsx         # Landing page & auto-redirect guard
-│   ├── components/          # Reusable UI components (Sidebar, Header, AccountSwitcher)
-│   ├── lib/                 # Core utilities (auth context, audit logger, db client)
+│   ├── components/          # Reusable UI components (Sidebar, Header, AccountSwitcher,
+│   │                        #   table/BulkSelection, …)
+│   ├── lib/                 # Core utilities (auth context, audit logger, db client,
+│   │                        #   csvExport, i18n)
+│   ├── modules/             # Domain logic (product, party, shipment, documents,
+│   │                        #   tables, …), independent of the route layer
 │   └── middleware.ts        # Route protection middleware
-├── tests/
-│   └── multi-tenant.test.ts # Vitest multi-tenant unit tests
+├── tests/                   # Vitest unit and integration tests
 └── package.json
 ```
 
