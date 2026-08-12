@@ -30,50 +30,52 @@ model Account {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  memberships             AccountMembership[]
-  roles                   Role[]
-  invitations             Invitation[]
-  auditLogs               AuditLog[]
-  idempotencyRecords      IdempotencyRecord[]
-  shipments               Shipment[]
-  shipmentDocuments       ShipmentDocument[]
-  shipmentLineItems       ShipmentLineItem[]
-  agentDecisions          AgentDecision[]
-  customsFilings          CustomsFiling[]
-  customsResponses        CustomsResponse[]
-  importersOfRecord       ImporterOfRecord[]
-  bonds                   Bond[]
-  powersOfAttorney        PowerOfAttorney[]
-  exceptionItems          ExceptionItem[]
-  fieldApprovals          FieldApproval[]
-  landedCostScenarios     LandedCostScenario[]
-  refundOpportunities     RefundOpportunity[]
-  postSummaryCorrections  PostSummaryCorrection[]
-  exportShipments         ExportShipment[]
-  exportDocuments         ExportDocument[]
-  exportLineItems         ExportLineItem[]
-  drawbackClaims          DrawbackClaim[]
-  complianceAuditRecords  ComplianceAuditRecord[]
-  reconciliationIssues    ReconciliationIssue[]
-  canonicalProducts       CanonicalProduct[]
-  complianceFindings      ComplianceFinding[]
-  supplierRiskScores      SupplierRiskScore[]
-  brokerMetrics           BrokerMetrics[]
-  valuationAssistsRecords ValuationAssistsRecord[]
-  auditTimelines          AuditTimeline[]
-  screeningLogs           ScreeningLog[]
-  agentExecutionLogs      AgentExecutionLog[]
-  agentExecutionRecords   AgentExecutionRecord[]
-  shipmentStateRecords    ShipmentStateRecord[]
-  pipelineJobs            PipelineJob[]
-  classificationCases     ClassificationCase[]
-  caseDocuments           CaseDocument[]
-  clients                 Client[]
-  legalEntities           LegalEntity[]
-  shipmentSequences       ShipmentSequence[]
-  documentParseVersions   DocumentParseVersion[]
-  inboundSenderRoutes     InboundSenderRoute[]
-  inboundEmails           InboundEmail[]
+  memberships                AccountMembership[]
+  roles                      Role[]
+  invitations                Invitation[]
+  auditLogs                  AuditLog[]
+  idempotencyRecords         IdempotencyRecord[]
+  shipments                  Shipment[]
+  shipmentDocuments          ShipmentDocument[]
+  shipmentLineItems          ShipmentLineItem[]
+  agentDecisions             AgentDecision[]
+  customsFilings             CustomsFiling[]
+  customsResponses           CustomsResponse[]
+  importersOfRecord          ImporterOfRecord[]
+  bonds                      Bond[]
+  powersOfAttorney           PowerOfAttorney[]
+  exceptionItems             ExceptionItem[]
+  fieldApprovals             FieldApproval[]
+  landedCostScenarios        LandedCostScenario[]
+  refundOpportunities        RefundOpportunity[]
+  postSummaryCorrections     PostSummaryCorrection[]
+  exportShipments            ExportShipment[]
+  exportDocuments            ExportDocument[]
+  exportLineItems            ExportLineItem[]
+  drawbackClaims             DrawbackClaim[]
+  complianceAuditRecords     ComplianceAuditRecord[]
+  reconciliationIssues       ReconciliationIssue[]
+  canonicalProducts          CanonicalProduct[]
+  complianceFindings         ComplianceFinding[]
+  supplierRiskScores         SupplierRiskScore[]
+  brokerMetrics              BrokerMetrics[]
+  valuationAssistsRecords    ValuationAssistsRecord[]
+  auditTimelines             AuditTimeline[]
+  screeningLogs              ScreeningLog[]
+  agentExecutionLogs         AgentExecutionLog[]
+  agentExecutionRecords      AgentExecutionRecord[]
+  shipmentStateRecords       ShipmentStateRecord[]
+  pipelineJobs               PipelineJob[]
+  classificationCases        ClassificationCase[]
+  caseDocuments              CaseDocument[]
+  clients                    Client[]
+  legalEntities              LegalEntity[]
+  shipmentSequences          ShipmentSequence[]
+  documentParseVersions      DocumentParseVersion[]
+  inboundSenderRoutes        InboundSenderRoute[]
+  inboundEmails              InboundEmail[]
+  documentShipmentCandidates DocumentShipmentCandidate[]
+  notifications              Notification[]
 
   @@index([type])
   @@index([slug])
@@ -119,6 +121,7 @@ model User {
   shipmentChangeEvents ShipmentChangeEvent[]
   assignedDocuments    ShipmentDocument[]      @relation("DocumentAssignee")
   inboundSenderRoutes  InboundSenderRoute[]    @relation("InboundRouteAssignee")
+  notifications        Notification[]
 
   @@index([clerkUserId])
   @@index([email])
@@ -328,6 +331,7 @@ model Shipment {
   eventLogs               ShipmentEventLog[]
   agentExecutionRecords   AgentExecutionRecord[]
   fieldApprovals          FieldApproval[]
+  documentCandidates      DocumentShipmentCandidate[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -382,12 +386,13 @@ model ShipmentDocument {
   assignedToUserId String?
   assignedToUser   User?   @relation("DocumentAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
-  extractionFields  ExtractionField[]
-  parseVersions     DocumentParseVersion[]
-  exceptionItems    ExceptionItem[]
-  fieldApprovals    FieldApproval[]
-  agentDecisions    AgentDecision[]
-  inboundAttachment InboundAttachment?
+  extractionFields   ExtractionField[]
+  parseVersions      DocumentParseVersion[]
+  exceptionItems     ExceptionItem[]
+  fieldApprovals     FieldApproval[]
+  agentDecisions     AgentDecision[]
+  inboundAttachment  InboundAttachment?
+  shipmentCandidates DocumentShipmentCandidate[]
 
   @@index([shipmentId])
   @@index([accountId])
@@ -464,6 +469,50 @@ model InboundAttachment {
   updatedAt            DateTime          @updatedAt
 
   @@unique([inboundEmailId, providerAttachmentId])
+}
+
+/// One row per shipment considered as a match for an emailed document, kept
+/// even when not selected -- so "why didn't this match?" is always answerable
+/// and a match is never a silent guess. Deterministic, exact-identifier
+/// matching only (v1); no fuzzy/AI-assisted scoring.
+model DocumentShipmentCandidate {
+  id                    String           @id @default(cuid())
+  accountId             String
+  account               Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  documentId            String
+  document              ShipmentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  shipmentId            String
+  shipment              Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  matchedIdentifierType String // SHIPMENT_NUMBER, PO_REFERENCE
+  matchedValue          String // the literal token found in text, normalized
+  matchedSource         String // EMAIL_SUBJECT, PARSED_DOCUMENT_TEXT
+  autoSelected          Boolean          @default(false)
+  algorithmVersion      String           @default("v1-exact-identifier")
+  createdAt             DateTime         @default(now())
+
+  @@index([documentId])
+  @@index([shipmentId])
+}
+
+/// Minimal, generic notification -- accountId + userId scoped, polled from the
+/// header bell. Deliberately not entity-type-specific beyond a loose
+/// (entityType, entityId) pointer, so it can be reused for future notification
+/// sources without another migration.
+model Notification {
+  id         String   @id @default(cuid())
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String // INBOUND_EMAIL_DOCUMENTS
+  message    String
+  entityType String? // InboundEmail, ShipmentDocument
+  entityId   String?
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, userId, read])
+  @@index([userId, createdAt])
 }
 
 model ShipmentLineItem {

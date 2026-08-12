@@ -14,6 +14,10 @@ const dbMock = {
   shipmentDocument: {
     create: vi.fn(),
   },
+  notification: {
+    create: vi.fn(),
+    findFirst: vi.fn(),
+  },
 };
 
 const storeDocumentFileMock = vi.fn();
@@ -57,6 +61,7 @@ const RECEIVED_EMAIL = {
   id: "in_1",
   accountId: null,
   normalizedFromAddress: "jane@acme.com",
+  originalFromAddress: "Jane <jane@acme.com>",
   providerEmailId: "resend_email_1",
   authHeaders: null,
   routingStatus: "RECEIVED",
@@ -79,6 +84,7 @@ describe("inbound email worker", () => {
     });
     dbMock.inboundAttachment.findUnique.mockResolvedValue(null);
     dbMock.inboundAttachment.upsert.mockImplementation(async ({ create }) => ({ id: "att_row_1", ...create }));
+    dbMock.notification.findFirst.mockResolvedValue(null);
     createAuditLogMock.mockResolvedValue(null);
   });
 
@@ -180,6 +186,81 @@ describe("inbound email worker", () => {
       where: { id: "att_row_1" },
       data: { processingStatus: "STORED", checksum: "abc123checksum", shipmentDocumentId: "doc_1" },
     });
+    expect(dbMock.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        accountId: "acct_a",
+        userId: "user_jane",
+        type: "INBOUND_EMAIL_DOCUMENTS",
+        message: "1 new document from Jane <jane@acme.com>",
+        entityType: "InboundEmail",
+        entityId: "in_1",
+      }),
+    });
+  });
+
+  it("creates no notification when every attachment is quarantined/rejected", async () => {
+    getReceivedEmailMock.mockResolvedValue({
+      id: "resend_email_1",
+      from: "jane@acme.com",
+      to: ["docs@inbound.qubere.ai"],
+      subject: "Invoice",
+      receivedFor: ["docs@inbound.qubere.ai"],
+      headers: {},
+      attachments: [
+        { id: "att_bad", filename: "bad.pdf", size: 10, contentType: "application/pdf", contentId: null, contentDisposition: "attachment" },
+      ],
+    });
+    dbMock.inboundEmail.findMany.mockResolvedValue([{ id: "in_1" }]);
+    getAttachmentDownloadInfoMock.mockResolvedValue({
+      filename: "bad.pdf",
+      size: 10,
+      contentType: "application/pdf",
+      contentDisposition: "attachment",
+      downloadUrl: "https://signed.example/download",
+    });
+    downloadAttachmentBytesMock.mockResolvedValue(Buffer.from("%PDF-1.4\n...\n%%EOF"));
+    screenUploadForMalwareMock.mockResolvedValue({ verdict: "QUARANTINE", reason: "flagged", scannerName: null });
+
+    const { runInboundEmailWorkerTick } = await import("@/modules/documents/processing/inboundEmailWorker");
+    await runInboundEmailWorkerTick();
+
+    expect(dbMock.notification.create).not.toHaveBeenCalled();
+  });
+
+  it("does not create a duplicate notification if a prior tick already recorded one for this email", async () => {
+    getReceivedEmailMock.mockResolvedValue({
+      id: "resend_email_1",
+      from: "jane@acme.com",
+      to: ["docs@inbound.qubere.ai"],
+      subject: "Invoice",
+      receivedFor: ["docs@inbound.qubere.ai"],
+      headers: {},
+      attachments: [
+        { id: "att_1", filename: "invoice.pdf", size: 2048, contentType: "application/pdf", contentId: null, contentDisposition: "attachment" },
+      ],
+    });
+    dbMock.inboundEmail.findMany.mockResolvedValue([{ id: "in_1" }]);
+    getAttachmentDownloadInfoMock.mockResolvedValue({
+      filename: "invoice.pdf",
+      size: 2048,
+      contentType: "application/pdf",
+      contentDisposition: "attachment",
+      downloadUrl: "https://signed.example/download",
+    });
+    downloadAttachmentBytesMock.mockResolvedValue(Buffer.from("%PDF-1.4\n...\n%%EOF"));
+    screenUploadForMalwareMock.mockResolvedValue({ verdict: "NOT_SCANNED", reason: "no scanner configured", scannerName: null });
+    storeDocumentFileMock.mockResolvedValue({
+      url: "https://blob.vercel-storage.com/x",
+      checksum: "abc123checksum",
+      provider: "vercel-blob",
+    });
+    dbMock.shipmentDocument.create.mockResolvedValue({ id: "doc_1" });
+    dbMock.notification.findFirst.mockResolvedValue({ id: "existing_notification" });
+
+    const { runInboundEmailWorkerTick } = await import("@/modules/documents/processing/inboundEmailWorker");
+    await runInboundEmailWorkerTick();
+
+    expect(dbMock.notification.create).not.toHaveBeenCalled();
   });
 
   it("does not stop a sibling attachment when a malware-quarantined attachment precedes it", async () => {

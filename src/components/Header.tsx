@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { Building2, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, Archive, Mail, type LucideIcon } from "lucide-react";
 import { ManageAccountModal, type ManageAccountPanelItem, type PanelItemId } from "./ManageAccountModal";
+import { NotificationBell } from "./NotificationBell";
 import { accountAdminItems } from "@/lib/navigation";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
@@ -81,6 +82,8 @@ export function Header({
         </div>
       </div>
 
+      <div className="flex items-center gap-1 shrink-0">
+        <NotificationBell />
       <div className="relative flex items-center shrink-0">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -166,6 +169,7 @@ export function Header({
             </div>
           </>
         )}
+      </div>
       </div>
 
       <ManageAccountModal
