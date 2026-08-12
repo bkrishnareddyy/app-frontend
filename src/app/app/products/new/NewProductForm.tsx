@@ -1,12 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { matchStatusPresentation } from "@/modules/product/productDisplay";
 
 interface FieldIssue {
   path: string;
   message: string;
+}
+
+interface ProductMatchCandidate {
+  productId: string;
+  explanation: string;
+}
+
+interface ProductMatchResult {
+  status: string;
+  candidates: ProductMatchCandidate[];
 }
 
 const IDENTIFIER_TYPES = [
@@ -39,41 +50,16 @@ export function NewProductForm() {
   const [countryFactType, setCountryFactType] = useState<string>("");
   const [country, setCountry] = useState("");
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    setIssues([]);
+  const [duplicateMatch, setDuplicateMatch] = useState<ProductMatchResult | null>(null);
+  const confirmedDuplicateRef = useRef(false);
+  const pendingPayloadRef = useRef<Record<string, unknown> | null>(null);
 
-    const form = new FormData(event.currentTarget);
-    const text = (name: string) => {
-      const value = form.get(name);
-      return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-    };
+  function clearDuplicateWarning() {
+    setDuplicateMatch(null);
+    confirmedDuplicateRef.current = false;
+  }
 
-    const payload: Record<string, unknown> = {
-      productName: text("productName") ?? "",
-      internalSku: text("internalSku"),
-      brand: text("brand"),
-      model: text("model"),
-      commercialDescription: text("commercialDescription"),
-      technicalDescription: text("technicalDescription"),
-      customsDescription: text("customsDescription"),
-    };
-
-    if (identifierValue.trim() !== "") {
-      payload.identifiers = [{ identifierType, value: identifierValue.trim(), sourceType: "USER" }];
-    }
-
-    // Both halves are required together: a country with no fact type would have
-    // to be guessed into meaning, and guessing between "made here" and "origin
-    // is here" is exactly the mistake this screen exists to prevent.
-    if (countryFactType !== "" && country.trim() !== "") {
-      payload.countryFacts = [
-        { factType: countryFactType, country: country.trim(), sourceType: "USER" },
-      ];
-    }
-
+  async function submitProduct(payload: Record<string, unknown>) {
     try {
       const response = await fetch("/api/products", {
         method: "POST",
@@ -94,6 +80,86 @@ export function NewProductForm() {
       setError("The request did not reach the server. Nothing was created.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    setIssues([]);
+
+    const form = new FormData(event.currentTarget);
+    const text = (name: string) => {
+      const value = form.get(name);
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+    };
+
+    const productName = text("productName") ?? "";
+    const brand = text("brand");
+
+    const payload: Record<string, unknown> = {
+      productName,
+      internalSku: text("internalSku"),
+      brand,
+      model: text("model"),
+      commercialDescription: text("commercialDescription"),
+      technicalDescription: text("technicalDescription"),
+      customsDescription: text("customsDescription"),
+    };
+
+    if (identifierValue.trim() !== "") {
+      payload.identifiers = [{ identifierType, value: identifierValue.trim(), sourceType: "USER" }];
+    }
+
+    // Both halves are required together: a country with no fact type would have
+    // to be guessed into meaning, and guessing between "made here" and "origin
+    // is here" is exactly the mistake this screen exists to prevent.
+    if (countryFactType !== "" && country.trim() !== "") {
+      payload.countryFacts = [
+        { factType: countryFactType, country: country.trim(), sourceType: "USER" },
+      ];
+    }
+
+    pendingPayloadRef.current = payload;
+
+    if (!confirmedDuplicateRef.current) {
+      try {
+        const matchResponse = await fetch("/api/products/match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productName,
+            brand,
+            identifiers:
+              identifierValue.trim() !== ""
+                ? [{ identifierType, value: identifierValue.trim() }]
+                : undefined,
+          }),
+        });
+        if (matchResponse.ok) {
+          const matchBody = await matchResponse.json();
+          if (matchBody.match && matchBody.match.status !== "NO_MATCH") {
+            setDuplicateMatch(matchBody.match);
+            setSubmitting(false);
+            return;
+          }
+        }
+      } catch {
+        // The duplicate check is a courtesy, not a gate — if it fails to reach
+        // the server, fall through to creating the product normally.
+      }
+    }
+
+    await submitProduct(payload);
+  }
+
+  async function onCreateAnyway() {
+    confirmedDuplicateRef.current = true;
+    setDuplicateMatch(null);
+    setSubmitting(true);
+    if (pendingPayloadRef.current) {
+      await submitProduct(pendingPayloadRef.current);
     }
   }
 
@@ -126,7 +192,14 @@ export function NewProductForm() {
           <label htmlFor="productName" className={labelClass}>
             Product name (required)
           </label>
-          <input id="productName" name="productName" required maxLength={300} className={inputClass} />
+          <input
+            id="productName"
+            name="productName"
+            required
+            maxLength={300}
+            className={inputClass}
+            onChange={clearDuplicateWarning}
+          />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
@@ -140,7 +213,13 @@ export function NewProductForm() {
             <label htmlFor="brand" className={labelClass}>
               Brand
             </label>
-            <input id="brand" name="brand" maxLength={200} className={inputClass} />
+            <input
+              id="brand"
+              name="brand"
+              maxLength={200}
+              className={inputClass}
+              onChange={clearDuplicateWarning}
+            />
           </div>
           <div>
             <label htmlFor="model" className={labelClass}>
@@ -215,7 +294,10 @@ export function NewProductForm() {
             <select
               id="identifierType"
               value={identifierType}
-              onChange={(event) => setIdentifierType(event.target.value)}
+              onChange={(event) => {
+                setIdentifierType(event.target.value);
+                clearDuplicateWarning();
+              }}
               className={`${inputClass} bg-white`}
             >
               {IDENTIFIER_TYPES.map(([value, label]) => (
@@ -232,7 +314,10 @@ export function NewProductForm() {
             <input
               id="identifierValue"
               value={identifierValue}
-              onChange={(event) => setIdentifierValue(event.target.value)}
+              onChange={(event) => {
+                setIdentifierValue(event.target.value);
+                clearDuplicateWarning();
+              }}
               maxLength={128}
               className={inputClass}
             />
@@ -285,6 +370,47 @@ export function NewProductForm() {
           </div>
         </div>
       </section>
+
+      {duplicateMatch && (
+        <div role="alert" className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900 space-y-3">
+          <p className="font-semibold">
+            {matchStatusPresentation(duplicateMatch.status).label}: this looks like a product already
+            recorded in this account.
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            {duplicateMatch.candidates.map((candidate) => (
+              <li key={candidate.productId}>
+                <Link
+                  href={`/app/products/${candidate.productId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold underline"
+                >
+                  Open existing product
+                </Link>{" "}
+                — {candidate.explanation}
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onCreateAnyway}
+              disabled={submitting}
+              className="h-9 px-4 rounded-xl bg-amber-900 text-white text-sm font-semibold disabled:opacity-60"
+            >
+              Create a new product anyway
+            </button>
+            <button
+              type="button"
+              onClick={() => setDuplicateMatch(null)}
+              className="text-sm font-semibold text-amber-900"
+            >
+              Let me check first
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <button
