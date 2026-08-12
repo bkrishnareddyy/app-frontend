@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { extractedCurrency } from "@/modules/documents/extractedCurrency";
+import { triageDecision } from "@/modules/decisions/decisionState";
 import { CommandCenterClient } from "./CommandCenterClient";
 import type { TeamMember } from "@/lib/team";
 
@@ -145,19 +146,10 @@ export default async function CommandCenterPage() {
     let verifiedDecisions = 0;
 
     for (const d of latestByAgent.values()) {
-      if (d.status === "Blocked" || d.status === "Rejected") blockedDecisions++;
-      else if (
-        d.status === "Review Required" ||
-        d.status === "Needs Review" ||
-        d.status === "Pending"
-      )
-        needsReviewDecisions++;
-      else if (
-        d.status === "Approved" ||
-        d.status === "Verified" ||
-        d.status === "Auto-Approved"
-      )
-        verifiedDecisions++;
+      const triage = triageDecision({ status: d.status });
+      if (triage === "blocked") blockedDecisions++;
+      else if (triage === "review") needsReviewDecisions++;
+      else verifiedDecisions++;
     }
 
     const blockedCount = blockedExceptions.length + blockedDecisions;
@@ -194,6 +186,7 @@ export default async function CommandCenterPage() {
       missingDocTypes: docCheck.missingTypes,
       receivedDocCount: docCheck.receivedCount,
       totalRequiredDocs: docCheck.totalRequired,
+      openExceptions: activeExceptions.length,
       aiReview: {
         blocked: blockedCount,
         needsReview: needsReviewCount,

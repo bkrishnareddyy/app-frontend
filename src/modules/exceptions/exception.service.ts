@@ -9,6 +9,7 @@ import {
   statusVariants,
   type ExceptionState,
 } from "./exceptionState";
+import { validateReasonCode, isRiskAcceptanceReason, type ExceptionCategory } from "./resolutionReasons";
 
 export interface ExceptionListQuery {
   status?: string;
@@ -22,6 +23,8 @@ export interface ExceptionUpdateInput {
   /** Null detaches the exception; a string must name a shipment in the same account. */
   shipmentId?: string | null;
   resolutionReason?: string;
+  /** Picklist code from resolutionReasons.ts. Must be valid for the exception's category. */
+  resolutionReasonCode?: string;
   resolutionEvidence?: string;
   expectedVersion: number;
 }
@@ -107,6 +110,16 @@ export class ExceptionService {
       if (requiresResolutionReason(normalized) && !input.resolutionReason?.trim()) {
         throw new Error(`A stated reason is required to move this exception to ${normalized}`);
       }
+      // Validate the picklist code when provided.
+      if (input.resolutionReasonCode?.trim()) {
+        const category = (existing.category as ExceptionCategory | null) ?? null;
+        const codeError = validateReasonCode(input.resolutionReasonCode.trim(), category);
+        if (codeError) throw new Error(codeError);
+        // A risk-acceptance reason code requires the WAIVED status.
+        if (isRiskAcceptanceReason(input.resolutionReasonCode.trim()) && normalized !== "WAIVED") {
+          throw new Error(`Reason code "${input.resolutionReasonCode}" is a risk acceptance and requires WAIVED status.`);
+        }
+      }
       nextStatus = normalized;
     }
 
@@ -151,6 +164,9 @@ export class ExceptionService {
         resolvedBy: isClosing ? resolver?.userId : undefined,
         resolvedByName: isClosing ? resolver?.name : undefined,
         resolutionNote: isClosing ? input.resolutionReason : undefined,
+        resolutionReasonCode: isClosing && input.resolutionReasonCode?.trim()
+          ? input.resolutionReasonCode.trim()
+          : undefined,
         version: { increment: 1 },
       },
       include: {

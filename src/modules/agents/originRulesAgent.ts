@@ -86,6 +86,8 @@ export class OriginRulesAgent {
             agentName: "Origin Agent",
             agentIcon: "Globe2",
             status: "Needs Review",
+            triageState: "BLOCKED",
+            blockedReason: "BLOCKED_MISSING_ORIGIN",
             confidence: 0,
             decisionSummary:
               "Origin Rules Evaluation BLOCKED: Missing country of origin and product classification.",
@@ -171,7 +173,9 @@ export class OriginRulesAgent {
           documentId: input.documentId ?? null,
           agentName: "Origin Agent",
           agentIcon: "Globe2",
-          status: "Approved",
+          status: "AUTO_VERIFIED",
+          triageState: "AUTO_VERIFIED",
+          autoApprovalPolicy: "origin-deterministic-v1",
           confidence: 80,
           decisionSummary: `Origin rules evaluated for ${qualifications.length} line(s): ${primaryFta} qualification assessed for ${primaryCo ?? "an undeclared country of origin"}.`,
           purpose:
@@ -205,7 +209,7 @@ export class OriginRulesAgent {
           action: "AGENT_EXECUTION_COMPLETED",
           entity: "AGENT_DECISION",
           entityId: agentDecisionId,
-          metadata: { agentName: "Origin Agent", primaryCountry: primaryCo, ftaProgram: primaryFta },
+          metadata: { agentName: "Origin Agent", primaryCountry: primaryCo, ftaProgram: primaryFta, autoApprovalPolicy: "origin-deterministic-v1", triageState: "AUTO_VERIFIED" },
         });
       } catch (err) {
         debugError = logAgentError("Origin Agent", input.shipmentId, "createAuditLog", err);

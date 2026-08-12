@@ -3,6 +3,10 @@ import {
   normalizeExceptionStatus,
   openStatusVariants,
 } from "@/modules/exceptions/exceptionState";
+import {
+  actionableStatusVariants,
+  triageDecision,
+} from "@/modules/decisions/decisionState";
 
 export type WorkItemKind = "decision" | "finding" | "filing" | "document" | "exception";
 export type WorkPriority = "critical" | "high" | "normal";
@@ -17,6 +21,7 @@ export interface WorkItem {
   createdAt: Date;
   shipmentNumber: string | null;
   assignedToMe: boolean;
+  filingDeadline: Date | null;
 }
 
 export interface DecisionRow {
@@ -24,9 +29,12 @@ export interface DecisionRow {
   agentName: string;
   decisionSummary: string;
   status: string;
+  proposedDescription?: string | null;
+  confidence?: number | null;
   createdAt: Date;
   shipmentId: string;
   shipmentNumber: string | null;
+  filingDeadline?: Date | null;
 }
 
 export interface FindingRow {
@@ -67,6 +75,7 @@ export interface ExceptionRow {
   shipmentId: string | null;
   shipmentNumber: string | null;
   assignedToUserId: string | null;
+  filingDeadline?: Date | null;
 }
 
 export interface WorkQueueInput {
@@ -78,11 +87,7 @@ export interface WorkQueueInput {
   exceptions?: ExceptionRow[];
 }
 
-const DECISION_ACTIONABLE: Record<string, WorkPriority> = {
-  "Review Required": "high",
-  Attention: "critical",
-  Pending: "normal",
-};
+// Decisions use the normalizer in decisionState.ts — no hardcoded status list here.
 
 const FINDING_ACTIONABLE = new Set(["Open", "Investigating"]);
 
@@ -116,9 +121,21 @@ const EXCEPTION_SEVERITY: Record<string, WorkPriority> = {
 
 const PRIORITY_RANK: Record<WorkPriority, number> = { critical: 0, high: 1, normal: 2 };
 
+const DEADLINE_CRITICAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DEADLINE_HIGH_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
 function raise(priority: WorkPriority): WorkPriority {
   if (priority === "normal") return "high";
   return "critical";
+}
+
+/** Boosts priority when the shipment's CBP filing deadline is approaching. */
+function applyDeadlineUrgency(priority: WorkPriority, deadline: Date | null | undefined, now: Date): WorkPriority {
+  if (!deadline) return priority;
+  const remaining = deadline.getTime() - now.getTime();
+  if (remaining <= 0 || remaining <= DEADLINE_CRITICAL_MS) return "critical";
+  if (remaining <= DEADLINE_HIGH_MS) return raise(priority);
+  return priority;
 }
 
 /**
@@ -128,20 +145,28 @@ function raise(priority: WorkPriority): WorkPriority {
  */
 export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
   const items: WorkItem[] = [];
+  const now = new Date();
 
   for (const decision of input.decisions) {
-    const priority = DECISION_ACTIONABLE[decision.status];
-    if (!priority) continue;
+    const triage = triageDecision(decision);
+    // Only NEEDS_REVIEW and BLOCKED belong in the action queue.
+    // AUTO_VERIFIED and APPROVED are not human tasks.
+    if (triage === "verified") continue;
+
+    // BLOCKED decisions are critical: they prevent downstream agents from running.
+    const base: WorkPriority = triage === "blocked" ? "critical" : "high";
+    const priority = applyDeadlineUrgency(base, decision.filingDeadline, now);
     items.push({
       id: `decision:${decision.id}`,
       kind: "decision",
       title: decision.agentName,
       reason: decision.decisionSummary,
-      href: `/app/decisions?decisionId=${encodeURIComponent(decision.id)}`,
+      href: `/app/actions?decisionId=${encodeURIComponent(decision.id)}`,
       priority,
       createdAt: decision.createdAt,
       shipmentNumber: decision.shipmentNumber,
       assignedToMe: false,
+      filingDeadline: decision.filingDeadline ?? null,
     });
   }
 
@@ -159,6 +184,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: finding.createdAt,
       shipmentNumber: null,
       assignedToMe,
+      filingDeadline: null,
     });
   }
 
@@ -175,6 +201,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: filing.createdAt,
       shipmentNumber: filing.shipmentNumber,
       assignedToMe: false,
+      filingDeadline: null,
     });
   }
 
@@ -194,6 +221,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: document.createdAt,
       shipmentNumber: document.shipmentNumber,
       assignedToMe: false,
+      filingDeadline: null,
     });
   }
 
@@ -201,17 +229,22 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     const state = normalizeExceptionStatus(exception.status);
     if (!state || isTerminalExceptionState(state)) continue;
     const assignedToMe = exception.assignedToUserId === input.userId;
-    const base = EXCEPTION_SEVERITY[exception.severity] ?? "normal";
+    const base = applyDeadlineUrgency(
+      EXCEPTION_SEVERITY[exception.severity] ?? "normal",
+      exception.filingDeadline,
+      now
+    );
     items.push({
       id: `exception:${exception.id}`,
       kind: "exception",
       title: exception.type.replace(/_/g, " "),
       reason: exception.description,
-      href: `/app/exceptions?exceptionId=${encodeURIComponent(exception.id)}`,
+      href: `/app/actions?exceptionId=${encodeURIComponent(exception.id)}`,
       priority: assignedToMe ? raise(base) : base,
       createdAt: exception.createdAt,
       shipmentNumber: exception.shipmentNumber,
       assignedToMe,
+      filingDeadline: exception.filingDeadline ?? null,
     });
   }
 
@@ -219,6 +252,10 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     if (a.assignedToMe !== b.assignedToMe) return a.assignedToMe ? -1 : 1;
     const rank = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
     if (rank !== 0) return rank;
+    // Among same priority: deadline-bound items surface first; null deadline goes last.
+    const aDeadline = a.filingDeadline?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const bDeadline = b.filingDeadline?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    if (aDeadline !== bDeadline) return aDeadline - bDeadline;
     // Oldest first: the item that has been waiting longest is the most overdue.
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
@@ -250,15 +287,20 @@ export function countByKind(items: WorkItem[]): Record<WorkItemKind, number> {
  * The statuses each source is filtered on. Loading every row and discarding the
  * inactionable ones in memory meant the row cap was spent on records the queue
  * was never going to show.
+ *
+ * DECISION_ACTIONABLE_STATUSES now covers every legacy status string that maps
+ * to NEEDS_REVIEW or BLOCKED — the full set any agent has ever written.
  */
-export const DECISION_ACTIONABLE_STATUSES = Object.keys(DECISION_ACTIONABLE);
+export const DECISION_ACTIONABLE_STATUSES = actionableStatusVariants();
 export const FINDING_ACTIONABLE_STATUSES = [...FINDING_ACTIONABLE];
 export const FILING_ACTIONABLE_STATUSES = Object.keys(FILING_ACTIONABLE);
 export const DOCUMENT_ACTIONABLE_STATUSES = Object.keys(DOCUMENT_ACTIONABLE);
 export const EXCEPTION_ACTIONABLE_STATUSES = openStatusVariants();
 
-export function decisionPriority(status: string): WorkPriority | null {
-  return DECISION_ACTIONABLE[status] ?? null;
+export function decisionPriority(status: string, proposedDescription?: string | null): WorkPriority | null {
+  const triage = triageDecision({ status, proposedDescription });
+  if (triage === "verified") return null;
+  return triage === "blocked" ? "critical" : "high";
 }
 
 export function exceptionPriority(severity: string): WorkPriority {

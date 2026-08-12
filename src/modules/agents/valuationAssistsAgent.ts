@@ -74,6 +74,8 @@ export class ValuationAssistsAgent {
             agentName: "Valuation Agent",
             agentIcon: "Calculator",
             status: "Needs Review",
+            triageState: "BLOCKED",
+            blockedReason: "BLOCKED_MISSING_INVOICE",
             confidence: 0,
             decisionSummary: "Valuation Skipped: Missing Commercial Invoice pricing data.",
             purpose:
@@ -165,7 +167,9 @@ export class ValuationAssistsAgent {
           documentId: input.documentId ?? null,
           agentName: "Valuation Agent",
           agentIcon: "Calculator",
-          status: "Approved",
+          status: "AUTO_VERIFIED",
+          triageState: "AUTO_VERIFIED",
+          autoApprovalPolicy: "valuation-deterministic-v1",
           confidence: completeness,
           decisionSummary: `Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)} (Method 1 Transaction Value). ${adjustments.length} adjustments applied.`,
           purpose:
@@ -212,6 +216,8 @@ export class ValuationAssistsAgent {
             enteredCustomsValue,
             valuationMethod: "METHOD_1_TRANSACTION_VALUE",
             adjustmentsApplied: adjustments.length,
+            autoApprovalPolicy: "valuation-deterministic-v1",
+            triageState: "AUTO_VERIFIED",
           },
         });
       } catch (err) {

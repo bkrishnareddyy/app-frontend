@@ -19,6 +19,7 @@ const updateSchema = z.object({
   assignedToUserId: z.string().optional(),
   shipmentId: z.string().min(1).nullable().optional(),
   resolutionReason: z.string().optional(),
+  resolutionReasonCode: z.string().optional(),
   expectedVersion: z.number().int({ message: "expectedVersion integer is required for concurrency control" }),
 });
 
