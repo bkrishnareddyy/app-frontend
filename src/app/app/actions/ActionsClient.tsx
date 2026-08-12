@@ -382,6 +382,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                           dueAt={new Date(u.dueAt)}
                           estimated={u.estimated}
                           exposureUsd={u.exposureUsd}
+                          warnDays={u.deadlineType === "ENTRY_FILING" ? 5 : 3}
                         />
                       );
                     })()}
@@ -440,6 +441,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                           dueAt={new Date(u.dueAt)}
                           estimated={u.estimated}
                           exposureUsd={u.exposureUsd}
+                          warnDays={u.deadlineType === "ENTRY_FILING" ? 5 : 3}
                         />
                       );
                     })()}

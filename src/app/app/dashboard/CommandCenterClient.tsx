@@ -17,6 +17,7 @@ import {
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { displayCurrency } from "@/lib/honest";
 import { commonExtractedCurrency } from "@/modules/documents/extractedCurrency";
+import { CountdownChip } from "@/components/deadlines/CountdownChip";
 
 /** A shipment as the dashboard's server page serialises it for the KPI tiles. */
 interface CommandCenterShipment {
@@ -69,9 +70,12 @@ interface CommandCenterRegUpdate {
   effectiveDate: string;
 }
 
+type UrgencyMap = Record<string, { deadlineType: string; dueAt: string; estimated: boolean; exposureUsd: number | null }>;
+
 interface CommandCenterClientProps {
   accountName: string;
   initialShipments: CommandCenterShipment[];
+  urgencyByShipment?: UrgencyMap;
   /**
    * Still supplied by the page; the new design derives all actionable counts
    * from per-shipment aiReview fields instead of the top-level decisions list.
@@ -106,6 +110,7 @@ const ACTIVE_STATUSES = new Set(["In Progress", "On Hold", "Ready to File", "Pen
 export function CommandCenterClient({
   initialShipments,
   initialDecisions,
+  urgencyByShipment = {},
   teamMembers,
   clients,
   context,
@@ -468,6 +473,11 @@ export function CommandCenterClient({
                           {shp.exporterName}
                         </span>
                       )}
+                      {shp.shipmentNumber && urgencyByShipment[shp.shipmentNumber] && (() => {
+                        const u = urgencyByShipment[shp.shipmentNumber];
+                        const LABELS: Record<string, string> = { ISF_10_2: "ISF", ENTRY_FILING: "Entry Filing", ENTRY_SUMMARY: "Entry Summary", DUTY_PAYMENT: "Duty Payment", LAST_FREE_DAY: "Last Free Day" };
+                        return <div className="mt-1.5"><CountdownChip label={LABELS[u.deadlineType] ?? u.deadlineType.replace(/_/g, " ")} dueAt={new Date(u.dueAt)} estimated={u.estimated} exposureUsd={u.exposureUsd} warnDays={u.deadlineType === "ENTRY_FILING" ? 5 : 3} /></div>;
+                      })()}
                     </td>
 
                     {/* Client */}

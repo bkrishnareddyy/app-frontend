@@ -10,6 +10,14 @@ export interface CountdownChipProps {
   estimated?: boolean;
   /** USD exposure, shown alongside the countdown */
   exposureUsd?: number | null;
+  /**
+   * Days out at which the chip turns amber ("high"). Defaults to 3 — right
+   * for short-fuse deadlines like ISF. Entry Filing runs a 15-day statutory
+   * window with liquidated-damages exposure (19 CFR 141.68(a)), so brokers
+   * need to see it turn amber earlier to leave enough lead time to work the
+   * file — pass a larger value (5) for that deadline type.
+   */
+  warnDays?: number;
   className?: string;
 }
 
@@ -26,10 +34,10 @@ function formatMs(ms: number): string {
 
 type Band = "breached" | "critical" | "high" | "normal";
 
-function band(ms: number): Band {
+function band(ms: number, warnDays: number): Band {
   if (ms <= 0) return "breached";
   if (ms <= 24 * 3_600_000) return "critical";
-  if (ms <= 3 * 24 * 3_600_000) return "high";
+  if (ms <= warnDays * 24 * 3_600_000) return "high";
   return "normal";
 }
 
@@ -40,7 +48,7 @@ const BAND_STYLES: Record<Band, string> = {
   normal:  "bg-surface-muted text-ink-muted border-border",
 };
 
-export function CountdownChip({ label, dueAt, estimated = false, exposureUsd, className }: CountdownChipProps) {
+export function CountdownChip({ label, dueAt, estimated = false, exposureUsd, warnDays = 3, className }: CountdownChipProps) {
   const [msRemaining, setMsRemaining] = useState(() => dueAt.getTime() - Date.now());
 
   useEffect(() => {
@@ -49,7 +57,7 @@ export function CountdownChip({ label, dueAt, estimated = false, exposureUsd, cl
     return () => clearInterval(id);
   }, [dueAt]);
 
-  const currentBand = band(msRemaining);
+  const currentBand = band(msRemaining, warnDays);
   const text = formatMs(msRemaining);
 
   return (

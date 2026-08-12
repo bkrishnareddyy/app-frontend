@@ -113,6 +113,7 @@ export async function DeadlineRail({ shipmentId }: DeadlineRailProps) {
                   dueAt={new Date(d.dueAt)}
                   estimated={d.estimated}
                   exposureUsd={d.penaltyEstimate != null ? Number(d.penaltyEstimate) : null}
+                  warnDays={d.type === "ENTRY_FILING" ? 5 : 3}
                 />
               ) : (
                 <span className="text-[11px] text-ink-muted tabular-nums">

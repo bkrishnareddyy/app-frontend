@@ -143,6 +143,21 @@ export default async function ActionsPage(props: {
     fileUrl: d.fileUrl ?? null,
   }));
 
+  // Apply deadline urgency as a priority floor on each group.
+  // buildShipmentActionGroups derives priority only from decisions/exceptions;
+  // a 17h deadline must escalate the group to "critical" regardless.
+  const urgencyFloor = (msRemaining: number): "critical" | "high" | "normal" =>
+    msRemaining <= 0 || msRemaining <= 24 * 3_600_000 ? "critical"
+    : msRemaining <= 3 * 24 * 3_600_000 ? "high"
+    : "normal";
+  const priorityRank = { critical: 0, high: 1, normal: 2 } as const;
+  for (const g of groups) {
+    const queueItem = filteredQueue.find((i) => i.shipmentNumber === g.shipmentNumber && i.urgency);
+    if (!queueItem?.urgency) continue;
+    const floor = urgencyFloor(queueItem.urgency.msRemaining);
+    if (priorityRank[floor] < priorityRank[g.priority]) g.priority = floor;
+  }
+
   // Serialize the urgency map (shipmentId → most-urgent deadline) so the
   // client can render countdown chips without its own DB access.
   const urgencyByShipment = Object.fromEntries(

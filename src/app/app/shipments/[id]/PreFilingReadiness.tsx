@@ -93,26 +93,26 @@ export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadi
   const getOverallIcon = (type: typeof overallStatus.type) => {
     switch (type) {
       case "BLOCKED":
-        return <AlertOctagon className="w-5 h-5 text-rose-600 shrink-0" />;
+        return <AlertOctagon className="w-4 h-4 text-rose-500 shrink-0" />;
       case "REVIEW_REQUIRED":
-        return <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />;
+        return <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />;
       case "INFO_REQUIRED":
-        return <Clock className="w-5 h-5 text-blue-600 shrink-0" />;
+        return <Clock className="w-4 h-4 text-blue-500 shrink-0" />;
       default:
-        return <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />;
+        return <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />;
     }
   };
 
   const getOverallStyles = (type: typeof overallStatus.type) => {
     switch (type) {
       case "BLOCKED":
-        return "bg-rose-50 border-rose-200 text-rose-900";
+        return "bg-rose-50/60 border-rose-100 text-rose-800";
       case "REVIEW_REQUIRED":
-        return "bg-amber-50 border-amber-200 text-amber-900";
+        return "bg-amber-50/60 border-amber-100 text-amber-800";
       case "INFO_REQUIRED":
-        return "bg-blue-50 border-blue-200 text-blue-900";
+        return "bg-blue-50/60 border-blue-100 text-blue-800";
       default:
-        return "bg-emerald-50 border-emerald-200 text-emerald-900";
+        return "bg-emerald-50/60 border-emerald-100 text-emerald-800";
     }
   };
 
@@ -127,8 +127,8 @@ export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadi
           <div className="flex items-center space-x-3">
             {getOverallIcon(overallStatus.type)}
             <div>
-              <h3 className="text-sm font-extrabold uppercase tracking-wider">{overallStatus.text}</h3>
-              <p className="text-xs opacity-80">{overallStatus.subtext}</p>
+              <h3 className="text-sm font-semibold">{overallStatus.text}</h3>
+              <p className="text-xs opacity-70">{overallStatus.subtext}</p>
             </div>
           </div>
           <button
