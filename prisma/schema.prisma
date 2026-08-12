@@ -327,6 +327,7 @@ model Shipment {
   countryOfExport    String?
   countryOfOrigin    String?
   estimatedArrival   DateTime?
+  filingDeadline     DateTime? // Broker-set CBP filing cutoff; drives queue urgency ranking
   status             String            @default("Draft") // Draft, In Progress, Ready to File, On Hold, Submitted, Completed
   healthStatus       String? // Healthy, At Risk, Critical — derived, null until evaluated
   readinessScore     Int? // 0 - 100 percentage, null until calculated
@@ -362,6 +363,7 @@ model Shipment {
   @@index([status])
   @@index([deletedAt])
   @@index([masterShipmentId])
+  @@index([filingDeadline])
 }
 
 model ShipmentDocument {

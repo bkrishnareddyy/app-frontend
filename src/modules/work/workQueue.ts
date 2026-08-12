@@ -21,6 +21,7 @@ export interface WorkItem {
   createdAt: Date;
   shipmentNumber: string | null;
   assignedToMe: boolean;
+  filingDeadline: Date | null;
 }
 
 export interface DecisionRow {
@@ -33,6 +34,7 @@ export interface DecisionRow {
   createdAt: Date;
   shipmentId: string;
   shipmentNumber: string | null;
+  filingDeadline?: Date | null;
 }
 
 export interface FindingRow {
@@ -73,6 +75,7 @@ export interface ExceptionRow {
   shipmentId: string | null;
   shipmentNumber: string | null;
   assignedToUserId: string | null;
+  filingDeadline?: Date | null;
 }
 
 export interface WorkQueueInput {
@@ -118,9 +121,21 @@ const EXCEPTION_SEVERITY: Record<string, WorkPriority> = {
 
 const PRIORITY_RANK: Record<WorkPriority, number> = { critical: 0, high: 1, normal: 2 };
 
+const DEADLINE_CRITICAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DEADLINE_HIGH_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
 function raise(priority: WorkPriority): WorkPriority {
   if (priority === "normal") return "high";
   return "critical";
+}
+
+/** Boosts priority when the shipment's CBP filing deadline is approaching. */
+function applyDeadlineUrgency(priority: WorkPriority, deadline: Date | null | undefined, now: Date): WorkPriority {
+  if (!deadline) return priority;
+  const remaining = deadline.getTime() - now.getTime();
+  if (remaining <= 0 || remaining <= DEADLINE_CRITICAL_MS) return "critical";
+  if (remaining <= DEADLINE_HIGH_MS) return raise(priority);
+  return priority;
 }
 
 /**
@@ -130,6 +145,7 @@ function raise(priority: WorkPriority): WorkPriority {
  */
 export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
   const items: WorkItem[] = [];
+  const now = new Date();
 
   for (const decision of input.decisions) {
     const triage = triageDecision(decision);
@@ -138,7 +154,8 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     if (triage === "verified") continue;
 
     // BLOCKED decisions are critical: they prevent downstream agents from running.
-    const priority: WorkPriority = triage === "blocked" ? "critical" : "high";
+    const base: WorkPriority = triage === "blocked" ? "critical" : "high";
+    const priority = applyDeadlineUrgency(base, decision.filingDeadline, now);
     items.push({
       id: `decision:${decision.id}`,
       kind: "decision",
@@ -149,6 +166,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: decision.createdAt,
       shipmentNumber: decision.shipmentNumber,
       assignedToMe: false,
+      filingDeadline: decision.filingDeadline ?? null,
     });
   }
 
@@ -166,6 +184,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: finding.createdAt,
       shipmentNumber: null,
       assignedToMe,
+      filingDeadline: null,
     });
   }
 
@@ -182,6 +201,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: filing.createdAt,
       shipmentNumber: filing.shipmentNumber,
       assignedToMe: false,
+      filingDeadline: null,
     });
   }
 
@@ -201,6 +221,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: document.createdAt,
       shipmentNumber: document.shipmentNumber,
       assignedToMe: false,
+      filingDeadline: null,
     });
   }
 
@@ -208,7 +229,11 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     const state = normalizeExceptionStatus(exception.status);
     if (!state || isTerminalExceptionState(state)) continue;
     const assignedToMe = exception.assignedToUserId === input.userId;
-    const base = EXCEPTION_SEVERITY[exception.severity] ?? "normal";
+    const base = applyDeadlineUrgency(
+      EXCEPTION_SEVERITY[exception.severity] ?? "normal",
+      exception.filingDeadline,
+      now
+    );
     items.push({
       id: `exception:${exception.id}`,
       kind: "exception",
@@ -219,6 +244,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       createdAt: exception.createdAt,
       shipmentNumber: exception.shipmentNumber,
       assignedToMe,
+      filingDeadline: exception.filingDeadline ?? null,
     });
   }
 
@@ -226,6 +252,10 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     if (a.assignedToMe !== b.assignedToMe) return a.assignedToMe ? -1 : 1;
     const rank = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
     if (rank !== 0) return rank;
+    // Among same priority: deadline-bound items surface first; null deadline goes last.
+    const aDeadline = a.filingDeadline?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const bDeadline = b.filingDeadline?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    if (aDeadline !== bDeadline) return aDeadline - bDeadline;
     // Oldest first: the item that has been waiting longest is the most overdue.
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
