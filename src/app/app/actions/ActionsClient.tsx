@@ -796,7 +796,13 @@ function AgentResultCard({
   const isApproved = effectiveCategory === "verified";
 
   return (
-    <div className={`border rounded-2xl p-4 space-y-3 ${verified ? "border-emerald-100 bg-emerald-50/20 opacity-80" : "border-border bg-white"}`}>
+    <div className={`border rounded-2xl p-4 space-y-3 ${
+      verified
+        ? "border-emerald-200 bg-emerald-50/40 opacity-80"
+        : effectiveCategory === "blocked"
+          ? "border-red-300 bg-red-50/60"
+          : "border-amber-200 bg-amber-50/40"
+    }`}>
       {/* Header: doc link + status */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-0.5">
@@ -1033,7 +1039,13 @@ function ExceptionCard({
         : "bg-gray-50 border-gray-200 text-gray-600";
 
   return (
-    <div className={`border rounded-2xl p-4 space-y-3 ${verified ? "border-emerald-100 bg-emerald-50/30 opacity-75" : "border-border bg-surface-muted/30"}`}>
+    <div className={`border rounded-2xl p-4 space-y-3 ${
+      verified
+        ? "border-emerald-200 bg-emerald-50/40 opacity-75"
+        : item.severity === "Critical"
+          ? "border-red-300 bg-red-50/60"
+          : "border-amber-200 bg-amber-50/40"
+    }`}>
       {/* Header: Category Badge + Title + Severity */}
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-0.5 min-w-0">
