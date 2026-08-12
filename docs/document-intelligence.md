@@ -260,7 +260,7 @@ So three things advance a run, in descending order of how much work they do:
 | --- | --- | --- |
 | `advanceDocumentProcessing()` after an upload or a reprocess | Immediately, after the 202 is sent | Submits the new run to the parser and keeps polling for up to 30s. A quick conversion finishes inside this invocation. |
 | The same call on `GET /api/documents/[id]/processing` | While a client polls a document that is still in flight | Drains again, throttled to one drain per 4s per instance |
-| `/api/cron/document-processing` | Daily (`20 3 * * *`) | The backstop: runs abandoned by a crashed worker, and conversions that outlived the invocation that started them |
+| `/api/cron/document-processing` | Daily (`0 9 * * *`) | The backstop: runs abandoned by a crashed worker, and conversions that outlived the invocation that started them. Also carries the inbound-email backstop tick, because Hobby allows only two cron entries in total |
 
 The drain runs in Next's [`after()`](https://nextjs.org/docs/app/api-reference/functions/after),
 which Vercel implements with `waitUntil` — the response has already been sent, so
