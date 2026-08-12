@@ -14,6 +14,7 @@ import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
 import { PipelineOrchestrator } from "@/modules/agents/pipelineOrchestrator";
 import { PgQueue, toJobState } from "@/lib/queue/pgQueue";
 import { enqueueDocumentParse } from "@/modules/documents/processing/documentProcessingWorker";
+import { advanceDocumentProcessing } from "@/modules/documents/processing/advanceProcessing";
 import { assertParseableFormat } from "@/modules/documents/processing/documentSource";
 import { isDocumentParserError } from "@/modules/documents/parser/contracts";
 import { screenUploadForMalware } from "@/modules/documents/processing/malwarePolicy";
@@ -31,6 +32,12 @@ import { screenUploadForMalware } from "@/modules/documents/processing/malwarePo
  * Previously this route ran Gemini vision on the raw buffer and kicked off a
  * ten-agent pipeline inline, inside the user's request.
  */
+
+// The 202 is sent long before this elapses. The budget exists for the `after()`
+// drain that follows it, which is what actually gets the document to the parser
+// on a host where cron only runs daily. 60s is the Hobby ceiling.
+export const maxDuration = 60;
+
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const accountId = ctx.accountId;
   const userId = ctx.userId;
@@ -233,6 +240,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     reason: "INITIAL",
     correlationId,
   });
+
+  // Enqueuing only records the run; something has to submit it to the parser.
+  // On a serverless host that something is this request, after the 202 has been
+  // sent — cron runs once a day and would leave the document sitting. Costs the
+  // caller nothing, and a quick conversion often finishes inside this same
+  // invocation. See advanceProcessing.ts for what happens when it does not.
+  if (queued.blocker === null) {
+    advanceDocumentProcessing({ reason: "document.upload" });
+  }
 
   return NextResponse.json(
     {

@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { PROCESSING_PROFILES } from "@/modules/documents/parser/contracts";
 import { enqueueDocumentParse } from "@/modules/documents/processing/documentProcessingWorker";
+import { advanceDocumentProcessing } from "@/modules/documents/processing/advanceProcessing";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
 
@@ -32,6 +33,10 @@ const bodySchema = z.object({
  * Requires `decisions.reevaluate`, which is the existing capability for "run an
  * agent again over this work" and is withheld from viewers.
  */
+
+// Budget for the `after()` drain that follows the 202, not for the handler.
+export const maxDuration = 60;
+
 export const POST = withAuthenticatedRoute<{ id: string }>(
   async ({ req, ctx, requestId, params }) => {
     const paramsVal = validatePathParams(params, paramsSchema, requestId);
@@ -109,6 +114,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
         requestId
       );
     }
+
+    // Same reasoning as the upload route: the run is recorded, and this request
+    // is what submits it. Cron runs once a day and would leave it queued.
+    advanceDocumentProcessing({ reason: "document.reprocess" });
 
     return NextResponse.json(
       {

@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/document-processing",
-      "schedule": "* * * * *"
+      "schedule": "20 3 * * *"
     }
   ]
 }

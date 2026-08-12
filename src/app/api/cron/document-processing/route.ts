@@ -19,8 +19,22 @@ import { parserConfigurationReport } from "@/modules/documents/parser/config";
  * `/api/cron/hts-refresh`. It is gated on `CRON_SECRET` and it processes only
  * work that already exists: it advances durable runs and never creates
  * documents, demo data, exceptions, or shipments.
+ *
+ * On Vercel this is a **daily backstop, not the pipeline**. Hobby schedules cron
+ * at most once a day, and one tick cannot finish a document anyway: submission
+ * sets `nextPollAt` a few seconds out, so the poll that retrieves the result
+ * belongs to a later tick. The pipeline is driven from the request path instead
+ * — see `advanceDocumentProcessing()` in
+ * `src/modules/documents/processing/advanceProcessing.ts`. What this endpoint is
+ * for is the work no request will ever touch: runs abandoned by a crashed
+ * worker, and documents whose conversion outlived the invocation that uploaded
+ * them.
  */
-export const maxDuration = 300;
+
+// 60 seconds is the Hobby ceiling for a function; asking for more fails the
+// deployment rather than granting it. Raise this to 300 on Pro if the daily
+// backstop starts running out of time on a large backlog.
+export const maxDuration = 60;
 
 function unauthorized(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;

@@ -525,6 +525,20 @@ export async function findRunsAwaitingPoll(limit: number): Promise<DueRun[]> {
 }
 
 /**
+ * How many runs have not finished yet, whether or not they are due right now.
+ *
+ * `findRunsAwaitingPoll` answers "what can I do this instant", which is a
+ * different question: a run submitted two seconds ago is unfinished but not yet
+ * due. A drain loop needs this one, so it can tell "there is nothing left to do"
+ * apart from "there is nothing to do *yet*" and sleep instead of stopping.
+ */
+export async function countUnfinishedRuns(): Promise<number> {
+  return db.documentParseVersion.count({
+    where: { status: { in: ["QUEUED", "SUBMITTED", "POLLING"] } },
+  });
+}
+
+/**
  * Reclaims runs a worker abandoned mid-flight.
  *
  * "Abandoned" means the heartbeat stopped, which a crash, a redeploy, or a
