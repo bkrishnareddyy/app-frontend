@@ -245,7 +245,9 @@ The worker runs either way:
   backstop. See "What advances a run on Vercel" below. `CRON_SECRET` must be set.
 - **Long-running host** — `npm run worker:documents`. Safe to run alongside the
   cron and alongside the request-path drains; all three advance the same durable
-  runs and cannot double-apply a transition.
+  runs and cannot double-apply a transition. Each loop also ticks inbound email
+  ingestion, so a persistent process is a complete pipeline on its own and needs
+  no cron slot for either queue.
 
 ### What advances a run on Vercel
 
