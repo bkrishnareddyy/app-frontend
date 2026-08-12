@@ -1,14 +1,23 @@
 import { runWorkerTick } from "../modules/documents/processing/documentProcessingWorker";
+import { runInboundEmailWorkerTick } from "../modules/documents/processing/inboundEmailWorker";
 import { parserConfigurationReport, readProcessingLimits } from "../modules/documents/parser/config";
 
 /**
  * Long-running Qubere document processing worker.
  *
- * The same `runWorkerTick()` the cron endpoint calls, in a loop, for hosts that
- * run a persistent process. All state is in Postgres, so this process holds
- * nothing: killing it mid-parse loses no queued work, no provider task id, and
- * no polling position — the next tick (here or from the cron endpoint) reclaims
- * anything whose heartbeat went stale.
+ * The same `runWorkerTick()` (and `runInboundEmailWorkerTick()`) the cron
+ * endpoints call, in a loop, for hosts that run a persistent process. All
+ * state is in Postgres, so this process holds nothing: killing it mid-parse
+ * loses no queued work, no provider task id, and no polling position — the
+ * next tick (here or from a cron endpoint) reclaims anything whose heartbeat
+ * went stale.
+ *
+ * This is also the practical way to get sub-daily processing without a
+ * Vercel Cron slot: point it at the same DATABASE_URL as a deployed
+ * environment (e.g. run it locally, or on any always-on host) and it drains
+ * the same durable queues that environment's webhook/cron routes write to.
+ * No separate scheduler needed — it's just a loop around the same idempotent
+ * ticks.
  *
  * Run with: npx tsx src/worker/documentWorker.ts
  */
@@ -36,7 +45,11 @@ async function startDocumentWorker(): Promise<void> {
 
   for (;;) {
     try {
+      const inboundEmailTick = await runInboundEmailWorkerTick();
       const tick = await runWorkerTick();
+
+      const didInboundWork = inboundEmailTick.claimed > 0;
+      if (didInboundWork) console.log("[DocumentWorker] inbound email tick", inboundEmailTick);
 
       if (tick.blocker !== null) {
         console.error("[DocumentWorker] tick blocked:", tick.blocker);
@@ -54,7 +67,7 @@ async function startDocumentWorker(): Promise<void> {
       if (didWork) console.log("[DocumentWorker] tick", tick);
 
       // Idle sleep only when there was nothing to do; a busy queue keeps draining.
-      if (!didWork) await sleep(IDLE_DELAY_MS);
+      if (!didWork && !didInboundWork) await sleep(IDLE_DELAY_MS);
     } catch (error) {
       // An unexpected throw here means a bug or a database outage. Log the code,
       // never the payload, and back off rather than spinning.
