@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare, Sparkles } from "lucide-react";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
+import { triageDecision } from "@/modules/decisions/decisionState";
 
 const NEUTRAL_BADGE = "text-[10px] font-bold px-2 py-1 rounded-lg bg-surface-muted border border-border text-ink-muted";
 
@@ -39,12 +40,6 @@ function severityBadgeClass(severity: string): string {
   return "text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 bg-surface-muted text-ink-muted border-border";
 }
 
-// The real gating sentinels agents write to proposedDescription when they
-// refused to run because a prerequisite was missing -- distinct from an
-// ordinary "Needs Review" judgment call, so this is a grounded signal for
-// "blocked," not a guess.
-const BLOCKED_SENTINELS = new Set(["BLOCKED_DEPENDENCY", "WAITING_FOR_EXTRACTION", "BLOCKED_MISSING_DESCRIPTION"]);
-
 type RollupCategory = "VERIFIED" | "REVIEW" | "BLOCKED";
 
 interface RollupDecision {
@@ -54,8 +49,9 @@ interface RollupDecision {
 }
 
 function classifyDecision(d: { status: string; proposedDescription?: string | null }): RollupCategory {
-  if (d.proposedDescription && BLOCKED_SENTINELS.has(d.proposedDescription)) return "BLOCKED";
-  if (d.status === "Approved") return "VERIFIED";
+  const triage = triageDecision(d);
+  if (triage === "blocked") return "BLOCKED";
+  if (triage === "verified") return "VERIFIED";
   return "REVIEW";
 }
 

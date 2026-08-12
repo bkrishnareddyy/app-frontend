@@ -48,7 +48,10 @@ export default async function ActionsPage(props: {
     db.agentDecision.findMany({
       where: {
         accountId: context.accountId,
-        status: { in: [...DECISION_ACTIONABLE_STATUSES, "Approved"] },
+        // DECISION_ACTIONABLE_STATUSES now covers every legacy status string
+        // that maps to NEEDS_REVIEW or BLOCKED. "Approved" is still included so
+        // brokers can see recently-approved decisions in the verified section.
+        status: { in: [...DECISION_ACTIONABLE_STATUSES, "Approved", "AUTO_VERIFIED", "Auto-Approved", "Verified"] },
         ...(shipmentId ? { shipmentId } : {}),
       },
       include: {

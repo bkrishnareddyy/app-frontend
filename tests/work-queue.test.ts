@@ -55,7 +55,7 @@ describe("exceptions in the work queue", () => {
     expect(queue[0].kind).toBe("exception");
     expect(queue[0].title).toBe("unassigned intake");
     expect(queue[0].reason).toBe(base.description);
-    expect(queue[0].href).toBe("/app/exceptions?exceptionId=e1");
+    expect(queue[0].href).toBe("/app/actions?exceptionId=e1");
     expect(queue[0].shipmentNumber).toBeNull();
   });
 
@@ -264,7 +264,7 @@ describe("work queue links", () => {
         ],
       })
     );
-    expect(item.href).toBe("/app/decisions?decisionId=d%201%2Fx");
+    expect(item.href).toBe("/app/actions?decisionId=d%201%2Fx");
   });
 
   it("links a finding to its filing and a document to its shipment", () => {
@@ -338,8 +338,10 @@ describe("work queue filter", () => {
     return buildWorkQueue(
       input({
         decisions: [
-          { id: "d1", agentName: "A", decisionSummary: "s", status: "Attention", createdAt: at("2026-01-01"), shipmentId: "s1", shipmentNumber: null },
-          { id: "d2", agentName: "B", decisionSummary: "s", status: "Pending", createdAt: at("2026-01-02"), shipmentId: "s1", shipmentNumber: null },
+          // BLOCKED_DEPENDENCY → triaged as blocked → critical priority
+          { id: "d1", agentName: "A", decisionSummary: "s", status: "BLOCKED_DEPENDENCY", createdAt: at("2026-01-01"), shipmentId: "s1", shipmentNumber: null },
+          // Needs Review → triaged as review → high priority
+          { id: "d2", agentName: "B", decisionSummary: "s", status: "Needs Review", createdAt: at("2026-01-02"), shipmentId: "s1", shipmentNumber: null },
         ],
         findings: [
           { id: "c1", rule: "R", severity: "Warning", status: "Open", createdAt: at("2026-01-03"), filingId: "f1", assignedToUserId: ME },

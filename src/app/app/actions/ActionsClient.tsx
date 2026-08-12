@@ -9,6 +9,7 @@ import { ExceptionQuickActions } from "./ExceptionQuickActions";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { Modal, ModalHeader, ModalBody } from "@/components/ui/Modal";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor } from "@/modules/decisions/editableFields";
+import { triageDecision, type TriageCategory } from "@/modules/decisions/decisionState";
 import type { ShipmentActionGroup, ActionItem } from "@/modules/actions/shipmentActions";
 import type { WorkPriority } from "@/modules/work/workQueue";
 
@@ -500,52 +501,18 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   );
 }
 
-const BLOCKED_SENTINELS = new Set([
-  "BLOCKED_DEPENDENCY",
-  "WAITING_FOR_EXTRACTION",
-  "BLOCKED_MISSING_DESCRIPTION",
-]);
-
-function categorize(item: ActionItem): "blocked" | "review" | "verified" {
+function categorize(item: ActionItem): TriageCategory {
   if (item.kind === "exception") {
+    // Critical exceptions block downstream work the same way a blocked decision does.
     if (item.severity === "Critical") return "blocked";
     return "review";
   }
 
-  const dec = item.raw as unknown as Record<string, unknown>;
-  const desc = typeof dec.proposedDescription === "string" ? dec.proposedDescription : "";
-  const summary = typeof dec.decisionSummary === "string" ? dec.decisionSummary : "";
-  const ev = (dec.evidenceItems && typeof dec.evidenceItems === "object"
-    ? dec.evidenceItems
-    : {}) as Record<string, unknown>;
-
-  // Gated execution sentinels or explicit pipeline blocks
-  if (
-    BLOCKED_SENTINELS.has(desc) ||
-    desc.includes("BLOCKED") ||
-    summary.includes("BLOCKED") ||
-    summary.includes("Gating:")
-  ) {
-    return "blocked";
-  }
-
-  // Missing commercial invoice, zero extracted line items, or skipped agent evaluation
-  if (
-    summary.includes("Skipped") ||
-    summary.includes("Paused") ||
-    ev.hasCommercialInvoice === false ||
-    (typeof ev.lineItemCount === "number" && ev.lineItemCount === 0)
-  ) {
-    return "review";
-  }
-
-  // Unresolved evidence flags
-  const flags = Array.isArray(ev.flags) ? (ev.flags as { severity: string; summary: string }[]) : [];
-  if (flags.length > 0) return "review";
-
-  if (item.status === "Approved") return "verified";
-  if (item.status === "Rejected") return "blocked";
-  return "review";
+  // Delegate to the single source of truth in decisionState.ts.
+  return triageDecision({
+    status: item.status,
+    proposedDescription: item.proposedDescription,
+  });
 }
 
 function ActionScorecard({

@@ -3,6 +3,10 @@ import {
   normalizeExceptionStatus,
   openStatusVariants,
 } from "@/modules/exceptions/exceptionState";
+import {
+  actionableStatusVariants,
+  triageDecision,
+} from "@/modules/decisions/decisionState";
 
 export type WorkItemKind = "decision" | "finding" | "filing" | "document" | "exception";
 export type WorkPriority = "critical" | "high" | "normal";
@@ -24,6 +28,8 @@ export interface DecisionRow {
   agentName: string;
   decisionSummary: string;
   status: string;
+  proposedDescription?: string | null;
+  confidence?: number | null;
   createdAt: Date;
   shipmentId: string;
   shipmentNumber: string | null;
@@ -78,11 +84,7 @@ export interface WorkQueueInput {
   exceptions?: ExceptionRow[];
 }
 
-const DECISION_ACTIONABLE: Record<string, WorkPriority> = {
-  "Review Required": "high",
-  Attention: "critical",
-  Pending: "normal",
-};
+// Decisions use the normalizer in decisionState.ts — no hardcoded status list here.
 
 const FINDING_ACTIONABLE = new Set(["Open", "Investigating"]);
 
@@ -130,14 +132,19 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
   const items: WorkItem[] = [];
 
   for (const decision of input.decisions) {
-    const priority = DECISION_ACTIONABLE[decision.status];
-    if (!priority) continue;
+    const triage = triageDecision(decision);
+    // Only NEEDS_REVIEW and BLOCKED belong in the action queue.
+    // AUTO_VERIFIED and APPROVED are not human tasks.
+    if (triage === "verified") continue;
+
+    // BLOCKED decisions are critical: they prevent downstream agents from running.
+    const priority: WorkPriority = triage === "blocked" ? "critical" : "high";
     items.push({
       id: `decision:${decision.id}`,
       kind: "decision",
       title: decision.agentName,
       reason: decision.decisionSummary,
-      href: `/app/decisions?decisionId=${encodeURIComponent(decision.id)}`,
+      href: `/app/actions?decisionId=${encodeURIComponent(decision.id)}`,
       priority,
       createdAt: decision.createdAt,
       shipmentNumber: decision.shipmentNumber,
@@ -207,7 +214,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       kind: "exception",
       title: exception.type.replace(/_/g, " "),
       reason: exception.description,
-      href: `/app/exceptions?exceptionId=${encodeURIComponent(exception.id)}`,
+      href: `/app/actions?exceptionId=${encodeURIComponent(exception.id)}`,
       priority: assignedToMe ? raise(base) : base,
       createdAt: exception.createdAt,
       shipmentNumber: exception.shipmentNumber,
@@ -250,15 +257,20 @@ export function countByKind(items: WorkItem[]): Record<WorkItemKind, number> {
  * The statuses each source is filtered on. Loading every row and discarding the
  * inactionable ones in memory meant the row cap was spent on records the queue
  * was never going to show.
+ *
+ * DECISION_ACTIONABLE_STATUSES now covers every legacy status string that maps
+ * to NEEDS_REVIEW or BLOCKED — the full set any agent has ever written.
  */
-export const DECISION_ACTIONABLE_STATUSES = Object.keys(DECISION_ACTIONABLE);
+export const DECISION_ACTIONABLE_STATUSES = actionableStatusVariants();
 export const FINDING_ACTIONABLE_STATUSES = [...FINDING_ACTIONABLE];
 export const FILING_ACTIONABLE_STATUSES = Object.keys(FILING_ACTIONABLE);
 export const DOCUMENT_ACTIONABLE_STATUSES = Object.keys(DOCUMENT_ACTIONABLE);
 export const EXCEPTION_ACTIONABLE_STATUSES = openStatusVariants();
 
-export function decisionPriority(status: string): WorkPriority | null {
-  return DECISION_ACTIONABLE[status] ?? null;
+export function decisionPriority(status: string, proposedDescription?: string | null): WorkPriority | null {
+  const triage = triageDecision({ status, proposedDescription });
+  if (triage === "verified") return null;
+  return triage === "blocked" ? "critical" : "high";
 }
 
 export function exceptionPriority(severity: string): WorkPriority {

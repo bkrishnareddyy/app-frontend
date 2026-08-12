@@ -30,6 +30,7 @@ export type ActionItem =
       agentName: string;
       decisionSummary: string | null;
       status: string;
+      proposedDescription: string | null;
       createdAt: string | Date;
       documentId: string | null;
       documentName: string | null;
@@ -146,6 +147,7 @@ export function buildShipmentActionGroups(
         agentName: dec.agentName ?? "Agent",
         decisionSummary: dec.decisionSummary ?? null,
         status: dec.status,
+        proposedDescription: (dec as unknown as { proposedDescription?: string | null }).proposedDescription ?? null,
         createdAt: dec.createdAt,
         documentId: group.documentId ?? dec.documentId ?? null,
         documentName: group.documentName,
@@ -248,7 +250,7 @@ export function buildShipmentActionGroups(
 
     const priorities = items.map((item) =>
       item.kind === "decision"
-        ? (decisionPriority(item.status) ?? "normal")
+        ? (decisionPriority(item.status, item.proposedDescription) ?? "normal")
         : exceptionPriority(item.severity)
     );
 
@@ -256,8 +258,8 @@ export function buildShipmentActionGroups(
     const exceptionCount = items.filter((i) => i.kind === "exception").length;
 
     items.sort((a, b) => {
-      const pa = a.kind === "decision" ? (decisionPriority(a.status) ?? "normal") : exceptionPriority(a.severity);
-      const pb = b.kind === "decision" ? (decisionPriority(b.status) ?? "normal") : exceptionPriority(b.severity);
+      const pa = a.kind === "decision" ? (decisionPriority(a.status, a.proposedDescription) ?? "normal") : exceptionPriority(a.severity);
+      const pb = b.kind === "decision" ? (decisionPriority(b.status, b.proposedDescription) ?? "normal") : exceptionPriority(b.severity);
       const rankDiff = PRIORITY_RANK[pa] - PRIORITY_RANK[pb];
       if (rankDiff !== 0) return rankDiff;
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
