@@ -487,12 +487,12 @@ export function CommandCenterClient({
           <table className="w-full text-left text-xs text-ink">
             <thead className="bg-surface-muted border-b border-border text-[11px] font-semibold text-ink-muted uppercase tracking-wider">
               <tr>
-                <th className="py-3 px-4">{t.dashboard.colShipment}</th>
-                <th className="py-3 px-4">{t.dashboard.colExporter}</th>
-                <th className="py-3 px-4">AI Review</th>
-                <th className="py-3 px-4">{t.dashboard.colValue}</th>
-                <th className="py-3 px-4">{t.dashboard.colStatus}</th>
+                <th className="py-3 px-4">Shipment</th>
                 <th className="py-3 px-4">Client</th>
+                <th className="py-3 px-4">Broker</th>
+                <th className="py-3 px-4">AI Review</th>
+                <th className="py-3 px-4">Readiness</th>
+                <th className="py-3 px-4">ETA / Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -503,70 +503,111 @@ export function CommandCenterClient({
                   </td>
                 </tr>
               ) : (
-                filteredShipments.slice(0, 6).map((shp) => (
-                  <tr key={shp.id} className="hover:bg-surface-muted/50 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-brand">
-                      <Link href={`/app/shipments/${shp.id}`} className="hover:underline">
-                        {shp.referenceNumber || shp.shipmentNumber || shp.id.slice(0, 10)}
-                      </Link>
-                    </td>
-                    <td className="py-3 px-4 text-ink-muted">
-                      {shp.exporterName || "Shenzhen Hardware Corp"}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Link
-                        href={`/app/actions?shipmentId=${shp.id}`}
-                        className="flex flex-wrap items-center gap-1.5 font-semibold text-[11px] whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer group/air"
-                        title="View AI Actions & Review Items for this shipment"
-                      >
-                        <span
-                          className={`px-2 py-0.5 rounded-md transition-shadow group-hover/air:shadow-2xs ${
-                            (shp.aiReview?.blocked ?? 0) > 0
-                              ? "bg-red-50 text-red-700 border border-red-200 font-bold"
-                              : "bg-surface-muted text-ink-muted border border-border/50"
-                          }`}
+                filteredShipments.slice(0, 6).map((shp) => {
+                  const brokerName = shp.assignedBroker
+                    ? `${shp.assignedBroker.firstName ?? ""} ${shp.assignedBroker.lastName ?? ""}`.trim() || "—"
+                    : null;
+                  const eta = shp.estimatedArrival
+                    ? new Date(shp.estimatedArrival).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                    : null;
+                  const readiness = shp.readinessScore ?? 0;
+                  const readinessColor =
+                    readiness >= 85 ? "bg-emerald-500" : readiness >= 50 ? "bg-amber-400" : "bg-red-400";
+                  const statusColor =
+                    shp.status === "Ready to File"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : shp.status === "On Hold"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : shp.status === "Submitted"
+                      ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                      : shp.status === "Completed"
+                      ? "bg-slate-100 text-slate-600 border-slate-200"
+                      : "bg-blue-50 text-blue-700 border-blue-200";
+
+                  return (
+                    <tr key={shp.id} className="hover:bg-surface-muted/50 transition-colors">
+                      {/* Shipment: SHP number + importer */}
+                      <td className="py-3 px-4">
+                        <Link href={`/app/shipments/${shp.id}`} className="font-mono font-bold text-brand hover:underline block">
+                          {shp.shipmentNumber || shp.id.slice(0, 10)}
+                        </Link>
+                        {shp.exporterName && (
+                          <span className="text-[10px] text-ink-muted block truncate max-w-[160px]" title={shp.exporterName}>
+                            {shp.exporterName}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Client */}
+                      <td className="py-3 px-4">
+                        {shp.client ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand/10 text-brand">
+                            {shp.client.name}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-ink-muted">—</span>
+                        )}
+                      </td>
+
+                      {/* Broker — who owns this shipment */}
+                      <td className="py-3 px-4">
+                        {brokerName ? (
+                          <span className="font-semibold text-ink">{brokerName}</span>
+                        ) : (
+                          <span className="text-[11px] text-red-500 font-semibold">Unassigned</span>
+                        )}
+                      </td>
+
+                      {/* AI Review */}
+                      <td className="py-3 px-4">
+                        <Link
+                          href={`/app/actions?shipmentId=${shp.id}`}
+                          className="flex flex-wrap items-center gap-1.5 font-semibold text-[11px] whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer group/air"
+                          title="View AI Actions & Review Items for this shipment"
                         >
-                          {shp.aiReview?.blocked ?? 0} blocked
+                          {(shp.aiReview?.blocked ?? 0) > 0 && (
+                            <span className="px-2 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 font-bold">
+                              {shp.aiReview!.blocked} blocked
+                            </span>
+                          )}
+                          {(shp.aiReview?.needsReview ?? 0) > 0 && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                              {shp.aiReview!.needsReview} review
+                            </span>
+                          )}
+                          {(shp.aiReview?.blocked ?? 0) === 0 && (shp.aiReview?.needsReview ?? 0) === 0 && (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {shp.aiReview?.verified ?? 0} verified
+                            </span>
+                          )}
+                        </Link>
+                      </td>
+
+                      {/* Readiness score bar */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-surface-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${readinessColor}`}
+                              style={{ width: `${readiness}%` }}
+                            />
+                          </div>
+                          <span className="font-semibold text-ink tabular-nums">{readiness}%</span>
+                        </div>
+                      </td>
+
+                      {/* ETA + status badge */}
+                      <td className="py-3 px-4">
+                        {eta && (
+                          <span className="block text-[11px] text-ink-muted mb-1">{eta}</span>
+                        )}
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${statusColor}`}>
+                          {shp.status || "In Progress"}
                         </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-md transition-shadow group-hover/air:shadow-2xs ${
-                            (shp.aiReview?.needsReview ?? 0) > 0
-                              ? "bg-amber-50 text-amber-700 border border-amber-200 font-bold"
-                              : "bg-surface-muted text-ink-muted border border-border/50"
-                          }`}
-                        >
-                          {shp.aiReview?.needsReview ?? 0} needs review
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-md transition-shadow group-hover/air:shadow-2xs ${
-                            (shp.aiReview?.verified ?? 0) > 0
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold"
-                              : "bg-surface-muted text-ink-muted border border-border/50"
-                          }`}
-                        >
-                          {shp.aiReview?.verified ?? 0} verified
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="py-3 px-4 font-semibold">
-                      {shipmentValue(shp)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {shp.status || "In Progress"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {shp.client ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand/10 text-brand">
-                          {shp.client.name}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-ink-muted">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
