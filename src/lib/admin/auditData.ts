@@ -20,7 +20,7 @@ export async function getSettingsAuditData(ctx: AccountContext): Promise<Setting
     where: { accountId: ctx.accountId },
     include: { user: true },
     orderBy: { createdAt: "desc" },
-    take: 25,
+    take: 500,
   });
 
   return {

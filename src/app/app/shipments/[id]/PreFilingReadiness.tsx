@@ -33,17 +33,6 @@ export interface CategoryDetail {
   evidence?: ComplianceEvidence;
 }
 
-interface RibbonMetrics {
-  filingReadinessScore: number;
-  completenessScore: number;
-  complianceRiskScore: number;
-  complianceRiskBand: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  classificationConfidenceScore: number;
-  classificationVerified: boolean;
-  blockerCount: number;
-  warningCount: number;
-}
-
 interface PreFilingReadinessProps {
   categories: CategoryDetail[];
   overallStatus: {
@@ -51,10 +40,9 @@ interface PreFilingReadinessProps {
     subtext: string;
     type: "BLOCKED" | "REVIEW_REQUIRED" | "INFO_REQUIRED" | "WARNINGS" | "READY";
   };
-  metrics?: RibbonMetrics;
 }
 
-export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFilingReadinessProps) {
+export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadinessProps) {
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [visibleEvidenceId, setVisibleEvidenceId] = useState<string | null>(null);
@@ -150,65 +138,6 @@ export function PreFilingReadiness({ categories, overallStatus, metrics }: PreFi
             {isTableExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
         </div>
-
-        {/* Metric Pills */}
-        {metrics && (
-          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-current/20" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
-              <span className="text-[9px] font-extrabold uppercase text-ink-muted">Filing Readiness</span>
-              <span className="text-xs font-black text-ink">{metrics.filingReadinessScore}%</span>
-              <span className="text-[10px] font-bold text-ink-muted">
-                {metrics.blockerCount > 0 ? `${metrics.blockerCount} Blockers` : "No Blockers"}
-              </span>
-            </div>
-
-            <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
-              <span className="text-[9px] font-extrabold uppercase text-ink-muted">Data Completeness</span>
-              <span className="text-xs font-black text-ink">{metrics.completenessScore}%</span>
-              <span className="text-[10px] font-bold text-ink-muted">Customs Fields</span>
-            </div>
-
-            <a
-              href="#exceptions-panel"
-              className="bg-white/80 hover:bg-white rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5 transition-colors"
-            >
-              <span className="text-[9px] font-extrabold uppercase text-ink-muted">Compliance Risk</span>
-              <span className="text-xs font-black text-ink">{metrics.complianceRiskScore}</span>
-              <span
-                className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${
-                  metrics.complianceRiskBand === "LOW"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-amber-100 text-amber-700"
-                }`}
-              >
-                {metrics.complianceRiskBand}
-              </span>
-              <span className="text-[10px] font-bold text-brand hover:underline">
-                {metrics.blockerCount > 0
-                  ? `${metrics.blockerCount} blockers`
-                  : metrics.warningCount > 0
-                  ? `${metrics.warningCount} warnings`
-                  : "No issues"}{" "}
-                — view →
-              </span>
-            </a>
-
-            <div className="bg-white/80 rounded-xl px-3 py-1.5 flex items-baseline space-x-1.5">
-              <span className="text-[9px] font-extrabold uppercase text-ink-muted">HTS Confidence</span>
-              {metrics.classificationVerified ? (
-                <>
-                  <span className="text-xs font-black text-ink">{metrics.classificationConfidenceScore}%</span>
-                  <span className="text-[10px] font-bold text-ink-muted">Model Score</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-xs font-black text-slate-500">Unverified</span>
-                  <span className="text-[10px] font-bold text-ink-muted">No document attached</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Categories Table */}

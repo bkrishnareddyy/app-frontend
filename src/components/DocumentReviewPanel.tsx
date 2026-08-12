@@ -338,6 +338,14 @@ export interface ReviewDecision {
   evidenceItems?: unknown;
 }
 
+export interface DocumentHtsScore {
+  // null when this document's HTS-bearing lines haven't been matched to a
+  // classified persisted line item yet (classifiedCount will be 0).
+  averageConfidence: number | null;
+  classifiedCount: number;
+  totalCount: number;
+}
+
 export interface DocumentReviewPanelProps {
   documentId: string;
   fileName: string;
@@ -347,6 +355,11 @@ export interface DocumentReviewPanelProps {
   shipmentNumber?: string | null;
   fileUrl?: string | null;
   proxyUrl?: string;
+  // Present only when this document's extraction produced HTS-bearing line
+  // items -- a Bill of Lading or Packing List has none, so the badge next to
+  // the tab bar is omitted rather than showing a score for codes that were
+  // never expected on this document.
+  htsScore?: DocumentHtsScore;
   // Agent checks that ran on this document. When provided, the panel opens
   // to a "Field Review" tab that presents each check as a plain field/value
   // row instead of the raw document -- brokers care about the resulting
@@ -381,6 +394,7 @@ export function DocumentReviewPanel({
   docType = null,
   shipmentNumber = null,
   proxyUrl,
+  htsScore,
   decisions = [],
   notesByDecision = {},
   onNotesChange,
@@ -830,15 +844,40 @@ export function DocumentReviewPanel({
           </button>
         </div>
 
-        {activeTab === "JSON" && (
-          <button
-            onClick={handleCopy}
-            className="px-2.5 py-1 rounded-lg bg-white border border-border hover:bg-surface-muted text-ink font-bold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-brand" />}
-            <span>{copied ? "Copied!" : "Copy JSON"}</span>
-          </button>
-        )}
+        <div className="flex items-center space-x-2 shrink-0">
+          {htsScore && (
+            <span
+              title={
+                htsScore.classifiedCount < htsScore.totalCount
+                  ? `${htsScore.classifiedCount} of ${htsScore.totalCount} HTS-bearing line items matched to a classified record`
+                  : `Average classification confidence across ${htsScore.totalCount} HTS-bearing line item${htsScore.totalCount === 1 ? "" : "s"}`
+              }
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs flex items-center space-x-1.5 border ${
+                htsScore.averageConfidence === null
+                  ? "bg-amber-50 border-amber-200 text-amber-700"
+                  : htsScore.averageConfidence >= 90
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : htsScore.averageConfidence >= 80
+                  ? "bg-amber-50 border-amber-200 text-amber-700"
+                  : "bg-red-50 border-red-200 text-red-700"
+              }`}
+            >
+              <span className="uppercase tracking-wide text-[10px] opacity-80">HS Score</span>
+              <span>
+                {htsScore.averageConfidence === null ? "Not Classified" : `${htsScore.averageConfidence}%`}
+              </span>
+            </span>
+          )}
+          {activeTab === "JSON" && (
+            <button
+              onClick={handleCopy}
+              className="px-2.5 py-1 rounded-lg bg-white border border-border hover:bg-surface-muted text-ink font-bold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-brand" />}
+              <span>{copied ? "Copied!" : "Copy JSON"}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content Box */}

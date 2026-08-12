@@ -152,6 +152,16 @@ export default async function ShipmentWorkspacePage(props: {
     updatedAt: item.updatedAt,
   }));
 
+  // Real, un-defaulted classification confidence per line -- displayLineItems
+  // above already substitutes 95 for a null htsConfidence (classification
+  // hasn't run yet), so a per-document HS score needs this raw map instead
+  // to tell "actually 95% confident" apart from "never classified."
+  const rawHtsConfidenceByLine = new Map(
+    (fullShipment.lineItems || []).map(
+      (item) => [item.lineNumber, { description: item.description, htsConfidence: item.htsConfidence }] as const
+    )
+  );
+
   const totalInvoiceAmount = displayLineItems.reduce(
     (acc: number, item) => acc + Number(item.quantity) * Number(item.unitPrice),
     0
@@ -1001,25 +1011,13 @@ export default async function ShipmentWorkspacePage(props: {
         </div>
 
         {/* Pre-Filing Readiness Ribbon -- moved directly under the shipment
-            name so status (at risk / ready) is the first thing visible;
-            the 4 metrics that used to be a separate card grid are now
-            pills embedded in the ribbon itself. */}
+            name so status (at risk / ready) is the first thing visible. */}
         <PreFilingReadiness
           categories={readinessCategories}
           overallStatus={{
             text: overallStatusText,
             subtext: overallStatusSubtext,
             type: overallStatusType,
-          }}
-          metrics={{
-            filingReadinessScore: metrics.filingReadinessScore,
-            completenessScore: metrics.completenessScore,
-            complianceRiskScore: metrics.complianceRiskScore,
-            complianceRiskBand: metrics.complianceRiskBand,
-            classificationConfidenceScore: metrics.classificationConfidenceScore,
-            classificationVerified: metrics.classificationVerified,
-            blockerCount: displayBlockerCount,
-            warningCount: metrics.warningCount,
           }}
         />
 
@@ -1239,6 +1237,11 @@ export default async function ShipmentWorkspacePage(props: {
                     : primaryDoc.fileUrl || "#";
 
                   let docLineItems: ShipmentLineItemRow[] = [];
+                  // Set only when this document's extraction actually produced
+                  // HTS-bearing line items (a Bill of Lading or Packing List
+                  // won't) -- null averageConfidence means those lines exist
+                  // but haven't been matched to a classified persisted line yet.
+                  let docHtsScore: { averageConfidence: number | null; classifiedCount: number; totalCount: number } | null = null;
                   if (primaryDoc.extractedJson) {
                     try {
                       const parsed = JSON.parse(primaryDoc.extractedJson);
@@ -1287,6 +1290,25 @@ export default async function ShipmentWorkspacePage(props: {
                             htsConfidence: 95,
                           };
                         });
+
+                        const classifiableLines = docLineItems.filter((li) => li.htsCode);
+                        if (classifiableLines.length > 0) {
+                          const realConfidences = classifiableLines
+                            .map((li) => {
+                              const raw = rawHtsConfidenceByLine.get(li.lineNumber);
+                              return raw && sameLine(raw.description, li.description) ? raw.htsConfidence : null;
+                            })
+                            .filter((c): c is number => typeof c === "number");
+
+                          docHtsScore = {
+                            averageConfidence:
+                              realConfidences.length > 0
+                                ? Math.round(realConfidences.reduce((a, b) => a + b, 0) / realConfidences.length)
+                                : null,
+                            classifiedCount: realConfidences.length,
+                            totalCount: classifiableLines.length,
+                          };
+                        }
                       }
                     } catch {}
                   }
@@ -1324,6 +1346,7 @@ export default async function ShipmentWorkspacePage(props: {
                             fileUrl={primaryDoc.fileUrl}
                             proxyUrl={proxyUrl}
                             shipmentNumber={shipment.shipmentNumber}
+                            htsScore={docHtsScore ?? undefined}
                           />
                         </div>
 
