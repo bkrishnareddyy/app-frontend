@@ -40,7 +40,10 @@ const EDITABLE_TRADE_METADATA_FIELDS = new Set([
 
 const documentInclude = {
   extractionFields: true,
-  shipment: { include: { lineItems: true } },
+  // filingDeadline is in the Prisma schema but not yet applied to the live
+  // DB (migration pending) -- must stay omitted here or every load of this
+  // route 500s with "column Shipment.filingDeadline does not exist".
+  shipment: { include: { lineItems: true }, omit: { filingDeadline: true } },
 } as const;
 
 type DocumentWithRelations = NonNullable<

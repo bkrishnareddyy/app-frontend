@@ -20,7 +20,9 @@ export class DrawbackService {
   static async matchInventory(accountId: string, input: InventoryAllocationMatchInput) {
     const importItems = await db.shipmentLineItem.findMany({
       where: { accountId },
-      include: { shipment: true },
+      // filingDeadline is in the Prisma schema but not yet applied to the
+      // live DB (migration pending) -- must stay omitted or this 500s.
+      include: { shipment: { omit: { filingDeadline: true } } },
       orderBy: { createdAt: input.matchStrategy === "LIFO" ? "desc" : "asc" },
     });
 

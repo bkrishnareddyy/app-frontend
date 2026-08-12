@@ -147,6 +147,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   if (input.masterShipmentId) {
     const master = await db.shipment.findFirst({
       where: { id: input.masterShipmentId, accountId: ctx.accountId },
+      select: { id: true },
     });
     if (!master) {
       return NextResponse.json({ error: "Invalid masterShipmentId: Master shipment not found in this account" }, { status: 400 });

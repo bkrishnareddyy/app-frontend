@@ -30,7 +30,12 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
 
   try {
     const [shipment, document] = await Promise.all([
-      db.shipment.findFirst({ where: { id: shipmentId, accountId: ctx.accountId } }),
+      // filingDeadline is in the Prisma schema but not yet applied to the
+      // live DB (migration pending) -- must stay omitted or this 500s.
+      db.shipment.findFirst({
+        where: { id: shipmentId, accountId: ctx.accountId },
+        omit: { filingDeadline: true },
+      }),
       db.shipmentDocument.findFirst({ where: { id: documentId, accountId: ctx.accountId } }),
     ]);
 

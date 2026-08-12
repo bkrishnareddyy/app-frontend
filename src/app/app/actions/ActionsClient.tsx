@@ -8,6 +8,7 @@ import { useDecisionActions } from "@/lib/decisions/useDecisionActions";
 import { ExceptionQuickActions } from "./ExceptionQuickActions";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { Modal, ModalHeader, ModalBody } from "@/components/ui/Modal";
+import { documentViewUrl } from "@/lib/documentUrl";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor } from "@/modules/decisions/editableFields";
 import { triageDecision, type TriageCategory } from "@/modules/decisions/decisionState";
 import type { ShipmentActionGroup, ActionItem } from "@/modules/actions/shipmentActions";
@@ -530,6 +531,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                 documentId={docModal.documentId}
                 fileName={docModal.fileName}
                 fileUrl={docModal.fileUrl}
+                proxyUrl={documentViewUrl(docModal.documentId)}
                 decisions={modalDecisions}
                 onReviewAction={async (decisionId, action) => {
                   await handleDecisionAction(decisionId, action);

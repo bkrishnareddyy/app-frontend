@@ -172,7 +172,9 @@ export class ExceptionService {
         version: { increment: 1 },
       },
       include: {
-        shipment: true,
+        // filingDeadline is in the Prisma schema but not yet applied to the
+        // live DB (migration pending) -- must stay omitted or this 500s.
+        shipment: { omit: { filingDeadline: true } },
         filing: true,
         assignedToUser: true,
       },

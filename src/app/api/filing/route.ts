@@ -301,6 +301,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const shipment = await db.shipment.findFirst({
     where: { id: shipmentId, accountId: ctx.accountId },
     include: { lineItems: true, documents: true },
+    // filingDeadline is in the Prisma schema but not yet applied to the live
+    // DB (migration pending) -- must stay omitted or this 500s.
+    omit: { filingDeadline: true },
   });
 
   if (!shipment) {
@@ -366,7 +369,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       dutyBreakdown,
     },
     include: {
-      shipment: true,
+      // filingDeadline is in the Prisma schema but not yet applied to the
+      // live DB (migration pending) -- must stay omitted or this 500s.
+      shipment: { omit: { filingDeadline: true } },
       responses: true,
     },
   });
