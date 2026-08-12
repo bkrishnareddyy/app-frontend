@@ -83,15 +83,16 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const shipments = await db.shipment.findMany({
     ...listArgs,
+    omit: { filingDeadline: true },
     include: {
       documents: true,
       lineItems: true,
-      agentDecisions: true,
+      agentDecisions: { omit: { triageState: true, blockedReason: true, autoApprovalPolicy: true } },
       customsFilings: true,
       assignedBroker: true,
       masterShipment: true,
       houseShipments: true,
-      exceptionItems: true,
+      exceptionItems: { omit: { resolutionReasonCode: true } },
       client: true,
     },
   });

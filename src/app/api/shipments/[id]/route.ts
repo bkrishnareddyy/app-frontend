@@ -47,6 +47,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
+    omit: { filingDeadline: true },
   });
 
   if (!shipment) {

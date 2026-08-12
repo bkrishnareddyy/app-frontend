@@ -64,8 +64,9 @@ export class ExceptionService {
 
     const exceptions = await db.exceptionItem.findMany({
       where,
+      omit: { resolutionReasonCode: true },
       include: {
-        shipment: true,
+        shipment: { omit: { filingDeadline: true } },
         filing: true,
         assignedToUser: true,
       },
@@ -91,6 +92,7 @@ export class ExceptionService {
   ) {
     const existing = await db.exceptionItem.findFirst({
       where: { id: exceptionId, accountId },
+      omit: { resolutionReasonCode: true },
     });
 
     if (!existing) {
@@ -200,6 +202,7 @@ export class ExceptionService {
 
       const existingOpen = await db.exceptionItem.findFirst({
         where: { documentId: input.documentId, fieldKey, status: { not: "Resolved" } },
+        omit: { resolutionReasonCode: true },
       });
 
       if (!value) {
@@ -249,6 +252,7 @@ export class ExceptionService {
   ) {
     const existingOpen = await db.exceptionItem.findFirst({
       where: { documentId, fieldKey, status: { not: "Resolved" } },
+      omit: { resolutionReasonCode: true },
     });
     if (!existingOpen) return null;
 

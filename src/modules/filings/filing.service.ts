@@ -72,6 +72,7 @@ export class FilingService {
     // Validate shipment belongs to account
     const shipment = await db.shipment.findFirst({
       where: { id: input.shipmentId, accountId, deletedAt: null },
+      omit: { filingDeadline: true },
       include: { lineItems: true },
     });
 

@@ -188,41 +188,69 @@ export function Sidebar({
                   {labels[section.labelKey] ?? section.labelKey}
                 </p>
               )}
-              <nav className="space-y-1">
-                {section.items.map((item) => {
-                  const isActive = activeHref === item.href;
-                  const Icon = ICONS[item.icon];
-                  const label = labels[item.labelKey] ?? item.labelKey;
-                  const isPlatform = section.id === "platform";
-                  return (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      onClick={() => setMobileOpen(false)}
-                      aria-current={isActive ? "page" : undefined}
-                      title={collapsed ? label : undefined}
-                      className={cn(
-                        "flex items-center px-3 py-2 rounded-xl text-sm font-medium transition-all",
-                        collapsed ? "justify-center" : "space-x-3",
-                        isActive && isPlatform &&
-                          "bg-amber-500/10 text-amber-700 shadow-sm border border-amber-500/20 font-semibold",
-                        isActive && !isPlatform &&
-                          "bg-white text-brand shadow-sm border border-border font-semibold",
-                        !isActive && isPlatform && "text-amber-800 hover:text-amber-900 hover:bg-amber-50/50",
-                        !isActive && !isPlatform && "text-ink hover:text-brand hover:bg-white/60"
-                      )}
-                    >
-                      <Icon
+
+              {section.renderAs === "pills" && !collapsed ? (
+                <div className="flex gap-1.5">
+                  {section.items.map((item) => {
+                    const isActive = activeHref === item.href;
+                    const Icon = ICONS[item.icon];
+                    const label = labels[item.labelKey] ?? item.labelKey;
+                    return (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        onClick={() => setMobileOpen(false)}
+                        aria-current={isActive ? "page" : undefined}
                         className={cn(
-                          "w-4 h-4 shrink-0",
-                          isPlatform ? "text-amber-600" : isActive ? "text-brand" : "text-ink-muted"
+                          "flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all border min-w-0",
+                          isActive
+                            ? "bg-white text-brand border-border shadow-sm font-semibold"
+                            : "bg-white/40 text-ink border-border/40 hover:bg-white hover:text-brand hover:border-border"
                         )}
-                      />
-                      {!collapsed && <span className="truncate">{label}</span>}
-                    </Link>
-                  );
-                })}
-              </nav>
+                      >
+                        <Icon className={cn("w-3 h-3 shrink-0", isActive ? "text-brand" : "text-ink-muted")} />
+                        <span className="truncate">{label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <nav className={cn("space-y-1", section.renderAs === "pills" && collapsed && "space-y-1")}>
+                  {section.items.map((item) => {
+                    const isActive = activeHref === item.href;
+                    const Icon = ICONS[item.icon];
+                    const label = labels[item.labelKey] ?? item.labelKey;
+                    const isPlatform = section.id === "platform";
+                    return (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        onClick={() => setMobileOpen(false)}
+                        aria-current={isActive ? "page" : undefined}
+                        title={collapsed ? label : undefined}
+                        className={cn(
+                          "flex items-center px-3 py-2 rounded-xl text-sm font-medium transition-all",
+                          collapsed ? "justify-center" : "space-x-3",
+                          isActive && isPlatform &&
+                            "bg-amber-500/10 text-amber-700 shadow-sm border border-amber-500/20 font-semibold",
+                          isActive && !isPlatform &&
+                            "bg-white text-brand shadow-sm border border-border font-semibold",
+                          !isActive && isPlatform && "text-amber-800 hover:text-amber-900 hover:bg-amber-50/50",
+                          !isActive && !isPlatform && "text-ink hover:text-brand hover:bg-white/60"
+                        )}
+                      >
+                        <Icon
+                          className={cn(
+                            "w-4 h-4 shrink-0",
+                            isPlatform ? "text-amber-600" : isActive ? "text-brand" : "text-ink-muted"
+                          )}
+                        />
+                        {!collapsed && <span className="truncate">{label}</span>}
+                      </Link>
+                    );
+                  })}
+                </nav>
+              )}
             </div>
           ))}
         </div>

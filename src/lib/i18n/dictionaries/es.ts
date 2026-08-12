@@ -21,6 +21,8 @@ export const es: TranslationKeys = {
     rolesPermissions: "Roles y Permisos",
     settingsAudit: "Configuración y Auditoría",
     documentEmail: "Correo de Documentos",
+    toolingAndDocs: "Herramientas y Docs",
+    tradeDocs: "Docs Comerciales",
     mainOperations: "Operaciones Principales",
     accountAdmin: "Administración de Cuenta",
     platformAdmin: "Administración de Plataforma",

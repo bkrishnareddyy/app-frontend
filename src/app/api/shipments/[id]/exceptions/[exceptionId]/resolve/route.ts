@@ -19,6 +19,7 @@ export const POST = withAuthenticatedRoute<{ id: string; exceptionId: string }>(
   try {
     const exception = await db.exceptionItem.findFirst({
       where: { id: exceptionId, shipmentId: id },
+      omit: { resolutionReasonCode: true },
     });
 
     if (!exception) {

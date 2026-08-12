@@ -15,6 +15,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       where: { id: filingId, accountId: ctx.accountId },
       include: {
         shipment: {
+          omit: { filingDeadline: true },
           include: { documents: true, lineItems: true },
         },
       },
@@ -24,6 +25,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       where: { accountId: ctx.accountId },
       include: {
         shipment: {
+          omit: { filingDeadline: true },
           include: { documents: true, lineItems: true },
         },
       },

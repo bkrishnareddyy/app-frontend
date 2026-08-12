@@ -52,7 +52,7 @@ export default async function CustomsFilingPage(props: {
       ...(filingId ? { id: filingId } : shipmentId ? { shipmentId } : {}),
     },
     include: {
-      shipment: { include: { documents: true } },
+      shipment: { omit: { filingDeadline: true }, include: { documents: true } },
       responses: { orderBy: { receivedAt: "desc" } },
     },
     orderBy: { createdAt: "desc" },
