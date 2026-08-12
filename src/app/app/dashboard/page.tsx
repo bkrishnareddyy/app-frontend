@@ -186,6 +186,7 @@ export default async function CommandCenterPage() {
       missingDocTypes: docCheck.missingTypes,
       receivedDocCount: docCheck.receivedCount,
       totalRequiredDocs: docCheck.totalRequired,
+      openExceptions: activeExceptions.length,
       aiReview: {
         blocked: blockedCount,
         needsReview: needsReviewCount,
