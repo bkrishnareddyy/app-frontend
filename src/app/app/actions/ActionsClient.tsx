@@ -59,6 +59,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   const [docModal, setDocModal] = useState<{ documentId: string; fileName: string; fileUrl: string | null } | null>(null);
   const [notesByDecision, setNotesByDecision] = useState<Record<string, string>>({});
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [bulkApproveLoading, setBulkApproveLoading] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -163,6 +164,34 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
             : "Re-evaluation requested."
       );
       router.refresh();
+    }
+  };
+
+  const handleBulkApprove = async (decisionIds: string[]) => {
+    setBulkApproveLoading(true);
+    try {
+      const res = await fetch("/api/decisions/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisionIds, action: "APPROVE", humanNotes: "Sweep approved" }),
+      });
+      const data = await res.json() as { succeeded?: number; failed?: number };
+      if (res.ok) {
+        setLocalGroups((prev) =>
+          prev.map((g) => ({
+            ...g,
+            items: g.items.map((item) =>
+              item.kind === "decision" && decisionIds.includes(item.id)
+                ? { ...item, status: "APPROVED" }
+                : item
+            ),
+          }))
+        );
+        setActionSuccess(`${data.succeeded ?? decisionIds.length} decision${(data.succeeded ?? decisionIds.length) !== 1 ? "s" : ""} approved & signed into audit log.`);
+        router.refresh();
+      }
+    } finally {
+      setBulkApproveLoading(false);
     }
   };
 
@@ -413,7 +442,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                   return (
                     <div key={cat} className="space-y-2">
                       <div className="flex items-center gap-2 px-1">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                        <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${
                           cat === "blocked" ? "text-red-600" : cat === "review" ? "text-amber-600" : "text-emerald-600"
                         }`}>
                           {cat === "blocked" ? "Blocked" : cat === "review" ? "Needs Review" : "Verified"}
@@ -424,6 +453,21 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                         <span className={`text-[10px] font-semibold shrink-0 ${
                           cat === "blocked" ? "text-red-400" : cat === "review" ? "text-amber-400" : "text-emerald-400"
                         }`}>{catItems.length}</span>
+                        {cat === "review" && canWrite && (() => {
+                          const reviewDecisionIds = catItems
+                            .filter((i): i is Extract<ActionItem, { kind: "decision" }> => i.kind === "decision")
+                            .map((i) => i.id);
+                          if (reviewDecisionIds.length < 2) return null;
+                          return (
+                            <button
+                              onClick={() => handleBulkApprove(reviewDecisionIds)}
+                              disabled={bulkApproveLoading}
+                              className="shrink-0 px-2.5 py-1 rounded-lg bg-ink text-white text-[10px] font-bold disabled:opacity-40 hover:bg-ink/80 transition-colors whitespace-nowrap"
+                            >
+                              {bulkApproveLoading ? "Approving…" : `Approve All (${reviewDecisionIds.length})`}
+                            </button>
+                          );
+                        })()}
                       </div>
                       {catItems.map((item) =>
                         item.kind === "decision" ? (
