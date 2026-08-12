@@ -76,6 +76,7 @@ model Account {
   inboundEmails              InboundEmail[]
   documentShipmentCandidates DocumentShipmentCandidate[]
   notifications              Notification[]
+  aiUsageWindows             AiUsageWindow[]
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -3335,4 +3336,48 @@ model PartyRevalidationFlag {
 
   @@index([partyId, status])
   @@index([accountId, status, flag])
+}
+
+/// Counted AI consumption, one row per (account, user, surface, window).
+///
+/// Two jobs in one table. `windowKind = "minute"` rows count requests, and are
+/// what a shared rate limit reads; `windowKind = "day"` rows accumulate tokens,
+/// and are what a spend ceiling reads. Both are incremented by a single atomic
+/// statement, which is the reason this lives in Postgres rather than in each
+/// server instance's memory — a per-instance counter is only ever a hint.
+///
+/// `userId` carries the literal "*" on the row that aggregates a whole account,
+/// rather than NULL. That is not cosmetic: Postgres treats NULLs as distinct in
+/// a unique index, so a nullable column here would make ON CONFLICT never fire
+/// for the account row and quietly insert a new one per request. It is a plain
+/// column rather than a relation because a window survives the user record being
+/// removed; the account relation cascades, because usage of a deleted account is
+/// not worth keeping.
+model AiUsageWindow {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// A user id, or "*" for the account-wide row. Never null — see above.
+  userId String
+
+  /// Which AI capability spent this: "copilot", "hts-classification", …
+  surface String
+
+  /// "minute" for request counts, "day" for token totals.
+  windowKind String
+
+  /// Start of the window, truncated to windowKind. Fixed windows, not sliding.
+  windowStart DateTime
+
+  requests     Int    @default(0)
+  inputTokens  BigInt @default(0)
+  outputTokens BigInt @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, userId, surface, windowKind, windowStart])
+  @@index([windowStart])
+  @@index([accountId, surface, windowKind, windowStart])
 }

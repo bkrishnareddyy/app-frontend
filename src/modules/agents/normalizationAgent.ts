@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { AgentState } from "./agentState";
 import { DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
@@ -454,6 +455,13 @@ ${JSON.stringify(docData, null, 2)}`;
             temperature: 0.1,
           },
         });
+
+        // Accounting only — see meterGeminiCall. Never refuses and never throws.
+        await meterGeminiCall(
+          "normalization",
+          { accountId: input.accountId, userId: input.userId },
+          response
+        );
 
         const parsed = JSON.parse(response.text || "{}");
         if (parsed.parties && parsed.products) {

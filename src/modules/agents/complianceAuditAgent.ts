@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { logAgentError } from "./agentLogger";
 import { screenValue } from "@/lib/screening/embargoMatch";
 import { Prisma } from "@prisma/client";
@@ -409,6 +410,13 @@ export class ComplianceAuditAgent {
             temperature: 0.1,
           },
         });
+
+        // Accounting only — see meterGeminiCall. Never refuses and never throws.
+        await meterGeminiCall(
+          "compliance-audit",
+          { accountId: input.accountId, userId: input.userId },
+          response
+        );
 
         const parsed = JSON.parse(response.text || "{}");
         if (parsed.decisionSummary && Array.isArray(parsed.flags)) {

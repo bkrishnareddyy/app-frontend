@@ -89,6 +89,128 @@ See [docs/party-master.md](docs/party-master.md) for the domain model,
 matching rules, change-detection signals, CSV import, and what is
 deliberately not implemented.
 
+### 9. Qubere AI Copilot
+
+A read-only conversational layer over the data the console already shows,
+opened with **Ask Qubere AI** in the header. It is not a database agent: the
+model never sees SQL, an internal API, or the page's DOM. It may call a closed
+registry of 16 named tools (`src/modules/copilot/tools/`), each with a zod input
+schema, and each reading through the same services and permission checks the
+screens use.
+
+Four properties are enforced in code rather than in the prompt, because a prompt
+is a request and this platform files customs entries:
+
+- **Tenancy.** Every tool read is scoped to the session's account inside the
+  service. An id belonging to another tenant returns `NOT_FOUND`, never
+  `NOT_AUTHORIZED` — the Copilot is not an enumeration oracle. The page context
+  the browser sends is a hint about referents only; it is re-resolved through a
+  tenant-scoped read, and dropped silently if it does not resolve.
+- **RBAC.** Tools are gated on the same nav/permission checks as the screens
+  they read, filtered out of the model's declarations and re-checked in the
+  executor before any query runs. Copilot access is never wider than console
+  access.
+- **Grounding.** Every id a tool returns is recorded in a per-turn ledger.
+  Entities, evidence and actions in the answer are validated against it —
+  unknown ids are dropped with a visible warning, model-rewritten labels are
+  replaced with the service's, and every `href` is built server-side from a
+  fixed route map, so the model cannot emit a URL.
+- **Origin safety.** The Copilot never infers a legal country of origin from a
+  manufacturer, supplier, ship-from, port or export country. With no current
+  `VERIFIED` origin claim it says there is no approved determination, whatever
+  the manufacturing country says.
+
+Retrieved business content — extracted document fields especially — is passed to
+the model inside a labelled data envelope and is never treated as instruction.
+The retrieval phase and the answering phase are separate model calls, and the
+retrieval phase's prose is discarded in code: no hidden reasoning is returned,
+streamed, or written to the audit trail. Turns are audited as
+`COPILOT_CONVERSATION_STARTED`, `COPILOT_QUERY`, `COPILOT_TOOL_EXECUTED`,
+`COPILOT_NAVIGATION_ACTION` and `COPILOT_ERROR` in the existing audit log —
+question, outcome and counts, never tool arguments or answer prose.
+
+Cost is bounded per question — at most 4 model rounds, 8 tool calls, 10 rows per
+search, 6 000 characters per tool result, 8 replayed turns, 45 seconds — and per
+caller: 15 questions a minute per user and 60 per account, answered with HTTP 429
+and a plain explanation in the panel rather than a transport error. Provider token
+counts are recorded on `copilot.answer_completed` and on the `COPILOT_QUERY` audit
+entry, so spend can be attributed to an account without a separate billing export;
+a provider that reports nothing is recorded as `null`, never as zero. The caller
+quota is enforced twice: an in-memory sliding window per instance
+(`copilotRateLimit.ts`) as a cheap fast path, then the shared Postgres counter
+described in [AI cost controls](#-ai-cost-controls) as the real ceiling.
+
+`COPILOT_ENABLED=false` switches the Copilot off on its own — the header button
+disappears and the route answers honestly if called directly — without touching
+`GEMINI_API_KEY`, which the classification and document agents share.
+
+The Copilot cannot approve a classification, determine origin, edit the Product
+or Party Master, submit a filing, or close an exception. Every workflow remains
+fully usable without it, and when no model is configured the panel says so
+rather than answering from nothing.
+
+---
+
+## 💰 AI Cost Controls
+
+Every AI capability here — the Copilot, HTS classification, document
+intelligence, product intelligence, normalization, the compliance audit and
+email intake — bills against one `GEMINI_API_KEY`. `src/lib/ai/aiQuota.ts` is the
+one counter all of them go through, backed by the `AiUsageWindow` table because
+the database is the only thing every serverless instance shares.
+
+**Metering is always on. Enforcement is opt-in.** With none of the variables below
+set, every AI call is counted and every AI call is allowed — the agents behave
+exactly as they did before, and an operator gets a spend history they did not
+have. Ceilings apply only where one is deliberately configured.
+
+| What | Where it applies | Default |
+| --- | --- | --- |
+| `AI_ACCOUNT_TOKENS_PER_DAY` | Every surface, per account, per UTC day | Unset — unlimited |
+| `AI_AGENT_USER_REQUESTS_PER_MIN` | Agent routes, per user per surface | Unset — unlimited |
+| `AI_AGENT_ACCOUNT_REQUESTS_PER_MIN` | Agent routes, per account per surface | Unset — unlimited |
+| `COPILOT_USER_REQUESTS_PER_MIN` | Copilot, per user | 15 |
+| `COPILOT_ACCOUNT_REQUESTS_PER_MIN` | Copilot, per account | 60 |
+
+A value of `0`, a negative number or anything unparseable is treated as unset
+rather than as a ceiling of zero, so a typo cannot refuse every request on the
+platform.
+
+Three properties are worth knowing before turning a ceiling on:
+
+- **Refusal happens at the route, before any work starts.** Once an agent has
+  begun writing decisions and findings against a shipment, stopping it would leave
+  the shipment half-classified — worse than the overspend. Cron routes are not
+  request-throttled for the same reason; the daily token ceiling still bounds what
+  they spend.
+- **Failure is not enforcement.** If the counter cannot be read or written — the
+  migration below not yet applied, a database blip — the call is allowed and
+  `ai.quota_unavailable` is logged once per process. A metering table must never be
+  able to stop customs classification.
+- **Windows are fixed, not sliding.** A minute window is a truncated minute, so a
+  burst of up to twice the nominal rate is possible across a boundary. That is the
+  trade for one atomic statement per increment, and for a cost guard it is the
+  right one.
+
+Counters are attributed to a real user where there is one and to `system` where
+there is not (a cron-triggered classification has no user). Old windows are swept
+by the existing `/api/cron/document-processing` tick, which reports
+`usageWindowsPruned`.
+
+`prisma/migrations/20260812200000_ai_usage_windows/migration.sql` is hand-written,
+purely additive and idempotent — one new table, three indexes and one foreign key,
+with `IF NOT EXISTS` throughout. It has been applied to the development database
+(`prisma migrate deploy`, confirmed by `prisma migrate status`). Any other
+environment needs the same step:
+
+```bash
+npx prisma migrate deploy
+```
+
+In an environment where it has not been applied — or during a database outage —
+every AI call takes the fail-open path above: unmetered, unrestricted, and logged
+as degraded.
+
 ---
 
 ## 📁 Repository Structure
@@ -117,11 +239,11 @@ deliberately not implemented.
 │   │   ├── globals.css      # Design tokens & Apple light theme
 │   │   └── page.tsx         # Landing page & auto-redirect guard
 │   ├── components/          # Reusable UI components (Sidebar, Header, AccountSwitcher,
-│   │                        #   table/BulkSelection, …)
+│   │                        #   table/BulkSelection, copilot/…)
 │   ├── lib/                 # Core utilities (auth context, audit logger, db client,
 │   │                        #   csvExport, i18n)
 │   ├── modules/             # Domain logic (product, party, shipment, documents,
-│   │                        #   tables, …), independent of the route layer
+│   │                        #   copilot, tables, …), independent of the route layer
 │   └── middleware.ts        # Route protection middleware
 ├── tests/                   # Vitest unit and integration tests
 └── package.json
@@ -172,8 +294,13 @@ feature's linked doc for what "unconfigured" looks like in the UI.
 
 | Variable | Gates | Notes |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | AI agents (classification, document intelligence, normalization, product intelligence, HTS classification) | No default; agent calls fail closed without it |
-| `GEMINI_MODEL` | Same agents | Defaults to a built-in model name per agent if unset |
+| `GEMINI_API_KEY` | AI agents (classification, document intelligence, normalization, product intelligence, HTS classification) and the AI Copilot | No default; agent calls fail closed without it, and the Copilot panel reports itself unconfigured |
+| `GEMINI_MODEL` | Same agents, and the Copilot unless `COPILOT_MODEL` is set | Defaults to a built-in model name per agent if unset |
+| `COPILOT_MODEL` | AI Copilot only | Overrides `GEMINI_MODEL` for the Copilot, so it can be pinned independently of the agents |
+| `COPILOT_ENABLED` | AI Copilot only | Absent means on. `0` \| `false` \| `off` \| `no` hides the launcher and makes the route decline, leaving every other AI agent running |
+| `AI_ACCOUNT_TOKENS_PER_DAY` | Daily token ceiling for an account, across every AI surface | Unset means unlimited; usage is still counted. See [AI cost controls](#-ai-cost-controls) |
+| `AI_AGENT_USER_REQUESTS_PER_MIN`, `AI_AGENT_ACCOUNT_REQUESTS_PER_MIN` | Request ceilings on the agent routes | Both unset by default, so agents are metered and never refused |
+| `COPILOT_USER_REQUESTS_PER_MIN`, `COPILOT_ACCOUNT_REQUESTS_PER_MIN` | Copilot request ceilings | Default 15 per user and 60 per account per minute |
 | `BLOB_READ_WRITE_TOKEN` | Document upload storage (Vercel Blob) | Required for any document upload in production; see [docs/document-intelligence.md](docs/document-intelligence.md) |
 | `MAX_UPLOAD_BYTES` | Upload size limit | Defaults to 50 MB |
 | `DOCUMENT_PARSER_PROVIDER` | Document Intelligence parsing pipeline | `ibm-docling` \| `mock` \| `none` (default `none` — see [docs/document-intelligence.md](docs/document-intelligence.md)) |
@@ -257,6 +384,17 @@ See [docs/document-intelligence.md](docs/document-intelligence.md) for the archi
 
 ```bash
 npm test
+```
+
+Some suites read the configured database, so prefer running the files that cover
+what you changed. The AI Copilot's safety behaviour and the shared AI cost
+controls are covered by eight files that need no database and run in seconds:
+
+```bash
+npx vitest run tests/copilot-grounding.test.ts tests/copilot-tools.test.ts \
+  tests/copilot-rbac.test.ts tests/copilot-service.test.ts \
+  tests/copilot-origin-safety.test.ts tests/copilot-rate-limit.test.ts \
+  tests/ai-quota.test.ts tests/ai-meter.test.ts
 ```
 
 ### Production Build Verification

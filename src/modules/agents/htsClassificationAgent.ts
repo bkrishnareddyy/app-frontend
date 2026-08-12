@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
@@ -270,6 +271,18 @@ ${candidateContext}`;
               temperature: 0.1,
             },
           });
+
+          // Accounting only. Cannot refuse, cannot throw, does not touch the
+          // response — classification behaves identically whether or not the
+          // usage table exists. Inside the same try as the call, so a metering
+          // failure would fall into the existing Gemini catch and the
+          // deterministic path, but meterGeminiCall swallows its own errors so it
+          // will not get there.
+          await meterGeminiCall(
+            "hts-classification",
+            { accountId: input.accountId, userId: input.userId },
+            response
+          );
 
           const parsed = JSON.parse(response.text || "{}");
           if (parsed.htsCode) {

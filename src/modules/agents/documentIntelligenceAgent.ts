@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { AgentState, MultiDimensionalConfidence } from "./agentState";
 import { logAgentError } from "./agentLogger";
 import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
@@ -585,6 +586,15 @@ ${instructions}`;
             temperature: 0.1,
           },
         });
+
+        // Accounting only — see meterGeminiCall. Never refuses and never throws.
+        // `userId` is null on the cron path; that is recorded as system spend
+        // rather than attributed to whoever uploaded the document.
+        await meterGeminiCall(
+          "document-intelligence",
+          { accountId: input.accountId, userId: input.userId },
+          response
+        );
 
         const parsed = JSON.parse(response.text || "{}");
         if (Array.isArray(parsed.discoveredKeyValues)) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { pruneAiUsageWindows } from "@/lib/ai/aiQuota";
 import { withPublicRoute } from "@/lib/api/auth-guards";
 import { runWorkerTick } from "@/modules/documents/processing/documentProcessingWorker";
 import { runInboundEmailWorkerTick } from "@/modules/documents/processing/inboundEmailWorker";
@@ -53,9 +54,35 @@ function unauthorized(req: Request): boolean {
   return req.headers.get("authorization") !== `Bearer ${cronSecret}`;
 }
 
+/**
+ * Housekeeping for the AI usage counters, piggybacking on the daily slot for the
+ * same reason inbound email does: Hobby plans allow two cron entries and this
+ * work does not deserve one of them.
+ *
+ * One row exists per account, user, surface and minute, so minute windows
+ * accumulate quickly and nothing ever reads one from last month. Failure is
+ * swallowed and reported — a metering table that cannot be swept must not turn a
+ * document backstop into a 500.
+ */
+async function pruneUsageWindows(): Promise<number | null> {
+  try {
+    return await pruneAiUsageWindows();
+  } catch (err) {
+    console.warn(
+      "[Cron] AI usage window prune skipped:",
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
 async function tick(requestId: string): Promise<Response> {
   const configuration = parserConfigurationReport();
-  const [result, inboundEmailResult] = await Promise.all([runWorkerTick(), runInboundEmailWorkerTick()]);
+  const [result, inboundEmailResult, usageWindowsPruned] = await Promise.all([
+    runWorkerTick(),
+    runInboundEmailWorkerTick(),
+    pruneUsageWindows(),
+  ]);
 
   // A blocked tick is reported as 503 rather than 200-with-zeroes, so a
   // monitoring check cannot read "nothing to do" when the truth is "no parser is
@@ -73,6 +100,8 @@ async function tick(requestId: string): Promise<Response> {
     configuration: { provider: configuration.provider, mock: configuration.mock },
     tick: result,
     inboundEmail: inboundEmailResult,
+    // null means the sweep failed and was skipped, which is not a blocker.
+    usageWindowsPruned,
   });
 }
 

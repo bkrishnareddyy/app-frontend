@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { logAgentError } from "@/modules/agents/agentLogger";
 import { EventEmitter } from "events";
 import {
@@ -253,6 +254,13 @@ Target File Name: "${input.fileName}"`;
             temperature: 0.1,
           },
         });
+
+        // Accounting only — see meterGeminiCall. Never refuses and never throws.
+        await meterGeminiCall(
+          "document-intake",
+          { accountId: input.accountId, userId: input.userId },
+          response
+        );
 
         const jsonText = response.text || "{}";
         const parsed = JSON.parse(jsonText);

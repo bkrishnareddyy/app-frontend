@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
@@ -201,6 +202,13 @@ ${item.countryOfOrigin ? `Country of Origin (from shipment context, if it inform
               temperature: 0.2,
             },
           });
+
+          // Accounting only — see meterGeminiCall. Never refuses and never throws.
+          await meterGeminiCall(
+            "product-intelligence",
+            { accountId: input.accountId, userId: input.userId },
+            response
+          );
 
           const parsed = JSON.parse(response.text || "{}");
           if (parsed.enrichedDescription) {
