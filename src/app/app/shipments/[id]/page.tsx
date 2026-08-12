@@ -146,7 +146,7 @@ export default async function ShipmentWorkspacePage(props: {
     totalValue: Number(item.totalValue),
     countryOfOrigin: item.countryOfOrigin || "",
     htsCode: item.htsCode || "",
-    htsConfidence: item.htsConfidence || 95,
+    htsConfidence: item.htsConfidence ?? null,
     status: item.status || "Extracted",
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,

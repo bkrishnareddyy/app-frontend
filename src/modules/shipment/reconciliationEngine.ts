@@ -190,6 +190,9 @@ export class ReconciliationEngine {
       },
     ];
 
+    const invoiceDoc = shipment.documents.find((d) => d.docType.toLowerCase().includes("invoice")) || shipment.documents[0];
+    const docSuffix = invoiceDoc ? ` on ${invoiceDoc.fileName}` : "";
+
     for (const check of defaultedFieldChecks) {
       // Only rows still awaiting review carry this signal -- once a human
       // approves a row (status "Valid"), a lingering sentinel value is a
@@ -204,6 +207,7 @@ export class ReconciliationEngine {
             data: {
               accountId: shipment.accountId,
               shipmentId: shipment.id,
+              documentId: invoiceDoc?.id ?? null,
               code: check.code,
               fieldKey: check.fieldKey,
               category: "MISSING_DATA",
@@ -211,7 +215,7 @@ export class ReconciliationEngine {
               severity: "Medium",
               description: `${check.label} could not be extracted for ${affectedLines.length} line item(s) (line ${affectedLines
                 .map((i) => i.lineNumber)
-                .join(", ")}) -- confirm before filing.`,
+                .join(", ")})${docSuffix} -- confirm before filing.`,
               blocking: false,
               requiredAction: `Review and confirm ${check.label.toLowerCase()} for the affected line item(s)`,
               sourceAgent: "Line Item Reconciler",

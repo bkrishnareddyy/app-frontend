@@ -30,7 +30,8 @@ import {
 import { pollDelayMs, readProcessingLimits } from "../parser/config";
 import { getDocumentParserProvider } from "../parser/registry";
 import { assessQuality, qualifiesAsActive } from "../parser/qualityGate";
-import { persistRunArtifacts } from "../parser/artifactStore";
+import { persistRunArtifacts, parseArtifactIndex, loadNormalizedResult } from "../parser/artifactStore";
+import { matchShipmentForDocument, plainTextFromParsedResult } from "@/modules/shipments/shipmentMatching";
 import {
   completeRun,
   createOrFindRun,
@@ -610,19 +611,26 @@ async function handleRunFailure(
 async function dispatchDownstream(run: DueRun): Promise<void> {
   const document = await db.shipmentDocument.findFirst({
     where: { id: run.documentId, accountId: run.document.accountId },
-    select: { shipmentId: true },
+    select: { shipmentId: true, source: true },
   });
 
-  if (document?.shipmentId === null || document?.shipmentId === undefined) {
+  let shipmentId = document?.shipmentId ?? null;
+
+  if (shipmentId === null && document?.source === "EMAIL") {
+    shipmentId = await tryAutoMatchShipment(run);
+  }
+
+  if (shipmentId === null) {
     // A detached document has no shipment to log or extract against. The parse
-    // still stands; extraction runs when the document is attached.
+    // still stands; extraction runs when the document is attached (manually,
+    // or automatically once tryAutoMatchShipment finds a confident match).
     log("dispatch.skipped", { runId: run.id, reason: "document is not attached to a shipment" });
     return;
   }
 
   const { ShipmentEventBus } = await import("@/modules/events/shipmentEventBus");
   await ShipmentEventBus.logEvent({
-    shipmentId: document.shipmentId,
+    shipmentId,
     eventType: "DOCUMENT_READY_FOR_CLASSIFICATION",
     payload: {
       documentId: run.documentId,
@@ -638,16 +646,83 @@ async function dispatchDownstream(run: DueRun): Promise<void> {
     accountId: run.document.accountId,
     userId: null,
     documentId: run.documentId,
-    shipmentId: document.shipmentId,
+    shipmentId,
     correlationId: run.correlationId,
     processingRunId: run.id,
   });
 
   log("dispatch.ok", {
     runId: run.id,
-    shipmentId: document.shipmentId,
+    shipmentId,
     extractionRan: extraction.ran,
     extractionRunId: extraction.extractionRunId,
     extractionSkippedReason: extraction.skippedReason,
   });
+}
+
+/**
+ * Attempts deterministic shipment auto-matching for a freshly-parsed emailed
+ * document that has no shipment yet. Reads the normalized parse text (already
+ * paid for -- no re-parse, no new provider call) and the originating email's
+ * subject, then defers all matching logic to `matchShipmentForDocument`. On a
+ * confident match, attaches the document and audits the change; on no match
+ * or a conflict, leaves the document exactly as `dispatchDownstream`'s
+ * existing skip behavior already handles it -- never a silent guess.
+ */
+async function tryAutoMatchShipment(run: DueRun): Promise<string | null> {
+  const parseVersion = await db.documentParseVersion.findUnique({
+    where: { id: run.id },
+    select: { artifactsJson: true },
+  });
+  const index = parseArtifactIndex(parseVersion?.artifactsJson ?? null);
+  if (index === null) {
+    log("auto_match.skipped", { runId: run.id, reason: "no artifact index" });
+    return null;
+  }
+
+  let parsedText: string | null = null;
+  try {
+    const normalized = await loadNormalizedResult(index);
+    parsedText = plainTextFromParsedResult(normalized);
+  } catch (error) {
+    log("auto_match.skipped", {
+      runId: run.id,
+      reason: "normalized result unavailable",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+
+  const inboundAttachment = await db.inboundAttachment.findUnique({
+    where: { shipmentDocumentId: run.documentId },
+    select: { inboundEmail: { select: { subject: true } } },
+  });
+
+  const { matchedShipmentId } = await matchShipmentForDocument({
+    accountId: run.document.accountId,
+    documentId: run.documentId,
+    emailSubject: inboundAttachment?.inboundEmail.subject ?? null,
+    parsedText,
+  });
+
+  if (matchedShipmentId === null) {
+    log("auto_match.no_match", { runId: run.id, documentId: run.documentId });
+    return null;
+  }
+
+  await db.shipmentDocument.update({
+    where: { id: run.documentId },
+    data: { shipmentId: matchedShipmentId },
+  });
+  await createAuditLog({
+    accountId: run.document.accountId,
+    action: "document.auto_matched",
+    entity: "ShipmentDocument",
+    entityId: run.documentId,
+    metadata: { shipmentId: matchedShipmentId, algorithmVersion: "v1-exact-identifier" },
+    correlationId: run.correlationId,
+  });
+  log("auto_match.matched", { runId: run.id, documentId: run.documentId, shipmentId: matchedShipmentId });
+
+  return matchedShipmentId;
 }

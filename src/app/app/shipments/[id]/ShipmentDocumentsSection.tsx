@@ -144,9 +144,15 @@ export function ShipmentDocumentsSection({
                 </div>
                 <div className="flex items-center space-x-1.5 shrink-0">
                   {received ? (
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                      {doc.confidence || 95}% Parsed
-                    </span>
+                    doc.confidence !== null && doc.confidence !== undefined ? (
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                        {doc.confidence}% Parsed
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                        Uploaded
+                      </span>
+                    )
                   ) : (
                     <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
                       Missing

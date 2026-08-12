@@ -107,12 +107,38 @@ async function processOneEmail(inboundEmailId: string): Promise<"QUARANTINED" | 
   const route = await resolveInboundRoute(email.normalizedFromAddress);
   const defaultAssigneeId = route?.defaultAssignedToUserId ?? null;
 
+  let storedCount = 0;
   for (const attachment of remote.attachments) {
-    await processOneAttachment({ accountId, email, attachment, defaultAssigneeId });
+    const stored = await processOneAttachment({ accountId, email, attachment, defaultAssigneeId });
+    if (stored) storedCount += 1;
+  }
+
+  if (storedCount > 0 && defaultAssigneeId) {
+    // Guards against a duplicate notification if a prior tick got far enough
+    // to store attachments but crashed before reaching routingStatus:
+    // "ACCEPTED" below -- the retry would otherwise recompute storedCount
+    // (correctly, from already-STORED rows) and create a second notification
+    // for the same email.
+    const alreadyNotified = await db.notification.findFirst({
+      where: { entityType: "InboundEmail", entityId: email.id },
+      select: { id: true },
+    });
+    if (!alreadyNotified) {
+      await db.notification.create({
+        data: {
+          accountId,
+          userId: defaultAssigneeId,
+          type: "INBOUND_EMAIL_DOCUMENTS",
+          message: `${storedCount} new document${storedCount === 1 ? "" : "s"} from ${email.originalFromAddress}`,
+          entityType: "InboundEmail",
+          entityId: email.id,
+        },
+      });
+    }
   }
 
   await db.inboundEmail.update({ where: { id: email.id }, data: { routingStatus: "ACCEPTED" } });
-  log("email.accepted", { inboundEmailId: email.id, accountId, attachmentCount: remote.attachments.length });
+  log("email.accepted", { inboundEmailId: email.id, accountId, attachmentCount: remote.attachments.length, storedCount });
   return "ACCEPTED";
 }
 
@@ -121,14 +147,14 @@ async function processOneAttachment(params: {
   email: { id: string; providerEmailId: string };
   attachment: ReceivedEmailAttachmentMeta;
   defaultAssigneeId: string | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const { accountId, email, attachment, defaultAssigneeId } = params;
 
   const existing = await db.inboundAttachment.findUnique({
     where: { inboundEmailId_providerAttachmentId: { inboundEmailId: email.id, providerAttachmentId: attachment.id } },
   });
   // Already processed (or explicitly skipped) in a prior tick -- do not redo work.
-  if (existing && existing.processingStatus !== "PENDING") return;
+  if (existing && existing.processingStatus !== "PENDING") return existing.processingStatus === "STORED";
 
   const isInline = attachment.contentDisposition === "inline";
   if (isInline) {
@@ -145,7 +171,7 @@ async function processOneAttachment(params: {
       },
       update: { processingStatus: "SKIPPED_INLINE" },
     });
-    return;
+    return false;
   }
 
   const attachmentRow = await db.inboundAttachment.upsert({
@@ -174,7 +200,7 @@ async function processOneAttachment(params: {
     } catch (error) {
       const reason = isDocumentParserError(error) ? error.message : "Unreadable file format.";
       await rejectAttachment(attachmentRow.id, reason);
-      return;
+      return false;
     }
 
     const scan = await screenUploadForMalware({ fileName: filename, byteSize: bytes.byteLength, bytes });
@@ -189,7 +215,7 @@ async function processOneAttachment(params: {
         correlationId,
         success: false,
       });
-      return;
+      return false;
     }
 
     // A fresh Uint8Array copy: File/Blob do not accept a Node Buffer's
@@ -203,7 +229,7 @@ async function processOneAttachment(params: {
     } catch (error) {
       const reason = error instanceof StorageValidationError ? error.message : "Storage failed.";
       await rejectAttachment(attachmentRow.id, reason);
-      return;
+      return false;
     }
 
     const { DocumentTypeCatalog } = await import("@/modules/intake/documentTypeCatalog");
@@ -256,11 +282,13 @@ async function processOneAttachment(params: {
       reason: "INITIAL",
       correlationId,
     });
+    return true;
   } catch (error) {
     await rejectAttachment(
       attachmentRow.id,
       error instanceof Error ? error.message : "Unexpected error while processing this attachment."
     );
+    return false;
   }
 }
 

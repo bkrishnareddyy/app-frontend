@@ -13,6 +13,7 @@ export interface ExceptionRecord {
   createdAt: string | Date;
   resolvedAt: string | Date | null;
   shipmentId: string | null;
+  documentId?: string | null;
   assignedToUserId: string | null;
   shipment: {
     id: string;
@@ -44,6 +45,7 @@ export type ActionItem =
       version: number;
       createdAt: string | Date;
       documentName: null;
+      documentId?: string | null;
       assignedToUserId: string | null;
       assignedToUser: ExceptionRecord["assignedToUser"];
       raw: ExceptionRecord;
@@ -185,6 +187,7 @@ export function buildShipmentActionGroups(
       version: exc.version,
       createdAt: exc.createdAt,
       documentName: null,
+      documentId: exc.documentId ?? null,
       assignedToUserId: exc.assignedToUserId,
       assignedToUser: exc.assignedToUser,
       raw: exc,

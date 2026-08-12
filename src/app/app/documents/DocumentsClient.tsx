@@ -30,7 +30,7 @@ interface ShipmentDocumentItem {
   shipmentId: string;
   shipmentRef?: string;
   fileSize?: string;
-  confidenceScore?: number;
+  confidenceScore?: number | null;
   assignedBrokerId?: string | null;
   assignedBrokerName: string;
   clientId?: string | null;
@@ -227,7 +227,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
               url: d.fileUrl || "#",
               shipmentId: "",
               shipmentRef: "Unattached",
-              confidenceScore: d.confidence || 95,
+              confidenceScore: d.confidence ?? null,
               assignedBrokerId: null,
               assignedBrokerName: "—",
               clientId: null,
