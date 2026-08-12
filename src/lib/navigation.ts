@@ -8,6 +8,7 @@ export type NavIcon =
   | "inbox"
   | "dashboard"
   | "shipments"
+  | "products"
   | "clients"
   | "documents"
   | "decisions"
@@ -49,6 +50,9 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
+      // Readable by everyone with an account, like shipments. The write actions
+      // on the page are gated individually by products.* permissions.
+      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
       { id: "documents", labelKey: "tradeDocuments", href: "/app/documents", icon: "documents" },
       { id: "decisions", labelKey: "decisions", href: "/app/decisions", icon: "decisions" },
       { id: "exceptions", labelKey: "exceptions", href: "/app/exceptions", icon: "exceptions" },

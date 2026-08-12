@@ -20,7 +20,7 @@ export interface PermissionDefinition {
   /** What holding it lets a person do, in the words the admin screen shows. */
   description: string;
   /** Grouping for display only. */
-  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence";
+  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence" | "Products";
   /** Roles that receive it when the catalogue is synced. */
   defaultRoles: readonly SystemRole[];
 }
@@ -108,6 +108,36 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     description: "Query trade intelligence and advisory sources.",
     category: "Intelligence",
     defaultRoles: ["OWNER", "ADMIN", "MEMBER", "VIEWER"],
+  },
+  {
+    name: "products.create",
+    description: "Add a product to the item master.",
+    category: "Products",
+    defaultRoles: ALL_BUT_VIEWER,
+  },
+  {
+    name: "products.edit",
+    description: "Change a product's descriptions, attributes, composition, parties and country facts.",
+    category: "Products",
+    defaultRoles: ALL_BUT_VIEWER,
+  },
+  {
+    name: "products.import",
+    description: "Import products in bulk from a spreadsheet.",
+    category: "Products",
+    defaultRoles: ADMIN_ONLY,
+  },
+  {
+    name: "products.classification.approve",
+    description: "Approve a product's tariff classification for a jurisdiction, making it the position of record.",
+    category: "Products",
+    defaultRoles: ADMIN_ONLY,
+  },
+  {
+    name: "products.origin.verify",
+    description: "Mark a product's claimed country of origin as verified against its evidence.",
+    category: "Products",
+    defaultRoles: ADMIN_ONLY,
   },
 ] as const;
 

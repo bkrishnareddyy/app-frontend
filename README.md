@@ -60,6 +60,20 @@ To ensure data privacy within multi-tenant accounts:
 - **Row-Level Security (Data Segregation)**: Planners can only access their own assigned records (e.g., shipments), while Admins can view all data within the account.
 - **Capability Gating**: API routes strictly enforce capabilities via `hasPermission()` checks (e.g., `documents.create`, `filings.submit`, `intel.read`), returning `403 Forbidden` if a user lacks the necessary privilege.
 
+### 7. Global Product / Item Master
+
+One product record per tenant holds what is true about the goods everywhere;
+jurisdiction-specific customs positions hang off it separately. There is no
+`Product.hsCode` — a product has a US classification, an EU classification and
+so on, each with its own status, reviewer and effective window, and only
+`APPROVED` counts. Country of manufacture and country of origin are stored as
+different facts, and origin is never inferred from a manufacturer, supplier,
+seller, export or shipping country.
+
+See [docs/product-master.md](docs/product-master.md) for the domain model,
+matching rules, change-detection signals, CSV import, and what is deliberately
+not implemented.
+
 ---
 
 ## 📁 Repository Structure
