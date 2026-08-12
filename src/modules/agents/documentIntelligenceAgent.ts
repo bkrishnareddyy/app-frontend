@@ -2,6 +2,7 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
+import { aiModel } from "@/lib/ai/aiModel";
 import { AgentState, MultiDimensionalConfidence } from "./agentState";
 import { logAgentError } from "./agentLogger";
 import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
@@ -529,6 +530,11 @@ export class DocumentIntelligenceAgent {
     let aiProvider = "Gemini Flash Vision (Google GenAI SDK)";
 
     const aiClient = this.getAiClient();
+    // Resolved once for the whole run, so the model that is called and the model
+    // recorded on the parse version below cannot disagree. A stored provenance
+    // field that reports a different model than the one that did the reading is
+    // worse than no field at all.
+    const model = aiModel("document-intelligence");
 
     // A parsed document context is preferred over the raw bytes: it is bounded,
     // carries provenance, and does not couple this agent to any parser's schema.
@@ -568,7 +574,7 @@ ${instructions}`;
         }
 
         const response = await aiClient.models.generateContent({
-          model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+          model,
           contents: [
             {
               role: "user",
@@ -906,7 +912,9 @@ ${instructions}`;
               parserName: input.documentContext?.parserProvider ?? null,
               status: "SUCCEEDED",
               parserVersion: "2.0.0",
-              modelVersion: "gemini-3.6-flash",
+              // The model this run actually called, not a name fixed at author
+              // time. Reached only from inside the branch that made the call.
+              modelVersion: model,
               rawJson: JSON.stringify(extractedBlob, null, 2),
               confidence: typeof confidence === "number" ? confidence : 90,
             },

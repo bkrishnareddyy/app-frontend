@@ -6,10 +6,13 @@
  * off one screen: at most N tool calls, each returning at most M rows, over at
  * most K prior turns, within T milliseconds.
  *
- * Provider and model come from the same environment variables the existing
- * agents already use (GEMINI_API_KEY / GEMINI_MODEL), so the Copilot does not
- * introduce a second way to configure the same thing.
+ * The model credential is the one the existing agents already use
+ * (GEMINI_API_KEY), and the model itself is resolved by the shared per-surface
+ * selector in `@/lib/ai/aiModel`, so the Copilot does not introduce a second way
+ * to configure the same thing.
  */
+
+import { aiModel } from "@/lib/ai/aiModel";
 
 export interface CopilotModelConfig {
   provider: string;
@@ -65,14 +68,13 @@ export const COPILOT_LIMITS: CopilotLimits = {
   requestTimeoutMs: 45_000,
 };
 
-const DEFAULT_MODEL = "gemini-3.6-flash";
-
 export function copilotModelConfig(env: NodeJS.ProcessEnv = process.env): CopilotModelConfig {
   return {
     provider: "google-genai",
-    // Same variable the classification and intelligence agents read, so one
-    // change of model moves the whole platform rather than half of it.
-    model: env.COPILOT_MODEL || env.GEMINI_MODEL || DEFAULT_MODEL,
+    // Resolved by the shared per-surface selector, so the Copilot is configured
+    // the same way every agent is: COPILOT_MODEL for this surface alone, then
+    // AI_DEFAULT_MODEL for the platform. See @/lib/ai/aiModel.
+    model: aiModel("copilot", env),
     temperature: 0.1,
     maxOutputTokens: 2048,
   };

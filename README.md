@@ -213,6 +213,36 @@ as degraded.
 
 ---
 
+## 🧠 AI Model Selection
+
+Each of the seven AI surfaces chooses its model independently, through
+`src/lib/ai/aiModel.ts`. It is keyed off the same surface names the quota layer
+uses, so a call site names its surface once and gets both its model and its meter
+under that name.
+
+Precedence, most specific first:
+
+| Rung | Variable | Scope |
+| --- | --- | --- |
+| 1 | `COPILOT_MODEL`, `HTS_CLASSIFICATION_MODEL`, `DOCUMENT_INTELLIGENCE_MODEL`, `PRODUCT_INTELLIGENCE_MODEL`, `NORMALIZATION_MODEL`, `COMPLIANCE_AUDIT_MODEL`, `DOCUMENT_INTAKE_MODEL` | One surface |
+| 2 | `AI_DEFAULT_MODEL` | Every surface without an override |
+| 3 | `GEMINI_MODEL` | Deprecated; honoured so existing environments do not silently move |
+| 4 | built-in default | Nothing configured |
+
+A blank value counts as unset at every rung, so `COPILOT_MODEL=` falls through
+rather than asking the provider for a model named empty string.
+
+This selects a model *name*, not a provider. The only adapter wired today is
+google-genai, so a name from another vendor would be handed to the Gemini client
+and rejected by it — adding a second vendor means an adapter, not a new variable.
+
+Two places record the model rather than call it: the `DocumentParseVersion` row
+written by the Document Intelligence Agent, and the `AgentExecution` row written
+by the classification extractor. Both now report the model that actually ran, so
+provenance cannot claim one model while another did the reading.
+
+---
+
 ## 📁 Repository Structure
 
 ```text
@@ -295,8 +325,9 @@ feature's linked doc for what "unconfigured" looks like in the UI.
 | Variable | Gates | Notes |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | AI agents (classification, document intelligence, normalization, product intelligence, HTS classification) and the AI Copilot | No default; agent calls fail closed without it, and the Copilot panel reports itself unconfigured |
-| `GEMINI_MODEL` | Same agents, and the Copilot unless `COPILOT_MODEL` is set | Defaults to a built-in model name per agent if unset |
-| `COPILOT_MODEL` | AI Copilot only | Overrides `GEMINI_MODEL` for the Copilot, so it can be pinned independently of the agents |
+| `AI_DEFAULT_MODEL` | The model every AI surface calls | Falls back to a built-in name. See [AI model selection](#-ai-model-selection) |
+| `COPILOT_MODEL`, `HTS_CLASSIFICATION_MODEL`, `DOCUMENT_INTELLIGENCE_MODEL`, `PRODUCT_INTELLIGENCE_MODEL`, `NORMALIZATION_MODEL`, `COMPLIANCE_AUDIT_MODEL`, `DOCUMENT_INTAKE_MODEL` | One surface each | Each overrides `AI_DEFAULT_MODEL` for that surface alone |
+| `GEMINI_MODEL` | Deprecated global model name | Still honoured below `AI_DEFAULT_MODEL` so existing environments do not move; prefer the variables above |
 | `COPILOT_ENABLED` | AI Copilot only | Absent means on. `0` \| `false` \| `off` \| `no` hides the launcher and makes the route decline, leaving every other AI agent running |
 | `AI_ACCOUNT_TOKENS_PER_DAY` | Daily token ceiling for an account, across every AI surface | Unset means unlimited; usage is still counted. See [AI cost controls](#-ai-cost-controls) |
 | `AI_AGENT_USER_REQUESTS_PER_MIN`, `AI_AGENT_ACCOUNT_REQUESTS_PER_MIN` | Request ceilings on the agent routes | Both unset by default, so agents are metered and never refused |

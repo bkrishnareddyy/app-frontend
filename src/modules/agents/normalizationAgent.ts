@@ -2,6 +2,7 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
+import { aiModel } from "@/lib/ai/aiModel";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { AgentState } from "./agentState";
 import { DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
@@ -447,7 +448,7 @@ Structured JSON from Document Intelligence Agent:
 ${JSON.stringify(docData, null, 2)}`;
 
         const response = await this.aiClient.models.generateContent({
-          model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+          model: aiModel("normalization"),
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: {
             responseMimeType: "application/json",

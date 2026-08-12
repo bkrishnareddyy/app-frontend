@@ -17,6 +17,7 @@
 
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { aiModel } from "@/lib/ai/aiModel";
 import { buildContextForDocument } from "../context/documentContextService";
 import { QUBERE_DOCUMENT_CONTEXT_VERSION } from "../context/qubereDocumentContext";
 
@@ -90,7 +91,9 @@ export async function runDocumentExtraction(
       triggerEvent: "DOCUMENT_READY_FOR_CLASSIFICATION",
       invokedBy: "Document Processing Worker",
       status: "RUNNING",
-      modelVersion: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+      // This run delegates to the Document Intelligence Agent below, so it
+      // records that surface's model rather than a global one.
+      modelVersion: aiModel("document-intelligence"),
       runId: input.correlationId,
       startedAt,
     },

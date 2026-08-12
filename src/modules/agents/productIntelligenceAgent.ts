@@ -2,6 +2,7 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
+import { aiModel } from "@/lib/ai/aiModel";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
@@ -194,7 +195,7 @@ Raw Description: "${desc}"
 ${item.countryOfOrigin ? `Country of Origin (from shipment context, if it informs typical material/finish conventions): "${item.countryOfOrigin}"` : ""}`;
 
           const response = await this.aiClient.models.generateContent({
-            model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+            model: aiModel("product-intelligence"),
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
               responseMimeType: "application/json",
