@@ -16,6 +16,8 @@ import {
   reviewStatusPresentation,
 } from "@/modules/product/productDisplay";
 import { displayDate, displayText } from "@/lib/honest";
+import { RowCheckbox, SelectAllCheckbox, SelectionProvider } from "@/components/table/BulkSelection";
+import { ProductsBulkBar, type ProductExportRow } from "./ProductsBulkActions";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +66,16 @@ export default async function ProductsPage(props: {
       query.needsRevalidation ||
       query.unclassified
   );
+
+  const exportRows: ProductExportRow[] = rows.map((row) => ({
+    id: row.id,
+    productName: row.productName,
+    internalSku: row.internalSku,
+    brand: row.brand,
+    reviewStatusLabel: reviewStatusPresentation(row.reviewStatus).label,
+    statusLabel: productStatusPresentation(row.status).label,
+    updatedAt: displayDate(row.updatedAt),
+  }));
 
   return (
     <div className="space-y-6">
@@ -177,11 +189,15 @@ export default async function ProductsPage(props: {
           </p>
         </div>
       ) : (
+        <SelectionProvider>
         <div className="rounded-2xl bg-white border border-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs font-semibold uppercase tracking-wider text-ink-muted bg-surface-muted">
                 <tr>
+                  <th scope="col" className="px-3 xl:px-4 py-3.5 w-10">
+                    <SelectAllCheckbox ids={rows.map((row) => row.id)} label="products on this page" />
+                  </th>
                   <SortableHeader
                     column="productName"
                     label="Product"
@@ -235,6 +251,9 @@ export default async function ProductsPage(props: {
                   const review = reviewStatusPresentation(row.reviewStatus);
                   return (
                     <tr key={row.id} className="hover:bg-surface-muted/50">
+                      <td className="px-3 xl:px-4 py-3">
+                        <RowCheckbox id={row.id} label={row.productName} />
+                      </td>
                       <td className="px-3 xl:px-4 py-3">
                         <Link
                           href={`/app/products/${row.id}`}
@@ -292,6 +311,8 @@ export default async function ProductsPage(props: {
             label="products"
           />
         </div>
+        <ProductsBulkBar products={exportRows} />
+        </SelectionProvider>
       )}
 
       <p className="text-xs text-[#6E6E73]">
