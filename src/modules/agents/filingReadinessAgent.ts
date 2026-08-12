@@ -9,6 +9,12 @@ export interface Form7501Preview {
   totalEnteredValue: number | null;
   totalDutyDue: number | null;
   totalLineItems: number;
+  /** Block 5. Port of unlading / arrival, sourced from Document Intelligence's tradeMetadata.portOfDischarge. */
+  portOfEntry: string | null;
+  portOfLoading: string | null;
+  carrier: string | null;
+  /** Bill of lading / air waybill number CBP matches the entry summary against the inward manifest. */
+  billOfLadingNumber: string | null;
 }
 
 export interface DetailedMissingRequirement {
@@ -31,6 +37,10 @@ export interface FilingReadinessInput {
   isComplianceBlocked?: boolean;
   importerNumber?: string;
   entryType?: string;
+  portOfLoading?: string | null;
+  portOfDischarge?: string | null;
+  carrier?: string | null;
+  transportDocumentNumber?: string | null;
 }
 
 export interface FilingReadinessOutput {
@@ -140,6 +150,10 @@ export class FilingReadinessAgent {
       // never calculated.
       totalDutyDue: readyForTransmission ? input.dutyDue ?? null : null,
       totalLineItems: input.lineItemCount,
+      portOfEntry: input.portOfDischarge || null,
+      portOfLoading: input.portOfLoading || null,
+      carrier: input.carrier || null,
+      billOfLadingNumber: input.transportDocumentNumber || null,
     };
 
     const reasoningChain = readyForTransmission

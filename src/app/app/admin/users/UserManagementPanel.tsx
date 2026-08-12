@@ -24,7 +24,7 @@ export function UserManagementPanel({
       <PanelHeading
         icon={Users}
         badge="Account Members & Access"
-        title="User Management"
+        title="Active Account Members"
         subtitle={`Manage members, assign roles, and send invitations for ${accountName}.`}
         compact={compact}
       />

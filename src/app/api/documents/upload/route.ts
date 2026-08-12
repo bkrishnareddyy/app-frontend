@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse } from "@/lib/api/error";
@@ -204,14 +204,17 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     priority: 10, // Documents get high priority
   });
 
-  // Immediately trigger background execution so job status advances PENDING -> PROCESSING -> COMPLETED!
-  void (async () => {
+  // Run the agent pipeline after the 202 response is flushed. `after()` tells
+  // Next.js to keep this serverless invocation alive until the callback settles,
+  // preventing the fire-and-forget from being killed mid-execution.
+  after(async () => {
     try {
       await PgQueue.claimJob(job.id);
       const pipelineOut = await PipelineOrchestrator.processEvent({
         accountId,
         userId,
         shipmentId: targetShipmentId,
+        jobId: job.id,
         triggerEvent: "DOCUMENT_UPLOADED",
         payload: {
           documentId: docRecord.id,
@@ -227,7 +230,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       console.error("[UploadPipeline] Background worker error:", err);
       await PgQueue.failJob(job.id, err instanceof Error ? err.message : String(err));
     }
-  })();
+  });
 
   // Exactly one durable processing run per (tenant, content, provider, profile,
   // config). Re-uploading identical bytes returns the existing run instead of

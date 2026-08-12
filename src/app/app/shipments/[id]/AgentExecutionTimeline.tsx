@@ -1,8 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Clock, Loader2, Sparkles, XCircle } from "lucide-react";
 import type { AgentInvocation } from "./agentInvocations";
+
+function parseErrorMessage(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    // Gemini-style: { error: { message, code, status } }
+    if (parsed?.error?.message) return `[${parsed.error.code ?? parsed.error.status}] ${parsed.error.message}`;
+    // Flat { message } shape
+    if (typeof parsed?.message === "string") return parsed.message;
+  } catch {
+    // not JSON — use as-is
+  }
+  return raw;
+}
 
 function formatDuration(ms: number) {
   if (ms < 1000) return `${ms}ms`;
@@ -41,8 +54,69 @@ const STATUS_STYLES: Record<AgentInvocation["status"], { badge: string; label: s
   },
 };
 
-export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvocation[] }) {
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(invocations[0]?.runId || null);
+// Poll every 3s while a run is active, 30s otherwise (cheap keep-alive to catch
+// new runs that start while the tab is open).
+const POLL_INTERVAL_ACTIVE_MS = 3000;
+const POLL_INTERVAL_IDLE_MS = 30000;
+
+export function AgentExecutionTimeline({
+  invocations: initialInvocations,
+  shipmentId,
+}: {
+  invocations: AgentInvocation[];
+  shipmentId: string;
+}) {
+  const [invocations, setInvocations] = useState<AgentInvocation[]>(initialInvocations);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(initialInvocations[0]?.runId || null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
+
+  // Sync if the server re-renders with fresh props (e.g. router.refresh() after pipeline completes).
+  useEffect(() => {
+    setInvocations(initialInvocations);
+  }, [initialInvocations]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/shipments/${shipmentId}/agent-executions`);
+        if (cancelledRef.current) return;
+        if (res.ok) {
+          const data: { invocations: AgentInvocation[] } = await res.json();
+          if (cancelledRef.current) return;
+          setInvocations((prev) => {
+            // Auto-expand the newest run if it is brand-new.
+            const newestRunId = data.invocations[0]?.runId;
+            if (newestRunId && !prev.some((i) => i.runId === newestRunId)) {
+              setExpandedRunId(newestRunId);
+            }
+            return data.invocations;
+          });
+        }
+      } catch {
+        // network error — keep polling
+      }
+
+      if (cancelledRef.current) return;
+
+      // Determine next interval based on whether any run is still active.
+      setInvocations((current) => {
+        const hasActive = current.some((i) => i.status === "RUNNING");
+        timerRef.current = setTimeout(poll, hasActive ? POLL_INTERVAL_ACTIVE_MS : POLL_INTERVAL_IDLE_MS);
+        return current;
+      });
+    };
+
+    // Start immediately so we catch runs that began right as the page loaded.
+    poll();
+
+    return () => {
+      cancelledRef.current = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [shipmentId]);
 
   if (invocations.length === 0) {
     return (
@@ -102,13 +176,18 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
                       <span className="w-5 h-5 rounded-full bg-white border border-border text-[10px] font-bold text-ink inline-flex items-center justify-center shrink-0">
                         {idx + 1}
                       </span>
-                      <div className="min-w-[190px] max-w-[190px] shrink-0">
+                      <div className="min-w-[200px] max-w-[200px] shrink-0">
                         <p className="text-[11px] font-bold text-ink truncate" title={step.agentName}>
                           {step.agentName}
                         </p>
                         {step.summary && (
                           <p className="text-[9px] text-ink-muted truncate" title={step.summary}>
                             {step.summary}
+                          </p>
+                        )}
+                        {step.modelVersion && (
+                          <p className="text-[9px] text-ink-muted/60 truncate font-mono">
+                            {step.modelVersion}
                           </p>
                         )}
                       </div>
@@ -127,6 +206,11 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
                           title={`${formatDuration(step.durationMs)}`}
                         />
                       </div>
+                      {step.confidence != null && (
+                        <span className="text-[10px] font-mono font-bold text-ink-muted w-10 text-right shrink-0" title="Confidence">
+                          {Math.round(Number(step.confidence))}%
+                        </span>
+                      )}
                       <span className="text-[10px] font-mono font-bold text-ink w-14 text-right shrink-0">
                         {formatDuration(step.durationMs)}
                       </span>
@@ -142,7 +226,8 @@ export function AgentExecutionTimeline({ invocations }: { invocations: AgentInvo
                       .filter((s) => s.error)
                       .map((s) => (
                         <p key={s.id} className="text-[10px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
-                          <span className="font-bold">{s.agentName}:</span> {s.error}
+                          <span className="font-bold">{s.agentName}:</span>{" "}
+                          {parseErrorMessage(s.error!)}
                         </p>
                       ))}
                   </div>

@@ -43,6 +43,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
       lastName: m.user.lastName,
       status: m.status,
       createdAt: m.createdAt.toISOString(),
+      updatedAt: m.updatedAt.toISOString(),
       roleNames: m.roles.map((mr) => mr.role.name),
     })),
     requestId,

@@ -72,6 +72,8 @@ model Account {
   legalEntities           LegalEntity[]
   shipmentSequences       ShipmentSequence[]
   documentParseVersions   DocumentParseVersion[]
+  inboundSenderRoutes     InboundSenderRoute[]
+  inboundEmails           InboundEmail[]
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -126,6 +128,8 @@ model User {
   createdScenarios     LandedCostScenario[]    @relation("ScenarioCreator")
   createdPSCs          PostSummaryCorrection[] @relation("PSCCreator")
   shipmentChangeEvents ShipmentChangeEvent[]
+  assignedDocuments    ShipmentDocument[]      @relation("DocumentAssignee")
+  inboundSenderRoutes  InboundSenderRoute[]    @relation("InboundRouteAssignee")
 
   @@index([clerkUserId])
   @@index([email])
@@ -377,16 +381,101 @@ model ShipmentDocument {
   /// partial run, and a late-finishing older run cannot claim it.
   activeParseVersionId String?
 
-  extractionFields ExtractionField[]
-  parseVersions    DocumentParseVersion[]
-  exceptionItems   ExceptionItem[]
-  fieldApprovals   FieldApproval[]
-  agentDecisions   AgentDecision[]
-  productEvidence  ProductEvidence[]
+  /// Where this document row originated. EMAIL rows are created by the
+  /// inbound-email worker; UPLOAD rows by the manual upload route.
+  source String @default("UPLOAD") // UPLOAD, EMAIL
+
+  /// Direct assignee for a standalone/unattached document (e.g. the inbound
+  /// route's default assignee for a freshly emailed, unmatched document).
+  /// Once the document is attached to a shipment, the shipment's own
+  /// assignee is the effective owner of the work -- this field is not
+  /// consulted for attached documents.
+  assignedToUserId String?
+  assignedToUser   User?   @relation("DocumentAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  extractionFields  ExtractionField[]
+  parseVersions     DocumentParseVersion[]
+  exceptionItems    ExceptionItem[]
+  fieldApprovals    FieldApproval[]
+  agentDecisions    AgentDecision[]
+  inboundAttachment InboundAttachment?
+  productEvidence   ProductEvidence[]
 
   @@index([shipmentId])
   @@index([accountId])
   @@index([accountId, checksum])
+}
+
+/// Authorizes one normalized sender email to route inbound documents into
+/// exactly one organization. The unique constraint on normalizedSenderEmail
+/// is the actual tenant-isolation boundary here: it is what makes it
+/// impossible for two accounts to claim the same sender, not application
+/// logic layered on top.
+model InboundSenderRoute {
+  id                      String   @id @default(cuid())
+  accountId               String
+  account                 Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  normalizedSenderEmail   String   @unique // trim + lowercase; never alias-collapsed
+  displaySenderEmail      String
+  defaultAssignedToUserId String?
+  defaultAssignedToUser   User?    @relation("InboundRouteAssignee", fields: [defaultAssignedToUserId], references: [id], onDelete: SetNull)
+  status                  String   @default("ACTIVE") // ACTIVE, SUSPENDED, REVOKED
+  createdByUserId         String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+/// One row per inbound provider webhook email event. accountId is null until
+/// the sender is routed -- an email can exist here and still never touch a
+/// tenant's document library.
+model InboundEmail {
+  id                    String   @id @default(cuid())
+  accountId             String?
+  account               Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  provider              String   @default("resend")
+  providerEventId       String
+  providerEmailId       String
+  normalizedFromAddress String
+  originalFromAddress   String
+  toAddresses           String // comma-joined, as reported by the provider
+  subject               String?
+  receivedAt            DateTime
+  routingStatus         String   @default("RECEIVED") // RECEIVED, ROUTED, ACCEPTED, QUARANTINED, REJECTED, FAILED
+  quarantineReason      String?
+  authHeaders           Json? // raw headers fetched from the provider, for audit/manual review only
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  attachments InboundAttachment[]
+
+  @@unique([provider, providerEventId])
+  @@unique([provider, providerEmailId])
+  @@index([accountId])
+}
+
+/// One row per attachment on an InboundEmail. shipmentDocumentId is set once
+/// the attachment has been validated, scanned, and stored as a
+/// ShipmentDocument -- a rejected or inline attachment never gets one.
+model InboundAttachment {
+  id                   String            @id @default(cuid())
+  inboundEmailId       String
+  inboundEmail         InboundEmail      @relation(fields: [inboundEmailId], references: [id], onDelete: Cascade)
+  providerAttachmentId String
+  originalFilename     String
+  declaredMimeType     String?
+  contentDisposition   String? // "inline" attachments (signature logos) are recorded but never processed
+  actualSize           Int?
+  checksum             String?
+  processingStatus     String            @default("PENDING") // PENDING, STORED, SKIPPED_INLINE, REJECTED, FAILED
+  rejectionReason      String?
+  shipmentDocumentId   String?           @unique
+  shipmentDocument     ShipmentDocument? @relation(fields: [shipmentDocumentId], references: [id], onDelete: SetNull)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@unique([inboundEmailId, providerAttachmentId])
 }
 
 model ShipmentLineItem {
@@ -1160,6 +1249,7 @@ model AgentExecutionRecord {
   // an ordinal for that run rather than a fixed 1-10 pipeline slot.
   stepNumber     Int?
   nextStep       String?
+  summary        String? // Human-readable one-line summary of what this step found or changed.
   status         String    @default("COMPLETED") // RUNNING, COMPLETED, FAILED
   // Null when the agent reported no confidence, or reported a multi-dimensional
   // breakdown instead of a single number -- never substitute a synthetic figure.

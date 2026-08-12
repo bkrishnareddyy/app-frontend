@@ -10,18 +10,45 @@ export default async function ShipmentsConsolePage() {
     return null;
   }
 
-  // Fetch all shipments for active tenant account, including relations
+  // A stopgap cap, not real pagination: the workbench's KPI tiles and
+  // client-side search/filters are documented as reading the *whole* filtered
+  // set (see ShipmentsWorkbenchClient's pagination comment), so this only
+  // bounds the worst case rather than truly paginating at the query level.
+  const SHIPMENT_ROW_CAP = 500;
+
+  // Select only the columns ShipmentsWorkbenchClient actually reads, plus
+  // documents/lineItems/exceptionItems for computeReadinessScore below. The
+  // previous `include: { ...: true }` pulled full rows -- including
+  // customsFilings and lineItems, neither of which the client component
+  // reads (see its own "not read by this screen" comment) -- for every
+  // shipment on every page load.
   const shipments = await db.shipment.findMany({
     where: { accountId: ctx.accountId, deletedAt: null },
-    include: {
-      documents: true,
-      lineItems: true,
-      customsFilings: true,
-      assignedBroker: true,
-      exceptionItems: true,
-      client: true,
+    select: {
+      id: true,
+      shipmentNumber: true,
+      importerName: true,
+      countryOfExport: true,
+      entryType: true,
+      poReference: true,
+      portOfEntry: true,
+      carrierName: true,
+      incoterm: true,
+      status: true,
+      healthStatus: true,
+      createdAt: true,
+      clientId: true,
+      client: { select: { id: true, name: true } },
+      assignedBrokerId: true,
+      assignedBroker: { select: { id: true, firstName: true, lastName: true, email: true } },
+      // computeReadinessScore's inputs -- not sent to the client, only used
+      // to derive the readinessScore scalar below.
+      documents: { select: { docType: true, status: true } },
+      lineItems: { select: { htsCode: true, countryOfOrigin: true, quantity: true, unitPrice: true } },
+      exceptionItems: { select: { status: true, severity: true } },
     },
     orderBy: { createdAt: "desc" },
+    take: SHIPMENT_ROW_CAP,
   });
 
   const clients = await db.client.findMany({
@@ -75,33 +102,9 @@ export default async function ShipmentsConsolePage() {
           email: s.assignedBroker.email,
         }
       : null,
-    documents: s.documents.map((d) => ({
-      id: d.id,
-      docType: d.docType,
-      fileName: d.fileName,
-      pageCount: d.pageCount,
-      confidence: d.confidence,
-      status: d.status,
-      fileUrl: d.fileUrl,
-    })),
-    lineItems: s.lineItems.map((li) => ({
-      ...li,
-      unitPrice: Number(li.unitPrice),
-      totalValue: Number(li.totalValue),
-      createdAt: li.createdAt.toISOString(),
-      updatedAt: li.updatedAt.toISOString(),
-    })),
-    customsFilings: s.customsFilings.map((cf) => ({
-      ...cf,
-      totalValue: Number(cf.totalValue),
-      totalDuties: Number(cf.totalDuties),
-      totalTaxes: Number(cf.totalTaxes),
-      totalAmount: Number(cf.totalAmount),
-      submittedAt: cf.submittedAt ? cf.submittedAt.toISOString() : null,
-      releasedAt: cf.releasedAt ? cf.releasedAt.toISOString() : null,
-      createdAt: cf.createdAt.toISOString(),
-      updatedAt: cf.updatedAt.toISOString(),
-    })),
+    // documents/lineItems/customsFilings are deliberately not serialized here:
+    // ShipmentsWorkbenchClient never reads them (see its own prop-type
+    // comment) -- only the computed readinessScore above is used.
   }));
 
   return (

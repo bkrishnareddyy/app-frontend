@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare, Sparkles } from "lucide-react";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
@@ -45,17 +45,37 @@ function severityBadgeClass(severity: string): string {
 // "blocked," not a guess.
 const BLOCKED_SENTINELS = new Set(["BLOCKED_DEPENDENCY", "WAITING_FOR_EXTRACTION", "BLOCKED_MISSING_DESCRIPTION"]);
 
+type RollupCategory = "VERIFIED" | "REVIEW" | "BLOCKED";
+
 interface RollupDecision {
+  id: string;
   status: string;
   proposedDescription?: string | null;
 }
 
-function RollupSummary({ decisions }: { decisions: RollupDecision[] }) {
+function classifyDecision(d: { status: string; proposedDescription?: string | null }): RollupCategory {
+  if (d.proposedDescription && BLOCKED_SENTINELS.has(d.proposedDescription)) return "BLOCKED";
+  if (d.status === "Approved") return "VERIFIED";
+  return "REVIEW";
+}
+
+// Fixed ordering used both to sort the check list and to rank which stat
+// box's first match a click should jump to -- worst first, so the thing
+// most likely to need action is what you land on.
+const CATEGORY_PRIORITY: Record<RollupCategory, number> = { BLOCKED: 0, REVIEW: 1, VERIFIED: 2 };
+
+function RollupSummary({
+  decisions,
+  onSelectCategory,
+}: {
+  decisions: RollupDecision[];
+  onSelectCategory?: (category: RollupCategory) => void;
+}) {
   const total = decisions.length;
   if (total === 0) return null;
 
-  const blocked = decisions.filter((d) => d.proposedDescription && BLOCKED_SENTINELS.has(d.proposedDescription)).length;
-  const verified = decisions.filter((d) => d.status === "Approved").length;
+  const blocked = decisions.filter((d) => classifyDecision(d) === "BLOCKED").length;
+  const verified = decisions.filter((d) => classifyDecision(d) === "VERIFIED").length;
   const review = total - verified - blocked;
 
   let summary: string | null = null;
@@ -75,18 +95,30 @@ function RollupSummary({ decisions }: { decisions: RollupDecision[] }) {
         <span className="ml-auto text-[11px] font-semibold text-ink-muted">{verified} of {total} checks passed</span>
       </div>
       <div className="flex gap-2">
-        <div className="flex-1 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-2">
+        <button
+          type="button"
+          onClick={() => onSelectCategory?.("VERIFIED")}
+          className="flex-1 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-2 text-left hover:bg-emerald-100 transition-colors cursor-pointer"
+        >
           <p className="text-base font-extrabold text-emerald-900">{verified}</p>
           <p className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">Verified</p>
-        </div>
-        <div className="flex-1 rounded-xl bg-amber-50 border border-amber-200 px-2.5 py-2">
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectCategory?.("REVIEW")}
+          className="flex-1 rounded-xl bg-amber-50 border border-amber-200 px-2.5 py-2 text-left hover:bg-amber-100 transition-colors cursor-pointer"
+        >
           <p className="text-base font-extrabold text-amber-900">{review}</p>
           <p className="text-[9px] font-extrabold uppercase tracking-wide text-amber-700">Review</p>
-        </div>
-        <div className="flex-1 rounded-xl bg-red-50 border border-red-200 px-2.5 py-2">
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectCategory?.("BLOCKED")}
+          className="flex-1 rounded-xl bg-red-50 border border-red-200 px-2.5 py-2 text-left hover:bg-red-100 transition-colors cursor-pointer"
+        >
           <p className="text-base font-extrabold text-red-900">{blocked}</p>
           <p className="text-[9px] font-extrabold uppercase tracking-wide text-red-700">Blocked</p>
-        </div>
+        </button>
       </div>
       {summary && <p className="text-[11px] text-ink-muted leading-relaxed">{summary}</p>}
     </div>
@@ -268,11 +300,9 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
 }
 
 interface ExtractionPayload {
-  extractedJson?: {
-    keyValuePairs?: Record<string, unknown>;
-    extractionStatus?: string;
-  } | null;
+  extractedJson?: Record<string, unknown> | null;
   rawContent?: string | null;
+  extractionFields?: Array<{ fieldName?: string; value?: string }>;
 }
 
 type ReviewAction = "APPROVE" | "REJECT" | "RE_EVALUATE";
@@ -308,6 +338,14 @@ export interface ReviewDecision {
   evidenceItems?: unknown;
 }
 
+export interface DocumentHtsScore {
+  // null when this document's HTS-bearing lines haven't been matched to a
+  // classified persisted line item yet (classifiedCount will be 0).
+  averageConfidence: number | null;
+  classifiedCount: number;
+  totalCount: number;
+}
+
 export interface DocumentReviewPanelProps {
   documentId: string;
   fileName: string;
@@ -317,6 +355,11 @@ export interface DocumentReviewPanelProps {
   shipmentNumber?: string | null;
   fileUrl?: string | null;
   proxyUrl?: string;
+  // Present only when this document's extraction produced HTS-bearing line
+  // items -- a Bill of Lading or Packing List has none, so the badge next to
+  // the tab bar is omitted rather than showing a score for codes that were
+  // never expected on this document.
+  htsScore?: DocumentHtsScore;
   // Agent checks that ran on this document. When provided, the panel opens
   // to a "Field Review" tab that presents each check as a plain field/value
   // row instead of the raw document -- brokers care about the resulting
@@ -351,6 +394,7 @@ export function DocumentReviewPanel({
   docType = null,
   shipmentNumber = null,
   proxyUrl,
+  htsScore,
   decisions = [],
   notesByDecision = {},
   onNotesChange,
@@ -369,11 +413,23 @@ export function DocumentReviewPanel({
 
   const hasFieldReview = decisions.length > 0;
   const mechanicalDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) === "MECHANICAL"));
-  const reviewableDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) !== "MECHANICAL"));
+  // Worst-first (Blocked, then Review, then Verified) so the checks most
+  // likely to need action surface at the top of the list.
+  const reviewableDecisions = latestPerAgent(decisions.filter((dec) => reviewCategory(dec) !== "MECHANICAL")).sort(
+    (a, b) => CATEGORY_PRIORITY[classifyDecision(a)] - CATEGORY_PRIORITY[classifyDecision(b)]
+  );
 
-  // Field Review opens first when agent checks are available -- the whole
-  // point is to lead with results, not the raw document.
-  const [activeTab, setActiveTab] = useState<"FIELDS" | "DOC" | "KV" | "JSON">(hasFieldReview ? "FIELDS" : "DOC");
+  // Jumps to the first check card in the clicked rollup category. Mechanical
+  // checks render in their own collapsed block with no per-card scroll
+  // target, so a click only ever needs to consider reviewableDecisions.
+  function scrollToCategory(category: RollupCategory) {
+    const target = reviewableDecisions.find((dec) => classifyDecision(dec) === category);
+    if (!target) return;
+    document.getElementById(`decision-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  // Document tab opens first so clicking a document name surfaces the actual PDF viewer
+  const [activeTab, setActiveTab] = useState<"FIELDS" | "DOC" | "KV" | "JSON">("DOC");
 
   // Document renaming state. This holds only the in-progress edit; the name
   // shown everywhere else comes straight from the fileName prop.
@@ -594,9 +650,63 @@ export function DocumentReviewPanel({
     return ext.includes(".pdf");
   };
 
-  const kvPairs = data?.extractedJson?.keyValuePairs || {};
-  const kvEntries = Object.entries(kvPairs);
-  const isPending = data?.extractedJson?.extractionStatus === "PENDING_VISION_PROCESSING";
+  const parsedExtractedJson = useMemo(() => {
+    if (!data?.extractedJson) return null;
+    if (typeof data.extractedJson === "string") {
+      try {
+        return JSON.parse(data.extractedJson) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+    return data.extractedJson as Record<string, unknown>;
+  }, [data?.extractedJson]);
+
+  const kvEntries = useMemo(() => {
+    const map = new Map<string, string>();
+
+    // 1. From database extractionFields array
+    if (Array.isArray(data?.extractionFields)) {
+      for (const field of data.extractionFields) {
+        if (field.fieldName && field.value) {
+          map.set(field.fieldName, String(field.value));
+        }
+      }
+    }
+
+    // 2. From extractedJson.keyValuePairs
+    const kv = parsedExtractedJson?.keyValuePairs;
+    if (kv && typeof kv === "object") {
+      for (const [k, v] of Object.entries(kv as Record<string, unknown>)) {
+        if (k && v !== null && v !== undefined && String(v).trim()) {
+          map.set(k, String(v));
+        }
+      }
+    }
+
+    // 3. From extractedJson.tradeMetadata
+    const tm = parsedExtractedJson?.tradeMetadata;
+    if (tm && typeof tm === "object") {
+      for (const [k, v] of Object.entries(tm as Record<string, unknown>)) {
+        if (k && v !== null && v !== undefined && String(v).trim()) {
+          map.set(k, String(v));
+        }
+      }
+    }
+
+    // 4. Fallback if top-level parsedExtractedJson itself contains primitive pairs
+    if (map.size === 0 && parsedExtractedJson && typeof parsedExtractedJson === "object") {
+      for (const [k, v] of Object.entries(parsedExtractedJson)) {
+        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+          map.set(k, String(v));
+        }
+      }
+    }
+
+    return Array.from(map.entries());
+  }, [data?.extractionFields, parsedExtractedJson]);
+
+  const isPending = parsedExtractedJson?.extractionStatus === "PENDING_VISION_PROCESSING";
 
   return (
     <div className="flex flex-1 flex-col min-h-0 gap-4">
@@ -664,12 +774,8 @@ export function DocumentReviewPanel({
             <p id={titleId} className="text-xs text-ink-muted mt-0.5">
               {hasFieldReview ? (
                 <>
-                  {mechanicalDecisions.length + reviewableDecisions.length} agent checks
                   {shipmentNumber && (
-                    <>
-                      {" · "}
-                      <span className="font-mono text-brand font-bold">{shipmentNumber}</span>
-                    </>
+                    <span className="font-mono text-brand font-bold">{shipmentNumber}</span>
                   )}
                 </>
               ) : (
@@ -738,15 +844,40 @@ export function DocumentReviewPanel({
           </button>
         </div>
 
-        {activeTab === "JSON" && (
-          <button
-            onClick={handleCopy}
-            className="px-2.5 py-1 rounded-lg bg-white border border-border hover:bg-surface-muted text-ink font-bold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-brand" />}
-            <span>{copied ? "Copied!" : "Copy JSON"}</span>
-          </button>
-        )}
+        <div className="flex items-center space-x-2 shrink-0">
+          {htsScore && (
+            <span
+              title={
+                htsScore.classifiedCount < htsScore.totalCount
+                  ? `${htsScore.classifiedCount} of ${htsScore.totalCount} HTS-bearing line items matched to a classified record`
+                  : `Average classification confidence across ${htsScore.totalCount} HTS-bearing line item${htsScore.totalCount === 1 ? "" : "s"}`
+              }
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs flex items-center space-x-1.5 border ${
+                htsScore.averageConfidence === null
+                  ? "bg-amber-50 border-amber-200 text-amber-700"
+                  : htsScore.averageConfidence >= 90
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : htsScore.averageConfidence >= 80
+                  ? "bg-amber-50 border-amber-200 text-amber-700"
+                  : "bg-red-50 border-red-200 text-red-700"
+              }`}
+            >
+              <span className="uppercase tracking-wide text-[10px] opacity-80">HS Score</span>
+              <span>
+                {htsScore.averageConfidence === null ? "Not Classified" : `${htsScore.averageConfidence}%`}
+              </span>
+            </span>
+          )}
+          {activeTab === "JSON" && (
+            <button
+              onClick={handleCopy}
+              className="px-2.5 py-1 rounded-lg bg-white border border-border hover:bg-surface-muted text-ink font-bold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-brand" />}
+              <span>{copied ? "Copied!" : "Copy JSON"}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content Box */}
@@ -757,7 +888,7 @@ export function DocumentReviewPanel({
           </div>
         ) : activeTab === "FIELDS" ? (
           <div className="flex-1 overflow-y-auto border border-border rounded-2xl p-4 bg-[#F9F9FB] space-y-2.5 text-xs">
-            <RollupSummary decisions={[...mechanicalDecisions, ...reviewableDecisions]} />
+            <RollupSummary decisions={[...mechanicalDecisions, ...reviewableDecisions]} onSelectCategory={scrollToCategory} />
             {reviewableDecisions.map((dec) => {
               const isBusy = actionLoadingId === dec.id;
               const groupLabel = reviewerLabel(dec);
@@ -765,7 +896,7 @@ export function DocumentReviewPanel({
               const fields = category === "FIELDS" ? editableFieldsFor(dec) : [];
 
               return (
-                <div key={dec.id} className="p-3.5 rounded-xl bg-white border border-border shadow-2xs space-y-2.5">
+                <div id={`decision-${dec.id}`} key={dec.id} className="p-3.5 rounded-xl bg-white border border-border shadow-2xs space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-extrabold text-ink text-[13px]">{groupLabel}</span>
                     <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
@@ -938,50 +1069,89 @@ export function DocumentReviewPanel({
               <div className="p-8 text-center text-ink-muted">No agent checks yet for this document.</div>
             )}
 
-            {mechanicalDecisions.length > 0 && (
-              <div className="p-3 rounded-xl bg-[#F0F0F2] border border-border space-y-1.5">
-                <p className="text-[10px] font-bold uppercase text-ink-muted tracking-wide">
-                  Automated processing ({mechanicalDecisions.length}) — nothing to review
-                </p>
-                <div className="space-y-1">
-                  {mechanicalDecisions.map((dec) => (
-                    <div key={dec.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
-                      <span className="text-ink font-semibold truncate">{decisionGroupLabel(dec)}</span>
-                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
-                        {dec.status}
-                      </span>
-                    </div>
-                  ))}
+            {(() => {
+              // "Mechanical" means no field to correct, not "can't fail" --
+              // Document Intake and Filing Readiness write status "Needs
+              // Review" when the underlying check actually failed (e.g. not
+              // ready for transmission). A passing mechanical check has
+              // nothing to tell the broker, so it's not rendered at all;
+              // only the ones that actually failed are worth a line.
+              const failingMechanical = mechanicalDecisions.filter((dec) => dec.status !== "Approved");
+              if (failingMechanical.length === 0) return null;
+              return (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
+                  <p className="text-[10px] font-bold uppercase text-amber-800 tracking-wide">
+                    Automated processing — {failingMechanical.length} needs attention
+                  </p>
+                  <div className="space-y-1">
+                    {failingMechanical.map((dec) => (
+                      <div key={dec.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
+                        <span className="text-ink font-semibold truncate">{decisionGroupLabel(dec)}</span>
+                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${statusPillClass(dec.status)}`}>
+                          {dec.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         ) : activeTab === "DOC" ? (
-          <div className="flex-1 overflow-y-auto bg-surface-muted rounded-2xl border border-border p-4 flex items-center justify-center min-h-[350px]">
+          <div className="flex-1 w-full h-full min-h-[480px] rounded-2xl border border-border bg-[#212328] flex flex-col overflow-hidden shadow-inner">
             {proxyUrl ? (
               isImageFile(proxyUrl, fileName) ? (
-                // next/image is deliberately not used: these are tenant documents
-                // served through an authenticated proxy, and routing them via the
-                // image optimizer would cache customs paperwork outside that path.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={proxyUrl}
-                  alt={fileName}
-                  className="max-h-[55vh] rounded-xl border border-border shadow-md object-contain"
-                />
+                <div className="flex-1 p-4 flex items-center justify-center overflow-auto">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={proxyUrl}
+                    alt={fileName}
+                    className="max-h-[65vh] rounded-xl border border-border shadow-md object-contain"
+                  />
+                </div>
               ) : isPdfFile(proxyUrl, fileName) ? (
-                // A fixed vh height here previously overflowed shorter
-                // containers (e.g. embedded on the shipment page at a fixed
-                // pixel height) since an iframe has no intrinsic size to
-                // shrink to. h-full defers to whatever height the container
-                // -- modal or inline panel -- actually provides.
-                <iframe
-                  src={proxyUrl}
-                  className="w-full h-full min-h-[350px] rounded-xl border border-border"
-                  title={fileName}
-                />
+                (() => {
+                  const pdfUrlWithParams = proxyUrl.includes("#")
+                    ? proxyUrl
+                    : `${proxyUrl}#view=FitH&toolbar=1`;
+                  return (
+                    <div className="flex-1 w-full h-full flex flex-col overflow-hidden">
+                      {/* PDF Action Bar */}
+                      <div className="bg-[#18191c] border-b border-white/10 px-4 py-2 flex items-center justify-between text-white shrink-0">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <FileText className="w-4 h-4 text-brand shrink-0" />
+                          <span className="text-xs font-bold truncate text-slate-100">{fileName}</span>
+                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-white/10 text-slate-300 shrink-0">
+                            Fit Width Enabled
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <a
+                            href={proxyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors cursor-pointer"
+                            title="Open full document in new tab"
+                          >
+                            <span>Open Full View</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* PDF Canvas iFrame */}
+                      <div className="flex-1 w-full h-full relative overflow-hidden bg-[#323639]">
+                        <iframe
+                          src={pdfUrlWithParams}
+                          className="w-full h-full border-none block min-h-[450px]"
+                          title={fileName}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
-                <div className="text-center p-8 space-y-3">
+                <div className="flex-1 text-center p-8 space-y-3 flex flex-col items-center justify-center">
                   <FileText className="w-12 h-12 text-brand mx-auto" />
                   <div>
                     <h4 className="font-extrabold text-ink text-sm">{fileName}</h4>

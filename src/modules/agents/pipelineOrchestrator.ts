@@ -13,9 +13,10 @@ import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentSe
 import { ShipmentEventBus, ShipmentEventType } from "@/modules/events/shipmentEventBus";
 import { FactService, RecordFactInput } from "@/modules/shipment/factService";
 import { LineItemReconciler, lineItemFactField } from "@/modules/shipment/lineItemReconciler";
-import { buildAgentContext, ShipmentAgentContext, factValue } from "./agentContext";
+import { buildAgentContext, ShipmentAgentContext, factValue, latestTradeMetadata } from "./agentContext";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { captureShipmentOutputFacts } from "./outputCapture";
+import { PgQueue } from "@/lib/queue/pgQueue";
 
 /**
  * Replaces ComplianceWorkflowEngine/AgentOrchestrator (the fixed 10-step
@@ -45,6 +46,8 @@ export interface ProcessEventParams {
   userId?: string;
   triggerEvent: ShipmentEventType;
   payload?: AgentTriggerPayload;
+  /** PipelineJob to report step progress against, for callers running this inline behind a job record. */
+  jobId?: string;
 }
 
 export interface ProcessEventResult {
@@ -59,6 +62,7 @@ interface SingleAgentResult {
   confidence?: unknown;
   decisionId?: string | null;
   aiProviderUsed?: string;
+  summary?: string;
   input: unknown;
   output: unknown;
 }
@@ -73,6 +77,10 @@ function numOrNull(v: string | null | undefined): number | null {
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
 }
 
 async function computeDutyDue(context: ShipmentAgentContext): Promise<number | null> {
@@ -108,7 +116,7 @@ async function recordLineItemFacts(
 export class PipelineOrchestrator {
   static async processEvent(params: ProcessEventParams): Promise<ProcessEventResult> {
     const startTime = Date.now();
-    const { shipmentId, accountId, triggerEvent, payload } = params;
+    const { shipmentId, accountId, triggerEvent, payload, jobId } = params;
     const userId = params.userId || "usr_system";
     const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const invokedByLabel = this.invokedByLabel(triggerEvent, payload);
@@ -135,6 +143,7 @@ export class PipelineOrchestrator {
       let confidence: unknown = null;
       let decisionId: string | null = null;
       let aiProviderUsed: string | undefined;
+      let summary: string | undefined;
       let inputSnapshot: unknown = null;
       let outputSnapshot: unknown = null;
 
@@ -151,6 +160,7 @@ export class PipelineOrchestrator {
         confidence = result.confidence ?? null;
         decisionId = result.decisionId ?? null;
         aiProviderUsed = result.aiProviderUsed;
+        summary = result.summary;
         inputSnapshot = result.input;
         outputSnapshot = result.output;
       } catch (err) {
@@ -168,6 +178,7 @@ export class PipelineOrchestrator {
               invokedBy: invokedByLabel,
               stepNumber: i + 1,
               nextStep,
+              summary,
               status,
               durationMs: Date.now() - stepStart,
               confidence: (confidence ?? Prisma.JsonNull) as Prisma.InputJsonValue,
@@ -182,6 +193,12 @@ export class PipelineOrchestrator {
             },
           })
           .catch((e) => console.error("[PipelineOrchestrator] Failed to write execution record:", e));
+
+        if (jobId) {
+          await PgQueue.updateProgress(jobId, i + 1).catch((e) =>
+            console.error("[PipelineOrchestrator] Failed to update job progress:", e)
+          );
+        }
       }
     }
 
@@ -296,7 +313,15 @@ export class PipelineOrchestrator {
           output: output as unknown as Record<string, unknown>,
           exclude: ["shipmentDocumentId", "packetId"],
         });
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, input: agentInput, output };
+        const detectedType = output.detectedTypes?.[0];
+        const intakeSummary = [
+          detectedType && `${detectedType.replace(/_/g, " ")}`,
+          output.pageCount != null && `${output.pageCount}p`,
+          output.documentCount != null && output.documentCount > 1 && `${output.documentCount} docs`,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, summary: intakeSummary || undefined, input: agentInput, output };
       }
 
       case "Document Intelligence Agent": {
@@ -333,10 +358,20 @@ export class PipelineOrchestrator {
             "packetId",
           ],
         });
+        const lineCount = output.lineItems?.length ?? 0;
+        const exporter = output.exporterName || output.importerName;
+        const intelliSummary = [
+          lineCount > 0 && `${lineCount} line item${lineCount !== 1 ? "s" : ""}`,
+          exporter && `from ${exporter}`,
+          output.invoiceNumber && `inv ${output.invoiceNumber}`,
+        ]
+          .filter(Boolean)
+          .join("; ");
         return {
           decisionId: output.agentDecisionId,
           aiProviderUsed: output.aiProviderUsed,
           confidence: output.confidenceMetrics,
+          summary: intelliSummary || undefined,
           input: agentInput,
           output,
         };
@@ -358,7 +393,9 @@ export class PipelineOrchestrator {
         };
         const output = await ProductIntelligenceAgent.execute(agentInput);
         await this.persistProductIntelligence(shipmentId, documentId, agentInput.lineItems, output);
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+        const productCount = output.profiles?.length ?? 0;
+        const productSummary = productCount > 0 ? `Enriched ${productCount} product profile${productCount !== 1 ? "s" : ""}` : undefined;
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, summary: productSummary, input: agentInput, output };
       }
 
       case "HTS Classification Agent": {
@@ -383,10 +420,16 @@ export class PipelineOrchestrator {
         };
         const output: HTSClassificationOutput = await HTSClassificationAgent.execute(agentInput);
         await this.persistClassification(shipmentId, accountId, documentId, output);
+        const classifiedCount = output.classifications?.filter((c: { htsCode: string }) => c.htsCode !== "UNCLASSIFIABLE").length ?? 0;
+        const totalClassified = output.classifications?.length ?? 0;
+        const htsSummary = totalClassified > 0
+          ? `${classifiedCount}/${totalClassified} classified${output.overallConfidence != null ? `; ${Math.round(Number(output.overallConfidence))}% confidence` : ""}`
+          : undefined;
         return {
           decisionId: output.agentDecisionId,
           aiProviderUsed: output.aiProviderUsed,
           confidence: output.overallConfidence,
+          summary: htsSummary,
           input: agentInput,
           output,
         };
@@ -425,7 +468,12 @@ export class PipelineOrchestrator {
             countryOfOrigin: q.countryOfOrigin,
           });
         }
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+        const qualCount = output.qualifications?.length ?? 0;
+        const savings = (output.qualifications ?? []).reduce((s: number, q: { estimatedSavings?: number | null }) => s + (q.estimatedSavings ?? 0), 0);
+        const originSummary = qualCount > 0
+          ? `${qualCount} FTA qualification${qualCount !== 1 ? "s" : ""}${savings > 0 ? `; est. $${savings.toLocaleString()} savings` : ""}`
+          : "No FTA qualifications found";
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, summary: originSummary, input: agentInput, output };
       }
 
       case "Valuation & Assists Agent": {
@@ -462,12 +510,15 @@ export class PipelineOrchestrator {
           output: output as unknown as Record<string, unknown>,
           exclude: ["enteredCustomsValue", "shipmentId"],
         });
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, input: agentInput, output };
+        const ecv = output.enteredCustomsValue;
+        const valuationSummary = ecv != null ? `Entered customs value $${Number(ecv).toLocaleString()}` : "No customs value determined";
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, summary: valuationSummary, input: agentInput, output };
       }
 
       case "Compliance Audit Agent": {
         const context = await buildAgentContext(shipmentId);
         const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
+        const logistics = latestTradeMetadata(context);
         const agentInput = {
           accountId,
           userId,
@@ -486,6 +537,10 @@ export class PipelineOrchestrator {
           incoterm: factValue(context, "incoterm"),
           exporterName: factValue(context, "exporterName"),
           supplierName: factValue(context, "exporterName") ?? undefined,
+          portOfLoading: strOrNull(logistics?.portOfLoading),
+          portOfDischarge: strOrNull(logistics?.portOfDischarge),
+          carrier: strOrNull(logistics?.carrier),
+          transportDocumentNumber: strOrNull(logistics?.transportDocumentNumber),
           isHtsBlocked,
         };
         const output: ComplianceAuditOutput = await ComplianceAuditAgent.execute(agentInput);
@@ -509,13 +564,21 @@ export class PipelineOrchestrator {
             complianceFindings: JSON.stringify(findings),
           });
         }
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: null, input: agentInput, output };
+        const issueCount = output.auditResults?.filter((r: { severity?: string }) => r.severity === "HIGH" || r.severity === "MEDIUM").length ?? 0;
+        const totalIssues = output.auditResults?.length ?? 0;
+        const complianceSummary = output.status === "BLOCKED_DEPENDENCY"
+          ? "Blocked — missing upstream data"
+          : totalIssues === 0
+          ? "Cleared — no findings"
+          : `${totalIssues} finding${totalIssues !== 1 ? "s" : ""}${issueCount > 0 ? ` (${issueCount} high/med)` : ""}`;
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: null, summary: complianceSummary, input: agentInput, output };
       }
 
       case "Filing Readiness Agent": {
         const context = await buildAgentContext(shipmentId);
         const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
         const isOriginBlocked = !factValue(context, "countryOfOrigin");
+        const logistics = latestTradeMetadata(context);
         const agentInput = {
           accountId,
           userId,
@@ -529,6 +592,10 @@ export class PipelineOrchestrator {
           isOriginBlocked,
           isComplianceBlocked: scratch.isComplianceBlocked ?? false,
           entryType: payload?.entryType,
+          portOfLoading: strOrNull(logistics?.portOfLoading),
+          portOfDischarge: strOrNull(logistics?.portOfDischarge),
+          carrier: strOrNull(logistics?.carrier),
+          transportDocumentNumber: strOrNull(logistics?.transportDocumentNumber),
         };
         const output = await FilingReadinessAgent.execute(agentInput);
         await captureShipmentOutputFacts({
@@ -537,7 +604,10 @@ export class PipelineOrchestrator {
           agentKey: "filingReadiness",
           output: output as unknown as Record<string, unknown>,
         });
-        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.readinessScore, input: agentInput, output };
+        const readinessSummary = output.readinessScore != null
+          ? `Readiness score ${Math.round(Number(output.readinessScore))}%${output.status ? ` — ${output.status}` : ""}`
+          : undefined;
+        return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.readinessScore, summary: readinessSummary, input: agentInput, output };
       }
 
       default:

@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertCircle, AlertTriangle, Info, FileText, CheckCircle2, ChevronRight } from "lucide-react";
+import { AlertCircle, AlertTriangle, Info, FileText, CheckCircle2, Pencil } from "lucide-react";
 import { ExceptionResolutionModal } from "./ExceptionResolutionModal";
 import { DocumentFieldReviewModal, DocumentFieldSummary } from "./DocumentFieldReviewModal";
+import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
+import { Modal } from "@/components/ui/Modal";
+import { documentViewUrl } from "@/lib/documentUrl";
 import {
   isResolvableException,
   type DbExceptionItem,
@@ -36,9 +39,74 @@ export function ExceptionsDrawer({
   missingDocumentTypes = [],
   documentFieldSummaries = [],
 }: ExceptionsDrawerProps) {
-  const [activeTab, setActiveTab] = useState<"ALL" | "MISSING" | "CONFLICTS" | "VALIDATION" | "WARNINGS">("ALL");
+  const [panelTab, setPanelTab] = useState<"EXCEPTIONS" | "FIELD_REVIEW">("EXCEPTIONS");
   const [selectedException, setSelectedException] = useState<ResolvableException | null>(null);
   const [reviewingDoc, setReviewingDoc] = useState<DocumentFieldSummary | null>(null);
+  const [selectedPdfDoc, setSelectedPdfDoc] = useState<DocumentFieldSummary | null>(null);
+
+  const [approvingField, setApprovingField] = useState<string | null>(null);
+  const [batchApprovingDoc, setBatchApprovingDoc] = useState<string | null>(null);
+
+  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<string>("");
+  const [savingInlineField, setSavingInlineField] = useState<string | null>(null);
+
+  const handleInlineEditSave = async (docId: string, fieldKey: string) => {
+    if (!editingValue.trim()) return;
+    const key = `${docId}:${fieldKey}`;
+    setSavingInlineField(key);
+    try {
+      const res = await fetch(`/api/shipments/${shipmentId}/documents/${docId}/field-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fieldKey, action: "EDIT", value: editingValue.trim() }),
+      });
+      if (res.ok) window.location.reload();
+    } catch (err) {
+      console.error("Field review edit save failed", err);
+    } finally {
+      setSavingInlineField(null);
+      setEditingFieldKey(null);
+    }
+  };
+
+  const handleInlineApprove = async (docId: string, fieldKey: string, value: string) => {
+    const key = `${docId}:${fieldKey}`;
+    setApprovingField(key);
+    try {
+      const res = await fetch(`/api/shipments/${shipmentId}/documents/${docId}/field-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fieldKey, action: "APPROVE", value }),
+      });
+      if (res.ok) window.location.reload();
+    } catch (err) {
+      console.error("Field review approval failed", err);
+    } finally {
+      setApprovingField(null);
+    }
+  };
+
+  const handleBatchApprove = async (doc: DocumentFieldSummary) => {
+    setBatchApprovingDoc(doc.documentId);
+    try {
+      const unconfirmed = doc.fields.filter((f) => f.status === "NEEDS_REVIEW" && f.value);
+      await Promise.all(
+        unconfirmed.map((f) =>
+          fetch(`/api/shipments/${shipmentId}/documents/${doc.documentId}/field-review`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fieldKey: f.key, action: "APPROVE", value: f.value }),
+          })
+        )
+      );
+      window.location.reload();
+    } catch (err) {
+      console.error("Batch approval failed", err);
+    } finally {
+      setBatchApprovingDoc(null);
+    }
+  };
 
   // Filter out exceptions that have been resolved
   const openExceptions = exceptionItems.filter(
@@ -161,153 +229,314 @@ export function ExceptionsDrawer({
     }));
 
   const allExceptions = [...exceptions, ...missingDocExceptions];
-
-  const filtered = allExceptions.filter((ex) => {
-    if (activeTab === "ALL") return true;
-    return ex.category === activeTab;
-  });
-
-  const validationCount = allExceptions.filter((e) => e.category === "VALIDATION").length;
-  const missingCount = allExceptions.filter((e) => e.category === "MISSING").length;
-  const conflictsCount = allExceptions.filter((e) => e.category === "CONFLICTS").length;
-  const warningsCount = allExceptions.filter((e) => e.category === "WARNINGS").length;
-  const totalCount = allExceptions.length;
+  const totalPendingFields = documentFieldSummaries.reduce(
+    (acc, doc) => acc + (doc.totalCount - doc.confirmedCount),
+    0
+  );
 
   return (
     <>
-      <div className="bg-white p-6 rounded-2xl border border-border shadow-2xs space-y-4 animate-in fade-in duration-200">
-        <div className="flex items-center justify-between border-b border-border pb-3 text-xs">
-          <div className="flex items-center space-x-4">
+      <div className="bg-white p-6 rounded-2xl border border-border shadow-2xs space-y-5 animate-in fade-in duration-200">
+        {/* Top Navigation Pill Tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-3 text-xs gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Standalone Pill 1: Exceptions */}
             <button
-              onClick={() => setActiveTab("ALL")}
-              className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "ALL" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
+              type="button"
+              onClick={() => setPanelTab("EXCEPTIONS")}
+              className={`px-4 py-2 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center space-x-2 border shadow-2xs ${
+                panelTab === "EXCEPTIONS"
+                  ? "bg-brand text-white border-brand ring-2 ring-brand/20"
+                  : "bg-white text-ink border-border hover:bg-surface-muted hover:border-slate-300"
               }`}
             >
-              Exceptions ({totalCount})
+              <AlertTriangle className={`w-3.5 h-3.5 ${panelTab === "EXCEPTIONS" ? "text-white" : "text-amber-500"}`} />
+              <span>Exceptions & Action Items ({allExceptions.length})</span>
+              {allExceptions.length > 0 && (
+                <span
+                  className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                    panelTab === "EXCEPTIONS"
+                      ? "bg-white/20 text-white"
+                      : "bg-red-50 text-red-800 border border-red-200"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  {allExceptions.length} Action{allExceptions.length === 1 ? "" : "s"}
+                </span>
+              )}
             </button>
+
+            {/* Standalone Pill 2: Document Field Review */}
             <button
-              onClick={() => setActiveTab("MISSING")}
-              className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "MISSING" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
+              type="button"
+              onClick={() => setPanelTab("FIELD_REVIEW")}
+              className={`px-4 py-2 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center space-x-2 border shadow-2xs ${
+                panelTab === "FIELD_REVIEW"
+                  ? "bg-brand text-white border-brand ring-2 ring-brand/20"
+                  : "bg-white text-ink border-border hover:bg-surface-muted hover:border-slate-300"
               }`}
             >
-              Missing Data ({missingCount})
-            </button>
-            <button
-              onClick={() => setActiveTab("CONFLICTS")}
-              className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "CONFLICTS" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
-              }`}
-            >
-              Conflicts ({conflictsCount})
-            </button>
-            <button
-              onClick={() => setActiveTab("VALIDATION")}
-              className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "VALIDATION" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
-              }`}
-            >
-              Validation ({validationCount})
-            </button>
-            <button
-              onClick={() => setActiveTab("WARNINGS")}
-              className={`pb-3 -mb-3 font-bold transition-all cursor-pointer ${
-                activeTab === "WARNINGS" ? "text-brand border-b-2 border-brand" : "text-ink-muted hover:text-ink"
-              }`}
-            >
-              Warnings ({warningsCount})
+              <FileText className={`w-3.5 h-3.5 ${panelTab === "FIELD_REVIEW" ? "text-white" : "text-brand"}`} />
+              <span>Document Field Review ({documentFieldSummaries.length})</span>
+              {totalPendingFields > 0 ? (
+                <span
+                  className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                    panelTab === "FIELD_REVIEW"
+                      ? "bg-amber-400 text-amber-950 font-extrabold"
+                      : "bg-amber-100 text-amber-900 border border-amber-300"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                  {totalPendingFields} Pending Approval
+                </span>
+              ) : documentFieldSummaries.length > 0 ? (
+                <span
+                  className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                    panelTab === "FIELD_REVIEW"
+                      ? "bg-emerald-400 text-emerald-950 font-extrabold"
+                      : "bg-emerald-50 text-emerald-800 border border-emerald-300"
+                  }`}
+                >
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                  All Confirmed
+                </span>
+              ) : null}
             </button>
           </div>
+
           <Link
-            href={`/app/decisions?shipmentId=${shipmentId}`}
-            className="text-xs font-semibold text-brand hover:underline"
+            href={`/app/actions?shipmentId=${shipmentId}`}
+            className="text-xs font-semibold text-brand hover:underline shrink-0"
           >
-            View All Exceptions
+            View All Actions →
           </Link>
         </div>
 
-        {documentFieldSummaries.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-ink-muted">Document Field Review</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {documentFieldSummaries.map((doc) => {
-                const allConfirmed = doc.confirmedCount === doc.totalCount;
-                return (
+        {/* Tab 1: Exceptions & Action Items Grid */}
+        {panelTab === "EXCEPTIONS" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+            {allExceptions.map((ex) => (
+              <div
+                key={ex.id}
+                className="p-4 rounded-xl bg-surface-muted border border-border space-y-2 hover:border-brand transition-all duration-200"
+              >
+                <div className="flex items-start space-x-2 text-xs font-bold text-ink">
+                  <span className="shrink-0">{ex.icon}</span>
+                  <span className="min-w-0 break-words">{ex.title}</span>
+                </div>
+                <p className="text-[11px] text-ink-muted leading-relaxed">{ex.desc}</p>
+                {ex.actionType === "UPLOAD_DIRECT" ? (
                   <button
-                    key={doc.documentId}
-                    onClick={() => setReviewingDoc(doc)}
-                    className="text-left p-4 rounded-xl border border-border bg-[#F9F9FB] hover:border-brand transition-all duration-200 flex items-center justify-between space-x-3 cursor-pointer"
+                    onClick={() => window.dispatchEvent(new Event("qubere:open-upload-modal"))}
+                    className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
                   >
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
-                          allConfirmed ? "bg-emerald-50 border-emerald-200 text-emerald-600" : "bg-amber-50 border-amber-200 text-amber-600"
-                        }`}
-                      >
-                        {allConfirmed ? <CheckCircle2 className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-ink truncate">{doc.fileName}</p>
-                        <p className="text-[10px] text-ink-muted">
-                          {doc.confirmedCount} of {doc.totalCount} fields confirmed
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />
+                    {ex.actionText}
                   </button>
-                );
-              })}
-            </div>
+                ) : ex.actionType ? (
+                  <button
+                    onClick={() => {
+                      if (isResolvableException(ex)) setSelectedException(ex);
+                    }}
+                    className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
+                  >
+                    {ex.actionText}
+                  </button>
+                ) : (
+                  <Link
+                    href={ex.actionHref || "#"}
+                    className="inline-block text-xs font-semibold text-brand hover:underline pt-1"
+                  >
+                    {ex.actionText}
+                  </Link>
+                )}
+              </div>
+            ))}
+            {allExceptions.length === 0 && (
+              <div className="col-span-full py-8 text-center text-ink-muted text-xs">
+                No open exceptions for this shipment.
+              </div>
+            )}
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {filtered.map((ex) => (
-            <div key={ex.id} className="p-4 rounded-xl bg-surface-muted border border-border space-y-2 hover:border-brand transition-all duration-200">
-              <div className="flex items-start space-x-2 text-xs font-bold text-ink">
-                <span className="shrink-0">{ex.icon}</span>
-                <span className="min-w-0 break-words">{ex.title}</span>
+        {/* Tab 2: Document Field Review & Approval Grid */}
+        {panelTab === "FIELD_REVIEW" && (
+          <div className="space-y-3 pt-1">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-ink-muted">
+                Extracted Document Fields & Verification
+              </p>
+              <span className="text-[10px] text-ink-muted">
+                Review OCR extracted values directly or click Approve All
+              </span>
+            </div>
+            {documentFieldSummaries.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {documentFieldSummaries.map((doc) => {
+                  const allConfirmed = doc.confirmedCount === doc.totalCount;
+                  const unconfirmedCount = doc.totalCount - doc.confirmedCount;
+                  const isBatchLoading = batchApprovingDoc === doc.documentId;
+                  return (
+                    <div
+                      key={doc.documentId}
+                      className="p-4 rounded-xl border border-border bg-[#F9F9FB] space-y-3 transition-all duration-200"
+                    >
+                      {/* Card Header */}
+                      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-brand shrink-0" />
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPdfDoc(doc)}
+                            className="text-xs font-bold text-ink truncate hover:underline hover:text-brand text-left cursor-pointer"
+                          >
+                            {doc.fileName}
+                          </button>
+                          {unconfirmedCount > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                              {unconfirmedCount} Pending
+                            </span>
+                          )}
+                        </div>
+                        {!allConfirmed && unconfirmedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleBatchApprove(doc)}
+                            disabled={isBatchLoading}
+                            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-semibold hover:bg-brand/90 disabled:opacity-50 transition-all shrink-0 cursor-pointer shadow-2xs"
+                          >
+                            {isBatchLoading ? "Approving…" : `Approve All (${unconfirmedCount})`}
+                          </button>
+                        )}
+                        {allConfirmed && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            All Confirmed
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Flat Inline List of Extracted Fields */}
+                      <div className="space-y-2">
+                        {doc.fields.map((f) => {
+                          const fieldKeyId = `${doc.documentId}:${f.key}`;
+                          const fieldLoading = approvingField === fieldKeyId;
+                          const isEditing = editingFieldKey === fieldKeyId;
+
+                          if (isEditing) {
+                            return (
+                              <div
+                                key={f.key}
+                                className="flex items-center justify-between gap-2 text-xs p-2.5 rounded-lg bg-amber-50/70 border border-amber-300"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wider block">
+                                    {f.label}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={editingValue}
+                                    onChange={(e) => setEditingValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") handleInlineEditSave(doc.documentId, f.key);
+                                      if (e.key === "Escape") setEditingFieldKey(null);
+                                    }}
+                                    autoFocus
+                                    className="w-full mt-1 px-2.5 py-1 text-xs font-semibold rounded-md bg-white border border-amber-300 text-ink focus:outline-none focus:ring-1 focus:ring-brand shadow-2xs"
+                                    placeholder={`Enter ${f.label}…`}
+                                  />
+                                </div>
+                                <div className="shrink-0 flex items-center gap-1.5 self-end pb-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInlineEditSave(doc.documentId, f.key)}
+                                    disabled={savingInlineField === fieldKeyId || !editingValue.trim()}
+                                    className="px-2.5 py-1 rounded-md bg-brand text-white text-[11px] font-semibold hover:bg-brand/90 disabled:opacity-50 transition-all cursor-pointer shadow-2xs"
+                                  >
+                                    {savingInlineField === fieldKeyId ? "Saving…" : "Save"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingFieldKey(null)}
+                                    className="px-2 py-1 rounded-md bg-white border border-border text-ink-muted text-[11px] font-semibold hover:bg-surface-muted transition-all cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={f.key}
+                              className="flex items-center justify-between gap-3 text-xs p-2.5 rounded-lg bg-white border border-border/80 hover:border-border transition-colors group"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wider block">
+                                  {f.label}
+                                </span>
+                                <span className="font-semibold text-ink truncate block">
+                                  {f.value || <span className="text-red-500 italic text-[11px]">Missing</span>}
+                                </span>
+                              </div>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                {f.value && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingFieldKey(fieldKeyId);
+                                      setEditingValue(f.value || "");
+                                    }}
+                                    title={`Edit ${f.label}`}
+                                    className="p-1 text-ink-muted hover:text-brand hover:bg-surface-muted rounded-md transition-colors cursor-pointer"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {f.status === "CONFIRMED" ? (
+                                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Confirmed
+                                  </span>
+                                ) : f.value ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInlineApprove(doc.documentId, f.key, f.value!)}
+                                    disabled={fieldLoading || isBatchLoading}
+                                    className="px-2.5 py-1 rounded-md bg-surface-muted hover:bg-emerald-50 border border-border hover:border-emerald-300 text-ink hover:text-emerald-700 text-[11px] font-semibold transition-all disabled:opacity-40 cursor-pointer"
+                                  >
+                                    {fieldLoading ? "Confirming…" : "Confirm ✓"}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingFieldKey(fieldKeyId);
+                                      setEditingValue("");
+                                    }}
+                                    className="px-2.5 py-1 rounded-md bg-red-50 text-red-700 border border-red-200 text-[11px] font-semibold hover:bg-red-100 transition-all cursor-pointer"
+                                  >
+                                    Provide
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <p className="text-[11px] text-ink-muted leading-relaxed">{ex.desc}</p>
-              {ex.actionType === "UPLOAD_DIRECT" ? (
-                <button
-                  onClick={() => window.dispatchEvent(new Event("qubere:open-upload-modal"))}
-                  className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
-                >
-                  {ex.actionText}
-                </button>
-              ) : ex.actionType ? (
-                <button
-                  // Only a card backed by a real ExceptionItem row can be
-                  // resolved -- the modal writes back to /api/exceptions/{dbId}
-                  // with an expected version. Synthetic cards take the
-                  // UPLOAD_DIRECT branch above, so this guard does not currently
-                  // exclude anything reachable; it stops a future synthetic card
-                  // from producing a request against `undefined`.
-                  onClick={() => {
-                    if (isResolvableException(ex)) setSelectedException(ex);
-                  }}
-                  className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
-                >
-                  {ex.actionText}
-                </button>
-              ) : (
-                <Link
-                  href={ex.actionHref || "#"}
-                  className="inline-block text-xs font-semibold text-brand hover:underline pt-1"
-                >
-                  {ex.actionText}
-                </Link>
-              )}
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <div className="col-span-full py-8 text-center text-ink-muted text-xs">
-              No exceptions found under this category.
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="py-8 text-center text-ink-muted text-xs">
+                No documents uploaded for field review yet.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <ExceptionResolutionModal
@@ -324,6 +553,25 @@ export function ExceptionsDrawer({
         shipmentId={shipmentId}
         summary={reviewingDoc}
       />
+
+      {selectedPdfDoc && (
+        <Modal
+          isOpen={!!selectedPdfDoc}
+          titleId="pdf-doc-viewer-modal-title"
+          onClose={() => setSelectedPdfDoc(null)}
+          size="xl"
+        >
+          <div className="p-0 min-h-[720px] h-[88vh] flex flex-col overflow-hidden">
+            <DocumentReviewPanel
+              documentId={selectedPdfDoc.documentId}
+              fileName={selectedPdfDoc.fileName}
+              proxyUrl={documentViewUrl(selectedPdfDoc.documentId)}
+              onClose={() => setSelectedPdfDoc(null)}
+              titleId="pdf-doc-viewer-modal-title"
+            />
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

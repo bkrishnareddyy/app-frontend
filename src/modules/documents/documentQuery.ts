@@ -22,11 +22,24 @@ export interface DocumentQuery {
   shipmentId: string | null;
   /** User ids whose shipments' documents to show; empty means every assignee. */
   assignedBrokerIds: string[];
+  /** `archive` restricts to documents on shipments done with filing, or deleted. See ARCHIVE_SHIPMENT_STATUSES. */
+  archivedOnly: boolean;
+  /** Inclusive createdAt lower bound. */
+  createdFrom: Date | null;
+  /** Inclusive createdAt upper bound. */
+  createdTo: Date | null;
   sort: DocumentSortColumn;
   direction: SortDirection;
   page: number;
   pageSize: number;
 }
+
+/**
+ * Shipment lifecycle states that count as "done with filing" for the vault's
+ * archive scope. A shipment can also qualify by being soft-deleted regardless
+ * of status -- see buildDocumentWhere.
+ */
+export const ARCHIVE_SHIPMENT_STATUSES = ["Submitted", "Completed"];
 
 /** Sentinel for "no client", which is a real filter and not the absence of one. */
 export const UNASSIGNED_CLIENT = "UNASSIGNED";
@@ -54,6 +67,12 @@ function idList(raw: string | null): string[] {
   return [...new Set(raw.split(",").map((v) => v.trim()).filter(Boolean))];
 }
 
+function dateParam(raw: string | null): Date | null {
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export function parseDocumentQuery(params: URLSearchParams): DocumentQuery {
   const requestedSort = trimmed(params.get("sort"));
   const sort = DOCUMENT_SORT_COLUMNS.includes(requestedSort as DocumentSortColumn)
@@ -68,6 +87,9 @@ export function parseDocumentQuery(params: URLSearchParams): DocumentQuery {
     clientId: trimmed(params.get("clientId")),
     shipmentId: trimmed(params.get("shipmentId")),
     assignedBrokerIds: idList(params.get("assignedBrokerIds")),
+    archivedOnly: params.get("scope") === "archive",
+    createdFrom: dateParam(params.get("from")),
+    createdTo: dateParam(params.get("to")),
     sort,
     direction:
       requestedDirection === "asc" || requestedDirection === "desc"
@@ -112,7 +134,12 @@ export interface DocumentWhere {
   docType?: string;
   status?: string;
   shipmentId?: string | null;
-  shipment?: { clientId?: string | null; assignedBrokerId?: { in: string[] } };
+  shipment?: {
+    clientId?: string | null;
+    assignedBrokerId?: { in: string[] };
+    OR?: Array<Record<string, unknown>>;
+  };
+  createdAt?: { gte?: Date; lte?: Date };
   OR?: Array<Record<string, unknown>>;
 }
 
@@ -143,11 +170,31 @@ export function buildDocumentWhere(accountId: string, query: DocumentQuery): Doc
     where.shipment = { ...where.shipment, assignedBrokerId: { in: query.assignedBrokerIds } };
   }
 
+  // The vault: a document belongs here once its shipment is done with filing,
+  // or the shipment itself was deleted -- either way it has left the active
+  // workflow and become a compliance record rather than work in progress.
+  if (query.archivedOnly) {
+    where.shipment = {
+      ...where.shipment,
+      OR: [
+        { status: { in: ARCHIVE_SHIPMENT_STATUSES } },
+        { deletedAt: { not: null } },
+      ],
+    };
+  }
+
+  if (query.createdFrom || query.createdTo) {
+    where.createdAt = {};
+    if (query.createdFrom) where.createdAt.gte = query.createdFrom;
+    if (query.createdTo) where.createdAt.lte = query.createdTo;
+  }
+
   if (query.search) {
     where.OR = [
       { fileName: { contains: query.search, mode: "insensitive" } },
       { docType: { contains: query.search, mode: "insensitive" } },
       { shipment: { shipmentNumber: { contains: query.search, mode: "insensitive" } } },
+      { shipment: { client: { name: { contains: query.search, mode: "insensitive" } } } },
     ];
   }
 

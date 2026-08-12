@@ -12,10 +12,24 @@ function currencyOf(extractedJson: string | null | undefined): string | null {
   if (!extractedJson) return null;
   try {
     const parsed = JSON.parse(extractedJson);
-    const code = parsed?.tradeMetadata?.currency ?? parsed?.currency;
-    return typeof code === "string" && code.trim() ? code.trim().toUpperCase() : null;
+    const raw =
+      parsed?.tradeMetadata?.currency ??
+      parsed?.currency ??
+      parsed?.keyValuePairs?.currency ??
+      parsed?.keyValuePairs?.Currency ??
+      parsed?.keyValuePairs?.["Invoice Currency"] ??
+      parsed?.keyValuePairs?.["Currency Code"];
+    if (typeof raw !== "string" || !raw.trim()) return null;
+    const clean = raw.trim().toUpperCase();
+    if (clean.includes("GBP") || clean.includes("POUND") || clean.includes("£")) return "GBP";
+    if (clean.includes("EUR") || clean.includes("EURO") || clean.includes("€")) return "EUR";
+    if (clean.includes("USD") || clean.includes("DOLLAR") || clean.includes("$")) return "USD";
+    if (clean.includes("CAD")) return "CAD";
+    if (clean.includes("AUD")) return "AUD";
+    if (clean.includes("JPY") || clean.includes("YEN") || clean.includes("¥")) return "JPY";
+    if (clean.length === 3) return clean;
+    return null;
   } catch {
-    // A document with unparseable JSON simply contributes no currency.
     return null;
   }
 }

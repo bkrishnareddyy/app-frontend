@@ -84,7 +84,7 @@ export function PipelineProgressTracker({ shipmentId }: { shipmentId: string }) 
   }
 
   // PENDING or PROCESSING
-  const progressPercent = Math.min(100, Math.round(((status.currentStep - 1) / status.totalSteps) * 100));
+  const progressPercent = Math.min(100, Math.round((status.currentStep / status.totalSteps) * 100));
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
