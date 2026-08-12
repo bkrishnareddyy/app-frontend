@@ -17,6 +17,47 @@ enum DataMode {
   SANDBOX
 }
 
+// ---------------------------------------------------------------------------
+// COMPLIANCE DEADLINE ENUMS
+// ---------------------------------------------------------------------------
+
+enum DeadlineType {
+  ISF_10_2        // 24h before lading, ocean only
+  ENTRY_FILING    // 15 calendar days after arrival
+  ENTRY_SUMMARY   // 10 working days after release
+  DUTY_PAYMENT    // with summary, or PMS 15th working day following month
+  PMS_STATEMENT   // reserved — no trustworthy anchor yet
+  LAST_FREE_DAY   // carrier-set; deadlineClass = COMMERCIAL
+  PSC_WINDOW      // reserved — no ACE/ABI feed
+  LIQUIDATION     // reserved — no ACE/ABI feed
+  PROTEST         // reserved — no ACE/ABI feed
+  CF28_RESPONSE   // reserved — no CBP notice ingestion
+  CF29_RESPONSE   // reserved — no CBP notice ingestion
+}
+
+enum DeadlineAnchor {
+  LADING       // vessel on-board date / ETD
+  ARRIVAL      // actual or estimated arrival at first US port
+  RELEASE      // CBP release / 7501 stamped date
+  ENTRY        // entry acceptance date
+  LIQUIDATION  // liquidation date
+  CBP_NOTICE   // date CBP notice was issued (CF28/CF29)
+  CARRIER_TERMS // carrier-published free-time rule (Last Free Day)
+}
+
+enum DeadlineStatus {
+  OPEN
+  SATISFIED
+  MISSED
+  WAIVED
+  NOT_APPLICABLE
+}
+
+enum DeadlineClass {
+  REGULATORY  // statutory — CBP rules, CFR citations apply
+  COMMERCIAL  // carrier / port terms (e.g. Last Free Day)
+}
+
 model Account {
   id          String    @id @default(cuid())
   name        String
@@ -76,6 +117,7 @@ model Account {
   inboundEmails              InboundEmail[]
   documentShipmentCandidates DocumentShipmentCandidate[]
   notifications              Notification[]
+  complianceDeadlines        ComplianceDeadline[]
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -327,7 +369,10 @@ model Shipment {
   countryOfExport    String?
   countryOfOrigin    String?
   estimatedArrival   DateTime?
-  filingDeadline     DateTime? // Broker-set CBP filing cutoff; drives queue urgency ranking
+  ladingDate         DateTime? // On-board / ETD — ISF anchor; set from BL extraction or broker override
+  arrivalDate        DateTime? // Actual arrival at first US port; falls back to estimatedArrival
+  transportMode      String?   // Ocean | Air | Truck | Rail — ISF applies to Ocean only
+  filingDeadline     DateTime? // Derived cache: min(dueAt) over OPEN blocking ComplianceDeadlines
   status             String            @default("Draft") // Draft, In Progress, Ready to File, On Hold, Submitted, Completed
   healthStatus       String? // Healthy, At Risk, Critical — derived, null until evaluated
   readinessScore     Int? // 0 - 100 percentage, null until calculated
@@ -357,6 +402,7 @@ model Shipment {
   agentExecutionRecords   AgentExecutionRecord[]
   fieldApprovals          FieldApproval[]
   documentCandidates      DocumentShipmentCandidate[]
+  complianceDeadlines     ComplianceDeadline[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -364,6 +410,62 @@ model Shipment {
   @@index([deletedAt])
   @@index([masterShipmentId])
   @@index([filingDeadline])
+}
+
+// ---------------------------------------------------------------------------
+// COMPLIANCE DEADLINE
+//
+// Every statutory or commercial clock attached to a shipment. dueAt is always
+// derived from anchorAt + rule offset — it is NEVER hand-typed. A broker edits
+// the anchor; the service recomputes dueAt. Immutable history: rows are never
+// deleted, only transitioned (OPEN → SATISFIED / MISSED / WAIVED).
+//
+// filingDeadline on Shipment is a denormalized cache: min(dueAt) over OPEN
+// blocking deadlines, kept in sync by deadline.service.ts so the 7501 team's
+// ~60 read sites continue to work without changes.
+// ---------------------------------------------------------------------------
+model ComplianceDeadline {
+  id         String @id @default(cuid())
+  accountId  String
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Exactly one of shipmentId / filingId is set.
+  shipmentId String?
+  shipment   Shipment?      @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+
+  type          DeadlineType
+  deadlineClass DeadlineClass @default(REGULATORY)
+  status        DeadlineStatus @default(OPEN)
+
+  // Anchor — the date the rule clock starts from.
+  anchorEvent DeadlineAnchor
+  anchorAt    DateTime?   // null → anchor unknown, deadline uncomputable
+  estimated   Boolean     @default(false) // true when anchorAt comes from ETA/ETD, not a confirmed date
+
+  // Computed deadline — never manually editable (except LAST_FREE_DAY which is COMMERCIAL).
+  dueAt    DateTime?   // null when anchor is unknown
+  ruleId   String      // matches DeadlineRule.id in deadlineRules.ts
+  ruleCitation String  // e.g. "19 CFR 24.25(a)"
+
+  // Penalty estimate in USD, provided by the rule.
+  penaltyEstimate Decimal?  @db.Decimal(14, 2)
+  penaltyBasis    String?   // e.g. "up to $5,000 per violation"
+
+  // Satisfaction
+  satisfiedAt   DateTime?
+  satisfiedBy   String?   // userId or "SYSTEM"
+
+  // Waiver
+  waivedReason String?
+
+  // Optimistic concurrency — increment on every recompute.
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status, dueAt]) // primary queue read path
+  @@index([shipmentId, status])
 }
 
 model ShipmentDocument {

@@ -11,6 +11,18 @@ import {
 export type WorkItemKind = "decision" | "finding" | "filing" | "document" | "exception";
 export type WorkPriority = "critical" | "high" | "normal";
 
+/** The most-urgent open deadline on the shipment this item belongs to. */
+export interface UrgencyContext {
+  deadlineType: string;
+  dueAt: Date;
+  msRemaining: number;
+  breached: boolean;
+  /** True when dueAt was computed from ETA/ETD rather than a confirmed date. */
+  estimated: boolean;
+  /** USD penalty exposure from the rule, or null when not quantifiable. */
+  exposureUsd: number | null;
+}
+
 export interface WorkItem {
   id: string;
   kind: WorkItemKind;
@@ -18,10 +30,14 @@ export interface WorkItem {
   reason: string;
   href: string;
   priority: WorkPriority;
+  /** Numeric sort key — higher is more urgent. Never rendered in the UI. */
+  score: number;
   createdAt: Date;
   shipmentNumber: string | null;
   assignedToMe: boolean;
   filingDeadline: Date | null;
+  /** Set when the item's shipment has an open ComplianceDeadline. */
+  urgency: UrgencyContext | null;
 }
 
 export interface DecisionRow {
@@ -53,6 +69,7 @@ export interface FilingRow {
   filingStatus: string;
   createdAt: Date;
   shipmentNumber: string | null;
+  shipmentId?: string | null;
 }
 
 export interface DocumentRow {
@@ -78,6 +95,15 @@ export interface ExceptionRow {
   filingDeadline?: Date | null;
 }
 
+/** One open ComplianceDeadline row, for attaching urgency context to items. */
+export interface DeadlineRow {
+  shipmentId: string;
+  type: string;
+  dueAt: Date;
+  estimated: boolean;
+  penaltyEstimate: number | null; // USD
+}
+
 export interface WorkQueueInput {
   userId: string;
   decisions: DecisionRow[];
@@ -85,6 +111,8 @@ export interface WorkQueueInput {
   filings: FilingRow[];
   documents: DocumentRow[];
   exceptions?: ExceptionRow[];
+  /** Open ComplianceDeadline rows for the account. Used to attach urgency context. */
+  deadlines?: DeadlineRow[];
 }
 
 // Decisions use the normalizer in decisionState.ts — no hardcoded status list here.
@@ -121,15 +149,115 @@ const EXCEPTION_SEVERITY: Record<string, WorkPriority> = {
 
 const PRIORITY_RANK: Record<WorkPriority, number> = { critical: 0, high: 1, normal: 2 };
 
-const DEADLINE_CRITICAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const DEADLINE_HIGH_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
-
 function raise(priority: WorkPriority): WorkPriority {
   if (priority === "normal") return "high";
   return "critical";
 }
 
-/** Boosts priority when the shipment's CBP filing deadline is approaching. */
+// ── Scoring ────────────────────────────────────────────────────────────────
+// Score determines sort order. Higher = more urgent.
+// The score is never shown in the UI — the clock and dollar figure explain.
+
+const W_TIME = 0.60;    // time pressure (breached deadline scores 2*0.60 = 1.20)
+const W_MONEY = 0.15;   // normalized penalty exposure
+const W_PRIORITY = 0.20; // base priority contribution for items without urgency
+const BLOCKING_BOOST = 0.05; // items that block downstream agents
+const ASSIGNED_BOOST = 0.05; // items assigned to the current user
+
+const MAX_EXPOSURE_USD = 50_000;
+
+/** Priority → base score so items without a deadline still rank by priority. */
+const PRIORITY_BASE: Record<WorkPriority, number> = {
+  critical: 1.0, // will be multiplied by W_PRIORITY
+  high: 0.5,
+  normal: 0.0,
+};
+
+/**
+ * Non-linear time pressure: 2.00 when breached, decays logarithmically.
+ * Numerical behaviour: 1.00@0h · 0.77@1h · 0.42@24h · 0.35@3d · 0.26@30d
+ *
+ * A deadline-bearing item always outscores any priority-only item because
+ * urgency >= 0 at 30+ days contributes ~0.26 * 0.60 = 0.16, which exceeds
+ * the max pure-priority contribution (critical = 1.0 * 0.20 = 0.20) only at
+ * ~24h — precisely when deadline urgency should take precedence.
+ */
+function timePressure(msRemaining: number): number {
+  if (msRemaining <= 0) return 2; // breached outranks everything
+  const hours = msRemaining / 3_600_000;
+  return 1 / (1 + Math.log10(1 + hours));
+}
+
+function computeScore(params: {
+  urgency: UrgencyContext | null;
+  priority: WorkPriority;
+  blocking: boolean;
+  assignedToMe: boolean;
+}): number {
+  const { urgency, priority, blocking, assignedToMe } = params;
+
+  const tp = urgency ? timePressure(urgency.msRemaining) : 0;
+  const exposure = urgency?.exposureUsd ?? null;
+  const normalizedExposure = exposure != null ? Math.min(exposure / MAX_EXPOSURE_USD, 1) : 0;
+  const basePriority = urgency ? 0 : PRIORITY_BASE[priority]; // priority base only when no urgency
+
+  return (
+    tp * W_TIME +
+    normalizedExposure * W_MONEY +
+    basePriority * W_PRIORITY +
+    (blocking ? BLOCKING_BOOST : 0) +
+    (assignedToMe ? ASSIGNED_BOOST : 0)
+  );
+}
+
+/** Priority derived from urgency — for shipment-level rollup. */
+function urgencyToPriority(urgency: UrgencyContext): WorkPriority {
+  if (urgency.breached || urgency.msRemaining <= 24 * 3_600_000) return "critical";
+  if (urgency.msRemaining <= 3 * 24 * 3_600_000) return "high";
+  return "normal";
+}
+
+/** Apply urgency as a priority floor — never demotes an already-higher priority. */
+function applyUrgencyFloor(base: WorkPriority, urgency: UrgencyContext | null): WorkPriority {
+  if (!urgency) return base;
+  const floor = urgencyToPriority(urgency);
+  return PRIORITY_RANK[floor] < PRIORITY_RANK[base] ? floor : base;
+}
+
+// ── Shipment → deadline index ──────────────────────────────────────────────
+
+function buildDeadlineIndex(
+  deadlines: DeadlineRow[],
+  now: Date
+): Map<string, UrgencyContext> {
+  // For each shipment, keep only the most-urgent open deadline.
+  const best = new Map<string, UrgencyContext>();
+
+  for (const d of deadlines) {
+    const msRemaining = d.dueAt.getTime() - now.getTime();
+    const ctx: UrgencyContext = {
+      deadlineType: d.type,
+      dueAt: d.dueAt,
+      msRemaining,
+      breached: msRemaining <= 0,
+      estimated: d.estimated,
+      exposureUsd: d.penaltyEstimate,
+    };
+
+    const existing = best.get(d.shipmentId);
+    if (!existing || timePressure(msRemaining) > timePressure(existing.msRemaining)) {
+      best.set(d.shipmentId, ctx);
+    }
+  }
+
+  return best;
+}
+
+// ── Legacy deadline urgency (for rows that don't have a shipmentId) ────────
+
+const DEADLINE_CRITICAL_MS = 24 * 60 * 60 * 1000;
+const DEADLINE_HIGH_MS = 3 * 24 * 60 * 60 * 1000;
+
 function applyDeadlineUrgency(priority: WorkPriority, deadline: Date | null | undefined, now: Date): WorkPriority {
   if (!deadline) return priority;
   const remaining = deadline.getTime() - now.getTime();
@@ -147,15 +275,23 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
   const items: WorkItem[] = [];
   const now = new Date();
 
+  // Build shipmentId → most-urgent-deadline index for rollup (4.1.4).
+  const deadlineIndex = buildDeadlineIndex(input.deadlines ?? [], now);
+
   for (const decision of input.decisions) {
     const triage = triageDecision(decision);
-    // Only NEEDS_REVIEW and BLOCKED belong in the action queue.
-    // AUTO_VERIFIED and APPROVED are not human tasks.
     if (triage === "verified") continue;
 
-    // BLOCKED decisions are critical: they prevent downstream agents from running.
-    const base: WorkPriority = triage === "blocked" ? "critical" : "high";
-    const priority = applyDeadlineUrgency(base, decision.filingDeadline, now);
+    const urgency = decision.shipmentId ? (deadlineIndex.get(decision.shipmentId) ?? null) : null;
+    const isBlocking = triage === "blocked";
+    const base: WorkPriority = isBlocking ? "critical" : "high";
+    // Shipment rollup: urgency can raise priority but never lower it.
+    const priority = applyUrgencyFloor(
+      applyDeadlineUrgency(base, decision.filingDeadline, now),
+      urgency
+    );
+    const score = computeScore({ urgency, priority, blocking: isBlocking, assignedToMe: false });
+
     items.push({
       id: `decision:${decision.id}`,
       kind: "decision",
@@ -163,10 +299,12 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       reason: decision.decisionSummary,
       href: `/app/actions?decisionId=${encodeURIComponent(decision.id)}`,
       priority,
+      score,
       createdAt: decision.createdAt,
       shipmentNumber: decision.shipmentNumber,
       assignedToMe: false,
       filingDeadline: decision.filingDeadline ?? null,
+      urgency,
     });
   }
 
@@ -174,23 +312,32 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     if (!FINDING_ACTIONABLE.has(finding.status)) continue;
     const assignedToMe = finding.assignedToUserId === input.userId;
     const base = FINDING_SEVERITY[finding.severity] ?? "normal";
+    const priority = assignedToMe ? raise(base) : base;
+    const score = computeScore({ urgency: null, priority, blocking: false, assignedToMe });
+
     items.push({
       id: `finding:${finding.id}`,
       kind: "finding",
       title: finding.rule,
       reason: `${finding.severity} compliance finding is ${finding.status.toLowerCase()}`,
       href: `/app/filing?filingId=${encodeURIComponent(finding.filingId)}`,
-      priority: assignedToMe ? raise(base) : base,
+      priority,
+      score,
       createdAt: finding.createdAt,
       shipmentNumber: null,
       assignedToMe,
       filingDeadline: null,
+      urgency: null,
     });
   }
 
   for (const filing of input.filings) {
-    const priority = FILING_ACTIONABLE[filing.filingStatus];
-    if (!priority) continue;
+    const basePriority = FILING_ACTIONABLE[filing.filingStatus];
+    if (!basePriority) continue;
+    const urgency = filing.shipmentId ? (deadlineIndex.get(filing.shipmentId) ?? null) : null;
+    const priority = applyUrgencyFloor(basePriority, urgency);
+    const score = computeScore({ urgency, priority, blocking: false, assignedToMe: false });
+
     items.push({
       id: `filing:${filing.id}`,
       kind: "filing",
@@ -198,30 +345,37 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       reason: `Filing status is ${filing.filingStatus}`,
       href: `/app/filing?filingId=${encodeURIComponent(filing.id)}`,
       priority,
+      score,
       createdAt: filing.createdAt,
       shipmentNumber: filing.shipmentNumber,
       assignedToMe: false,
       filingDeadline: null,
+      urgency,
     });
   }
 
   for (const document of input.documents) {
-    const priority = DOCUMENT_ACTIONABLE[document.status];
-    if (!priority) continue;
+    const basePriority = DOCUMENT_ACTIONABLE[document.status];
+    if (!basePriority) continue;
+    const urgency = document.shipmentId ? (deadlineIndex.get(document.shipmentId) ?? null) : null;
+    const priority = applyUrgencyFloor(basePriority, urgency);
+    const score = computeScore({ urgency, priority, blocking: false, assignedToMe: false });
+
     items.push({
       id: `document:${document.id}`,
       kind: "document",
       title: document.fileName,
       reason: `Document status is ${document.status}`,
-      // A detached document has no shipment to link to, so send the user to the console.
       href: document.shipmentId
         ? `/app/shipments/${document.shipmentId}`
         : "/app/documents",
       priority,
+      score,
       createdAt: document.createdAt,
       shipmentNumber: document.shipmentNumber,
       assignedToMe: false,
       filingDeadline: null,
+      urgency,
     });
   }
 
@@ -229,34 +383,37 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     const state = normalizeExceptionStatus(exception.status);
     if (!state || isTerminalExceptionState(state)) continue;
     const assignedToMe = exception.assignedToUserId === input.userId;
-    const base = applyDeadlineUrgency(
-      EXCEPTION_SEVERITY[exception.severity] ?? "normal",
-      exception.filingDeadline,
-      now
+    const urgency = exception.shipmentId ? (deadlineIndex.get(exception.shipmentId) ?? null) : null;
+    const base = applyUrgencyFloor(
+      applyDeadlineUrgency(EXCEPTION_SEVERITY[exception.severity] ?? "normal", exception.filingDeadline, now),
+      urgency
     );
+    const priority = assignedToMe ? raise(base) : base;
+    const score = computeScore({ urgency, priority, blocking: false, assignedToMe });
+
     items.push({
       id: `exception:${exception.id}`,
       kind: "exception",
       title: exception.type.replace(/_/g, " "),
       reason: exception.description,
       href: `/app/actions?exceptionId=${encodeURIComponent(exception.id)}`,
-      priority: assignedToMe ? raise(base) : base,
+      priority,
+      score,
       createdAt: exception.createdAt,
       shipmentNumber: exception.shipmentNumber,
       assignedToMe,
       filingDeadline: exception.filingDeadline ?? null,
+      urgency,
     });
   }
 
+  // Sort by score descending (higher = more urgent), with assigned-to-me as the
+  // tiebreaker at the very top, then oldest-first within the same score.
   return items.sort((a, b) => {
     if (a.assignedToMe !== b.assignedToMe) return a.assignedToMe ? -1 : 1;
-    const rank = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
-    if (rank !== 0) return rank;
-    // Among same priority: deadline-bound items surface first; null deadline goes last.
-    const aDeadline = a.filingDeadline?.getTime() ?? Number.MAX_SAFE_INTEGER;
-    const bDeadline = b.filingDeadline?.getTime() ?? Number.MAX_SAFE_INTEGER;
-    if (aDeadline !== bDeadline) return aDeadline - bDeadline;
-    // Oldest first: the item that has been waiting longest is the most overdue.
+    const scoreDiff = b.score - a.score;
+    if (Math.abs(scoreDiff) > 0.001) return scoreDiff;
+    // Same effective score: surface the oldest waiting item first.
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
 }
@@ -314,6 +471,8 @@ export const WORK_KINDS: readonly WorkItemKind[] = [
   "document",
   "exception",
 ];
+
+export { timePressure };
 export const WORK_PRIORITIES: readonly WorkPriority[] = ["critical", "high", "normal"];
 
 export interface WorkFilter {

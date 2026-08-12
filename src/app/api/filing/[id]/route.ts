@@ -22,7 +22,6 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     include: {
       snapshot: true,
       shipment: {
-        omit: { filingDeadline: true },
         include: {
           documents: true,
           // Ordered because the reads below treat lineItems[0] as the filing's
@@ -251,7 +250,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   const updatedFiling = await db.customsFiling.update({
     where: { id },
     data: updateData,
-    include: { responses: true, shipment: { omit: { filingDeadline: true } } },
+    include: { responses: true, shipment: true },
   });
 
   // Create Audit Log entry for status/details updates

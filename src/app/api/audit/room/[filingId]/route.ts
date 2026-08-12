@@ -12,7 +12,7 @@ export const POST = withAuthenticatedRoute<{ filingId: string }>(async ({ req, c
     filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId: ctx.accountId },
       include: {
-        shipment: { omit: { filingDeadline: true }, include: { lineItems: true, documents: true } },
+        shipment: { include: { lineItems: true, documents: true } },
         responses: true,
       },
     });
@@ -20,7 +20,7 @@ export const POST = withAuthenticatedRoute<{ filingId: string }>(async ({ req, c
     filing = await db.customsFiling.findFirst({
       where: { accountId: ctx.accountId },
       include: {
-        shipment: { omit: { filingDeadline: true }, include: { lineItems: true, documents: true } },
+        shipment: { include: { lineItems: true, documents: true } },
         responses: true,
       },
     });

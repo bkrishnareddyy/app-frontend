@@ -7,12 +7,9 @@ export const POST = withAuthenticatedRoute(async ({ ctx }) => {
   const filings = await db.customsFiling.findMany({
     where: { accountId: ctx.accountId },
     include: {
-      // filingDeadline is in the Prisma schema but not yet applied to the
-      // live DB (migration pending) -- must stay omitted or this 500s.
       shipment: {
         include: { lineItems: true },
-        omit: { filingDeadline: true },
-      },
+        },
     },
   });
 

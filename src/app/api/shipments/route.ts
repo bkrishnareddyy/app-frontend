@@ -83,7 +83,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const shipments = await db.shipment.findMany({
     ...listArgs,
-    omit: { filingDeadline: true },
     include: {
       documents: true,
       lineItems: true,

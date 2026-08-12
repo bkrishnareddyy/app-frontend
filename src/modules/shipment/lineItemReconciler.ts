@@ -207,7 +207,7 @@ export class LineItemReconciler {
     shipmentId: string,
     discovery: Partial<Pick<Prisma.ShipmentUpdateInput, "countryOfOrigin" | "incoterm" | "countryOfExport" | "portOfEntry" | "carrierName" | "entryType">>
   ): Promise<void> {
-    const shipment = await db.shipment.findUnique({ where: { id: shipmentId }, omit: { filingDeadline: true } });
+    const shipment = await db.shipment.findUnique({ where: { id: shipmentId } });
     if (!shipment) return;
 
     const data: Prisma.ShipmentUpdateInput = {};

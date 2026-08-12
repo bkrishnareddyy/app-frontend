@@ -26,6 +26,7 @@ import { displayCurrency } from "@/lib/honest";
 import { extractedCurrency } from "@/modules/documents/extractedCurrency";
 import { DocumentWorkspacePanel } from "./DocumentWorkspacePanel";
 import { ShipmentTabsPanel } from "./ShipmentTabsPanel";
+import { DeadlineRail } from "@/components/deadlines/DeadlineRail";
 import type { ExtractedLineItem } from "./workspaceTypes";
 import type { CategoryDetail } from "./PreFilingReadiness";
 
@@ -62,9 +63,7 @@ export default async function ShipmentWorkspacePage(props: {
       OR: [{ id: params.id }, { shipmentNumber: params.id }],
       deletedAt: null,
     },
-    // filingDeadline is in the Prisma schema but not yet applied to the live DB
-    omit: { filingDeadline: true },
-  });
+    });
 
   if (!shipment) notFound();
 
@@ -1207,6 +1206,12 @@ export default async function ShipmentWorkspacePage(props: {
             documentFieldSummaries={documentFieldSummaries}
           />
         </div>
+      </div>
+
+      {/* Compliance Deadline Rail — every statutory and commercial clock for this shipment */}
+      <div className="bg-white p-5 rounded-3xl border border-border shadow-2xs">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-ink-muted mb-3">Compliance Deadlines</h2>
+        <DeadlineRail shipmentId={shipment.id} transportMode={shipment.transportMode} />
       </div>
 
       <ShipmentTabsPanel

@@ -13,11 +13,21 @@ import { decisionGroupLabel, reviewerLabel, editableFieldsFor } from "@/modules/
 import { triageDecision, type TriageCategory } from "@/modules/decisions/decisionState";
 import type { ShipmentActionGroup, ActionItem } from "@/modules/actions/shipmentActions";
 import type { WorkPriority } from "@/modules/work/workQueue";
+import { CountdownChip } from "@/components/deadlines/CountdownChip";
 
 export interface DocSummary {
   id: string;
   fileName: string;
   fileUrl: string | null;
+}
+
+interface SerializedUrgency {
+  deadlineType: string;
+  dueAt: string; // ISO string — serialized for RSC boundary
+  msRemaining: number;
+  breached: boolean;
+  estimated: boolean;
+  exposureUsd: number | null;
 }
 
 interface ActionsClientProps {
@@ -28,6 +38,8 @@ interface ActionsClientProps {
   userId: string;
   userName: string;
   documents: DocSummary[];
+  /** shipmentNumber → urgency context for countdown chips */
+  urgencyByShipment?: Record<string, SerializedUrgency>;
 }
 
 const PRIORITY_LABEL: Record<WorkPriority, string> = {
@@ -48,7 +60,7 @@ const PRIORITY_TEXT: Record<WorkPriority, string> = {
   normal: "text-ink-muted",
 };
 
-export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initialShipmentId, userId, userName, documents }: ActionsClientProps) {
+export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initialShipmentId, userId, userName, documents, urgencyByShipment = {} }: ActionsClientProps) {
   const router = useRouter();
   const [localGroups, setLocalGroups] = useState(initialGroups);
   const [searchQuery, setSearchQuery] = useState("");
@@ -357,6 +369,22 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                         </span>
                       </div>
                     </div>
+                    {urgencyByShipment[g.shipmentNumber] && (() => {
+                      const u = urgencyByShipment[g.shipmentNumber];
+                      const DEADLINE_LABELS: Record<string, string> = {
+                        ISF_10_2: "ISF", ENTRY_FILING: "Entry Filing",
+                        ENTRY_SUMMARY: "Entry Summary", DUTY_PAYMENT: "Duty Payment",
+                        LAST_FREE_DAY: "Last Free Day",
+                      };
+                      return (
+                        <CountdownChip
+                          label={DEADLINE_LABELS[u.deadlineType] ?? u.deadlineType.replace(/_/g, " ")}
+                          dueAt={new Date(u.dueAt)}
+                          estimated={u.estimated}
+                          exposureUsd={u.exposureUsd}
+                        />
+                      );
+                    })()}
                     <div className="flex items-center gap-2 flex-wrap">
                       {g.decisionCount > 0 && (
                         <span className="flex items-center gap-1 text-[10px] text-ink-muted bg-white border border-border rounded-lg px-2 py-0.5">
@@ -388,7 +416,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
               {/* Shipment header */}
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-extrabold text-brand text-lg">{selectedGroup.shipmentNumber}</span>
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
                       selectedGroup.priority === "critical"
@@ -399,6 +427,22 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                     }`}>
                       {PRIORITY_LABEL[selectedGroup.priority]}
                     </span>
+                    {urgencyByShipment[selectedGroup.shipmentNumber] && (() => {
+                      const u = urgencyByShipment[selectedGroup.shipmentNumber];
+                      const DEADLINE_LABELS: Record<string, string> = {
+                        ISF_10_2: "ISF", ENTRY_FILING: "Entry Filing",
+                        ENTRY_SUMMARY: "Entry Summary", DUTY_PAYMENT: "Duty Payment",
+                        LAST_FREE_DAY: "Last Free Day",
+                      };
+                      return (
+                        <CountdownChip
+                          label={DEADLINE_LABELS[u.deadlineType] ?? u.deadlineType.replace(/_/g, " ")}
+                          dueAt={new Date(u.dueAt)}
+                          estimated={u.estimated}
+                          exposureUsd={u.exposureUsd}
+                        />
+                      );
+                    })()}
                   </div>
                   {(() => {
                     const openCount = selectedGroup.items.filter((i) => categorize(i) !== "verified").length;
