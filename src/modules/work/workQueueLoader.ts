@@ -117,25 +117,21 @@ export async function loadWorkQueueForAccount(
       take: ROW_CAP,
     }),
 
-    // Guard: complianceDeadline table may not exist yet if the migration
-    // hasn't been applied to the live DB. Degrade gracefully to empty.
-    (db as any).complianceDeadline
-      ? (db as any).complianceDeadline.findMany({
-          where: {
-            accountId,
-            status: DeadlineStatus.OPEN,
-            dueAt: { not: null },
-            ...(shipmentId ? { shipmentId } : {}),
-          },
-          select: {
-            shipmentId: true,
-            type: true,
-            dueAt: true,
-            estimated: true,
-            penaltyEstimate: true,
-          },
-        })
-      : Promise.resolve([]),
+    db.complianceDeadline.findMany({
+      where: {
+        accountId,
+        status: DeadlineStatus.OPEN,
+        dueAt: { not: null },
+        ...(shipmentId ? { shipmentId } : {}),
+      },
+      select: {
+        shipmentId: true,
+        type: true,
+        dueAt: true,
+        estimated: true,
+        penaltyEstimate: true,
+      },
+    }),
   ]);
 
   const decisionRows: DecisionRow[] = decisions.map((d) => ({

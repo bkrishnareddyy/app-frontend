@@ -118,6 +118,7 @@ model Account {
   documentShipmentCandidates DocumentShipmentCandidate[]
   notifications              Notification[]
   complianceDeadlines        ComplianceDeadline[]
+  aiUsageWindows             AiUsageWindow[]
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -1426,6 +1427,7 @@ model ShipmentEventLog {
 
   @@index([shipmentId])
   @@index([eventType])
+  @@index([createdAt])
 }
 
 model AgentExecutionRecord {
@@ -2734,7 +2736,7 @@ model ProductClassification {
   updatedAt       DateTime @updatedAt
 
   @@index([productId, jurisdiction, status])
-  @@index([accountId, jurisdiction, nomenclature, normalizedCode])
+  @@index([accountId, jurisdiction, nomenclature, normalizedCode], name: "ProductClassification_accountId_jurisdiction_nomenclature_norma")
   @@index([accountId, status])
   @@index([productId, effectiveFrom])
 }
@@ -2810,7 +2812,7 @@ model ProductChangeEvent {
   newValue String?
 
   significance ProductChangeSignificance @default(NON_MATERIAL)
-  impactFlags  ProductImpactFlag[]
+  impactFlags  ProductImpactFlag[] @default([])
 
   changeReason    String?
   changedByUserId String?
@@ -3457,4 +3459,25 @@ model PartyRevalidationFlag {
 
   @@index([partyId, status])
   @@index([accountId, status, flag])
+}
+
+/// Tracks AI usage (requests + tokens) per account/user/surface in time windows.
+/// Used for rate limiting and cost attribution.
+model AiUsageWindow {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId      String
+  surface     String
+  windowKind  String
+  windowStart DateTime
+  requests    Int      @default(0)
+  inputTokens BigInt   @default(0)
+  outputTokens BigInt  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([accountId, userId, surface, windowKind, windowStart])
+  @@index([accountId, surface, windowKind, windowStart])
+  @@index([windowStart])
 }

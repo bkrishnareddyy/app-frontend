@@ -49,15 +49,10 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 };
 
 export async function DeadlineRail({ shipmentId }: DeadlineRailProps) {
-  // Guard: complianceDeadline table may not exist yet if the migration
-  // hasn't been applied to the live DB. Degrade gracefully to empty.
-  const deadlines: Awaited<ReturnType<typeof db.complianceDeadline.findMany>> =
-    (db as any).complianceDeadline
-      ? await (db as any).complianceDeadline.findMany({
-          where: { shipmentId },
-          orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-        })
-      : [];
+  const deadlines = await db.complianceDeadline.findMany({
+    where: { shipmentId },
+    orderBy: [{ status: "asc" }, { dueAt: "asc" }],
+  });
 
   if (deadlines.length === 0) {
     return (
