@@ -36,6 +36,7 @@ interface ShipmentDocumentItem {
   clientId?: string | null;
   clientName: string;
   unattached?: boolean;
+  source?: string;
 }
 
 /**
@@ -58,6 +59,8 @@ interface ApiDocument {
   url?: string | null;
   /** Extraction confidence, absent until an extraction has actually run. */
   confidence?: number | null;
+  /** UPLOAD or EMAIL -- how this document row was created. */
+  source?: string | null;
 }
 
 interface ApiShipment {
@@ -199,6 +202,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                     : "Unassigned",
                   clientId: shp.clientId ?? null,
                   clientName: shp.client?.name || "No Client",
+                  source: d.source ?? "UPLOAD",
                 });
               });
             }
@@ -229,6 +233,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
               clientId: null,
               clientName: "No Client",
               unattached: true,
+              source: d.source ?? "UPLOAD",
             });
           });
         }
@@ -583,6 +588,11 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                           <FileText className="w-4 h-4" />
                         </div>
                         <span className="truncate max-w-xs group-hover:underline">{doc.name}</span>
+                        {doc.source === "EMAIL" && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                            Emailed
+                          </span>
+                        )}
                         <Eye className="w-3.5 h-3.5 text-ink-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
                     </td>
