@@ -38,14 +38,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     productIds.length > 0
       ? await db.productClassification.findMany({
           where: { productId: { in: productIds }, status: "APPROVED" },
-          include: {
-            // Bring back the approved decision so we know who approved it and when
-            decisions: {
-              where: { decisionStatus: "APPROVED" },
-              orderBy: { attestedAt: "desc" },
-              take: 1,
-            },
-          },
+          select: { id: true, productId: true, classificationCode: true, reviewedByUserId: true, reviewedAt: true },
         })
       : [];
 
@@ -74,7 +67,6 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   // Build LineItemInput list with provenance
   const lineItemInputs: LineItemInput[] = lineItems.map((li) => {
     const classification = li.productId ? classificationByProductId.get(li.productId) : null;
-    const approvedDecision = classification?.decisions?.[0] ?? null;
     const htsRateInput = li.htsCode ? htsCodesMap[li.htsCode] : null;
     const dutyRateDecimal = htsRateInput ? parsePublishedDutyRate(htsRateInput.generalDutyRate) : null;
 
@@ -89,8 +81,8 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
       countryOfOrigin: li.countryOfOrigin,
       // Approved classification data (if present)
       approvedHtsCode: classification?.classificationCode ?? null,
-      approvedAt: approvedDecision?.attestedAt?.toISOString() ?? null,
-      approvedByUserId: approvedDecision?.reviewerUserId ?? null,
+      approvedAt: classification?.reviewedAt?.toISOString() ?? null,
+      approvedByUserId: classification?.reviewedByUserId ?? null,
       classificationId: classification?.id ?? null,
       dutyRateDecimal,
       htsReleaseId,

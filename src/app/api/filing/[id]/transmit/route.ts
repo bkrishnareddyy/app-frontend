@@ -36,7 +36,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
         include: {
           lineItems: {
             include: {
-              product: { include: { productClassifications: { where: { status: "APPROVED" } } } },
+              product: { include: { classifications: { where: { status: "APPROVED" } } } },
             },
           },
           exceptionItems: { where: { status: "Open", blocking: true } },
@@ -69,7 +69,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     id: li.id,
     lineNumber: li.lineNumber,
     htsCode: li.htsCode,
-    hasApprovedDecision: (li.product?.productClassifications?.length ?? 0) > 0,
+    hasApprovedDecision: (li.product?.classifications?.length ?? 0) > 0,
   }));
 
   const validatorInput: ValidatorInput = {

@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { z } from "zod";
 
 const createClaimSchema = z.object({
-  claimType: z.enum(["manufacturing", "unused_merchandise", "rejected_merchandise"]).default("unused_merchandise"),
+  claimType: z.enum(["manufacturing", "unused_merchandise"]).default("unused_merchandise"),
   matches: z.array(
     z.object({
       shipmentLineItemId: z.string(),

@@ -50,11 +50,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   let coveredByAdCvd: boolean | null = null;
   if (htsForAdCvd) {
     const normalizedHts = htsForAdCvd.replace(/\D/g, "").slice(0, 8);
-    const adCvdOrder = await db.adCvdOrder.findFirst({
+    const adCvdOrder = await db.adcvdOrder.findFirst({
       where: {
-        accountId: ctx.accountId,
-        htsNumbers: { has: normalizedHts },
-        status: "Active",
+        htsCodesInScope: { has: normalizedHts },
+        status: "ACTIVE",
       },
     }).catch(() => null); // graceful fallback if model doesn't exist yet
     coveredByAdCvd = adCvdOrder !== null ? true : adCvdOrder === null && htsForAdCvd ? false : null;
@@ -93,27 +92,29 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   }
 
   for (const finding of newFindings) {
-    await db.complianceFinding.upsert({
-      where: {
-        // Idempotent: same filing + same rule = same finding row
-        filingId_rule: { filingId: filing.id, rule: finding.checkId },
-      },
-      update: {
-        description: finding.result.evidence,
-        severity: finding.severity,
-        status: "Open",
-      },
-      create: {
-        accountId: ctx.accountId,
-        filingId: filing.id,
-        rule: finding.checkId,
-        severity: finding.severity,
-        description: finding.result.evidence,
-        recommendation: `Review ${finding.checkName} and take corrective action.`,
-        status: "Open",
-        confidence: 90,
-      },
+    const existing = await db.complianceFinding.findFirst({
+      where: { filingId: filing.id, rule: finding.checkId },
+      select: { id: true },
     });
+    if (existing) {
+      await db.complianceFinding.update({
+        where: { id: existing.id },
+        data: { description: finding.result.evidence, severity: finding.severity, status: "Open" },
+      });
+    } else {
+      await db.complianceFinding.create({
+        data: {
+          accountId: ctx.accountId,
+          filingId: filing.id,
+          rule: finding.checkId,
+          severity: finding.severity,
+          description: finding.result.evidence,
+          recommendation: `Review ${finding.checkName} and take corrective action.`,
+          status: "Open",
+          confidence: 90,
+        },
+      });
+    }
   }
 
   // Build the overall ComplianceAuditRecord with typed checklist items

@@ -26,9 +26,9 @@ describe("Tariff engine: statutory fee bounds", () => {
 
   it("charges the rate between the floor and the ceiling", () => {
     const customsValue = 50_000;
-    const expected = Math.round(customsValue * MPF_RATE * 100) / 100;
-    expect(expected).toBeGreaterThan(MPF_MINIMUM);
-    expect(expected).toBeLessThan(MPF_MAXIMUM);
+    const expected = Math.round(customsValue * MPF_RATE.toNumber() * 100) / 100;
+    expect(expected).toBeGreaterThan(MPF_MINIMUM.toNumber());
+    expect(expected).toBeLessThan(MPF_MAXIMUM.toNumber());
     expect(calculateMPF(customsValue)).toBe(expected);
   });
 
@@ -37,7 +37,7 @@ describe("Tariff engine: statutory fee bounds", () => {
   });
 
   it("charges HMF only on ocean shipments", () => {
-    expect(calculateHMF(100_000, true)).toBe(Math.round(100_000 * HMF_RATE * 100) / 100);
+    expect(calculateHMF(100_000, true)).toBe(Math.round(100_000 * HMF_RATE.toNumber() * 100) / 100);
     expect(calculateHMF(100_000, false)).toBe(0);
   });
 });
@@ -90,7 +90,7 @@ describe("Tariff engine: entry level aggregation", () => {
 
     expect(result.totalCustomsValue).toBe(5000);
     // Five lines at $1,000 each would each hit the floor if fees were per line.
-    expect(result.totalFees).toBeLessThan(MPF_MINIMUM * 5);
+    expect(result.totalFees).toBeLessThan(MPF_MINIMUM.toNumber() * 5);
 
     const mpfLine = result.dutyBreakdown.find((f) => f.feeName.includes("MPF"));
     expect(mpfLine?.amount).toBe(calculateMPF(5000));

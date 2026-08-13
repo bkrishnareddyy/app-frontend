@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
-import { assembleFocusedAssessmentFile } from "@/lib/focusedAssessment"; // Wait, focusedAssessment is in src/lib/audit/focusedAssessment
 import { createAuditLog } from "@/lib/audit";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
@@ -23,21 +22,21 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   // Write AuditTimeline event record
-  await db.auditTimeline.create({
-    data: {
-      accountId: ctx.accountId,
-      filingId: entryIds?.[0] || faFile.auditId,
-      action: "FOCUSED_ASSESSMENT_ASSEMBLED",
-      actorName: "System Auditor",
-      actorRole: "System Agent",
-      actorType: "SYSTEM",
-      timestamp: new Date(),
-      details: {
-        auditId: faFile.auditId,
-        entryCount: faFile.entryPopulation.total,
+  if (entryIds?.[0]) {
+    await db.auditTimeline.create({
+      data: {
+        accountId: ctx.accountId,
+        filingId: entryIds[0],
+        event: "FOCUSED_ASSESSMENT_ASSEMBLED",
+        actor: "System Auditor",
+        timestamp: new Date(),
+        metadata: {
+          auditId: faFile.auditId,
+          entryCount: faFile.entryPopulation.total,
+        },
       },
-    },
-  });
+    });
+  }
 
   await createAuditLog({
     accountId: ctx.accountId,

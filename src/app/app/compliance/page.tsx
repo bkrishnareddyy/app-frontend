@@ -19,7 +19,7 @@ export default async function CompliancePage() {
             shipment: { select: { shipmentNumber: true, importerName: true } },
           },
         },
-        assignedTo: { select: { id: true, name: true, email: true } },
+        assignedToUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     }),
@@ -41,7 +41,7 @@ export default async function CompliancePage() {
     status: f.status,
     confidence: f.confidence,
     assignedToUserId: f.assignedToUserId,
-    assignedToName: f.assignedTo?.name ?? null,
+    assignedToName: f.assignedToUser ? [f.assignedToUser.firstName, f.assignedToUser.lastName].filter(Boolean).join(" ") || f.assignedToUser.email : null,
     createdAt: f.createdAt.toISOString(),
     resolvedAt: f.resolvedAt ? f.resolvedAt.toISOString() : null,
     filing: f.filing

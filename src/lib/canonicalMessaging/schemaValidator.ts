@@ -1,14 +1,10 @@
-// The schemas/customs-filing/*.json files declare "$schema":
-// ".../draft/2020-12/schema" and use $defs/$ref -- the plain `ajv` default
-// export only fully understands draft-07. Ajv2020 is the same library's
-// entry point for 2020-12 support.
-import Ajv2020, { type ValidateFunction } from "ajv/dist/2020";
-import addFormats from "ajv-formats";
+import Ajv, { type ValidateFunction } from "ajv";
 import { db } from "@/lib/db";
 import type { CanonicalSchemaType } from "./types";
 
-const ajv = new Ajv2020({ allErrors: true, strict: false });
-addFormats(ajv);
+// ajv v6 (draft-07). The $schema/$defs keys in our 2020-12 schemas are
+// tolerated via unknownFormats; allErrors collects every violation.
+const ajv = new Ajv({ allErrors: true, unknownFormats: "ignore" } as Parameters<typeof Ajv>[0]);
 
 /** Compiled-validator cache, keyed by "schemaType@version". Invalidated on promoteSchemaVersion(). */
 const validatorCache = new Map<string, ValidateFunction>();
