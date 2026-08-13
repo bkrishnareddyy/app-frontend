@@ -427,10 +427,22 @@ export function FilingDetailClient({
             </Button>
           )}
           {canTransmit && (
-            <Button onClick={handleTransmit} loading={busy === "transmit"} disabled={busy !== null}>
-              <Send className="w-3.5 h-3.5" />
-              Transmit to Customs
-            </Button>
+            <span
+              title={
+                validationBlockers.length > 0
+                  ? `Cannot transmit: ${validationBlockers.map((b) => b.message).join("; ")}`
+                  : undefined
+              }
+            >
+              <Button
+                onClick={handleTransmit}
+                loading={busy === "transmit"}
+                disabled={busy !== null || validationBlockers.length > 0}
+              >
+                <Send className="w-3.5 h-3.5" />
+                Transmit to Customs
+              </Button>
+            </span>
           )}
           {allowUpdates && (
             <Button
@@ -474,17 +486,35 @@ export function FilingDetailClient({
         </p>
       )}
 
+      {validationBlockers.length > 0 && (
+        <div role="alert" className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
+          <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Filing blocked — resolve before transmitting</p>
+          <ul className="space-y-1">
+            {validationBlockers.map((b) => (
+              <li key={b.rule} className="text-xs text-amber-900 flex items-start gap-1.5">
+                <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5 text-amber-600" />
+                {b.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-border shadow-2xs w-fit">
         {([
           ["overview", "Overview"],
           ["declaration", "Declaration"],
           ["response", "Response"],
+          ["form7501", "7501 Preview"],
         ] as [Tab, string][]).map(([key, label]) => (
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => {
+              setTab(key);
+              if (key === "form7501" && !form7501Data && !form7501Loading) loadForm7501();
+            }}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               tab === key ? "bg-brand text-white" : "text-ink-muted hover:text-ink"
             }`}
@@ -833,6 +863,162 @@ export function FilingDetailClient({
               </div>
             )}
           </Card>
+        </div>
+      )}
+
+      {tab === "form7501" && (
+        <div className="space-y-4">
+          {form7501Loading && (
+            <p className="text-xs text-ink-muted animate-pulse">Loading 7501 field data…</p>
+          )}
+          {form7501Error && (
+            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              {form7501Error}
+            </p>
+          )}
+          {!form7501Data && !form7501Loading && !form7501Error && (
+            <Card className="text-center py-10 space-y-2">
+              <p className="text-xs text-ink-muted">Click the 7501 Preview tab to load the structured form view.</p>
+            </Card>
+          )}
+          {form7501Data && (() => {
+            type F7Field = { block: string; label: string; value: unknown; status: string; provenance: { sourceModel: string; sourceId: string | null; sourceField: string; approvedByUserId?: string | null; approvedAt?: string | null } };
+            type F7LineItem = { lineNumber: number; description: F7Field; htsCode: F7Field; enteredValue: F7Field; dutyRate: F7Field; dutyAmount: F7Field; countryOfOrigin: F7Field; quantity: F7Field };
+            const f = form7501Data as {
+              entryType: F7Field; entryNumber: F7Field; portCode: F7Field; importerName: F7Field; importerNumber: F7Field; bondNumber: F7Field; countryOfExport: F7Field; carrier: F7Field; totalEnteredValue: F7Field; totalDuty: F7Field; lineItems: F7LineItem[]; coverageStatus: { required: number; sourced: number; approved: number; missing: number }; generatedAt: string;
+            };
+            const statusColor = (s: string) =>
+              s === "sourced_approved" ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+              : s === "sourced_unapproved" ? "border-amber-300 bg-amber-50 text-amber-900"
+              : "border-red-300 bg-red-50 text-red-900";
+            const statusDot = (s: string) =>
+              s === "sourced_approved" ? "bg-emerald-500"
+              : s === "sourced_unapproved" ? "bg-amber-400"
+              : "bg-red-500";
+            const headerFields: F7Field[] = [f.entryType, f.entryNumber, f.portCode, f.importerName, f.importerNumber, f.bondNumber, f.countryOfExport, f.carrier];
+            return (
+              <div className="space-y-6">
+                {/* Coverage summary */}
+                <Card className="space-y-3">
+                  <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">Form 7501 Field Coverage</h3>
+                  <div className="flex gap-6 text-xs flex-wrap">
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />Approved: {f.coverageStatus.approved}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" />Unapproved: {f.coverageStatus.sourced - f.coverageStatus.approved}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" />Missing: {f.coverageStatus.missing}</span>
+                    <span className="text-ink-muted">Total required: {f.coverageStatus.required}</span>
+                  </div>
+                  <p className="text-[10px] text-ink-muted">Generated {f.generatedAt ? new Date(f.generatedAt).toLocaleString() : "—"}</p>
+                </Card>
+
+                {/* Header fields */}
+                <Card className="space-y-3">
+                  <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">Header Blocks</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    {headerFields.map((field) => (
+                      <button
+                        key={field.block}
+                        type="button"
+                        onClick={() => setProvenanceDetail(field.provenance as Record<string, unknown>)}
+                        className={`rounded-xl border p-3 text-left space-y-1 cursor-pointer hover:shadow-sm transition-shadow ${statusColor(field.status)}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Block {field.block}</span>
+                          <span className={`w-2 h-2 rounded-full ${statusDot(field.status)}`} />
+                        </div>
+                        <p className="text-[10px] opacity-70">{field.label}</p>
+                        <p className="text-sm font-bold truncate">{field.value !== null && field.value !== undefined ? String(field.value) : "—"}</p>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Total blocks */}
+                <Card className="space-y-3">
+                  <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">Totals</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[f.totalEnteredValue, f.totalDuty].map((field) => (
+                      <button
+                        key={field.block}
+                        type="button"
+                        onClick={() => setProvenanceDetail(field.provenance as Record<string, unknown>)}
+                        className={`rounded-xl border p-3 text-left space-y-1 cursor-pointer hover:shadow-sm transition-shadow ${statusColor(field.status)}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Block {field.block}</span>
+                          <span className={`w-2 h-2 rounded-full ${statusDot(field.status)}`} />
+                        </div>
+                        <p className="text-[10px] opacity-70">{field.label}</p>
+                        <p className="text-sm font-bold">{field.value !== null ? `$${Number(field.value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</p>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Line items */}
+                {f.lineItems.length > 0 && (
+                  <Card className="space-y-4">
+                    <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">Line Items (Blocks 27–35)</h3>
+                    <div className="space-y-4">
+                      {f.lineItems.map((li) => {
+                        const lineFields: F7Field[] = [li.description, li.htsCode, li.enteredValue, li.dutyRate, li.dutyAmount, li.countryOfOrigin, li.quantity];
+                        return (
+                          <div key={li.lineNumber} className="space-y-2">
+                            <p className="text-xs font-bold text-ink">Line {li.lineNumber}</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {lineFields.map((field) => (
+                                <button
+                                  key={`${li.lineNumber}-${field.block}`}
+                                  type="button"
+                                  onClick={() => setProvenanceDetail(field.provenance as Record<string, unknown>)}
+                                  className={`rounded-lg border p-2 text-left space-y-0.5 cursor-pointer hover:shadow-sm transition-shadow ${statusColor(field.status)}`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-bold uppercase opacity-70">Blk {field.block}</span>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${statusDot(field.status)}`} />
+                                  </div>
+                                  <p className="text-[9px] opacity-70 truncate">{field.label}</p>
+                                  <p className="text-xs font-bold truncate">
+                                    {field.value !== null && field.value !== undefined
+                                      ? field.block === "29" || field.block === "35"
+                                        ? `$${Number(field.value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        : field.block === "34"
+                                        ? `${(Number(field.value) * 100).toFixed(2)}%`
+                                        : String(field.value)
+                                      : "—"}
+                                  </p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Legend */}
+                <p className="text-[10px] text-ink-muted">
+                  Click any block to see its source record. Green = sourced and approved; amber = sourced but not approved; red = missing.
+                  Mock provider active — this filing has not been transmitted to CBP.
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* Provenance detail drawer */}
+          {provenanceDetail && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={() => setProvenanceDetail(null)}>
+              <div className="bg-white rounded-t-2xl sm:rounded-2xl border border-border shadow-2xl p-6 w-full sm:max-w-md space-y-3" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-extrabold text-ink">Field Provenance</h3>
+                  <button type="button" onClick={() => setProvenanceDetail(null)} className="text-ink-muted hover:text-ink text-lg">&times;</button>
+                </div>
+                <pre className="bg-surface-muted rounded-lg p-3 overflow-x-auto text-[11px]">
+                  {JSON.stringify(provenanceDetail, null, 2)}
+                </pre>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

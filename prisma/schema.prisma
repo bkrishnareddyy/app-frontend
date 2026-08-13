@@ -1619,6 +1619,7 @@ model ReconciliationIssue {
   actualValue     String
   sourceDocuments String[] // e.g. ["Commercial Invoice", "Packing List"]
   status          String    @default("Open") // Open | Resolved | Ignored
+  issueType       String    @default("DOCUMENT_CONFLICT") // DOCUMENT_CONFLICT | ENTRY_DISCREPANCY | PSC_CANDIDATE
   createdAt       DateTime  @default(now())
   resolvedAt      DateTime?
 
@@ -2386,7 +2387,9 @@ model FilingSnapshot {
   filingId     String        @unique
   filing       CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
   snapshotData Json // Immutable JSON representation of all shipment, parties, and line item facts
-  createdAt    DateTime      @default(now())
+  hasSection301  Boolean       @default(false)
+  section301List  String?
+  createdAt      DateTime      @default(now())
 
   @@index([filingId])
 }
@@ -3851,4 +3854,32 @@ model ControlEvidence {
   createdAt   DateTime @default(now())
 
   @@index([accountId])
+}
+
+model DrawbackLot {
+  id                String   @id @default(cuid())
+  accountId         String
+  entryNumber       String
+  lineItemId        String?
+  htsCode           String
+  quantity          Decimal  @db.Decimal(18, 6)
+  availableQty      Decimal  @db.Decimal(18, 6)
+  reservedQty       Decimal  @db.Decimal(18, 6) @default(0)
+  claimedQty        Decimal  @db.Decimal(18, 6) @default(0)
+  unitPurchasePrice Decimal  @db.Decimal(18, 6)
+  dutyPaidPerUnit   Decimal  @db.Decimal(18, 6)
+  importDate        DateTime
+  exportDeadline    DateTime
+  hasSection301     Boolean  @default(false)
+  section301List    String?
+  createdAt         DateTime @default(now())
+
+  @@index([accountId, htsCode])
+  @@index([exportDeadline])
+}
+
+model DrawbackClaimSequence {
+  id        String @id @default(cuid())
+  accountId String @unique
+  nextVal   Int    @default(1)
 }

@@ -4,6 +4,7 @@ import { buildErrorResponse } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { checkPscEligibility } from "@/lib/refunds/pscEligibility";
 import { z } from "zod";
 
 const createPscSchema = z.object({
@@ -12,8 +13,6 @@ const createPscSchema = z.object({
   reason: z.string().optional(),
   correctionType: z.string().optional(),
   originalDutyAmount: z.number().nonnegative().optional(),
-  // correctedDutyAmount is required: callers must supply the actual corrected
-  // figure. No fallback heuristic — there is no statutory basis for one.
   correctedDutyAmount: z.number().nonnegative({ message: "correctedDutyAmount is required and must be a non-negative number" }),
 });
 
@@ -38,6 +37,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
   const { originalFilingId, refundOpportunityId, reason, correctionType, originalDutyAmount, correctedDutyAmount } = bodyVal.data;
 
+  // 1. Fetch filing
   const filing = await db.customsFiling.findFirst({
     where: { id: originalFilingId, accountId: ctx.accountId },
   });
@@ -46,17 +46,18 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     return buildErrorResponse(404, "NOT_FOUND", "Original filing not found", undefined, requestId);
   }
 
-  if (refundOpportunityId) {
-    const opportunity = await db.refundOpportunity.findFirst({
-      where: { id: refundOpportunityId, accountId: ctx.accountId },
-      select: { id: true },
-    });
-    if (!opportunity) {
-      return buildErrorResponse(404, "NOT_FOUND", "Refund opportunity not found", undefined, requestId);
-    }
+  // 2. Validate PSC eligibility (Task D-2)
+  const eligibility = await checkPscEligibility(ctx.accountId, originalFilingId);
+  if (!eligibility.eligible) {
+    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", eligibility.reason, undefined, requestId);
   }
 
-  const origDuty = originalDutyAmount !== undefined ? originalDutyAmount : Number(filing.totalDuties);
+  // 3. Confirm actual duty paid is available (Task D-1)
+  const origDuty = originalDutyAmount !== undefined ? originalDutyAmount : (filing.totalDuties ? Number(filing.totalDuties) : null);
+  if (origDuty === null) {
+    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", "PSC calculation requires actual duty paid from accepted filing data.", undefined, requestId);
+  }
+
   const corrDuty = correctedDutyAmount;
   const refundAmount = Math.max(0, origDuty - corrDuty);
 
