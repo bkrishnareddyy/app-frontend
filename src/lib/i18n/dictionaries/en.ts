@@ -1,6 +1,7 @@
 export const en = {
   // Navigation
   nav: {
+    askQubere: "Ask Qubere",
     commandCenter: "Command Center",
     shipments: "Shipments",
     products: "Products",

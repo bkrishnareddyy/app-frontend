@@ -3,6 +3,7 @@ import { TranslationKeys } from "./en";
 export const es: TranslationKeys = {
   // Navigation
   nav: {
+    askQubere: "Preguntar a Qubere",
     commandCenter: "Centro de Control",
     shipments: "Embarques",
     products: "Productos",

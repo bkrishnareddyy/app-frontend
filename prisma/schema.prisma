@@ -119,6 +119,7 @@ model Account {
   notifications              Notification[]
   complianceDeadlines        ComplianceDeadline[]
   aiUsageWindows             AiUsageWindow[]
+  assistantChatSessions      AssistantChatSession[]
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -3480,4 +3481,23 @@ model AiUsageWindow {
   @@unique([accountId, userId, surface, windowKind, windowStart])
   @@index([accountId, surface, windowKind, windowStart])
   @@index([windowStart])
+}
+
+/// A saved "Ask Qubere" chat thread, scoped to one user within one account.
+/// Only the 10 most-recently-updated sessions per user/account are kept —
+/// older ones are pruned on create so this never grows unbounded.
+model AssistantChatSession {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId    String
+  title     String
+  /// Rendered message list (role, text, tool-call cards) — display state, not Gemini's turn format.
+  messages  Json
+  /// Gemini `Content[]` turn history, round-tripped verbatim so a resumed chat keeps full context.
+  history   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, userId, updatedAt])
 }

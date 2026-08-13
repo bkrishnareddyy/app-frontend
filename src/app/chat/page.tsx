@@ -12,6 +12,7 @@ export default async function ChatPage() {
       context={{
         firstName: ctx.firstName ?? null,
         accountName: ctx.accountName,
+        accountId: ctx.accountId,
       }}
     />
   );

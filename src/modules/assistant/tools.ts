@@ -3,14 +3,15 @@ import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getActiveTeamMembers } from "@/lib/team";
 import { GET as shipmentsGET, POST as shipmentsPOST } from "@/app/api/shipments/route";
+import { GET as productsGET } from "@/app/api/products/route";
+import { GET as partiesGET } from "@/app/api/parties/route";
+import { GET as documentsGET } from "@/app/api/documents/route";
 
 /**
  * Every tool wraps a real, already-authorized code path — either the
- * exported route handler for /api/shipments (called in-process, so it
- * resolves the caller's real session/RLS exactly like an HTTP request
- * would) or a direct query mirroring one already run elsewhere in the app
- * (cited per tool below). Nothing here re-implements business logic or
- * invents data the underlying source doesn't have.
+ * exported route handler called in-process (so it resolves the caller's real
+ * session/RLS exactly like an HTTP request would) or a direct DB query
+ * mirroring one already run elsewhere in the app.
  */
 export interface AssistantTool {
   declaration: FunctionDeclaration;
@@ -36,8 +37,7 @@ interface FetchedShipment {
   exceptionItems: { status: string; severity: string }[];
 }
 
-// Same stopgap as dashboard/page.tsx's SHIPMENT_ROW_CAP = 500: not real
-// pagination, just a bound on the worst case until KPIs move server-side.
+// Same stopgap as dashboard/page.tsx's SHIPMENT_ROW_CAP = 500.
 const SHIPMENT_FETCH_PAGE_SIZE = 100;
 const SHIPMENT_FETCH_MAX_PAGES = 5;
 
@@ -59,14 +59,11 @@ function shipmentValue(s: FetchedShipment): number {
   return s.lineItems.reduce((sum, li) => sum + Number(li.totalValue), 0);
 }
 
-// Matches CommandCenterClient.tsx's Value-at-Risk / "at risk" threshold exactly.
 const AT_RISK_READINESS_THRESHOLD = 85;
 function isAtRisk(s: FetchedShipment): boolean {
   return (s.readinessScore ?? 100) < AT_RISK_READINESS_THRESHOLD;
 }
 
-// Same predicate dashboard/page.tsx uses to count "active" exceptions,
-// defensively covering both status-casing variants seen in this codebase.
 function isOpenException(e: { status: string }): boolean {
   return e.status !== "RESOLVED" && e.status !== "WAIVED" && e.status !== "Resolved" && e.status !== "Waived";
 }
@@ -75,7 +72,7 @@ function shipmentUrl(s: { id: string }): string {
   return `/app/shipments/${s.id}`;
 }
 
-// ---- deadline lookup (backs the `critical` filter on list_shipments) ----
+// ---- deadline lookup ----
 
 interface DeadlineInfo {
   deadlineType: string;
@@ -86,11 +83,8 @@ interface DeadlineInfo {
   exposureUsd: number | null;
 }
 
-// A deadline within 24h (or already past) forces "critical" — the exact
-// rule src/app/app/actions/page.tsx:149-159 applies as a priority floor.
 const CRITICAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** Mirrors the ComplianceDeadline query in dashboard/page.tsx (lines ~211-224): one row per shipment, keeping the soonest open deadline. */
 async function fetchOpenDeadlinesByShipmentNumber(accountId: string): Promise<Map<string, DeadlineInfo>> {
   const rows = await db.complianceDeadline.findMany({
     where: { accountId, status: "OPEN", dueAt: { not: null } },
@@ -140,10 +134,10 @@ const listShipmentsParams: Schema = {
   type: Type.OBJECT,
   properties: {
     unassigned: { type: Type.BOOLEAN, description: "Only shipments with no assigned broker." },
-    atRisk: { type: Type.BOOLEAN, description: "Only shipments with a readiness score below 85 (the same threshold the dashboard's Value at Risk tile uses)." },
-    critical: { type: Type.BOOLEAN, description: "Only shipments with an open compliance deadline due within 24 hours, or already overdue." },
-    clientId: { type: Type.STRING, description: "Restrict to one client's shipments. Only set this if the user named a specific client and you already have its id from a prior tool result — never guess an id." },
-    assignedToUserId: { type: Type.STRING, description: "Restrict to shipments assigned to one specific team member's userId. Look it up via get_team_members first if the user named a person." },
+    atRisk: { type: Type.BOOLEAN, description: "Only shipments with a readiness score below 85." },
+    critical: { type: Type.BOOLEAN, description: "Only shipments with an open compliance deadline due within 24 hours." },
+    clientId: { type: Type.STRING, description: "Restrict to one client. Only set if you already have its id from a prior tool result." },
+    assignedToUserId: { type: Type.STRING, description: "Restrict to one team member. Look up userId via get_team_members first." },
   },
 };
 
@@ -151,7 +145,7 @@ const listShipments: AssistantTool = {
   declaration: {
     name: "list_shipments",
     description:
-      "List shipments in the current account, optionally filtered by assignment, risk, urgency, client, or assignee. Combine flags to answer compound questions (e.g. critical AND unassigned).",
+      "List shipments, optionally filtered by assignment, risk, urgency, client, or assignee. Combine flags for compound questions.",
     parameters: listShipmentsParams,
   },
   execute: async (ctx, rawArgs) => {
@@ -195,17 +189,15 @@ const getValueAtRisk: AssistantTool = {
   declaration: {
     name: "get_value_at_risk",
     description:
-      "Total declared value across shipments currently at risk (readiness score below 85) — the same figure shown on the dashboard's Value at Risk tile.",
+      "Total declared value across shipments currently at risk (readiness score below 85) — same figure as the dashboard Value at Risk tile.",
     parameters: { type: Type.OBJECT, properties: {} },
   },
   execute: async () => {
     const shipments = await fetchAllShipments();
     const atRisk = shipments.filter(isAtRisk);
-    const totalValueAtRisk = atRisk.reduce((sum, s) => sum + shipmentValue(s), 0);
-
     return {
       shipmentCount: atRisk.length,
-      totalValueAtRisk,
+      totalValueAtRisk: atRisk.reduce((sum, s) => sum + shipmentValue(s), 0),
       shipments: atRisk.map((s) => ({
         shipmentNumber: s.shipmentNumber,
         importerName: s.importerName,
@@ -222,7 +214,7 @@ const getValueAtRisk: AssistantTool = {
 const getTeamMembers: AssistantTool = {
   declaration: {
     name: "get_team_members",
-    description: "List active members of the current account (name, email).",
+    description: "List active members of the current account (name, email, userId).",
     parameters: { type: Type.OBJECT, properties: {} },
   },
   execute: async (ctx) => {
@@ -243,15 +235,15 @@ const getTeamMembers: AssistantTool = {
 const createShipmentParams: Schema = {
   type: Type.OBJECT,
   properties: {
-    importerName: { type: Type.STRING, description: "Importer of record name. The only required field — everything else must be omitted, not guessed, if the user didn't say it." },
-    clientId: { type: Type.STRING, description: "Qubere client record id, only if the user named a specific existing client." },
-    poReference: { type: Type.STRING, description: "Purchase order reference." },
-    entryType: { type: Type.STRING, description: "CBP entry type." },
+    importerName: { type: Type.STRING, description: "Importer of record. Only required field — omit others if user didn't state them." },
+    clientId: { type: Type.STRING },
+    poReference: { type: Type.STRING },
+    entryType: { type: Type.STRING },
     incoterm: { type: Type.STRING },
     portOfEntry: { type: Type.STRING },
     carrierName: { type: Type.STRING },
     countryOfExport: { type: Type.STRING },
-    estimatedArrival: { type: Type.STRING, description: "ISO 8601 date, only if the user gave an ETA." },
+    estimatedArrival: { type: Type.STRING, description: "ISO 8601 date." },
   },
   required: ["importerName"],
 };
@@ -260,7 +252,7 @@ const createShipment: AssistantTool = {
   declaration: {
     name: "create_shipment",
     description:
-      "Create a new shipment. Only call this after showing the user exactly which fields you're about to submit and getting explicit confirmation. Never invent a value for a field the user didn't state — omit it instead.",
+      "Create a new shipment. Only call after showing the user exactly what will be submitted and receiving explicit confirmation. Never invent values for fields the user didn't state.",
     parameters: createShipmentParams,
   },
   execute: async (_ctx, args) => {
@@ -275,10 +267,135 @@ const createShipment: AssistantTool = {
     if (!res.ok) {
       return { success: false, error: data.error ?? "Failed to create shipment", fieldErrors: data.fieldErrors };
     }
+    return { success: true, shipmentNumber: data.shipment.shipmentNumber, url: shipmentUrl(data.shipment) };
+  },
+};
+
+// ---- tool: search_products ----
+
+const searchProductsParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    query: { type: Type.STRING, description: "Search term — matches product name, description, SKU, or HTS/tariff code." },
+    limit: { type: Type.NUMBER, description: "Max results, 1–50. Default 20." },
+  },
+  required: ["query"],
+};
+
+const searchProducts: AssistantTool = {
+  declaration: {
+    name: "search_products",
+    description: "Search the account's product catalog by name, SKU, description, or HTS code.",
+    parameters: searchProductsParams,
+  },
+  execute: async (_ctx, rawArgs) => {
+    const q = String(rawArgs.query ?? "");
+    const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const res = await productsGET(
+      new Request(`http://internal.local/api/products?q=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
+    );
+    if (!res.ok) return { error: "Failed to fetch products" };
+    const data = (await res.json()) as {
+      products: { id: string; sku: string | null; name: string; description: string | null; status: string }[];
+      total: number;
+    };
     return {
-      success: true,
-      shipmentNumber: data.shipment.shipmentNumber,
-      url: shipmentUrl(data.shipment),
+      total: data.total,
+      shown: data.products.length,
+      products: data.products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        description: p.description,
+        status: p.status,
+        url: `/app/products/${p.id}`,
+      })),
+    };
+  },
+};
+
+// ---- tool: search_parties ----
+
+const searchPartiesParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    query: { type: Type.STRING, description: "Search term — matches party name, code, or any identifier." },
+    limit: { type: Type.NUMBER, description: "Max results, 1–50. Default 20." },
+  },
+  required: ["query"],
+};
+
+const searchParties: AssistantTool = {
+  declaration: {
+    name: "search_parties",
+    description: "Search the account's party master (importers, exporters, brokers, carriers, etc.) by name or identifier.",
+    parameters: searchPartiesParams,
+  },
+  execute: async (_ctx, rawArgs) => {
+    const q = String(rawArgs.query ?? "");
+    const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const res = await partiesGET(
+      new Request(`http://internal.local/api/parties?q=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
+    );
+    if (!res.ok) return { error: "Failed to fetch parties" };
+    const data = (await res.json()) as {
+      parties: { id: string; code: string | null; status: string; roles: { roleType: string }[]; names: { rawName: string }[] }[];
+      total: number;
+    };
+    return {
+      total: data.total,
+      shown: data.parties.length,
+      parties: data.parties.map((p) => ({
+        id: p.id,
+        code: p.code,
+        name: p.names?.[0]?.rawName ?? "(unnamed)",
+        roles: p.roles?.map((r) => r.roleType) ?? [],
+        status: p.status,
+        url: `/app/parties/${p.id}`,
+      })),
+    };
+  },
+};
+
+// ---- tool: search_documents ----
+
+const searchDocumentsParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    query: { type: Type.STRING, description: "Search term — matches file name, document type, or linked shipment/client." },
+    limit: { type: Type.NUMBER, description: "Max results, 1–50. Default 20." },
+  },
+  required: ["query"],
+};
+
+const searchDocuments: AssistantTool = {
+  declaration: {
+    name: "search_documents",
+    description: "Search trade documents (commercial invoices, packing lists, BOLs, etc.) by file name, type, or linked shipment.",
+    parameters: searchDocumentsParams,
+  },
+  execute: async (_ctx, rawArgs) => {
+    const q = String(rawArgs.query ?? "");
+    const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const res = await documentsGET(
+      new Request(`http://internal.local/api/documents?search=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
+    );
+    if (!res.ok) return { error: "Failed to fetch documents" };
+    const data = (await res.json()) as {
+      documents: { id: string; fileName: string; docType: string | null; status: string; shipment?: { shipmentNumber: string } | null }[];
+      total: number;
+    };
+    return {
+      total: data.total,
+      shown: data.documents.length,
+      documents: data.documents.map((d) => ({
+        id: d.id,
+        fileName: d.fileName,
+        docType: d.docType,
+        status: d.status,
+        shipmentNumber: d.shipment?.shipmentNumber ?? null,
+        url: `/app/documents`,
+      })),
     };
   },
 };
@@ -288,6 +405,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   getValueAtRisk,
   getTeamMembers,
   createShipment,
+  searchProducts,
+  searchParties,
+  searchDocuments,
 ];
 
 const TOOLS_BY_NAME = new Map(ASSISTANT_TOOLS.map((t) => [t.declaration.name, t]));

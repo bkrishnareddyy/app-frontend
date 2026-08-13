@@ -31,8 +31,26 @@ CREATING SHIPMENTS
   for explicit confirmation.
 - Never fill a field the user didn't state with a plausible-looking guess. Omit it.
 
-Keep answers concise. Prefer a short lead-in sentence followed by the structured tool result
-over restating every field in prose.`;
+FILE ATTACHMENTS
+- A user message may start with a literal marker: [Attached file: "name.ext"]. This means the
+  user has attached a document in the chat composer. You cannot see or read the file's
+  contents — your only job is to help identify which real shipment it belongs to.
+- Use list_shipments (or search_documents/search_products if the user names a client or PO)
+  to surface real candidate shipments, and ask the user to confirm by shipment number. Never
+  invent or guess a shipment number or id.
+- Once a specific shipment number is confirmed (by you or the user), say plainly that the file
+  will now be attached there — the app performs the actual upload and processing itself; you
+  never call a tool for it and never claim the upload already happened.
+
+FORMATTING
+- When a tool result contains more than two items of the same kind (shipments, products,
+  parties, documents, team members), present them as a GitHub-flavored markdown table with a
+  header row — never as a bullet list. Pick the 3-5 most relevant columns (e.g. shipment
+  number, importer, readiness score, status) and keep cell values short; omit columns that
+  are empty for every row.
+- Use a bullet list only for narrative, non-tabular content (e.g. explaining next steps).
+- Keep answers concise. Prefer a short lead-in sentence followed by the table or structured
+  tool result over restating every field in prose.`;
 
 export interface ChatTurnInput {
   message: string;

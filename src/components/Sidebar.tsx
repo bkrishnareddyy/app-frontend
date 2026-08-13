@@ -25,6 +25,7 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -159,6 +160,23 @@ export function Sidebar({
           </button>
         </div>
 
+        <div className={cn("px-3", collapsed ? "mt-4" : "mt-4")}>
+          <Link
+            href="/chat"
+            onClick={() => setMobileOpen(false)}
+            title={collapsed ? (labels.askQubere ?? "Ask Qubere") : undefined}
+            className={cn(
+              "group relative flex items-center rounded-xl bg-gradient-to-r from-brand to-[#5AC8FA] text-white shadow-sm shadow-brand/25 transition-all hover:shadow-md hover:shadow-brand/30 hover:-translate-y-px",
+              collapsed ? "justify-center w-11 h-11 mx-auto" : "px-3 py-2.5 space-x-2.5"
+            )}
+          >
+            <Sparkles className="w-4 h-4 shrink-0" />
+            {!collapsed && (
+              <span className="text-sm font-semibold truncate">{labels.askQubere ?? "Ask Qubere"}</span>
+            )}
+          </Link>
+        </div>
+
         {!collapsed && (
           <div className="px-3 my-4">
             <AccountSwitcher
@@ -273,6 +291,22 @@ export function Sidebar({
           </button>
         </div>
       </aside>
+
+      {/* Persistent quick-access launcher — opens in a new tab so the
+          current page (and any in-progress work) stays put. */}
+      <a
+        href="/chat"
+        target="_blank"
+        rel="noopener noreferrer"
+        title={labels.askQubere ?? "Ask Qubere"}
+        aria-label={labels.askQubere ?? "Ask Qubere"}
+        className="group fixed bottom-5 right-5 z-40 flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-brand to-[#5AC8FA] text-white shadow-lg shadow-brand/30 hover:shadow-xl hover:shadow-brand/40 hover:scale-105 transition-all"
+      >
+        <Sparkles className="w-6 h-6" />
+        <span className="pointer-events-none absolute right-full mr-3 whitespace-nowrap rounded-lg bg-ink text-white text-xs font-medium px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {labels.askQubere ?? "Ask Qubere"}
+        </span>
+      </a>
     </>
   );
 }

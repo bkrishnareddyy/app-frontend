@@ -97,7 +97,8 @@ deliberately not implemented.
 ├── docs/
 │   ├── product-master.md    # Global Product / Item Master domain reference
 │   ├── party-master.md      # Global Party Master domain reference
-│   └── document-intelligence.md # Document parsing pipeline reference
+│   ├── document-intelligence.md # Document parsing pipeline reference
+│   └── ai-chat-interface.md # AI assistant design spec (not yet built)
 ├── prisma/
 │   ├── schema.prisma        # Prisma data models & database relationships
 │   ├── migrations/          # Versioned schema migrations
