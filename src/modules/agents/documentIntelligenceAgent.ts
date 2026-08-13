@@ -1052,6 +1052,24 @@ ${instructions}`;
             const effectiveDocType = documentClassification?.documentType
               ? mapToDocumentType(documentClassification.documentType)
               : docToUpdate.documentType;
+
+            // The entities array uses Gemini's own freeform vocabulary
+            // ("Exporter", "Consignee") which never matches the snake_case
+            // schema keys below ("seller_name", "invoice_number", ...), so
+            // relying on it alone flags every commercial-invoice field as
+            // "not extracted" even when this run's structured fields (used
+            // by the AUTO_VERIFIED decision above) actually have the data.
+            if (effectiveDocType === "COMMERCIAL_INVOICE") {
+              if (exporterName) writtenFieldNames.add("seller_name");
+              if (importerName) writtenFieldNames.add("buyer_name");
+              if (invoiceNumber) writtenFieldNames.add("invoice_number");
+              if (invoiceDate) writtenFieldNames.add("invoice_date");
+              if (currency) writtenFieldNames.add("currency");
+              if (invoiceSubtotal !== null) writtenFieldNames.add("total_value");
+              if (incoterm) writtenFieldNames.add("incoterm");
+              if (lineItems.length > 0) writtenFieldNames.add("line_items");
+            }
+
             if (effectiveDocType) {
               try {
                 await ExceptionService.syncExtractionFieldExceptions({
