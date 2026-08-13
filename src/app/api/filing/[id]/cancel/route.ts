@@ -4,7 +4,6 @@ import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { validatePathParams } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
-import { db } from "@/lib/db";
 import { FilingService } from "@/modules/filings/filing.service";
 import { simulateAndApplyResponse } from "@/lib/canonicalMessaging/devStub";
 import { z } from "zod";
@@ -21,39 +20,33 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   if (idempError) return idempError;
 
   try {
-    const result = await FilingService.transmitFiling(ctx.accountId, ctx.userId, id);
+    const result = await FilingService.cancelFiling(ctx.accountId, ctx.userId, id);
 
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
-      action: "filing.transmit",
+      action: "filing.cancel",
       entity: "CustomsFiling",
       entityId: id,
       metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
 
-    // No real third party exists yet, so there is no other process that will
-    // ever answer the outbound message we just published. In production,
-    // with a real integration wired up, this same message would sit PENDING
-    // until they respond -- CUSTOMS_FILING_MOCK_RESPONSES=false restores that
-    // behaviour. A simulation failure must never fail the transmit itself:
-    // the real outbound message is already durably published at this point.
     let mockResponseApplied = false;
     try {
       mockResponseApplied = await simulateAndApplyResponse(result.messageId);
     } catch (err) {
-      console.warn(`[transmit] dev-stub response simulation failed for filing ${id}:`, err);
+      console.warn(`[cancel] dev-stub response simulation failed for filing ${id}:`, err);
     }
 
-    const latestFiling = mockResponseApplied
-      ? await db.customsFiling.findUnique({ where: { id } })
-      : null;
-
+    // filingStatus is intentionally unchanged by cancelFiling() -- see the
+    // comment on FilingService.cancelFiling for why. The cancellation request
+    // has been sent; status will only move once a legal transition + response
+    // mapping exists for it. The mock CANCELLED response is still recorded on
+    // the Response tab (see devStub.ts) even though it can't move status.
     const responsePayload = {
-      transmission: {
-        status: latestFiling?.filingStatus ?? result.filing.filingStatus,
+      cancellation: {
+        status: result.filing.filingStatus,
         entryNumber: result.filing.entryNumber,
-        transmittedAt: result.filing.submittedAt,
         messageId: result.messageId,
         mockResponseApplied,
       },
@@ -69,6 +62,6 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     if (errorMessage(error) === "NOT_FOUND") {
       return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
     }
-    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to transmit filing", undefined, requestId);
+    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to cancel filing", undefined, requestId);
   }
 }, { permission: "filings.submit", write: true });

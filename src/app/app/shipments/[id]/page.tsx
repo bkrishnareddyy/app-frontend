@@ -16,6 +16,7 @@ import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
 import { ShipmentClientEditor } from "./ShipmentClientEditor";
+import { DestinationCountryEditor } from "./DestinationCountryEditor";
 import { ExceptionsDrawer } from "./ExceptionsDrawer";
 import { LineItemsTable } from "./LineItemsTable";
 import { CanonicalFactsSection } from "./CanonicalFactsSection";
@@ -1154,6 +1155,11 @@ export default async function ShipmentWorkspacePage(props: {
               initialClientId={shipment.clientId}
               initialClientName={fullShipment.client?.name ?? null}
               clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+              canEdit={canEditClient}
+            />
+            <DestinationCountryEditor
+              shipmentId={shipment.id}
+              initialDestinationCountry={shipment.destinationCountry}
               canEdit={canEditClient}
             />
           </div>

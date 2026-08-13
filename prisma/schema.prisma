@@ -120,6 +120,7 @@ model Account {
   complianceDeadlines        ComplianceDeadline[]
   aiUsageWindows             AiUsageWindow[]
   assistantChatSessions      AssistantChatSession[]
+  filingMessages             FilingMessage[]
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -370,6 +371,12 @@ model Shipment {
   carrierName        String?
   countryOfExport    String?
   countryOfOrigin    String?
+  // ISO 3166-1 alpha-2 country this shipment is being imported INTO, distinct
+  // from countryOfExport/countryOfOrigin above. Human-entered at creation --
+  // this is what the shipment's canonical filing declaration is filed against,
+  // and what selects the third-party procedure/message-catalog mapping. Never
+  // inferred, because a wrong destination silently misfiles an entry.
+  destinationCountry String?
   estimatedArrival   DateTime?
   ladingDate         DateTime? // On-board / ETD — ISF anchor; set from BL extraction or broker override
   arrivalDate        DateTime? // Actual arrival at first US port; falls back to estimatedArrival
@@ -756,10 +763,13 @@ model CustomsFiling {
   importerOfRecord   ImporterOfRecord? @relation(fields: [importerOfRecordId], references: [id], onDelete: SetNull)
   bondId             String?
   bond               Bond?             @relation(fields: [bondId], references: [id], onDelete: SetNull)
-  entryNumber        String // e.g. 5901-26-004872
-  authority          String            @default("US Customs (CBP)")
-  entryType          String            @default("Consumption Entry")
-  filingType         String            @default("ABI - Automated")
+  entryNumber        String // internal reference until the authority assigns its own; see authorityReference on CustomsResponse
+  // No default: both are resolved per destinationCountry from FilingAuthorityConfig
+  // at creation time (see POST /api/filing) -- a schema-level default here is
+  // exactly the kind of hardcoded-to-one-country value this table exists to avoid.
+  authority          String
+  entryType          String // a code from entryType.ts today; see the country-agnostic-design gap notes
+  filingType         String
   filingStatus       String            @default("Draft") // Draft, Preparing, ValidationFailed, ReadyForBrokerReview, BrokerApproved, TransmissionPending, Transmitted, Accepted, Rejected, DocumentsRequested, CustomsHold, Released, Cancelled, Closed, Simulation
   paymentStatus      String            @default("Pending") // Pending, Paid, Deferred
   totalValue         Decimal? // null until calculated from line items
@@ -782,7 +792,9 @@ model CustomsFiling {
   valuationAssistsRecord ValuationAssistsRecord?
   auditTimelines         AuditTimeline[]
   snapshot               FilingSnapshot?
+  filingMessages         FilingMessage[]
 
+  @@unique([accountId, entryNumber])
   @@index([shipmentId])
   @@index([accountId])
   @@index([filingStatus])
@@ -3523,4 +3535,174 @@ model AssistantChatSession {
   updatedAt DateTime @updatedAt
 
   @@index([accountId, userId, updatedAt])
+}
+
+// -----------------------------------------------------------------------------
+// CANONICAL FILING MESSAGING (multi-country, third-party-rendered)
+//
+// The third-party filing service owns all country-specific rendering in both
+// directions -- we only ever speak the canonical envelope defined here. See
+// docs/customs-filing-canonical-messaging-prompt.md for the full design.
+//
+// filingStateMachine.ts already owns filing-status transition legality;
+// FilingResponseStatusMapping below maps an inbound response's status onto
+// which FilingTransition to apply -- it must never be used to write
+// CustomsFiling.filingStatus directly.
+// -----------------------------------------------------------------------------
+
+/// One outbound or inbound canonical message. This table doubles as the
+/// message queue itself (see queueStatus/lockedAt below, same FOR UPDATE SKIP
+/// LOCKED claiming pattern as PipelineJob in pgQueue.ts) so there is a single
+/// durable, queryable record of every message sent or received -- not a
+/// separate queue table plus a separate audit log that could drift apart.
+model FilingMessage {
+  id             String        @id @default(cuid())
+  accountId      String
+  account        Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  filingId       String
+  filing         CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+  messageId      String        @unique
+  // Set only on INBOUND response messages; equals the request messageId it answers.
+  correlationId  String?
+  // Set only on AMENDMENT / CANCELLATION / RESUBMIT / STATUS_INQUIRY -- the
+  // messageId of the message this one supersedes/acts on. Distinct from
+  // correlationId: "replying to" and "superseding" are different relationships.
+  priorMessageId String?
+  messageName    String
+  direction      String // OUTBOUND | INBOUND
+  procedure      String
+  country        String
+  // Canonical response status (our shared enum); INBOUND only.
+  status         String?
+  envelope       Json // full header+data, exactly as published/received -- audit source of truth
+  // Queue-claiming fields, OUTBOUND rows only. INBOUND rows are written already-processed.
+  queueStatus    String        @default("PENDING") // PENDING, CLAIMED, PROCESSED, FAILED
+  lockedAt       DateTime?
+  attempts       Int           @default(0)
+  errorMessage   String?
+  createdAt      DateTime      @default(now())
+  processedAt    DateTime?
+
+  @@index([accountId])
+  @@index([filingId])
+  @@index([correlationId])
+  @@index([queueStatus, createdAt])
+}
+
+/// A versioned JSON Schema document for one part of the canonical contract.
+/// Authored as reviewed, version-controlled files and loaded in via
+/// migration/seed -- never edited live through a runtime admin surface.
+/// Mirrors HtsRelease's publicationStatus pattern (DRAFT/PUBLISHED/SUPERSEDED)
+/// for the same reason: a schema this consequential needs the same auditable
+/// promotion path as tariff master data, not ad hoc live edits.
+model FilingSchemaVersion {
+  id                  String    @id @default(cuid())
+  schemaType          String // ENVELOPE_HEADER | FILING_REQUEST_DECLARATION | FILING_RESPONSE_DATA
+  version             String // semver, e.g. "1.0.0"
+  schemaJson          Json
+  status              String    @default("DRAFT") // DRAFT, ACTIVE, DEPRECATED, RETIRED
+  effectiveFrom        DateTime  @default(now())
+  supersedesVersionId  String?
+  createdAt            DateTime  @default(now())
+
+  @@unique([schemaType, version])
+  @@index([schemaType, status])
+}
+
+/// Maps an inbound response's canonical status onto which FilingTransition to
+/// apply. Deliberately does NOT redefine CustomsFiling.filingStatus -- that
+/// vocabulary and its transition legality already live in
+/// filingStateMachine.ts (FILING_STATUSES / TRANSITIONS), which is a stable,
+/// well-tested domain state machine and stays there. This table exists
+/// because which canonical status maps to which transition can legitimately
+/// vary as new countries/authorities are onboarded.
+model FilingResponseStatusMapping {
+  id               String @id @default(cuid())
+  country          String // ISO code, or "*" wildcard
+  messageName      String // the response messageName this applies to, or "*"
+  canonicalStatus  String // e.g. "ACCEPTED", "REJECTED", "NEEDS_INFO"
+  filingTransition String // a FilingTransition value, e.g. "cbp.accept"
+
+  @@unique([country, messageName, canonicalStatus])
+}
+
+/// Valid outbound message actions. Replaces a hardcoded FilingMessageType
+/// union so a new action never requires a code deploy.
+model FilingMessageActionCatalog {
+  code                 String  @id // SUBMIT, AMENDMENT, CANCELLATION, RESUBMIT, STATUS_INQUIRY
+  label                String
+  requiresPriorMessage Boolean @default(false)
+}
+
+/// (entryType, country) -> the procedure code the third party's message
+/// catalog expects. Wraps entryType.ts's stable CBP entry-type vocabulary; it
+/// does not replace it -- entryType.ts stays the internal source of truth,
+/// this table only translates it per destination country.
+model FilingProcedureMapping {
+  id            String @id @default(cuid())
+  entryType     String // a code from entryType.ts, e.g. "01"
+  country       String // ISO code, or "*" wildcard
+  procedureCode String
+
+  @@unique([entryType, country])
+}
+
+/// (action, country, procedureCode) -> the messageName and queue the message
+/// catalog expects for that combination. queueName is included so queue
+/// routing per country is configuration too, not a hardcoded string.
+model FilingMessageCatalog {
+  id            String @id @default(cuid())
+  action        String // a FilingMessageActionCatalog code, or "*"
+  country       String // or "*"
+  procedureCode String // or "*"
+  messageName   String
+  queueName     String
+
+  @@unique([action, country, procedureCode])
+}
+
+/// Whether a filing's declaration is editable, and Save/Submit/Resubmit
+/// buttons shown, for a given (country, procedure, messageName, status)
+/// combination. Resolution is most-specific-match-wins; no match defaults to
+/// false -- fail closed, never fail open.
+model FilingActionRule {
+  id            String  @id @default(cuid())
+  country       String // ISO code, or "*" wildcard
+  procedureCode String // or "*"
+  messageName   String // the messageName of the message that produced the current status, or "*"
+  status        String // a CustomsFiling.filingStatus value, or "*"
+  allowUpdates  Boolean @default(false)
+
+  @@unique([country, procedureCode, messageName, status])
+}
+
+/// Which child actions (CANCEL, AMEND, INVALIDATE, ...) are offered for a given
+/// (country, procedure, messageName, status). One row per action rather than a
+/// boolean column per action -- adding a new child action later is a seed-data
+/// row, never a migration, and the set of actions works the same way for every
+/// country instead of being enumerated in code. Resolution is
+/// most-specific-match-wins per action (see resolveChildActions()); a status
+/// with no matching row for an action simply doesn't offer it -- fail closed.
+model FilingChildActionRule {
+  id            String @id @default(cuid())
+  country       String // ISO code, or "*" wildcard
+  procedureCode String // or "*"
+  messageName   String // or "*"
+  status        String // a CustomsFiling.filingStatus value, or "*"
+  action        String // "CANCEL", "AMEND", "INVALIDATE", ...
+
+  @@unique([country, procedureCode, messageName, status, action])
+}
+
+/// (destinationCountry) -> the authority name and filing-system label to stamp
+/// on a new CustomsFiling. No wildcard fallback -- unlike the lookup tables
+/// above, "which authority is this filing with" has no sensible generic
+/// default; a country with no row here simply cannot have a filing created
+/// for it yet (POST /api/filing fails closed), the same way an unmapped
+/// entryType/country combination already fails closed in resolveMessageContext.
+model FilingAuthorityConfig {
+  id                String @id @default(cuid())
+  country           String @unique // ISO 3166-1 alpha-2
+  authorityName     String // e.g. "U.S. Customs and Border Protection (CBP)"
+  filingSystemLabel String // e.g. "ABI - Automated"
 }
