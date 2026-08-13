@@ -4,7 +4,8 @@ import type { CanonicalSchemaType } from "./types";
 
 // ajv v6 (draft-07). The $schema/$defs keys in our 2020-12 schemas are
 // tolerated via unknownFormats; allErrors collects every violation.
-const ajv = new Ajv({ allErrors: true, unknownFormats: "ignore" } as Parameters<typeof Ajv>[0]);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ajv = new (Ajv as any)({ allErrors: true, unknownFormats: "ignore" });
 
 /** Compiled-validator cache, keyed by "schemaType@version". Invalidated on promoteSchemaVersion(). */
 const validatorCache = new Map<string, ValidateFunction>();
