@@ -6,6 +6,7 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { getAiUsageAnalytics } from "@/lib/ai/aiUsageAnalytics";
+import { getDocumentProcessingAnalytics } from "@/lib/documents/documentProcessingAnalytics";
 
 export default async function PlatformAdminPage() {
   const context = await getAccountContext();
@@ -98,6 +99,7 @@ export default async function PlatformAdminPage() {
   };
 
   const aiUsage = await getAiUsageAnalytics(30);
+  const documentProcessing = await getDocumentProcessingAnalytics(30);
 
   return (
     <div className="min-h-screen bg-surface-muted text-ink p-8 selection:bg-brand/20 selection:text-brand">
@@ -126,7 +128,7 @@ export default async function PlatformAdminPage() {
           </Link>
         </div>
 
-        <PlatformAdminConsole accounts={formattedAccounts} htsAdmin={htsAdmin} aiUsage={aiUsage} />
+        <PlatformAdminConsole accounts={formattedAccounts} htsAdmin={htsAdmin} aiUsage={aiUsage} documentProcessing={documentProcessing} />
       </div>
     </div>
   );

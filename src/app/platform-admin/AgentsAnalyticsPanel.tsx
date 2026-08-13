@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   XCircle,
   HelpCircle,
+  FileText,
+  Clock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import type {
@@ -21,6 +23,7 @@ import type {
   AiDailyUsage,
   AiAccountUsage,
 } from "@/lib/ai/aiUsageAnalytics";
+import type { DocumentProcessingAnalytics } from "@/lib/documents/documentProcessingAnalytics";
 
 function formatShortDate(dateKey: string | undefined): string {
   if (!dateKey) return "";
@@ -353,7 +356,134 @@ function CopilotHealthSection({ data }: { data: AiUsageAnalytics["copilot"] }) {
   );
 }
 
-export function AgentsAnalyticsPanel({ data }: { data: AiUsageAnalytics }) {
+function DocumentProcessingSection({ data }: { data: DocumentProcessingAnalytics }) {
+  const { statusCounts, confidence, latency, errors } = data;
+
+  return (
+    <div className="apple-card rounded-3xl border border-border bg-white shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-border">
+        <h2 className="text-lg font-bold text-ink flex items-center space-x-2">
+          <FileText className="w-5 h-5 text-amber-600" />
+          <span>Document Processing</span>
+        </h2>
+        <p className="text-xs text-ink-muted mt-0.5">
+          Parse and extraction runs (<code>DocumentParseVersion</code>) over the last {data.rangeDays} days.
+        </p>
+      </div>
+
+      <div className="p-6 grid grid-cols-2 lg:grid-cols-4 gap-4 border-b border-border">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Succeeded</p>
+          <p className="text-xl font-extrabold text-emerald-600 tabular-nums">{statusCounts.succeeded.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Failed</p>
+          <p className="text-xl font-extrabold text-red-600 tabular-nums">{statusCounts.failed.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Needs Review</p>
+          <p className="text-xl font-extrabold text-amber-600 tabular-nums">{statusCounts.needsReview.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Processing</p>
+          <p className="text-xl font-extrabold text-ink tabular-nums">{statusCounts.processing.toLocaleString()}</p>
+        </div>
+      </div>
+
+      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 border-b border-border">
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-3 flex items-center gap-1.5">
+            <Gauge className="w-3.5 h-3.5" />
+            Parse Confidence
+          </h3>
+          {confidence.sampleSize === 0 ? (
+            <p className="text-sm text-ink-muted">No run in this window reported a confidence score.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-[10px] text-ink-muted">Median</p>
+                <p className="text-lg font-extrabold text-ink tabular-nums">{confidence.median?.toFixed(0)}%</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-ink-muted">P90</p>
+                <p className="text-lg font-extrabold text-ink tabular-nums">{confidence.p90?.toFixed(0)}%</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-ink-muted">P99</p>
+                <p className="text-lg font-extrabold text-ink tabular-nums">{confidence.p99?.toFixed(0)}%</p>
+              </div>
+            </div>
+          )}
+          <p className="text-[10px] text-ink-muted mt-2">
+            Median/P90/P99 are shown instead of an average — confidence is skewed, and an average hides a low-confidence tail. Based on {confidence.sampleSize.toLocaleString()} run{confidence.sampleSize === 1 ? "" : "s"} with a reported score.
+          </p>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-3 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Processing Latency
+          </h3>
+          {latency.sampleSize === 0 ? (
+            <p className="text-sm text-ink-muted">No completed run in this window recorded a duration.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] text-ink-muted">Median</p>
+                <p className="text-lg font-extrabold text-ink tabular-nums">{((latency.medianMs ?? 0) / 1000).toFixed(1)}s</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-ink-muted">P90</p>
+                <p className="text-lg font-extrabold text-ink tabular-nums">{((latency.p90Ms ?? 0) / 1000).toFixed(1)}s</p>
+              </div>
+            </div>
+          )}
+          <p className="text-[10px] text-ink-muted mt-2">Based on {latency.sampleSize.toLocaleString()} completed run{latency.sampleSize === 1 ? "" : "s"}.</p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm text-ink">
+          <thead className="bg-surface-muted border-b border-border text-xs uppercase font-bold text-ink-muted">
+            <tr>
+              <th className="px-6 py-4">Error Code</th>
+              <th className="px-6 py-4">Failures</th>
+              <th className="px-6 py-4">Still Retryable</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {errors.map((e) => (
+              <tr key={e.errorCode} className="hover:bg-slate-50 transition-colors">
+                <td className="px-6 py-4 font-mono text-xs font-bold">{e.errorCode}</td>
+                <td className="px-6 py-4 font-mono tabular-nums">{e.count.toLocaleString()}</td>
+                <td className="px-6 py-4">
+                  <Badge variant={e.retryable > 0 ? "warning" : "neutral"} className="normal-case text-xs">
+                    {e.retryable.toLocaleString()}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+            {errors.length === 0 && (
+              <tr>
+                <td colSpan={3} className="px-6 py-8 text-center text-ink-muted">
+                  No failed run in this window.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function AgentsAnalyticsPanel({
+  data,
+  documentProcessing,
+}: {
+  data: AiUsageAnalytics;
+  documentProcessing: DocumentProcessingAnalytics;
+}) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -391,11 +521,15 @@ export function AgentsAnalyticsPanel({ data }: { data: AiUsageAnalytics }) {
 
       <CopilotHealthSection data={data.copilot} />
 
+      <DocumentProcessingSection data={documentProcessing} />
+
       <p className="text-[10px] text-ink-muted px-1">
         Call and token counts come from the shared <code>AiUsageWindow</code> metering table (day-level counters,
         retained for roughly 35 days). Chat assistant query health comes from the audit trail written on every{" "}
-        <code>/chat</code> turn. No cost or dollar figures are shown — this platform does not yet configure a
-        per-token rate anywhere, and none is estimated here.
+        <code>/chat</code> turn. Document processing figures come from <code>DocumentParseVersion</code>, one row per
+        parse/extraction attempt; runs that never reported a confidence score or duration are excluded from those
+        distributions rather than counted as zero. No cost or dollar figures are shown — this platform does not yet
+        configure a per-token rate anywhere, and none is estimated here.
       </p>
     </div>
   );
