@@ -138,11 +138,13 @@ export function calculateDutyStack(
   const baseRate = new Decimal(baseRateNum ?? 0);
   const baseDuty = roundToCents(customsValue.times(baseRate));
 
-  const sec301Rate = getSection301Rate(
-    lineItem.countryOfOrigin,
-    htsRateInput?.section301Tranche || "List3",
-    htsRateInput?.section301Exclusion
-  );
+  const sec301Rate = htsRateInput?.section301Applicable
+    ? new Decimal(htsRateInput.section301AdditionalRate || 0).dividedBy(100)
+    : getSection301Rate(
+        lineItem.countryOfOrigin,
+        htsRateInput?.section301Tranche || "List3",
+        htsRateInput?.section301Exclusion
+      );
   const sec301Duty = roundToCents(customsValue.times(sec301Rate));
 
   const sec232Rate = htsRateInput?.section232Applicable
@@ -239,9 +241,7 @@ export function calculateLineItemDuty(
   htsCode?: DutyRateInput | null
 ): LineItemDutyResult {
   const stack = calculateDutyStack(lineItem, htsCode);
-  const customsValue = stack.base.gt(0)
-    ? Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0)
-    : 0;
+  const customsValue = Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0);
 
   const baseDutyRate = parsePublishedDutyRate(htsCode?.generalDutyRate);
 
@@ -266,10 +266,10 @@ export function computeFilingTariff(
   lineItems: Array<TariffLineInput>,
   htsCodesMap: Record<string, DutyRateInput> = {}
 ): TariffEngineResult {
-  let totalCustomsValue = 0;
-  let totalBaseDuty = 0;
-  let totalSec301 = 0;
-  let totalSec232 = 0;
+  let totalCustomsValueDec = new Decimal(0);
+  let totalBaseDutyDec = new Decimal(0);
+  let totalSec301Dec = new Decimal(0);
+  let totalSec232Dec = new Decimal(0);
   const lineResults: LineItemDutyResult[] = [];
   let unratedLineCount = 0;
 
@@ -277,63 +277,67 @@ export function computeFilingTariff(
     const hts = item.htsCode ? htsCodesMap[item.htsCode] : null;
     const res = calculateLineItemDuty(item, hts);
     if (res.baseDutyRate === null) unratedLineCount++;
-    totalCustomsValue += res.customsValue;
-    totalBaseDuty += res.baseDutyAmount;
-    totalSec301 += res.section301Amount;
-    totalSec232 += res.section232Amount;
+    totalCustomsValueDec = totalCustomsValueDec.plus(new Decimal(res.customsValue));
+    totalBaseDutyDec = totalBaseDutyDec.plus(new Decimal(res.baseDutyAmount));
+    totalSec301Dec = totalSec301Dec.plus(new Decimal(res.section301Amount));
+    totalSec232Dec = totalSec232Dec.plus(new Decimal(res.section232Amount));
     lineResults.push(res);
   }
 
-  totalCustomsValue = Math.round(totalCustomsValue * 100) / 100;
-  const totalDuty = Math.round((totalBaseDuty + totalSec301 + totalSec232) * 100) / 100;
-  const totalMpf = calculateMPF(totalCustomsValue);
-  const totalHmf = calculateHMF(totalCustomsValue, true);
-  const totalFees = Math.round((totalMpf + totalHmf) * 100) / 100;
-  const totalAmount = Math.round((totalDuty + totalFees) * 100) / 100;
+  const roundedCustomsValue = roundToCents(totalCustomsValueDec);
+  const totalDutyDec = roundToCents(totalBaseDutyDec.plus(totalSec301Dec).plus(totalSec232Dec));
+  const totalMpfDec = calculateMPFDecimal(roundedCustomsValue);
+  const totalHmfDec = calculateHMFDecimal(roundedCustomsValue, true);
+  const totalFeesDec = roundToCents(totalMpfDec.plus(totalHmfDec));
+  const totalAmountDec = roundToCents(totalDutyDec.plus(totalFeesDec));
+
+  const totalBaseDutyNum = roundedCustomsValue.gt(0) ? totalBaseDutyDec.dividedBy(roundedCustomsValue).times(100).toNumber() : 0;
+  const totalSec301Num = roundedCustomsValue.gt(0) ? totalSec301Dec.dividedBy(roundedCustomsValue).times(100).toNumber() : 0;
+  const totalSec232Num = roundedCustomsValue.gt(0) ? totalSec232Dec.dividedBy(roundedCustomsValue).times(100).toNumber() : 0;
 
   const dutyBreakdown = [
     {
       feeName: "Base Customs Duty",
-      amount: Math.round(totalBaseDuty * 100) / 100,
-      rate: totalCustomsValue > 0 ? `${((totalBaseDuty / totalCustomsValue) * 100).toFixed(2)}%` : "0.0%",
+      amount: roundToCents(totalBaseDutyDec).toNumber(),
+      rate: roundedCustomsValue.gt(0) ? `${totalBaseDutyNum.toFixed(2)}%` : "0.0%",
     },
-    ...(totalSec301 > 0
+    ...(totalSec301Dec.gt(0)
       ? [
           {
             feeName: "Section 301 Trade Remedy Tariff",
-            amount: Math.round(totalSec301 * 100) / 100,
-            rate: `${((totalSec301 / totalCustomsValue) * 100).toFixed(1)}%`,
+            amount: roundToCents(totalSec301Dec).toNumber(),
+            rate: `${totalSec301Num.toFixed(1)}%`,
           },
         ]
       : []),
-    ...(totalSec232 > 0
+    ...(totalSec232Dec.gt(0)
       ? [
           {
             feeName: "Section 232 Trade Remedy Tariff",
-            amount: Math.round(totalSec232 * 100) / 100,
-            rate: `${((totalSec232 / totalCustomsValue) * 100).toFixed(1)}%`,
+            amount: roundToCents(totalSec232Dec).toNumber(),
+            rate: `${totalSec232Num.toFixed(1)}%`,
           },
         ]
       : []),
     {
       feeName: "Merchandise Processing Fee (MPF)",
-      amount: totalMpf,
+      amount: totalMpfDec.toNumber(),
       rate: "0.3464% (statutory min $31.67 / max $614.35)",
     },
     {
       feeName: "Harbor Maintenance Fee (HMF)",
-      amount: totalHmf,
+      amount: totalHmfDec.toNumber(),
       rate: "0.125%",
     },
   ];
 
   return {
-    totalCustomsValue,
-    totalDuty,
+    totalCustomsValue: roundedCustomsValue.toNumber(),
+    totalDuty: totalDutyDec.toNumber(),
     unratedLineCount,
     totalTaxes: 0,
-    totalFees,
-    totalAmount,
+    totalFees: totalFeesDec.toNumber(),
+    totalAmount: totalAmountDec.toNumber(),
     dutyBreakdown,
     lineResults,
   };

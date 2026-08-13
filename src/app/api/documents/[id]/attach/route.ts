@@ -24,10 +24,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
 
   const doc = await db.shipmentDocument.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!doc) {
-    return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    return NextResponse.json({ error: "Document not found" });
   }
 
   const targetShipment = await db.shipment.findFirst({
@@ -50,6 +50,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     action: "document.attach",
     entity: "ShipmentDocument",
     entityId: id,
+    source: "UI",
     metadata: { fileName: doc.fileName, previousShipmentId: doc.shipmentId, newShipmentId: shipmentId },
     success: true,
   });
@@ -67,5 +68,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   }
 
   return NextResponse.json({ document: updated, requestId });
-});
 
+}, { permission: "documents.create", write: true });

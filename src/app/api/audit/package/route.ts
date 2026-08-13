@@ -9,7 +9,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { shipmentId } = body;
 
   if (!shipmentId) {
-    return NextResponse.json({ error: "shipmentId is required" }, { status: 400 });
+    return NextResponse.json({ error: "shipmentId is required" });
   }
 
   const pkg = await assembleReasonableCarePackage(shipmentId);
@@ -23,14 +23,16 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "REASONABLE_CARE_GENERATED",
     entity: "Shipment",
     entityId: shipmentId,
+    source: "UI",
     metadata: {
       completenessScore: pkg.completenessScore,
       entryNumber: pkg.entryNumber,
     },
-  });
+});
 
   return NextResponse.json({ auditPackage: pkg });
-}, { permission: "documents.create", write: true });
+
+}, { permission: "audits.read", write: true });
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
@@ -46,4 +48,4 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   }
 
   return NextResponse.json({ auditPackage: pkg });
-}, { permission: "documents.read" });
+});

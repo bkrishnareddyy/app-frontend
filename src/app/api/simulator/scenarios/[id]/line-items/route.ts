@@ -27,8 +27,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   const { description, htsCode10, unitValue, quantity, freightCost, insuranceCost, dutyRateOverride } = bodyVal.data;
 
   if (typeof htsCode10 !== "string" || htsCode10.trim() === "") {
-    return NextResponse.json(
-      { error: "htsCode10 is required", code: "HTS_CODE_REQUIRED" },
+    return NextResponse.json({ error: "htsCode10 is required", code: "HTS_CODE_REQUIRED" },
       { status: 400 }
     );
   }
@@ -65,7 +64,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
 
   const scenario = await db.landedCostScenario.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!scenario) {
     return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
@@ -104,14 +103,25 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   const section301Rate = dutyRateInput.section301Applicable ? (Number(dutyRateInput.section301AdditionalRate) || 0) / 100 : 0.0;
   const section232Rate = dutyRateInput.section232Applicable ? (Number(dutyRateInput.section232AdditionalRate) || 0) / 100 : 0.0;
 
-  const totalDutyRate = baseDutyRate + section301Rate + section232Rate;
-  const totalCustomsValue = unitValue * quantity;
-  const computedDuty = Math.round((totalCustomsValue * totalDutyRate) * 100) / 100;
-  // Line-level fees are indicative only: MPF is a per-entry fee with a statutory
-  // floor and ceiling, so the entry total is computed by the calculate endpoint.
-  const computedFees = Math.round((calculateMPF(totalCustomsValue) + calculateHMF(totalCustomsValue, true)) * 100) / 100;
-  const computedLandedCost =
-    totalCustomsValue + Number(freightCost) + Number(insuranceCost) + computedDuty + computedFees;
+  const baseDutyRateDec = new Decimal(baseDutyRate);
+  const section301RateDec = new Decimal(section301Rate);
+  const section232RateDec = new Decimal(section232Rate);
+
+  const totalDutyRateDec = baseDutyRateDec.plus(section301RateDec).plus(section232RateDec);
+  const totalCustomsValueDec = roundToCents(new Decimal(unitValue).times(quantity));
+  const computedDutyDec = roundToCents(totalCustomsValueDec.times(totalDutyRateDec));
+  const mpfDec = calculateMPFDecimal(totalCustomsValueDec);
+  const hmfDec = calculateHMFDecimal(totalCustomsValueDec, true);
+  const computedFeesDec = roundToCents(mpfDec.plus(hmfDec));
+  const computedLandedCostDec = totalCustomsValueDec
+    .plus(new Decimal(freightCost || 0))
+    .plus(new Decimal(insuranceCost || 0))
+    .plus(computedDutyDec)
+    .plus(computedFeesDec);
+
+  const computedDuty = computedDutyDec.toNumber();
+  const computedFees = computedFeesDec.toNumber();
+  const computedLandedCost = computedLandedCostDec.toNumber();
 
   const lineItem = await db.landedCostScenarioLineItem.create({
     data: {
@@ -131,4 +141,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   });
 
   return NextResponse.json({ lineItem }, { status: 201 });
-}, { write: true });
+
+}, { permission: "intel.read", write: true });

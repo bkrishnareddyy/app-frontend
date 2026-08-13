@@ -24,7 +24,7 @@
 
 import type { Prisma, PrismaClient, Product } from "@prisma/client";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { DomainError } from "@/lib/api/error";
 import {
   buildProductOrderBy,
@@ -560,9 +560,10 @@ export async function createProduct(
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "product.create",
+    action: AuditAction.PRODUCT_CREATED,
     entity: "Product",
     entityId: product.id,
+    source: "UI",
     metadata: { productName: product.productName, internalSku: product.internalSku },
     requestId: actor.requestId ?? null,
   });
@@ -714,9 +715,10 @@ export async function updateProduct(
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "product.update",
+    action: AuditAction.PRODUCT_UPDATED,
     entity: "Product",
     entityId: productId,
+    source: "UI",
     metadata: {
       fields: Object.keys(fields),
       significance: highestSignificance(outcome.changes),
@@ -748,9 +750,10 @@ export async function archiveProduct(actor: ProductActor, productId: string): Pr
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "product.archive",
+    action: AuditAction.PRODUCT_ARCHIVED,
     entity: "Product",
     entityId: productId,
+    source: "UI",
     requestId: actor.requestId ?? null,
   });
 }
@@ -1100,9 +1103,10 @@ export async function proposeClassification(
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "product.classification.propose",
+    action: AuditAction.PRODUCT_CLASSIFIED,
     entity: "ProductClassification",
     entityId: created.id,
+    source: "UI",
     metadata: {
       productId,
       jurisdiction: created.jurisdiction,
@@ -1496,9 +1500,10 @@ export async function attachLineItemToProduct(
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "product.line.attach",
+    action: AuditAction.PRODUCT_LINE_ATTACHED,
     entity: "ShipmentLineItem",
     entityId: lineItemId,
+    source: "UI",
     metadata: { productId, matchStatus },
     requestId: actor.requestId ?? null,
   });

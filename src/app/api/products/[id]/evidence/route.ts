@@ -24,7 +24,6 @@ export const POST = withAuthenticatedRoute<Params>(
     if ("response" in body) return body.response;
 
     const evidence = await addEvidence(productActor(ctx, requestId), path.data.id, body.data);
-    return NextResponse.json({ evidence, requestId }, { status: 201 });
-  },
-  { permission: "products.edit", write: true }
-);
+    return NextResponse.json({ evidence, requestId });
+
+}, { permission: "products.edit", write: true });

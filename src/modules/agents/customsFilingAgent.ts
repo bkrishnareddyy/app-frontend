@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
 import { requireEntryTypeCode } from "@/modules/filing/entryType";
 
@@ -91,6 +91,8 @@ export class CustomsFilingAgent {
             agentName: "Customs Filing Agent",
             agentIcon: "Send",
             status: "Needs Review",
+            triageState: dataReady ? "NEEDS_REVIEW" : "BLOCKED",
+            blockedReason: dataReady ? null : "BLOCKED_DEPENDENCY",
             confidence: 0,
             decisionSummary: dataReady
               ? "Entry data ready; awaiting explicit filing authorization. Nothing has been transmitted to CBP."
@@ -171,6 +173,8 @@ export class CustomsFilingAgent {
           agentName: "Customs Filing Agent",
           agentIcon: "Send",
           status: "Approved",
+          triageState: "APPROVED",
+          autoApproved: false,
           confidence: 90,
           decisionSummary: `[DEMO] Simulated ACE entry ${cbpEntryNumber} accepted.`,
           purpose: "CBP ACE ABI EDIFACT entry summary transmission (demo simulation)",
@@ -199,9 +203,10 @@ export class CustomsFilingAgent {
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
-          action: "AGENT_EXECUTION_COMPLETED",
+          action: AuditAction.AGENT_EXECUTION_COMPLETED,
           entity: "AGENT_DECISION",
           entityId: agentDecisionId,
+          source: "SYSTEM",
           metadata: { agentName: "Customs Filing Agent", cbpEntryNumber, demo: true },
         });
       } catch (err) {

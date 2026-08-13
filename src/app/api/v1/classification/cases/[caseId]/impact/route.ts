@@ -3,6 +3,7 @@ import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { Decimal } from "@/lib/tariff/decimal";
 import { z } from "zod";
 
 const paramsSchema = z.object({ caseId: z.string().min(1) });
@@ -19,7 +20,7 @@ export const GET = withAuthenticatedRoute<{ caseId: string }>(async ({ ctx, requ
     });
 
     if (!decision) {
-      return NextResponse.json({ impacts: [], summary: { shipmentCount: 0, filingCount: 0, dutyDelta: "0" } });
+      return NextResponse.json({ impacts: [], summary: { shipmentCount: 0, filingCount: 0, dutyDelta: "0.00" } });
     }
 
     const impacts = await db.classificationChangeImpact.findMany({
@@ -33,14 +34,14 @@ export const GET = withAuthenticatedRoute<{ caseId: string }>(async ({ ctx, requ
 
     const uniqueShipments = new Set(impacts.map((i) => i.shipmentId));
     const uniqueFilings = new Set(impacts.filter((i) => i.filingId).map((i) => i.filingId));
-    const totalDutyDelta = impacts.reduce((sum, i) => sum + Number(i.dutyImpact), 0);
+    const totalDutyDeltaDec = impacts.reduce((sum, i) => sum.plus(new Decimal(i.dutyImpact ? String(i.dutyImpact) : 0)), new Decimal(0));
 
     return NextResponse.json({
       impacts,
       summary: {
         shipmentCount: uniqueShipments.size,
         filingCount: uniqueFilings.size,
-        dutyDelta: totalDutyDelta.toFixed(2),
+        dutyDelta: totalDutyDeltaDec.toFixed(2),
       },
     });
   } catch (error: unknown) {

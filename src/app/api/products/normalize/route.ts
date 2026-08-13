@@ -9,7 +9,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { rawDescription, source, partNumber, countryOfOrigin, htsCode } = body;
 
   if (!rawDescription || typeof rawDescription !== "string" || rawDescription.trim().length === 0) {
-    return NextResponse.json({ error: "rawDescription is required" }, { status: 400 });
+    return NextResponse.json({ error: "rawDescription is required" });
   }
 
   const pipeline = runNormalizationPipeline(rawDescription.trim());
@@ -36,7 +36,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       canonicalProduct: { accountId: ctx.accountId },
     },
     include: { canonicalProduct: { include: { aliases: true } } },
-  });
+});
 
   if (existingAlias?.canonicalProduct) {
     const cp = existingAlias.canonicalProduct;
@@ -132,4 +132,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       }),
     },
   });
-}, { write: true });
+
+}, { permission: "products.edit", write: true });

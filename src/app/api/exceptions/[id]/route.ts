@@ -61,6 +61,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       action: "exception.update",
       entity: "ExceptionItem",
       entityId: id,
+      source: "UI",
       metadata: {
         newStatus: updated.status,
         version: updated.version,
@@ -81,7 +82,8 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     }
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to update exception item", undefined, requestId);
   }
-}, { write: true });
+
+}, { permission: "exceptions.resolve", write: true });
 
 export const GET = withAuthenticatedRoute<{ id: string }>(async ({ requestId, params, ctx }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);

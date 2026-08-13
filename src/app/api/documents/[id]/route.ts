@@ -41,6 +41,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         action: "document.rename",
         entity: "ShipmentDocument",
         entityId: params.id,
+        source: "UI",
         metadata: { previousName: doc.fileName, newName: fileName.trim() },
         success: true,
       });
@@ -74,6 +75,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         action: "document.classify",
         entity: "ShipmentDocument",
         entityId: params.id,
+        source: "UI",
         metadata: { previousType: doc.documentType, newType: documentType },
         success: true,
       });

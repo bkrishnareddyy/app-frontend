@@ -6,7 +6,9 @@ import { ClassificationCaseRepository } from "@/repositories/classificationCaseR
 import { GriRulesEngine } from "./griRulesEngine";
 import { RulingService } from "./rulingService";
 import { PgQueue } from "@/lib/queue/pgQueue";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
+import { HTSClassificationAgent } from "@/modules/agents/htsClassificationAgent";
+import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
 
 export interface CreateCaseRequest {
   accountId: string;
@@ -105,9 +107,10 @@ export class ClassificationCaseEngine {
     await createAuditLog({
       accountId: req.accountId,
       userId: req.userId,
-      action: "classification.case.create",
+      action: AuditAction.CLASSIFICATION_CASE_CREATED,
       entity: "ClassificationCase",
       entityId: classificationCase.id,
+      source: "UI",
       metadata: {
         rawDescription: req.rawDescription,
         jobId: job.id,
@@ -135,7 +138,7 @@ export class ClassificationCaseEngine {
         status: "RUNNING",
         htsReleaseId: caseRecord.htsReleaseId || "CURRENT",
         promptVersion: "2026.1-GRI-DECISION-CHAIN",
-        modelProvider: "QubereRulesEngine",
+        modelProvider: process.env.GEMINI_API_KEY ? "GeminiHTSAgent+GRIChain" : "QubereRulesEngine",
         modelVersion: "1.0",
         rulesEngineVersion: "1.0",
         retrievalIndexVersion: "CROSS-2026-REV1",
@@ -152,6 +155,11 @@ export class ClassificationCaseEngine {
 
   /**
    * Execute the classification pipeline for a case (called by worker or triggerRun).
+   *
+   * Primary path: HTSClassificationAgent (Gemini-backed, GRI 1–6 legal reasoning,
+   * real HTSUS duty rates).  GriRulesEngine always runs after to produce the
+   * deterministic step provenance chain stored on the proposal.  When Gemini is
+   * unavailable the engine falls back to GriRulesEngine alone.
    */
   static async processCase(
     accountId: string,
@@ -180,6 +188,57 @@ export class ClassificationCaseEngine {
       typeof attributes?.materialComposition === "string" ? attributes.materialComposition : undefined;
     const functionUsage = typeof attributes?.functionUsage === "string" ? attributes.functionUsage : undefined;
 
+    // ------------------------------------------------------------------
+    // Primary: HTSClassificationAgent (Gemini, GRI legal reasoning)
+    // Sentinel shipmentId carries the case id so AgentDecision rows written
+    // by the agent are traceable back to this case without violating any
+    // FK constraint (shipmentId is a plain string column).
+    // ------------------------------------------------------------------
+    let agentHtsCode: string | null = null;
+    let agentConfidence: number | null = null;
+    let agentGriCitations: string[] = [];
+    let agentLegalRationale: string | null = null;
+    let agentDutyRate: string | null = null;
+    let modelProvider = "QubereRulesEngine";
+
+    if (process.env.GEMINI_API_KEY && rawDescription.trim().length > 3) {
+      try {
+        const agentOutput = await HTSClassificationAgent.execute({
+          accountId,
+          userId,
+          shipmentId: `case:${caseId}`,
+          documentId: null,
+          productProfiles: [
+            {
+              lineNumber: 1,
+              rawDescription,
+              materialComposition: materialComposition ?? null,
+              endUse: functionUsage ?? null,
+              // intendedUse maps to endUse in the agent's profile
+            },
+          ],
+          countryOfOrigin: subject?.countryOfOrigin ?? null,
+        });
+
+        const classification = agentOutput.classifications?.[0];
+        if (classification && classification.htsCode && classification.htsCode !== "UNCLASSIFIABLE") {
+          agentHtsCode = classification.htsCode;
+          // Agent returns 0–100 integer; proposals store 0–1 float
+          agentConfidence = classification.confidence / 100;
+          agentGriCitations = classification.griCitations ?? [];
+          agentLegalRationale = classification.legalRationale ?? null;
+          agentDutyRate = classification.dutyRate ?? null;
+          modelProvider = agentOutput.aiProviderUsed || "GeminiHTSAgent+GRIChain";
+        }
+      } catch {
+        // Agent failure is non-fatal; fall through to GRI-only path
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Always run GriRulesEngine — produces the deterministic GRI step
+    // provenance chain regardless of whether the agent ran.
+    // ------------------------------------------------------------------
     const evalOutput = await GriRulesEngine.evaluate({
       rawDescription,
       materialComposition,
@@ -187,6 +246,36 @@ export class ClassificationCaseEngine {
       intendedUse: subject?.intendedUse,
       countryOfOrigin: subject?.countryOfOrigin,
     });
+
+    // ------------------------------------------------------------------
+    // Resolve the HTS node to store on the proposal.  When the agent
+    // returned a code, look it up first; fall back to the GRI engine's
+    // candidate if the agent code doesn't resolve.
+    // ------------------------------------------------------------------
+    let resolvedNodeId: string | null = evalOutput.candidateNodeId ?? null;
+    if (agentHtsCode) {
+      try {
+        const normalizedAgentCode = agentHtsCode.replace(/[^0-9]/g, "");
+        const agentNode = normalizedAgentCode
+          ? await HtsNodeRepository.findByNormalizedCode(normalizedAgentCode)
+          : null;
+        if (agentNode) resolvedNodeId = agentNode.id;
+      } catch {
+        // Fallback to GRI candidate — already set
+      }
+    }
+
+    // Merge: prefer agent values where present, GRI engine as fallback
+    const finalConfidence = agentConfidence ?? evalOutput.calibratedConfidence;
+    const finalConfidenceBand = agentConfidence != null
+      ? (agentConfidence >= 0.80 ? "HIGH" : agentConfidence >= 0.55 ? "MEDIUM" : "LOW")
+      : evalOutput.confidenceBand;
+    const finalRecommendationStatus = agentConfidence != null
+      ? (finalConfidenceBand === "HIGH" ? "PROPOSED" : finalConfidenceBand === "MEDIUM" ? "HUMAN_REVIEW_REQUIRED" : "NEEDS_INFORMATION")
+      : evalOutput.recommendationStatus;
+    const finalSummary = agentLegalRationale
+      ? `${agentLegalRationale} (HTS ${agentHtsCode ?? evalOutput.candidateHtsCode ?? "UNCLASSIFIABLE"}, duty rate: ${agentDutyRate ?? "—"})`
+      : evalOutput.summary;
 
     const run = existingRunId
       ? await db.classificationRun.update({
@@ -199,7 +288,7 @@ export class ClassificationCaseEngine {
             status: "COMPLETED",
             htsReleaseId: caseRecord.htsReleaseId || "CURRENT",
             promptVersion: "2026.1-GRI-DECISION-CHAIN",
-            modelProvider: "QubereRulesEngine",
+            modelProvider,
             modelVersion: "1.0",
             rulesEngineVersion: "1.0",
             retrievalIndexVersion: "CROSS-2026-REV1",
@@ -209,21 +298,24 @@ export class ClassificationCaseEngine {
 
     let proposal = null;
 
-    if (evalOutput.candidateNodeId) {
+    if (resolvedNodeId) {
+      // Match rulings against the resolved HTS code (not just the raw
+      // description) so evidence items are actually code-relevant.
       const rulings = await RulingService.searchRulings({
+        htsCode: agentHtsCode ?? evalOutput.candidateHtsCode,
         query: rawDescription,
-        limit: 2,
+        limit: 3,
       });
 
       proposal = await db.classificationProposal.create({
         data: {
           runId: run.id,
-          proposedHtsNodeId: evalOutput.candidateNodeId,
+          proposedHtsNodeId: resolvedNodeId,
           rank: 1,
-          calibratedConfidence: evalOutput.calibratedConfidence,
-          confidenceBand: evalOutput.confidenceBand,
-          recommendationStatus: evalOutput.recommendationStatus,
-          summary: evalOutput.summary,
+          calibratedConfidence: finalConfidence,
+          confidenceBand: finalConfidenceBand,
+          recommendationStatus: finalRecommendationStatus,
+          summary: finalSummary,
           missingFactsJson: evalOutput.missingFacts,
           griSteps: {
             create: evalOutput.griSteps.map((step) => ({
@@ -236,14 +328,40 @@ export class ClassificationCaseEngine {
             })),
           },
           evidenceItems: {
-            create: rulings.map((r) => ({
-              evidenceType: "CROSS_RULING",
-              sourceEntityId: r.id,
-              citation: `CBP CROSS Ruling ${r.rulingNumber}`,
-              quotedFragment: r.title,
-              relevanceScore: 0.88,
-              supportsOrConflicts: "SUPPORTS",
-            })),
+            create: [
+              // GRI citations from the agent as evidence items
+              ...agentGriCitations.map((cite) => ({
+                evidenceType: "GRI_CITATION",
+                sourceEntityId: caseId,
+                citation: cite,
+                quotedFragment: cite,
+                relevanceScore: 0.95,
+                supportsOrConflicts: "SUPPORTS",
+              })),
+              // CROSS rulings matched by HTS code
+              // relevanceScore is computed per-ruling: if the ruling's stored
+              // htsReferences contain a code that shares a prefix with the
+              // resolved code (at least 4 digits), it is a strong match (0.97);
+              // otherwise the ruling matched only via text/title search (0.75).
+              ...rulings.map((r) => {
+                const resolvedPrefix = (agentHtsCode ?? evalOutput.candidateHtsCode ?? "")
+                  .replace(/[^0-9]/g, "")
+                  .slice(0, 6);
+                const htsPrefixMatch =
+                  resolvedPrefix.length >= 4 &&
+                  r.htsReferences.some((ref: { htsNumberDisplay: string }) =>
+                    ref.htsNumberDisplay.replace(/[^0-9]/g, "").startsWith(resolvedPrefix)
+                  );
+                return {
+                  evidenceType: "CROSS_RULING",
+                  sourceEntityId: r.id,
+                  citation: `CBP CROSS Ruling ${r.rulingNumber}`,
+                  quotedFragment: r.title,
+                  relevanceScore: htsPrefixMatch ? 0.97 : 0.75,
+                  supportsOrConflicts: "SUPPORTS",
+                };
+              }),
+            ],
           },
         },
         include: {
@@ -254,7 +372,7 @@ export class ClassificationCaseEngine {
       });
     }
 
-    const finalStatus = evalOutput.recommendationStatus;
+    const finalStatus = finalRecommendationStatus;
     await db.classificationCase.update({
       where: { id: caseId },
       data: { status: finalStatus },
@@ -346,6 +464,7 @@ export class ClassificationCaseEngine {
       action: `classification.case.${req.decisionStatus.toLowerCase()}`,
       entity: "ClassificationDecision",
       entityId: decision.id,
+      source: "UI",
       metadata: {
         caseId: req.caseId,
         proposalId: req.proposalId,
@@ -428,7 +547,7 @@ export class ClassificationCaseEngine {
 
     const lineItems = await db.shipmentLineItem.findMany({
       where: { productId: canonicalProduct.productId, shipment: { accountId } },
-      select: { id: true, shipmentId: true },
+      select: { id: true, shipmentId: true, totalValue: true },
       take: 200,
     });
 
@@ -441,9 +560,37 @@ export class ClassificationCaseEngine {
 
     const previousHtsCode = canonicalProduct.htsCode ?? undefined;
 
+    // ------------------------------------------------------------------
+    // Resolve the General ad-valorem duty rates for both HTS codes so we
+    // can compute a real duty-impact delta per line item (F05-C3, F05-F2).
+    // We look up by htsNumberDisplay prefix match; if a node doesn't exist
+    // or carries no parsed ad-valorem rate the effective rate is 0.
+    // ------------------------------------------------------------------
+    const getAdValoremRate = async (htsCode: string | undefined): Promise<Decimal> => {
+      if (!htsCode) return new Decimal(0);
+      const normalized = htsCode.replace(/[^0-9]/g, "");
+      const node = await db.htsNode.findFirst({
+        where: { normalizedCode: { startsWith: normalized.slice(0, 10) } },
+        include: { dutyRates: { where: { rateColumn: "General", rateType: "AdValorem" } } },
+      });
+      const rate = node?.dutyRates?.[0]?.adValoremPercent;
+      return rate != null ? new Decimal(rate).div(100) : new Decimal(0);
+    };
+
+    const [newRate, prevRate] = await Promise.all([
+      getAdValoremRate(newHtsCode),
+      getAdValoremRate(previousHtsCode),
+    ]);
+
     for (const item of lineItems) {
       const shipment = shipmentMap.get(item.shipmentId);
       const filing = shipment?.customsFilings[0];
+
+      // dutyImpact = totalValue * (newRate − prevRate); negative = duty saving
+      const lineValue = item.totalValue instanceof Decimal
+        ? item.totalValue
+        : new Decimal(item.totalValue as string);
+      const dutyImpact = lineValue.mul(newRate.minus(prevRate)).toDecimalPlaces(4);
 
       await db.classificationChangeImpact.create({
         data: {
@@ -454,7 +601,7 @@ export class ClassificationCaseEngine {
           filingId: filing?.id ?? null,
           previousHtsCode: previousHtsCode ?? null,
           newHtsCode,
-          dutyImpact: new Decimal(0),
+          dutyImpact,
         },
       });
 

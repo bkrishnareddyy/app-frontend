@@ -15,13 +15,13 @@ export const DELETE = withAuthenticatedRoute<{ id: string }>(async ({ ctx, reque
 
   const existing = await db.inboundSenderRoute.findFirst({ where: { id, accountId: ctx.accountId } });
   if (!existing) {
-    return NextResponse.json({ error: "Sender route not found", requestId }, { status: 404 });
+    return NextResponse.json({ error: "Sender route not found", requestId });
   }
 
   const route = await db.inboundSenderRoute.update({
     where: { id },
     data: { status: "REVOKED" },
-  });
+});
 
   await createAuditLog({
     accountId: ctx.accountId,
@@ -29,9 +29,11 @@ export const DELETE = withAuthenticatedRoute<{ id: string }>(async ({ ctx, reque
     action: "inbound_sender_route.revoked",
     entity: "InboundSenderRoute",
     entityId: id,
+    source: "UI",
     metadata: { normalizedSenderEmail: existing.normalizedSenderEmail },
     requestId,
   });
 
   return NextResponse.json({ route, requestId });
+
 }, { permission: "settings.manage", write: true });

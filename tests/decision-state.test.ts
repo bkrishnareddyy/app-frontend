@@ -128,6 +128,14 @@ describe("actionableStatusVariants", () => {
 });
 
 describe("triageDecision", () => {
+  it("uses triageState directly when present", () => {
+    expect(triageDecision({ status: "Review Required", triageState: "AUTO_VERIFIED" })).toBe("verified");
+    expect(triageDecision({ status: "Approved", triageState: "NEEDS_REVIEW" })).toBe("review");
+    expect(triageDecision({ status: "Completed", triageState: "BLOCKED" })).toBe("blocked");
+    expect(triageDecision({ status: "Needs Review", triageState: "APPROVED" })).toBe("verified");
+    expect(triageDecision({ status: "Needs Review", triageState: "REJECTED" })).toBe("blocked");
+  });
+
   it("blocked sentinel in proposedDescription → blocked", () => {
     expect(triageDecision({ status: "Needs Review", proposedDescription: "BLOCKED_DEPENDENCY" })).toBe("blocked");
     expect(triageDecision({ status: "Approved", proposedDescription: "WAITING_FOR_EXTRACTION" })).toBe("blocked");

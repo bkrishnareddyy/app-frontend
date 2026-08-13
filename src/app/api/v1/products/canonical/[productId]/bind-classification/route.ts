@@ -18,7 +18,7 @@ export const POST = withAuthenticatedRoute<{ productId: string }>(async ({ req, 
     const { decisionId } = body;
 
     if (!decisionId) {
-      return NextResponse.json({ error: "decisionId is required" }, { status: 400 });
+      return NextResponse.json({ error: "decisionId is required" });
     }
 
     const product = await ProductMasterService.bindClassification({
@@ -26,10 +26,11 @@ export const POST = withAuthenticatedRoute<{ productId: string }>(async ({ req, 
       userId: ctx.userId,
       canonicalProductId: productId,
       decisionId,
-    });
+});
 
     return NextResponse.json({ product });
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}, { write: true });
+
+}, { permission: "products.classification.approve", write: true });

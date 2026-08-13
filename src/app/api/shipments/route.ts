@@ -168,9 +168,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     const master = await db.shipment.findFirst({
       where: { id: input.masterShipmentId, accountId: ctx.accountId },
       select: { id: true },
-    });
+});
     if (!master) {
-      return NextResponse.json({ error: "Invalid masterShipmentId: Master shipment not found in this account" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid masterShipmentId: Master shipment not found in this account" });
     }
   }
 
@@ -213,8 +213,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: "shipment.create",
     entity: "Shipment",
     entityId: shipment.id,
+    source: "UI",
     metadata: { shipmentNumber, masterShipmentId: input.masterShipmentId ?? null },
   });
 
   return NextResponse.json({ shipment, requestId }, { status: 201 });
-}, { write: true });
+
+}, { permission: "shipments.create", write: true });

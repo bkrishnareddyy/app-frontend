@@ -12,14 +12,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // This used to fall back to findFirst() and write PgaRequirement rows against
   // whichever shipment came back, so a request with no id screened an arbitrary one.
   if (typeof shipmentId !== "string" || shipmentId.trim() === "") {
-    return NextResponse.json({ error: "shipmentId is required" }, { status: 400 });
+    return NextResponse.json({ error: "shipmentId is required" });
   }
 
   const targetShipmentId = shipmentId;
 
   const lineItems = await db.shipmentLineItem.findMany({
     where: { shipmentId: targetShipmentId, accountId: ctx.accountId },
-  });
+});
 
   if (lineItems.length === 0) {
     return NextResponse.json({
@@ -127,6 +127,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "pga.screen",
     entity: "PgaRequirement",
     entityId: targetShipmentId,
+    source: "UI",
     metadata: { pgaFlagsCount: pgaFlags.length, addedCount: created.length, withdrawnCount: staleIds.length },
   });
 
@@ -142,4 +143,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       pgaRequirements: pgaFlags,
     },
   });
-}, { write: true });
+
+}, { permission: "ai.use", write: true });

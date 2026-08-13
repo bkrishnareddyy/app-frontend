@@ -49,6 +49,5 @@ export const POST = withAuthenticatedRoute<Params>(
     );
 
     return NextResponse.json({ countryFact: fact, requestId });
-  },
-  { permission: "products.edit", write: true }
-);
+
+}, { permission: "products.edit", write: true });

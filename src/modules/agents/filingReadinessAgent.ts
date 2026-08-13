@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
 
 export interface Form7501Preview {
@@ -204,9 +204,10 @@ export class FilingReadinessAgent {
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
-          action: "AGENT_EXECUTION_COMPLETED",
+          action: AuditAction.AGENT_EXECUTION_COMPLETED,
           entity: "AGENT_DECISION",
           entityId: agentDecisionId,
+          source: "SYSTEM",
           metadata: {
             agentName: "Filing Readiness Agent",
             readyForTransmission,

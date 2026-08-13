@@ -63,7 +63,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
     const document = await db.shipmentDocument.findFirst({
       where: { id: paramsVal.data.id, accountId: ctx.accountId },
       select: { id: true, fileName: true, checksum: true, fileUrl: true, shipmentId: true },
-    });
+});
 
     if (!document) {
       return buildErrorResponse(404, "NOT_FOUND", "Document not found.", undefined, requestId);
@@ -172,7 +172,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
         requestId,
         documentId: document.id,
         fromStep: "reconcile",
-      }, { status: 202 });
+      });
     }
 
     if (document.fileUrl === null) {
@@ -213,6 +213,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
       action: "document.processing.reprocess_requested",
       entity: "DocumentParseVersion",
       entityId: queued.runId ?? document.id,
+      source: "UI",
       metadata: {
         documentId: document.id,
         fileName: document.fileName,
@@ -257,6 +258,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
       },
       { status: 202 }
     );
-  },
-  { permission: "decisions.reevaluate", write: true }
-);
+  
+}, { permission: "documents.create", write: true });

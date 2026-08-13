@@ -45,6 +45,7 @@ export interface DecisionRow {
   agentName: string;
   decisionSummary: string;
   status: string;
+  triageState?: string | null;
   proposedDescription?: string | null;
   confidence?: number | null;
   createdAt: Date;

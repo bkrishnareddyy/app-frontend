@@ -6,6 +6,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   await db.notification.updateMany({
     where: { accountId: ctx.accountId, userId: ctx.userId, read: false },
     data: { read: true },
-  });
-  return NextResponse.json({ requestId });
 });
+  return NextResponse.json({ requestId });
+
+}, { permission: "users.read", write: true });

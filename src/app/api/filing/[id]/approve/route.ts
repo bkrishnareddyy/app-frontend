@@ -3,7 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { validatePathParams } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { applyTransition, FilingTransitionError } from "@/modules/filings/filingStateMachine";
 import { z } from "zod";
@@ -40,9 +40,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
-      action: "filing.broker_approve",
+      action: AuditAction.FILING_APPROVED,
       entity: "CustomsFiling",
       entityId: id,
+      source: "UI",
       metadata: { entryNumber: updated.entryNumber, previousStatus: filing.filingStatus, newStatus: nextStatus },
     });
 
@@ -62,4 +63,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     }
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to approve filing", undefined, requestId);
   }
+
 }, { permission: "filings.submit", write: true });

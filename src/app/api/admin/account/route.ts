@@ -16,14 +16,14 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     },
     requestId,
   });
-}, { permission: "account.manage" });
+});
 
 export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
   const { name, status } = body;
 
   if (name && (typeof name !== "string" || name.trim().length === 0)) {
-    return NextResponse.json({ error: "Invalid account name" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid account name" });
   }
 
   const updatedAccount = await db.account.update({
@@ -32,7 +32,7 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
       name: name ? name.trim() : undefined,
       status: status ? status : undefined,
     },
-  });
+});
 
   // Create AuditLog entry for admin changes
   await createAuditLog({
@@ -41,6 +41,7 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "ACCOUNT_UPDATED",
     entity: "Account",
     entityId: ctx.accountId,
+    source: "UI",
     metadata: {
       previousName: ctx.account.name,
       newName: updatedAccount.name,
@@ -50,4 +51,5 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   return NextResponse.json({ success: true, account: updatedAccount });
-}, { permission: "account.manage" });
+
+}, { permission: "account.manage", write: true });

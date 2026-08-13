@@ -9,7 +9,7 @@ const paramsSchema = z.object({ releaseId: z.string().min(1) });
 
 export const POST = withAuthenticatedRoute<{ releaseId: string }>(async ({ ctx, requestId, params }) => {
   if (!ctx.isPlatformAdmin) {
-    return NextResponse.json({ error: "Platform Admin privileges required to rollback HTS release" }, { status: 403 });
+    return NextResponse.json({ error: "Platform Admin privileges required to rollback HTS release" });
   }
 
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
@@ -21,4 +21,5 @@ export const POST = withAuthenticatedRoute<{ releaseId: string }>(async ({ ctx, 
   } catch (error: unknown) {
     return handleApiError(error);
   }
-});
+
+}, { permission: "settings.manage", write: true });

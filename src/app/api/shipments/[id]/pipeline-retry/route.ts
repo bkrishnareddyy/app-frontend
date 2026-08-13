@@ -87,6 +87,7 @@ export async function POST(
       action: "PIPELINE_RETRY",
       entity: "PipelineJob",
       entityId: job.id,
+      source: "UI",
       metadata: { shipmentId: shipment.id },
       requestId,
     });

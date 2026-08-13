@@ -25,10 +25,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
     const docs = await db.shipmentDocument.findMany({
       where: { id: { in: documentIds }, shipmentId, accountId: ctx.accountId },
       select: { id: true },
-    });
+});
 
     if (docs.length !== documentIds.length) {
-      return NextResponse.json({ error: "One or more documents not found for this shipment" }, { status: 400 });
+      return NextResponse.json({ error: "One or more documents not found for this shipment" });
     }
 
     // Assign displayOrder based on position in the incoming array.
@@ -39,6 +39,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
     );
 
     return NextResponse.json({ reordered: true, count: documentIds.length });
-  },
-  { write: true }
-);
+  
+}, { permission: "shipments.manage", write: true });

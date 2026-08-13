@@ -49,7 +49,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     supportedEvents: WEBHOOK_EVENT_TYPES,
     requestId,
   });
-}, { permission: "settings.manage" });
+});
 
 const createWebhookSchema = z.object({
   url: z.string().url("Must be a valid HTTPS URL").refine((u) => u.startsWith("https://"), {
@@ -87,7 +87,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       events: bodyVal.data.events,
       status: "ACTIVE",
     },
-  });
+});
 
   await createAuditLog({
     accountId: ctx.accountId,
@@ -95,12 +95,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: "WEBHOOK_CREATED",
     entity: "AccountWebhook",
     entityId: webhook.id,
+    source: "UI",
     metadata: { url: webhook.url, events: webhook.events },
     success: true,
   });
 
-  return NextResponse.json(
-    {
+  return NextResponse.json({
       success: true,
       webhook: {
         id: webhook.id,
@@ -115,4 +115,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     },
     { status: 201 }
   );
+
 }, { permission: "settings.manage", write: true });

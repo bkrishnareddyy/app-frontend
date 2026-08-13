@@ -17,4 +17,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const match = await findPartyMatches(partyActor(ctx, requestId), body.data);
 
   return NextResponse.json({ match, requestId });
-});
+
+}, { permission: "parties.edit", write: true });

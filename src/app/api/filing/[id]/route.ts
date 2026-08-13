@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import type { FilingSnapshotData } from "@/modules/filings/filing.service";
 import { z } from "zod";
@@ -228,10 +228,10 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const existingFiling = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!existingFiling) {
-    return NextResponse.json({ error: "Filing not found" }, { status: 404 });
+    return NextResponse.json({ error: "Filing not found" });
   }
 
   const updateData: import("@prisma/client").Prisma.CustomsFilingUpdateInput = {};
@@ -253,13 +253,13 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     include: { responses: true, shipment: true },
   });
 
-  // Create Audit Log entry for status/details updates
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "customs_filing.update",
+    action: AuditAction.FILING_UPDATED,
     entity: "CustomsFiling",
     entityId: id,
+    source: "UI",
     metadata: {
       previousStatus: existingFiling.filingStatus,
       newStatus: filingStatus || existingFiling.filingStatus,
@@ -268,4 +268,5 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   });
 
   return NextResponse.json({ filing: updatedFiling });
-}, { write: true });
+
+}, { permission: "filings.create", write: true });

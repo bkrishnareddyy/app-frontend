@@ -3,7 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { validatePathParams } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { FilingService } from "@/modules/filings/filing.service";
 import { simulateAndApplyResponse } from "@/lib/canonicalMessaging/devStub";
@@ -44,7 +44,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
         },
       },
     },
-  });
+});
 
   if (!filingForValidation) {
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
@@ -95,8 +95,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   const outcome = runFilingValidation(validatorInput);
 
   if (!outcome.valid) {
-    return NextResponse.json(
-      {
+    return NextResponse.json({
         error: {
           code: "VALIDATION_BLOCKERS",
           message: `Transmission blocked: ${outcome.blockers.length} validation issue(s) must be resolved before filing.`,
@@ -117,9 +116,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
-      action: "filing.transmit",
+      action: AuditAction.FILING_TRANSMITTED,
       entity: "CustomsFiling",
       entityId: id,
+      source: "UI",
       metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
 
@@ -162,4 +162,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     }
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to transmit filing", undefined, requestId);
   }
+
 }, { permission: "filings.submit", write: true });

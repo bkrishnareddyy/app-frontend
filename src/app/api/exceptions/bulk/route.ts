@@ -7,14 +7,15 @@ import { ExceptionService } from "@/modules/exceptions/exception.service";
 import { RISK_ACCEPTANCE_PERMISSION, isRiskAcceptance, normalizeExceptionStatus } from "@/modules/exceptions/exceptionState";
 
 // PATCH /api/exceptions/bulk
-// Body: { exceptionIds: string[], status: "RESOLVED" | "WAIVED", resolutionReason: string }
+// Body: { exceptionIds: string[], status: "RESOLVED" | "WAIVED", resolutionReason: string, resolutionReasonCode?: string }
 // Returns: { succeeded, failed, skipped, results }
 export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
-  const { exceptionIds, status, resolutionReason } = body as {
+  const { exceptionIds, status, resolutionReason, resolutionReasonCode } = body as {
     exceptionIds: unknown;
     status: unknown;
     resolutionReason?: unknown;
+    resolutionReasonCode?: unknown;
   };
 
   if (!Array.isArray(exceptionIds) || exceptionIds.length === 0) {
@@ -40,6 +41,8 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
       { status: 400 }
     );
   }
+
+  const code = typeof resolutionReasonCode === "string" ? resolutionReasonCode.trim() : undefined;
 
   // WAIVED requires risk acceptance permission
   if (isRiskAcceptance(requestedState)) {
@@ -86,6 +89,7 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
         {
           status: requestedState,
           resolutionReason: reason,
+          resolutionReasonCode: code,
           expectedVersion: existing.version,
         },
         { userId: ctx.userId, name: resolverName }
@@ -97,7 +101,8 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
         action: "exception.update",
         entity: "ExceptionItem",
         entityId: id,
-        metadata: { newStatus: requestedState, bulkAction: true, resolutionReason: reason },
+        source: "UI",
+        metadata: { newStatus: requestedState, bulkAction: true, resolutionReason: reason, resolutionReasonCode: code },
       });
 
       results.push({ id, status: "ok" });
@@ -116,4 +121,8 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx }) => {
   const skipped = results.filter((r) => r.status === "skipped").length;
 
   return NextResponse.json({ succeeded, failed, skipped, results });
-}, { write: true });
+
+}, { permission: "exceptions.resolve", write: true });
+
+export const POST = PATCH;
+

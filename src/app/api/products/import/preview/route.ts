@@ -24,6 +24,5 @@ export const POST = withAuthenticatedRoute(
     );
 
     return NextResponse.json({ preview, requestId });
-  },
-  { permission: "products.import", write: true }
-);
+
+}, { permission: "products.import", write: true });

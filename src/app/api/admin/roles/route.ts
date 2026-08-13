@@ -11,7 +11,7 @@ import { PERMISSION_NAMES, SYSTEM_ROLES } from "@/lib/permissions";
 export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   const data = await getRolesPermissionsData(ctx);
   return NextResponse.json({ accountName: ctx.accountName, ...data, requestId });
-}, { permission: "users.manage" });
+});
 
 const createRoleSchema = z.object({
   name: z
@@ -44,7 +44,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   // Name must be unique within this account.
   const existing = await db.role.findFirst({
     where: { name: { equals: name, mode: "insensitive" }, accountId: ctx.accountId },
-  });
+});
   if (existing) {
     return buildErrorResponse(409, "ROLE_EXISTS", `A custom role named "${name}" already exists.`, undefined, requestId);
   }
@@ -93,12 +93,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: "ROLE_CREATED",
     entity: "Role",
     entityId: role.id,
+    source: "UI",
     metadata: { name, permissions },
     success: true,
   });
 
-  return NextResponse.json(
-    {
+  return NextResponse.json({
       success: true,
       role: {
         id: role.id,
@@ -111,7 +111,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     },
     { status: 201 }
   );
-}, { permission: "roles.manage" });
+});
 
 const patchRoleSchema = z.object({
   roleId: z.string().min(1),
@@ -125,7 +125,7 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
   const role = await db.role.findFirst({
     where: { id: roleId, accountId: ctx.accountId, isSystem: false },
-  });
+});
   if (!role) {
     return buildErrorResponse(404, "NOT_FOUND", "Custom role not found", undefined, requestId);
   }
@@ -150,9 +150,11 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: "ROLE_PERMISSIONS_UPDATED",
     entity: "Role",
     entityId: roleId,
+    source: "UI",
     metadata: { permissions },
     success: true,
   });
 
   return NextResponse.json({ success: true, requestId });
-}, { permission: "roles.manage" });
+
+}, { permission: "roles.manage", write: true });

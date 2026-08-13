@@ -29,6 +29,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
   const metadata = (update.metadata as any) || {};
   const affectedHtsCodes = metadata.affectedHtsCodes || [];
 
+  // Regulatory impact analysis filters shipments by accountId: shipment: { accountId: ctx.accountId }
   const result = await computeRegulatoryImpact(ctx.accountId, affectedHtsCodes);
 
   // Apply simple page slice to products and shipments lists

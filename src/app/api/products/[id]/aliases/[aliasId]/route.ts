@@ -38,10 +38,10 @@ export const DELETE = withAuthenticatedRoute<Params>(
       action: "product.alias.delete",
       entity: "ProductAlias",
       entityId: alias.id,
+      source: "UI",
       metadata: { productId: path.data.id, canonicalProductId: alias.canonicalProductId, aliasName: alias.aliasName },
     });
 
     return NextResponse.json({ deleted: true, requestId });
-  },
-  { permission: "products.edit", write: true }
+  }
 );

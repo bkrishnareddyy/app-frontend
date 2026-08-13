@@ -46,7 +46,6 @@ export const POST = withAuthenticatedRoute<Params>(
       body.data
     );
 
-    return NextResponse.json({ classification, requestId }, { status: 201 });
-  },
-  { permission: "products.edit", write: true }
-);
+    return NextResponse.json({ classification, requestId });
+
+}, { permission: "products.edit", write: true });

@@ -344,6 +344,7 @@ model AuditLog {
   action    String
   entity    String
   entityId  String
+  source    String   @default("UI")
   metadata  Json?
   ipAddress String?
   userAgent String?
@@ -353,6 +354,7 @@ model AuditLog {
 
   @@index([accountId])
   @@index([userId])
+  @@index([source])
   @@index([success])
 }
 

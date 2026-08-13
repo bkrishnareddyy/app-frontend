@@ -71,8 +71,7 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
     targetShipmentId = await resolveTenantShipmentId(accountId, body.shipmentId);
   } catch (err) {
     if (err instanceof ShipmentResolutionError) {
-      return NextResponse.json(
-        { error: err.code, message: err.message },
+      return NextResponse.json({ error: err.code, message: err.message },
         { status: shipmentResolutionStatus(err.code) }
       );
     }
@@ -112,7 +111,7 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
           shipmentId: targetShipmentId,
           fileName: body.fileName,
           fileUrl: body.fileUrl,
-        });
+});
         break;
 
       case "document-intelligence":
@@ -272,4 +271,5 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}, { write: true });
+
+}, { permission: "ai.use", write: true });

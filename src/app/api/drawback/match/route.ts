@@ -28,8 +28,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "drawback.match_run",
       entity: "DrawbackMatchingRun",
       entityId: ctx.accountId,
+      source: "UI",
       metadata: { proposedMatchesCount: result.proposedMatchesCount, strategy: bodyVal.data.matchMethod },
-    });
+});
 
     const responsePayload = { ...result, requestId };
 
@@ -41,4 +42,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to run drawback matching", undefined, requestId);
   }
-}, { write: true });
+
+}, { permission: "drawback.claim", write: true });

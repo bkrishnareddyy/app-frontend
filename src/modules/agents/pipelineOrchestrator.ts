@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent, DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
 import { ProductIntelligenceAgent, ProductIntelligenceOutput } from "./productIntelligenceAgent";
@@ -780,6 +780,7 @@ export class PipelineOrchestrator {
           action: entry.action,
           entity: "SHIPMENT",
           entityId: shipmentId,
+          source: "SYSTEM",
           metadata: { agentName: "Product Intelligence Agent", ...entry.metadata },
         });
       } catch {

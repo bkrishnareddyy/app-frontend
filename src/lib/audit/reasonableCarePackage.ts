@@ -13,11 +13,11 @@ export interface ClassificationSection {
 export interface ValuationSection {
   invoiceValue: number;
   currency: string;
-  assistsTotal: number;
-  royalties: number;
-  commissions: number;
-  freightDeductions: number;
-  insuranceDeductions: number;
+  assistsTotal: number | null;
+  royalties: number | null;
+  commissions: number | null;
+  freightDeductions: number | null;
+  insuranceDeductions: number | null;
   declaredCustomsValue: number;
   relatedPartyFlag: boolean;
 }
@@ -44,7 +44,7 @@ export interface DecisionSection {
   agentName: string;
   status: string;
   autoApproved: boolean;
-  confidence: number;
+  confidence: number | null;
 }
 
 export interface ExceptionSection {
@@ -87,13 +87,18 @@ export async function assembleReasonableCarePackage(shipmentId: string): Promise
   const shipment = await db.shipment.findUnique({
     where: { id: shipmentId },
     include: {
+      importerOfRecord: true,
       lineItems: {
         include: {
           origins: { include: { tradeAgreement: true } },
         },
       },
       documents: true,
-      customsFilings: true,
+      customsFilings: {
+        include: {
+          valuationAssistsRecord: true,
+        },
+      },
       exceptionItems: true,
       agentDecisions: true,
     },
@@ -107,28 +112,109 @@ export async function assembleReasonableCarePackage(shipmentId: string): Promise
   // Assemble Classification section
   const classification: ClassificationSection[] = [];
   for (const line of shipment.lineItems) {
+    let griSteps: string[] = [];
+    let rulingCitations: string[] = [];
+    let approver = "";
+
+    if (line.productId) {
+      const canonicalProduct = await db.canonicalProduct.findFirst({
+        where: { accountId: shipment.accountId, productId: line.productId },
+        select: { id: true },
+      });
+
+      if (canonicalProduct) {
+        const cCase = await db.classificationCase.findFirst({
+          where: {
+            accountId: shipment.accountId,
+            subjects: { some: { canonicalProductId: canonicalProduct.id } },
+          },
+          include: {
+            decisions: {
+              where: { decisionStatus: "APPROVED" },
+              orderBy: { attestedAt: "desc" },
+              take: 1,
+            },
+            runs: {
+              orderBy: { startedAt: "desc" },
+              take: 1,
+              include: {
+                proposals: {
+                  orderBy: { rank: "asc" },
+                  take: 1,
+                  include: {
+                    griSteps: { orderBy: { sequence: "asc" } },
+                    evidenceItems: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+        });
+
+        if (cCase) {
+          const proposal = cCase.runs[0]?.proposals[0];
+          if (proposal) {
+            griSteps = proposal.griSteps.map((step) => `${step.griRule}: ${step.conclusion}`);
+            rulingCitations = proposal.evidenceItems
+              .filter((ev) => ev.evidenceType === "CROSS_RULING")
+              .map((ev) => ev.citation);
+          }
+          const decision = cCase.decisions[0];
+          if (decision) {
+            const reviewer = await db.user.findUnique({
+              where: { id: decision.reviewerUserId },
+              select: { firstName: true, lastName: true, email: true },
+            });
+            if (reviewer) {
+              const fullName = [reviewer.firstName, reviewer.lastName].filter(Boolean).join(" ");
+              approver = fullName || reviewer.email;
+            } else {
+              approver = "System Approved";
+            }
+          }
+        }
+      }
+    }
+
     classification.push({
       lineItemNumber: line.lineNumber,
       htsCode: line.htsCode,
       description: line.description,
-      griSteps: ["GRI 1: Terms of headings", "GRI 6: Subheading comparison"],
-      rulingCitations: [],
-      approver: "System Classifier Agent",
+      griSteps,
+      rulingCitations,
+      approver,
     });
   }
 
   // Assemble Valuation section (using line items total values)
   const totalValue = shipment.lineItems.reduce((sum, item) => sum + Number(item.totalValue), 0);
+  const valuationRecord = filing?.valuationAssistsRecord ?? null;
+
+  let assistsTotal = 0;
+  if (valuationRecord?.potentialAssists) {
+    try {
+      const assists = typeof valuationRecord.potentialAssists === "string"
+        ? JSON.parse(valuationRecord.potentialAssists)
+        : (valuationRecord.potentialAssists as any);
+      if (Array.isArray(assists)) {
+        assistsTotal = assists.reduce((sum: number, assist: any) => sum + Number(assist.estimatedValue || 0), 0);
+      }
+    } catch (e) {
+      console.error("Failed to parse potentialAssists", e);
+    }
+  }
+
   const valuation: ValuationSection = {
     invoiceValue: totalValue,
     currency: "USD",
-    assistsTotal: 0,
-    royalties: 0,
-    commissions: 0,
-    freightDeductions: 0,
-    insuranceDeductions: 0,
-    declaredCustomsValue: totalValue,
-    relatedPartyFlag: false,
+    assistsTotal: valuationRecord ? assistsTotal : null,
+    royalties: null,
+    commissions: null,
+    freightDeductions: null,
+    insuranceDeductions: null,
+    declaredCustomsValue: valuationRecord ? Number(valuationRecord.declaredValue) : totalValue,
+    relatedPartyFlag: valuationRecord ? valuationRecord.relatedPartyTransaction : false,
   };
 
   // Assemble Origin section (first line item origin as representative)
@@ -157,8 +243,8 @@ export async function assembleReasonableCarePackage(shipmentId: string): Promise
     decisionId: ad.id,
     agentName: ad.agentName,
     status: ad.status,
-    autoApproved: ad.status === "Approved" || ad.status === "Completed",
-    confidence: 95,
+    autoApproved: ad.autoApproved,
+    confidence: ad.confidence ?? null,
   }));
 
   // Exceptions Section
@@ -185,8 +271,8 @@ export async function assembleReasonableCarePackage(shipmentId: string): Promise
     shipmentId: shipment.id,
     entryNumber,
     importerOfRecord: {
-      name: shipment.importerName,
-      cbpNumber: "CBP-99-1234567",
+      name: shipment.importerOfRecord?.name ?? shipment.importerName ?? null,
+      cbpNumber: shipment.importerOfRecord?.cbpImporterNumber ?? null,
     },
     generatedAt: new Date().toISOString(),
     completenessScore,
@@ -198,13 +284,6 @@ export async function assembleReasonableCarePackage(shipmentId: string): Promise
       decisions,
       exceptions,
     },
-    certifications: [
-      {
-        role: "Licensed Customs Broker",
-        name: "Qubere System Filer",
-        date: new Date().toISOString().split("T")[0],
-        signature: "DIGITALLY_SIGNED_QUBERE",
-      },
-    ],
+    certifications: [],
   };
 }

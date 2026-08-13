@@ -8,7 +8,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { lineItemId, agreementCode, agreementId } = body;
 
   if (!lineItemId) {
-    return NextResponse.json({ error: "lineItemId is required" }, { status: 400 });
+    return NextResponse.json({ error: "lineItemId is required" });
   }
 
   let code = agreementCode;
@@ -28,7 +28,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         include: { compositions: true },
       },
     },
-  });
+});
 
   if (!lineItem) {
     return NextResponse.json({ error: "Shipment line item not found" }, { status: 404 });
@@ -59,4 +59,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     regionalValueContentPct: result.regionalValueContentPct ?? null,
     gaps: result.gaps,
   });
-}, { permission: "documents.create" });
+
+}, { permission: "intel.read", write: true });

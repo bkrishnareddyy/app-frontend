@@ -1,13 +1,13 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
 import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
-import { applyAutoApprovalPolicy } from "@/modules/decisions/autoApprovalPolicy";
+import { applyAutoApprovalPolicy, getAgentPolicyConfig } from "@/modules/decisions/autoApprovalPolicy";
 import { matchPartMaster } from "@/modules/product/partMasterMatch";
 
 // Real, ingested HTS Master Release data (29k+ classifiable nodes, 50k+
@@ -398,6 +398,8 @@ ${candidateContext}`;
     // decision carries its own lineNumber so decisions/route.ts can target
     // the exact ShipmentLineItem it's about.
     let agentDecisionId: string | null = null;
+    const policyConfig = await getAgentPolicyConfig(input.accountId, "HTS Classification Agent");
+
     for (const result of results) {
       try {
         const profile = input.productProfiles.find((p) => p.lineNumber === result.lineNumber);
@@ -405,12 +407,16 @@ ${candidateContext}`;
           { partNumber: profile?.partNumber ?? null, proposedHtsCode: result.htsCode },
           input.canonicalProducts ?? []
         );
-        const policy = applyAutoApprovalPolicy({
-          confidence: result.confidence,
-          partMasterMatch: pmMatch.matched,
-          partMasterHtsAgrees: pmMatch.htsAgrees,
-          agentName: "HTS Classification Agent",
-        });
+        const policy = applyAutoApprovalPolicy(
+          {
+            confidence: result.confidence,
+            partMasterMatch: pmMatch.matched,
+            partMasterHtsAgrees: pmMatch.htsAgrees,
+            agentName: "HTS Classification Agent",
+            policyConfig,
+          },
+          policyConfig
+        );
 
         const triageState = policy.outcome === "AUTO" ? "AUTO_VERIFIED" : "NEEDS_REVIEW";
         // "Approved" is reserved for human reviewers; AUTO_VERIFIED distinguishes machine confidence.
@@ -445,9 +451,10 @@ ${candidateContext}`;
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
-          action: policy.outcome === "AUTO" ? "decision.auto_verified" : "AGENT_EXECUTION_COMPLETED",
+          action: policy.outcome === "AUTO" ? AuditAction.DECISION_AUTO_APPROVED : AuditAction.AGENT_EXECUTION_COMPLETED,
           entity: "AGENT_DECISION",
           entityId: agentDecision.id,
+          source: "SYSTEM",
           metadata: {
             agentName: "HTS Classification Agent",
             lineNumber: result.lineNumber,

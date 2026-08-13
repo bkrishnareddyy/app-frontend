@@ -27,7 +27,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
     const shipment = await db.shipment.findFirst({
       where: { id: shipmentId, accountId: ctx.accountId },
       select: { id: true, shipmentNumber: true },
-    });
+});
     if (!shipment) {
       return buildErrorResponse(404, "NOT_FOUND", "Shipment not found", undefined, requestId);
     }
@@ -89,6 +89,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
     }
 
     return NextResponse.json({ sent: true, recipientEmail, documentType });
-  },
-  { write: true }
-);
+  
+}, { permission: "shipments.manage", write: true });

@@ -47,4 +47,4 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     page,
     totalPages: Math.ceil(count / limit),
   });
-}, { permission: "documents.read" });
+});

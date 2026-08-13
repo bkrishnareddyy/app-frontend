@@ -8,10 +8,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, params,
 
   const apiKey = await db.accountApiKey.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!apiKey) {
-    return NextResponse.json({ error: "API key not found", requestId }, { status: 404 });
+    return NextResponse.json({ error: "API key not found", requestId });
   }
 
   if (apiKey.status === "REVOKED") {
@@ -29,9 +29,11 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, params,
     action: "API_KEY_REVOKED",
     entity: "AccountApiKey",
     entityId: id,
+    source: "UI",
     metadata: { label: apiKey.label, prefix: apiKey.keyPrefix },
     success: true,
   });
 
   return NextResponse.json({ success: true, requestId });
+
 }, { permission: "settings.manage", write: true });

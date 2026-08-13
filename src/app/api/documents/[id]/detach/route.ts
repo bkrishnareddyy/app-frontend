@@ -18,10 +18,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
 
   const doc = await db.shipmentDocument.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!doc) {
-    return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    return NextResponse.json({ error: "Document not found" });
   }
 
   if (!doc.shipmentId) {
@@ -39,9 +39,11 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     action: "document.detach",
     entity: "ShipmentDocument",
     entityId: id,
+    source: "UI",
     metadata: { fileName: doc.fileName, previousShipmentId: doc.shipmentId },
     success: true,
   });
 
   return NextResponse.json({ document: updated, requestId });
-});
+
+}, { permission: "documents.create", write: true });

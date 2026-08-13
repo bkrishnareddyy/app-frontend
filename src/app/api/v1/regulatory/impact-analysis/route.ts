@@ -7,10 +7,11 @@ export const POST = withAuthenticatedRoute(async ({ ctx }) => {
   try {
     const result = await ImpactAnalysisService.analyzePortfolioImpact({
       accountId: ctx.accountId,
-    });
+});
 
     return NextResponse.json(result);
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}, { write: true });
+
+}, { permission: "regulatory.review", write: true });

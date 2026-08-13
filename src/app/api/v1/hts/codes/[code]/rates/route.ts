@@ -63,4 +63,4 @@ export const GET = withAuthenticatedRoute<{ code: string }>(async ({ req, params
       totalWithFees: stack.totalWithFees.toNumber(),
     },
   });
-}, { permission: "documents.read" });
+});

@@ -13,7 +13,7 @@ function generateSlug(name: string): string {
 // rather than via `permission`, which would incorrectly admit account OWNERs.
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   if (!ctx.isPlatformAdmin) {
-    return NextResponse.json({ error: "Forbidden: Qubere Platform Admin privileges required" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden: Qubere Platform Admin privileges required" });
   }
 
   const { companyName, ownerEmail } = await req.json();
@@ -36,7 +36,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   let ownerRole = await db.role.findFirst({
     where: { name: "OWNER", accountId: null },
-  });
+});
   if (!ownerRole) {
     ownerRole = await db.role.create({
       data: { name: "OWNER", description: "Account Owner", isSystem: true },
@@ -74,6 +74,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "ENTERPRISE_ACCOUNT_CREATED",
     entity: "Account",
     entityId: result.account.id,
+    source: "UI",
     metadata: {
       companyName: result.account.name,
       slug: result.account.slug,
@@ -86,4 +87,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // token is destructured off so the raw invitation token never reaches the response body.
   const { token, ...invitationSafe } = result.invitation;
   return NextResponse.json({ success: true, account: result.account, invitation: invitationSafe });
-});
+
+}, { permission: "account.manage", write: true });

@@ -20,10 +20,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       bond: true,
     },
     orderBy: filingId ? undefined : { createdAt: "desc" },
-  });
+});
 
   if (!filing) {
-    return NextResponse.json({ error: "No customs filing found to audit" }, { status: 404 });
+    return NextResponse.json({ error: "No customs filing found to audit" });
   }
 
   const lineItems = filing.shipment.lineItems;
@@ -155,6 +155,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "compliance_audit.run",
     entity: "ComplianceAuditRecord",
     entityId: auditRecord.id,
+    source: "UI",
     metadata: {
       filingId: filing.id,
       overallResult,
@@ -171,4 +172,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     },
     { status: 201 }
   );
-}, { write: true });
+
+}, { permission: "audits.run", write: true });

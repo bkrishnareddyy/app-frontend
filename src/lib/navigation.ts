@@ -23,6 +23,7 @@ export type NavIcon =
   | "settings"
   | "platform"
   | "vault"
+  | "compliance"
   | "simulator";
 
 export interface NavItem {
@@ -60,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
+      { id: "compliance", labelKey: "complianceMonitoring", href: "/app/compliance", icon: "compliance" },
     ],
   },
   {

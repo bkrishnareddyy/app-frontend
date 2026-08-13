@@ -16,7 +16,7 @@
  */
 
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { aiModel } from "@/lib/ai/aiModel";
 import { buildContextForDocument } from "../context/documentContextService";
 import { QUBERE_DOCUMENT_CONTEXT_VERSION } from "../context/qubereDocumentContext";
@@ -131,9 +131,10 @@ export async function runDocumentExtraction(
     await createAuditLog({
       accountId: input.accountId,
       userId: input.userId,
-      action: "document.extraction.completed",
+      action: AuditAction.DOCUMENT_CLASSIFIED,
       entity: "AgentExecutionRecord",
       entityId: executionRecord.id,
+      source: "SYSTEM",
       metadata: {
         documentId: input.documentId,
         processingRunId,
@@ -175,6 +176,7 @@ export async function runDocumentExtraction(
       action: "document.extraction.failed",
       entity: "AgentExecutionRecord",
       entityId: executionRecord.id,
+      source: "SYSTEM",
       metadata: { documentId: input.documentId, processingRunId, extractor: EXTRACTOR_NAME },
       correlationId: input.correlationId,
       success: false,

@@ -15,4 +15,4 @@ export const GET = withAuthenticatedRoute<{ shipmentId: string }>(async ({ param
     completenessScore: pkg.completenessScore,
     auditPackage: pkg,
   });
-}, { permission: "documents.read" });
+});

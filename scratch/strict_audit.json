@@ -1,0 +1,1370 @@
+[
+  {
+    "method": "PATCH",
+    "routePath": "/api/admin/account",
+    "file": "admin/account/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/account/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "account.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/roles",
+    "file": "admin/roles/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/roles/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/admin/roles",
+    "file": "admin/roles/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/roles/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/agent-policies",
+    "file": "admin/settings/agent-policies/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/settings/agent-policies/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/api-keys/[id]/revoke",
+    "file": "admin/settings/api-keys/[id]/revoke/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/settings/api-keys/[id]/revoke/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/api-keys",
+    "file": "admin/settings/api-keys/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/settings/api-keys/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/webhooks",
+    "file": "admin/settings/webhooks/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/settings/webhooks/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/users",
+    "file": "admin/users/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/users/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/admin/users",
+    "file": "admin/users/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/admin/users/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/advisory/origin-determination/[lineItemId]",
+    "file": "advisory/origin-determination/[lineItemId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/advisory/origin-determination/[lineItemId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/advisory/origin-determination",
+    "file": "advisory/origin-determination/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/advisory/origin-determination/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/advisory/query",
+    "file": "advisory/query/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/advisory/query/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/agents/[agentId]",
+    "file": "agents/[agentId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/agents/[agentId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/agents/orchestrate",
+    "file": "agents/orchestrate/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/agents/orchestrate/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/assistant/chat",
+    "file": "assistant/chat/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/assistant/chat/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/assistant/chats/[id]",
+    "file": "assistant/chats/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/assistant/chats/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/assistant/chats/[id]",
+    "file": "assistant/chats/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/assistant/chats/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/assistant/chats",
+    "file": "assistant/chats/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/assistant/chats/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/audit/export",
+    "file": "audit/export/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/audit/export/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "audits.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/audit/package",
+    "file": "audit/package/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/audit/package/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "audits.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/audit/room",
+    "file": "audit/room/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/audit/room/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "audits.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/auth/switch-account",
+    "file": "auth/switch-account/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/auth/switch-account/route.ts",
+    "usesAuthRoute": false,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/bonds",
+    "file": "bonds/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/bonds/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/classification/classify",
+    "file": "classification/classify/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/classification/classify/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/clients",
+    "file": "clients/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/clients/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/compliance/audits/run",
+    "file": "compliance/audits/run/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/compliance/audits/run/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "audits.run"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/document-processing",
+    "file": "cron/document-processing/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/cron/document-processing/route.ts",
+    "usesAuthRoute": false,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/hts-refresh",
+    "file": "cron/hts-refresh/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/cron/hts-refresh/route.ts",
+    "usesAuthRoute": false,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/inbound-email-processing",
+    "file": "cron/inbound-email-processing/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/cron/inbound-email-processing/route.ts",
+    "usesAuthRoute": false,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/regulatory-ingest",
+    "file": "cron/regulatory-ingest/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/cron/regulatory-ingest/route.ts",
+    "usesAuthRoute": false,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/decisions/bulk",
+    "file": "decisions/bulk/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/decisions/bulk/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "[\n    \"decisions.approve\",\n    \"decisions.reject\",\n    \"decisions.reevaluate\",\n    \"decisions.override\",\n    \"decisions.review\",\n  ]"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/decisions",
+    "file": "decisions/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/decisions/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "[\n    \"decisions.approve\",\n    \"decisions.reject\",\n    \"decisions.reevaluate\",\n    \"decisions.override\",\n    \"decisions.review\",\n  ]"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/demo/screening/dps",
+    "file": "demo/screening/dps/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/demo/screening/dps/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/attach",
+    "file": "documents/[id]/attach/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/documents/[id]/attach/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/detach",
+    "file": "documents/[id]/detach/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/documents/[id]/detach/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/extractions",
+    "file": "documents/[id]/extractions/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/documents/[id]/extractions/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "documents.create"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/documents/[id]/extractions",
+    "file": "documents/[id]/extractions/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/documents/[id]/extractions/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/reprocess",
+    "file": "documents/[id]/reprocess/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/documents/[id]/reprocess/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/upload",
+    "file": "documents/upload/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/documents/upload/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "documents.create"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/drawback/claims/[id]",
+    "file": "drawback/claims/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/drawback/claims/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "drawback.claim"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/drawback/claims",
+    "file": "drawback/claims/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/drawback/claims/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/drawback/match",
+    "file": "drawback/match/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/drawback/match/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "drawback.claim"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/exceptions/[id]",
+    "file": "exceptions/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/exceptions/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "exceptions.resolve"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/exceptions/bulk",
+    "file": "exceptions/bulk/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/exceptions/bulk/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "exceptions.resolve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/exports/documents/upload",
+    "file": "exports/documents/upload/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/exports/documents/upload/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/exports/shipments",
+    "file": "exports/shipments/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/exports/shipments/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/approve",
+    "file": "filing/[id]/approve/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/filing/[id]/approve/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/cancel",
+    "file": "filing/[id]/cancel/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/filing/[id]/cancel/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/resubmit",
+    "file": "filing/[id]/resubmit/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/filing/[id]/resubmit/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/filing/[id]",
+    "file": "filing/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/filing/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "filings.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/transmit",
+    "file": "filing/[id]/transmit/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/filing/[id]/transmit/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "filings.submit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/validate",
+    "file": "filing/[id]/validate/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/filing/[id]/validate/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "filings.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing",
+    "file": "filing/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/filing/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "filings.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/findings/[id]/assign",
+    "file": "findings/[id]/assign/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/findings/[id]/assign/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "exceptions.resolve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/findings/[id]/resolve",
+    "file": "findings/[id]/resolve/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/findings/[id]/resolve/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "exceptions.resolve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/importers-of-record/[id]/poa",
+    "file": "importers-of-record/[id]/poa/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/importers-of-record/[id]/poa/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/importers-of-record",
+    "file": "importers-of-record/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/importers-of-record/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/intake/agent",
+    "file": "intake/agent/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/intake/agent/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/legal-entities",
+    "file": "legal-entities/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/legal-entities/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/notifications/[id]/read",
+    "file": "notifications/[id]/read/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/notifications/[id]/read/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "users.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/notifications/read-all",
+    "file": "notifications/read-all/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/notifications/read-all/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "users.read"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/addresses/[addressId]",
+    "file": "parties/[id]/addresses/[addressId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/addresses/[addressId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/addresses",
+    "file": "parties/[id]/addresses/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/addresses/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/contacts/[contactId]",
+    "file": "parties/[id]/contacts/[contactId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/contacts/[contactId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/contacts",
+    "file": "parties/[id]/contacts/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/contacts/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/evidence",
+    "file": "parties/[id]/evidence/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/evidence/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/identifiers/[identifierId]",
+    "file": "parties/[id]/identifiers/[identifierId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/identifiers/[identifierId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/identifiers",
+    "file": "parties/[id]/identifiers/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/identifiers/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/names/[nameId]",
+    "file": "parties/[id]/names/[nameId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/names/[nameId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/names",
+    "file": "parties/[id]/names/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/names/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/registrations/[registrationId]",
+    "file": "parties/[id]/registrations/[registrationId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/registrations/[registrationId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/registrations",
+    "file": "parties/[id]/registrations/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/registrations/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/relationships/[relationshipId]",
+    "file": "parties/[id]/relationships/[relationshipId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/relationships/[relationshipId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/relationships",
+    "file": "parties/[id]/relationships/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/relationships/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/revalidation/[flagId]",
+    "file": "parties/[id]/revalidation/[flagId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/revalidation/[flagId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/review",
+    "file": "parties/[id]/review/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/review/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/roles/[roleId]",
+    "file": "parties/[id]/roles/[roleId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/roles/[roleId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/roles",
+    "file": "parties/[id]/roles/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/roles/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/parties/[id]",
+    "file": "parties/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]",
+    "file": "parties/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/sites/[siteId]",
+    "file": "parties/[id]/sites/[siteId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/sites/[siteId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/sites",
+    "file": "parties/[id]/sites/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/[id]/sites/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/bulk",
+    "file": "parties/bulk/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/bulk/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/import/commit",
+    "file": "parties/import/commit/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/import/commit/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/import/preview",
+    "file": "parties/import/preview/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/import/preview/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/match",
+    "file": "parties/match/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/match/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties",
+    "file": "parties/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/parties/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "parties.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/pga/screen",
+    "file": "pga/screen/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/pga/screen/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/platform-admin/accounts/[id]/deactivate",
+    "file": "platform-admin/accounts/[id]/deactivate/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/platform-admin/accounts/[id]/deactivate/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "account.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/platform-admin/accounts",
+    "file": "platform-admin/accounts/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/platform-admin/accounts/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "account.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/adcvd-screen",
+    "file": "products/[id]/adcvd-screen/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/adcvd-screen/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/aliases/[aliasId]",
+    "file": "products/[id]/aliases/[aliasId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/aliases/[aliasId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/aliases",
+    "file": "products/[id]/aliases/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/aliases/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/attributes/[attributeId]",
+    "file": "products/[id]/attributes/[attributeId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/attributes/[attributeId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/attributes",
+    "file": "products/[id]/attributes/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/attributes/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/classifications/[classificationId]",
+    "file": "products/[id]/classifications/[classificationId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/classifications/[classificationId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/classifications",
+    "file": "products/[id]/classifications/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/classifications/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/compositions/[compositionId]",
+    "file": "products/[id]/compositions/[compositionId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/compositions/[compositionId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/compositions",
+    "file": "products/[id]/compositions/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/compositions/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/country-facts/[factId]",
+    "file": "products/[id]/country-facts/[factId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/country-facts/[factId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/country-facts",
+    "file": "products/[id]/country-facts/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/country-facts/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/enrich/approve",
+    "file": "products/[id]/enrich/approve/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/enrich/approve/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.classification.approve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/enrich",
+    "file": "products/[id]/enrich/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/enrich/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/evidence",
+    "file": "products/[id]/evidence/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/evidence/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/identifiers/[identifierId]",
+    "file": "products/[id]/identifiers/[identifierId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/identifiers/[identifierId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/identifiers",
+    "file": "products/[id]/identifiers/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/identifiers/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/parties/[partyId]",
+    "file": "products/[id]/parties/[partyId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/parties/[partyId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/parties",
+    "file": "products/[id]/parties/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/parties/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/revalidation/[flagId]",
+    "file": "products/[id]/revalidation/[flagId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/revalidation/[flagId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/products/[id]",
+    "file": "products/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]",
+    "file": "products/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/valuation",
+    "file": "products/[id]/valuation/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/[id]/valuation/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/bulk",
+    "file": "products/bulk/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/bulk/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/import/commit",
+    "file": "products/import/commit/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/import/commit/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/import/preview",
+    "file": "products/import/preview/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/import/preview/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/line-items/[lineItemId]",
+    "file": "products/line-items/[lineItemId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/line-items/[lineItemId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/match",
+    "file": "products/match/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/match/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/normalize",
+    "file": "products/normalize/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/normalize/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products",
+    "file": "products/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/products/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/reconcile",
+    "file": "reconcile/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/reconcile/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/refunds/opportunities/scan",
+    "file": "refunds/opportunities/scan/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/refunds/opportunities/scan/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": false,
+    "permissionVal": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/refunds/psc/[id]",
+    "file": "refunds/psc/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/refunds/psc/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "refunds.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/refunds/psc",
+    "file": "refunds/psc/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/refunds/psc/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "refunds.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/regulatory/[id]/impact-analysis",
+    "file": "regulatory/[id]/impact-analysis/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/regulatory/[id]/impact-analysis/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "regulatory.review"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/screening/embargo",
+    "file": "screening/embargo/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/screening/embargo/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "ai.use"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/settings/inbound-senders/[id]",
+    "file": "settings/inbound-senders/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/settings/inbound-senders/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/settings/inbound-senders",
+    "file": "settings/inbound-senders/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/settings/inbound-senders/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/documents/[documentId]/field-review",
+    "file": "shipments/[id]/documents/[documentId]/field-review/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/[id]/documents/[documentId]/field-review/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/documents/reorder",
+    "file": "shipments/[id]/documents/reorder/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/[id]/documents/reorder/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/documents/request",
+    "file": "shipments/[id]/documents/request/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/[id]/documents/request/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/exceptions/[exceptionId]/resolve",
+    "file": "shipments/[id]/exceptions/[exceptionId]/resolve/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/[id]/exceptions/[exceptionId]/resolve/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/reconcile/issues/[issueId]",
+    "file": "shipments/[id]/reconcile/issues/[issueId]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/[id]/reconcile/issues/[issueId]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/reconcile",
+    "file": "shipments/[id]/reconcile/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/[id]/reconcile/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/shipments/[id]",
+    "file": "shipments/[id]/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/[id]/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments",
+    "file": "shipments/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/shipments/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "shipments.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/compare",
+    "file": "simulator/compare/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/simulator/compare/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/scenarios/[id]/calculate",
+    "file": "simulator/scenarios/[id]/calculate/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/simulator/scenarios/[id]/calculate/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/scenarios/[id]/line-items",
+    "file": "simulator/scenarios/[id]/line-items/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/simulator/scenarios/[id]/line-items/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/scenarios",
+    "file": "simulator/scenarios/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/simulator/scenarios/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/hts/ingestions",
+    "file": "v1/admin/hts/ingestions/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/admin/hts/ingestions/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/hts/releases/[releaseId]/publish",
+    "file": "v1/admin/hts/releases/[releaseId]/publish/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/admin/hts/releases/[releaseId]/publish/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/hts/releases/[releaseId]/rollback",
+    "file": "v1/admin/hts/releases/[releaseId]/rollback/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/admin/hts/releases/[releaseId]/rollback/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/rulings/ingest",
+    "file": "v1/admin/rulings/ingest/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/admin/rulings/ingest/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/batch/classification",
+    "file": "v1/batch/classification/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/batch/classification/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "classification.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/classification/cases/[caseId]/decisions",
+    "file": "v1/classification/cases/[caseId]/decisions/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/classification/cases/[caseId]/decisions/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "classification.approve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/classification/cases/[caseId]/runs",
+    "file": "v1/classification/cases/[caseId]/runs/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/classification/cases/[caseId]/runs/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "classification.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/classification/cases",
+    "file": "v1/classification/cases/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/classification/cases/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "classification.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/products/canonical/[productId]/bind-classification",
+    "file": "v1/products/canonical/[productId]/bind-classification/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/products/canonical/[productId]/bind-classification/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.classification.approve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/products/canonical",
+    "file": "v1/products/canonical/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/products/canonical/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "products.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/regulatory/impact-analysis",
+    "file": "v1/regulatory/impact-analysis/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/regulatory/impact-analysis/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "regulatory.review"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/trade-agreements/qualify",
+    "file": "v1/trade-agreements/qualify/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/v1/trade-agreements/qualify/route.ts",
+    "usesAuthRoute": true,
+    "hasPermOption": true,
+    "permissionVal": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/webhooks/resend/inbound",
+    "file": "webhooks/resend/inbound/route.ts",
+    "fullPath": "/Users/rachitlohani/Documents/GitHub/app-frontend/src/app/api/webhooks/resend/inbound/route.ts",
+    "usesAuthRoute": false,
+    "hasPermOption": false,
+    "permissionVal": null
+  }
+]

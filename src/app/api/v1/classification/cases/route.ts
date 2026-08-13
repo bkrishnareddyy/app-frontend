@@ -14,7 +14,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     const { productId, lineItemId, externalReference, priority, countryOfOrigin, intendedUse } = body;
 
     if (!rawDescription) {
-      return NextResponse.json({ error: "description is required" }, { status: 400 });
+      return NextResponse.json({ error: "description is required" });
     }
 
     const result = await ClassificationCaseEngine.createCase({
@@ -28,14 +28,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       structuredAttributesJson: attributes,
       countryOfOrigin,
       intendedUse,
-    });
+});
 
     const statusCode = result.isExisting ? 200 : 201;
     return NextResponse.json(result, { status: statusCode });
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}, { write: true });
+
+}, { permission: "classification.create", write: true });
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   try {

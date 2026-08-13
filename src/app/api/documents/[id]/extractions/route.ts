@@ -162,7 +162,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     const doc = await db.shipmentDocument.findFirst({
       where: { id, accountId: ctx.accountId },
       include: documentInclude,
-    });
+});
 
     if (!doc) {
       return buildErrorResponse(404, "NOT_FOUND", "Shipment document not found", undefined, requestId);
@@ -270,7 +270,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       requestId
     );
   }
-}, { write: true });
+});
 
 /**
  * Corrects one field in this document's own canonical extraction.
@@ -315,7 +315,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     const doc = await db.shipmentDocument.findFirst({
       where: { id, accountId: ctx.accountId },
       include: documentInclude,
-    });
+});
     if (!doc) {
       return buildErrorResponse(404, "NOT_FOUND", "Shipment document not found", undefined, requestId);
     }
@@ -357,6 +357,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       action: "document.edit_extracted_field",
       entity: "ShipmentDocument",
       entityId: doc.id,
+      source: "UI",
       metadata: { field, previousValue, newValue: nextValue },
     });
 
@@ -377,4 +378,5 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       requestId
     );
   }
-}, { write: true });
+
+}, { permission: "documents.create", write: true });

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { Decimal } from "@/lib/tariff/decimal";
-import { calculateDutyStack } from "@/lib/tariff/dutyEngine";
+import { calculateDutyStack, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 
 export interface InventoryAllocationMatchInput {
   matchStrategy: "FIFO" | "LIFO" | "DIRECT_IDENTIFICATION";
@@ -35,7 +36,11 @@ export class DrawbackService {
 
     let createdCount = 0;
 
+    // Load HTS duty rates from the database for the line items
+    const htsCodesMap = await loadHtsCodesMap(filing.shipment.lineItems);
+
     for (const item of filing.shipment.lineItems) {
+      const htsRateInput = item.htsCode ? htsCodesMap[item.htsCode] : null;
       // Calculate real duty stack per F06 logic
       const stack = calculateDutyStack(
         {
@@ -43,8 +48,8 @@ export class DrawbackService {
           totalValue: Number(item.totalValue || 0),
           countryOfOrigin: item.countryOfOrigin,
         },
-        {
-          generalDutyRate: "2.8%", // Representative rate or HTS lookup
+        htsRateInput ?? {
+          generalDutyRate: "2.8%", // Representative fallback rate
           section301Applicable: item.countryOfOrigin === "CN",
           section301Tranche: "List3",
         },
@@ -132,7 +137,7 @@ export class DrawbackService {
             htsCode: exp.htsCode,
             matchedQuantity: allocated.toNumber(),
             matchMethod: input.matchStrategy,
-            dutyAttributed: Math.round(dutyAttributed.toNumber() * 100) / 100,
+            dutyAttributed: roundToCents(dutyAttributed).toNumber(),
             importShipmentNumber: lot.entryNumber,
             exportShipmentNumber: exp.exportShipment.exportShipmentNumber,
           });
@@ -192,7 +197,8 @@ export class DrawbackService {
       const sequenceVal = String(seq.nextVal - 1).padStart(5, "0");
       const cbpClaimNumber = `DBK-${filerCode}-${year}-${sequenceVal}`;
 
-      const totalRefund = Math.round(input.matches.reduce((acc, m) => acc + m.dutyAttributed, 0) * 100) / 100;
+      const totalRefundDec = input.matches.reduce((acc, m) => acc.plus(new Decimal(m.dutyAttributed)), new Decimal(0));
+      const totalRefund = roundToCents(totalRefundDec).toNumber();
 
       const claim = await tx.drawbackClaim.create({
         data: {
@@ -230,6 +236,16 @@ export class DrawbackService {
           });
         }
       }
+
+      await createAuditLog({
+        accountId,
+        userId,
+        action: AuditAction.DRAWBACK_CLAIM_CREATED,
+        entity: "DrawbackClaim",
+        entityId: claim.id,
+        source: "UI",
+        metadata: { cbpClaimNumber, totalRefundClaimed: totalRefund, claimType: input.claimType },
+      });
 
       return { claim, internalClaimRef: cbpClaimNumber };
     });

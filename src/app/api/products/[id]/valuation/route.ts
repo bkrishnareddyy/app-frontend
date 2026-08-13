@@ -36,4 +36,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, pa
     productId,
     valuation: valuationResult,
   });
-}, { permission: "documents.create", write: true });
+
+}, { permission: "products.edit", write: true });

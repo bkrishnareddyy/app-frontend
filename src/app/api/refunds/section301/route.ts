@@ -52,4 +52,4 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
     totalDutyPaid: totalDutyPaid.toNumber(),
     byList,
   });
-}, { permission: "documents.read" });
+});

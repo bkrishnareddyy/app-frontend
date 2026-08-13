@@ -146,6 +146,7 @@ export class ShipmentPartyService {
       action: "party.revalidation.shipment_flag",
       entity: "ShipmentParty",
       entityId: shipmentId,
+      source: "SYSTEM",
       metadata: {
         legalEntityId,
         partyId: legalEntity.partyId,

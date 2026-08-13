@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { ReconciliationEngine } from "@/modules/shipment/reconciliationEngine";
 import { FactAuditService } from "@/modules/audit/factAuditService";
 import { FactService } from "@/modules/shipment/factService";
 import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
+import { normalizeDecisionStatus } from "@/modules/decisions/decisionState";
 import {
   REVIEW_ACTIONS,
+  REVIEW_TRIAGE_STATES,
   checkReviewPermission,
   isClassificationOverride,
   isReviewAction,
@@ -73,7 +75,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   };
 
   if (!Array.isArray(decisionIds) || decisionIds.length === 0) {
-    return NextResponse.json({ error: "decisionIds must be a non-empty array" }, { status: 400 });
+    return NextResponse.json({ error: "decisionIds must be a non-empty array" });
   }
   if (decisionIds.length > 100) {
     return NextResponse.json({ error: "Cannot bulk-act on more than 100 decisions at once" }, { status: 400 });
@@ -152,7 +154,17 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     }
 
     // Skip if already in a terminal reviewed state — idempotent sweep
-    if (decision.status === "APPROVED" || decision.status === "REJECTED") {
+    const normStatus = normalizeDecisionStatus(decision.status);
+    if (
+      decision.status === "Approved" ||
+      decision.status === "Rejected" ||
+      decision.status === "APPROVED" ||
+      decision.status === "REJECTED" ||
+      decision.triageState === "APPROVED" ||
+      decision.triageState === "REJECTED" ||
+      normStatus === "APPROVED" ||
+      normStatus === "REJECTED"
+    ) {
       results.push({ id, status: "skipped", reason: "already_terminal" });
       continue;
     }
@@ -172,6 +184,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         where: { id, accountId: ctx.accountId, updatedAt: decision.updatedAt },
         data: {
           status: newStatus,
+          triageState: REVIEW_TRIAGE_STATES[action],
           humanNotes: rationale === "" ? decision.humanNotes : rationale,
           reviewedByUserId: ctx.userId,
         },
@@ -202,9 +215,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       await createAuditLog({
         accountId: ctx.accountId,
         userId: ctx.userId,
-        action: `decision.${action.toLowerCase()}`,
+        action: action === "APPROVE" ? AuditAction.DECISION_APPROVED : AuditAction.DECISION_REJECTED,
         entity: "AgentDecision",
         entityId: id,
+        source: "UI",
         metadata: {
           newStatus,
           humanNotes: rationale,
@@ -234,4 +248,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const skipped = results.filter((r) => r.status === "skipped").length;
 
   return NextResponse.json({ succeeded, failed, skipped, results });
-}, { write: true });
+}, {
+  permission: [
+    "decisions.approve",
+    "decisions.reject",
+    "decisions.reevaluate",
+    "decisions.override",
+    "decisions.review",
+  ],
+  write: true,
+});

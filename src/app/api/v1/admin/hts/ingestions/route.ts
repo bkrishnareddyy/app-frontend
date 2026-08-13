@@ -5,7 +5,7 @@ import { HtsIngestionService } from "@/modules/hts/htsIngestionService";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   if (!ctx.isPlatformAdmin) {
-    return NextResponse.json({ error: "Platform Admin privileges required for HTS ingestion" }, { status: 403 });
+    return NextResponse.json({ error: "Platform Admin privileges required for HTS ingestion" });
   }
 
   try {
@@ -24,10 +24,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       sourceFormat: sourceFormat || "JSON",
       rawContent: rawContent || JSON.stringify(items),
       items,
-    });
+});
 
     return NextResponse.json({ release, status: "STAGED_DRAFT" });
   } catch (error: unknown) {
     return handleApiError(error);
   }
-});
+
+}, { permission: "settings.manage", write: true });

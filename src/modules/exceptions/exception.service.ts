@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { ProviderMetadata } from "@/lib/providers";
 import {
   EXCEPTION_STATES,
@@ -150,9 +150,10 @@ export class ExceptionService {
       await createAuditLog({
         accountId,
         userId: resolver?.userId ?? null,
-        action: "exception.resolve",
+        action: AuditAction.EXCEPTION_RESOLVED,
         entity: "ExceptionItem",
         entityId: exceptionId,
+        source: "UI",
         metadata: {
           fromStatus: existing.status,
           toStatus: nextStatus,

@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { Decimal } from "../tariff/decimal";
 import { assembleReasonableCarePackage, ReasonableCarePackage } from "./reasonableCarePackage";
+import Anthropic from "@anthropic-ai/sdk";
 
 export interface ControlEvidence {
   id: string;
@@ -67,7 +68,15 @@ export async function assembleFocusedAssessmentFile(
       createdAt: { gte: fromDate, lte: toDate },
       ...(params.importerOfRecordId ? { importerOfRecordId: params.importerOfRecordId } : {}),
     },
-    include: { shipment: { include: { lineItems: true } } },
+    include: {
+      importerOfRecord: true,
+      shipment: {
+        include: {
+          lineItems: true,
+          importerOfRecord: true,
+        },
+      },
+    },
   });
 
   // Calculate population metrics
@@ -132,19 +141,85 @@ export async function assembleFocusedAssessmentFile(
     byCategory[cat] = (byCategory[cat] || 0) + 1;
   }
 
-  // AI-generated remediation narrative (custom compliance summary)
-  const remediationNarrative = `
-    Qubere importer compliance controls successfully audited ${filings.length} entries.
-    A total of ${totalExceptions} exceptions were detected, with a resolved rate of ${totalExceptions > 0 ? Math.round((resolvedCount / totalExceptions) * 100) : 100}%.
-    Internal procedures including training manuals and vendor certification programs are active and version-controlled.
-  `.trim();
+  let importerName = "Platform Importer of Record";
+  let cbpNumber = "";
+  let addressStr = "";
+
+  if (params.importerOfRecordId) {
+    const importer = await db.importerOfRecord.findUnique({
+      where: { id: params.importerOfRecordId },
+    });
+    if (importer) {
+      importerName = importer.name;
+      cbpNumber = importer.cbpImporterNumber;
+      addressStr = formatAddress(importer.address);
+    }
+  } else if (filings.length > 0) {
+    const f = filings[0];
+    const importer = f.importerOfRecord ?? f.shipment.importerOfRecord;
+    if (importer) {
+      importerName = importer.name;
+      cbpNumber = importer.cbpImporterNumber;
+      addressStr = formatAddress(importer.address);
+    } else {
+      importerName = f.shipment.importerName;
+    }
+  }
+
+  // AI-generated remediation narrative (custom compliance summary via Claude API)
+  let remediationNarrative = "";
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (apiKey) {
+    try {
+      const client = new Anthropic({ apiKey });
+      const prompt = `
+Generate a professional customs compliance focused assessment cover narrative for an importer.
+Data Summary:
+- Importer Name: ${importerName}
+- CBP Importer Number: ${cbpNumber || "N/A"}
+- Audit Period: From ${params.periodFrom} to ${params.periodTo}
+- Total entries audited: ${filings.length}
+- Total exceptions detected: ${totalExceptions}
+- Resolved exceptions: ${resolvedCount}
+- Exception resolution rate: ${totalExceptions > 0 ? Math.round((resolvedCount / totalExceptions) * 100) : 100}%
+- Active controls: ${controlsInventory.map(c => `${c.name} (${c.category})`).join(", ") || "None"}
+
+Please provide a structured, professional narrative summarizing:
+1. The importer's overall compliance posture.
+2. Key exception patterns identified (if any).
+3. Specific remediation actions taken or planned to ensure reasonable care is maintained.
+
+Do not include any placeholders. Ensure the tone is objective, formal, and suitable for a CBP Focused Assessment defense document. Keep it concise (around 150-250 words).
+`;
+      const response = await client.messages.create({
+        model: "claude-opus-5",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const textBlock = response.content.find((b) => b.type === "text");
+      if (textBlock && textBlock.type === "text") {
+        remediationNarrative = textBlock.text.trim();
+      }
+    } catch (err) {
+      console.error("Failed to generate remediation narrative via Claude:", err);
+    }
+  }
+
+  if (!remediationNarrative) {
+    remediationNarrative = `
+Qubere importer compliance controls successfully audited ${filings.length} entries.
+A total of ${totalExceptions} exceptions were detected, with a resolved rate of ${totalExceptions > 0 ? Math.round((resolvedCount / totalExceptions) * 100) : 100}%.
+Internal procedures including training manuals and vendor certification programs are active and version-controlled.
+    `.trim();
+  }
 
   return {
     auditId: `FA-AUDIT-${Date.now().toString().slice(-6)}`,
     importer: {
-      name: filings[0]?.shipment.importerName || "Platform Importer of Record",
-      cbpNumber: "CBP-99-1234567",
-      address: "123 Importer Way, Los Angeles, CA 90001",
+      name: importerName,
+      cbpNumber: cbpNumber || "",
+      address: addressStr || "",
     },
     periodCovered: {
       from: params.periodFrom,
@@ -165,4 +240,16 @@ export async function assembleFocusedAssessmentFile(
     },
     remediationNarrative,
   };
+}
+
+function formatAddress(addressVal: any): string {
+  if (!addressVal) return "";
+  if (typeof addressVal === "string") return addressVal;
+  const parts: string[] = [];
+  if (addressVal.street) parts.push(String(addressVal.street));
+  if (addressVal.city) parts.push(String(addressVal.city));
+  if (addressVal.state) parts.push(String(addressVal.state));
+  if (addressVal.zip) parts.push(String(addressVal.zip));
+  if (addressVal.country) parts.push(String(addressVal.country));
+  return parts.join(", ");
 }

@@ -31,6 +31,7 @@ export async function POST() {
       action: "permissions.sync",
       entity: "Permission",
       entityId: "catalogue",
+      source: "UI",
       metadata: {
         permissionsCreated: result.permissionsCreated,
         grantsAdded: result.grantsAdded.map((g) => `${g.roleName}:${g.permission}`),

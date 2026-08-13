@@ -48,7 +48,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     })),
     requestId,
   });
-}, { permission: "users.manage" });
+});
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, updateUserSchema, requestId);
@@ -57,7 +57,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   try {
     const role = await db.role.findFirst({
       where: { name: bodyVal.data.roleName, OR: [{ accountId: ctx.accountId }, { accountId: null }] },
-    });
+});
 
     if (!role) {
       return buildErrorResponse(400, "INVALID_INPUT", "Invalid role specified", undefined, requestId);
@@ -111,6 +111,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "USER_INVITED",
       entity: "Invitation",
       entityId: invitation.id,
+      source: "UI",
       metadata: { invitedEmail: bodyVal.data.email, roleName: role.name },
       success: true,
     });
@@ -128,7 +129,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to invite user", undefined, requestId);
   }
-}, { permission: "users.manage" });
+});
 
 const patchUserSchema = z
   .object({
@@ -151,7 +152,7 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   try {
     const membership = await db.accountMembership.findFirst({
       where: { id: membershipId, accountId: ctx.accountId },
-    });
+});
 
     if (!membership) {
       return buildErrorResponse(404, "NOT_FOUND", "Membership not found", undefined, requestId);
@@ -197,6 +198,7 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "MEMBERSHIP_UPDATED",
       entity: "AccountMembership",
       entityId: membershipId,
+      source: "UI",
       metadata: { roleNames, status },
       success: true,
     });
@@ -205,4 +207,5 @@ export const PATCH = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to update membership", undefined, requestId);
   }
-}, { permission: "users.manage" });
+
+}, { permission: "users.manage", write: true });

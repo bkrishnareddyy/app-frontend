@@ -22,7 +22,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { name, irsEin, cbpImporterNumber, address, bondId, clientId } = body;
 
   if (!name || !cbpImporterNumber) {
-    return NextResponse.json({ error: "Name and cbpImporterNumber are required" }, { status: 400 });
+    return NextResponse.json({ error: "Name and cbpImporterNumber are required" });
   }
 
   if (clientId) {
@@ -43,7 +43,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       clientId: clientId || null,
     },
     include: { bond: true, client: true },
-  });
+});
 
   await createAuditLog({
     accountId: ctx.accountId,
@@ -51,8 +51,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "importer.create",
     entity: "ImporterOfRecord",
     entityId: importer.id,
+    source: "UI",
     metadata: { name, cbpImporterNumber },
   });
 
   return NextResponse.json({ importerOfRecord: importer }, { status: 201 });
-}, { write: true });
+
+}, { permission: "parties.manage", write: true });

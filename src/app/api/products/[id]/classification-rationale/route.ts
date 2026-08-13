@@ -151,4 +151,4 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, params, 
       : null,
     requestId,
   });
-}, { permission: "products.read" });
+});

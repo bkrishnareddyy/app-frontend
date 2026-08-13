@@ -25,10 +25,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       lineItems: { orderBy: { lineNumber: "asc" } },
       exceptionItems: { where: { status: { not: "Resolved" } } },
     },
-  });
+});
 
   if (!shipment) {
-    return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+    return NextResponse.json({ error: "Shipment not found" });
   }
 
   // Build DocumentGroup[] from extracted fields stored by the extraction pipeline.
@@ -198,4 +198,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     blockingIssues: blockingCount,
     issues: remainingOpen,
   });
-}, { write: true });
+
+}, { permission: "shipments.manage", write: true });

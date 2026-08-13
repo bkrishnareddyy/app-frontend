@@ -22,9 +22,10 @@ const dbMock = {
 };
 
 const getAccountContext = vi.fn();
+const hasPermission = vi.fn().mockResolvedValue(true);
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
-vi.mock("@/lib/auth", () => ({ getAccountContext }));
+vi.mock("@/lib/auth", () => ({ getAccountContext, hasPermission }));
 vi.mock("@/lib/audit", () => ({ createAuditLog: vi.fn() }));
 
 const { canWrite, denyReadOnly, READ_ONLY_MESSAGE } = await import("@/lib/api/write-access");

@@ -76,4 +76,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       "x-request-id": requestId,
     },
   });
-});
+
+}, { permission: "ai.use", write: true });

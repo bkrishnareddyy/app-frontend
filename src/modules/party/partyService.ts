@@ -31,7 +31,7 @@
 import type { Party, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { DomainError } from "@/lib/api/error";
 import { screenPartyName } from "@/lib/screening/dpsScreening";
 import { buildPartyOrderBy, buildPartyWhere, partySkip, type PartyQuery } from "./partyQuery";
@@ -661,9 +661,10 @@ export async function createParty(actor: PartyActor, input: CreatePartyInput): P
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "party.create",
+    action: AuditAction.PARTY_CREATED,
     entity: "Party",
     entityId: party.id,
+    source: "UI",
     metadata: { internalPartyCode: party.internalPartyCode, partyKind: party.partyKind },
     requestId: actor.requestId ?? null,
   });
@@ -699,9 +700,10 @@ export async function createParty(actor: PartyActor, input: CreatePartyInput): P
       await createAuditLog({
         accountId: actor.accountId,
         userId: actor.userId,
-        action: "party.screening.flagged",
+        action: AuditAction.PARTY_SCREENED,
         entity: "Party",
         entityId: party.id,
+        source: "UI",
         metadata: {
           partyName: primaryName.rawName,
           matchStatus: screening.matchStatus,
@@ -759,9 +761,10 @@ export async function updateParty(
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "party.update",
+    action: AuditAction.PARTY_UPDATED,
     entity: "Party",
     entityId: partyId,
+    source: "UI",
     metadata: {
       fields: Object.keys(fields),
       significance: highestSignificance(outcome.changes),
@@ -793,9 +796,10 @@ export async function archiveParty(actor: PartyActor, partyId: string): Promise<
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "party.archive",
+    action: AuditAction.PARTY_ARCHIVED,
     entity: "Party",
     entityId: partyId,
+    source: "UI",
     requestId: actor.requestId ?? null,
   });
 }

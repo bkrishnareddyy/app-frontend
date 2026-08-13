@@ -70,4 +70,35 @@ describe("applyAutoApprovalPolicy", () => {
       }
     });
   });
+
+  describe("AgentPolicyConfig per-account overrides", () => {
+    it("custom autoThreshold and confirmThreshold override default 85/60", () => {
+      const customConfig = { autoThreshold: 90, confirmThreshold: 70, requirePartMasterMatch: false };
+      // 85 confidence is default AUTO, but under custom config (autoThreshold=90, confirmThreshold=70) it becomes CONFIRM
+      expect(applyAutoApprovalPolicy(input({ confidence: 85 }), customConfig).outcome).toBe("CONFIRM");
+      // 90 confidence reaches autoThreshold=90 → AUTO
+      expect(applyAutoApprovalPolicy(input({ confidence: 90 }), customConfig).outcome).toBe("AUTO");
+      // 65 confidence was default CONFIRM (>=60), but under confirmThreshold=70 it becomes REVIEW
+      expect(applyAutoApprovalPolicy(input({ confidence: 65 }), customConfig).outcome).toBe("REVIEW");
+      // 70 confidence reaches confirmThreshold=70 → CONFIRM
+      expect(applyAutoApprovalPolicy(input({ confidence: 70 }), customConfig).outcome).toBe("CONFIRM");
+    });
+
+    it("requirePartMasterMatch=true forces REVIEW when part master match is missing even with 99% confidence", () => {
+      const customConfig = { autoThreshold: 85, confirmThreshold: 60, requirePartMasterMatch: true };
+      expect(
+        applyAutoApprovalPolicy(
+          input({ confidence: 99, partMasterMatch: false, partMasterHtsAgrees: false }),
+          customConfig
+        ).outcome
+      ).toBe("REVIEW");
+    });
+
+    it("custom policy id is preserved when provided in config", () => {
+      const customConfig = { id: "policy-override-123", autoThreshold: 80, confirmThreshold: 50 };
+      const res = applyAutoApprovalPolicy(input({ confidence: 80 }), customConfig);
+      expect(res.policyId).toBe("policy-override-123");
+      expect(res.outcome).toBe("AUTO");
+    });
+  });
 });

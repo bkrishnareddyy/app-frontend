@@ -64,6 +64,5 @@ export const POST = withAuthenticatedRoute<Params>(
     );
 
     return NextResponse.json({ lineItem: line, matchStatus: reached, requestId });
-  },
-  { permission: "products.edit", write: true }
-);
+
+}, { permission: "products.edit", write: true });

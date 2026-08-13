@@ -46,6 +46,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "classification.classify",
       entity: "ClassificationProposal",
       entityId: result.proposedClassification?.htsCode || "UNKNOWN",
+      source: "UI",
       metadata: { description: bodyVal.data.productDescription, status: result.status },
     });
 
@@ -57,6 +58,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
     return NextResponse.json(responsePayload);
   } catch (error: unknown) {
-    return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to classify product", undefined, requestId);
+    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Classification failed", undefined, requestId);
   }
+
 }, { permission: "classification.create", write: true });

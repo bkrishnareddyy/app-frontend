@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { ENTRY_TYPE_CODES, entryTypeVariants, normalizeEntryType } from "@/modules/filing/entryType";
 import { findMostSpecificMatch } from "@/lib/canonicalMessaging/wildcardLookup";
@@ -307,13 +307,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { shipmentId, entryType, filingType, customEntryNumber } = body;
 
   if (!shipmentId) {
-    return NextResponse.json({ error: "shipmentId is required" }, { status: 400 });
+    return NextResponse.json({ error: "shipmentId is required" });
   }
 
   const shipment = await db.shipment.findFirst({
     where: { id: shipmentId, accountId: ctx.accountId },
     include: { lineItems: true, documents: true },
-    });
+});
 
   if (!shipment) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
@@ -458,9 +458,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "customs_filing.create_draft",
+    action: AuditAction.FILING_CREATED,
     entity: "CustomsFiling",
     entityId: filing.id,
+    source: "UI",
     metadata: { entryNumber: filing.entryNumber, shipmentId, filingStatus: "Draft", destinationCountry },
   });
 
@@ -473,4 +474,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     },
     { status: 201 }
   );
-}, { write: true });
+
+}, { permission: "filings.create", write: true });

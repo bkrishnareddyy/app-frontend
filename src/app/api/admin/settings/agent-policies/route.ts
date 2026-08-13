@@ -45,7 +45,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     })),
     requestId,
   });
-}, { permission: "settings.manage" });
+});
 
 const upsertPolicySchema = z.object({
   agentName: z.string().min(1).max(100),
@@ -69,7 +69,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
   const existing = await db.agentPolicyConfig.findFirst({
     where: { accountId: ctx.accountId, agentName },
-  });
+});
 
   const data: Parameters<typeof db.agentPolicyConfig.create>[0]["data"] = {
     accountId: ctx.accountId,
@@ -95,6 +95,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: existing ? "AGENT_POLICY_UPDATED" : "AGENT_POLICY_CREATED",
     entity: "AgentPolicyConfig",
     entityId: policy.id,
+    source: "UI",
     metadata: {
       agentName,
       autoThreshold: policy.autoThreshold,
@@ -118,4 +119,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     },
     requestId,
   });
+
 }, { permission: "settings.manage", write: true });

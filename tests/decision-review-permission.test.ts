@@ -11,11 +11,21 @@ const dbMock = {
 };
 
 const getAccountContext = vi.fn();
+const hasPermission = vi.fn();
 const createAuditLog = vi.fn();
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
-vi.mock("@/lib/auth", () => ({ getAccountContext }));
-vi.mock("@/lib/audit", () => ({ createAuditLog }));
+vi.mock("@/lib/auth", () => ({ getAccountContext, hasPermission }));
+vi.mock("@/lib/audit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/audit")>();
+  return {
+    ...actual,
+    createAuditLog,
+  };
+});
+vi.mock("@/modules/shipment/reconciliationEngine", () => ({
+  ReconciliationEngine: { reconcileShipment: vi.fn().mockResolvedValue({}) },
+}));
 
 const { POST } = await import("@/app/api/decisions/route");
 
@@ -48,6 +58,7 @@ function ctx(permissions: string[], overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  hasPermission.mockResolvedValue(true);
   getAccountContext.mockResolvedValue(ctx(["decisions.approve", "decisions.override"]));
   dbMock.agentDecision.findFirst.mockResolvedValue({ ...OVERRIDE_DECISION });
   dbMock.agentDecision.updateMany.mockResolvedValue({ count: 1 });

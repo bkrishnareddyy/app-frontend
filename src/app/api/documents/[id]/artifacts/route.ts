@@ -113,6 +113,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
     action: "document.artifact.accessed",
     entity: "DocumentParseVersion",
     entityId: run.id,
+    source: "UI",
     metadata: {
       documentId: run.document.id,
       artifactType,

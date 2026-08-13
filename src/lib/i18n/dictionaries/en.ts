@@ -12,6 +12,7 @@ export const en = {
     decisions: "Decisions",
     exceptions: "Exceptions",
     customsFiling: "Customs Filing",
+    complianceMonitoring: "Compliance",
     regulatoryIntel: "Regulatory Intel",
     tariffSimulator: "Tariff Simulator",
     agents: "AI Agents",

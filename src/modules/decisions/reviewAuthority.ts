@@ -13,6 +13,12 @@ export const REVIEW_ACTIONS = {
   RE_EVALUATE: "In Progress",
 } as const;
 
+export const REVIEW_TRIAGE_STATES = {
+  APPROVE: "APPROVED",
+  REJECT: "REJECTED",
+  RE_EVALUATE: "IN_PROGRESS",
+} as const;
+
 export type ReviewAction = keyof typeof REVIEW_ACTIONS;
 
 export function isReviewAction(value: unknown): value is ReviewAction {

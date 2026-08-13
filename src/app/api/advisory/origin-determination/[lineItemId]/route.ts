@@ -15,10 +15,10 @@ export const POST = withAuthenticatedRoute<{ lineItemId: string }>(async ({ req,
       },
       origins: { include: { tradeAgreement: true } },
     },
-  });
+});
 
   if (!lineItem) {
-    return NextResponse.json({ error: "Shipment line item not found" }, { status: 404 });
+    return NextResponse.json({ error: "Shipment line item not found" });
   }
 
   const tradeAgreementCode = lineItem.origins[0]?.tradeAgreement.code;
@@ -56,8 +56,10 @@ export const POST = withAuthenticatedRoute<{ lineItemId: string }>(async ({ req,
     action: "advisory.origin.re-evaluated",
     entity: "ShipmentLineItem",
     entityId: lineItemId,
+    source: "UI",
     metadata: { result: result as unknown as Record<string, unknown> },
   });
 
   return NextResponse.json({ lineItemId, reevaluated: true, analysis: result });
-}, { permission: "documents.create", write: true });
+
+}, { permission: "ai.use", write: true });

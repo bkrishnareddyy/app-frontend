@@ -14,6 +14,7 @@ export const es: TranslationKeys = {
     decisions: "Decisiones de IA",
     exceptions: "Excepciones",
     customsFiling: "Declaración Aduanera",
+    complianceMonitoring: "Cumplimiento",
     regulatoryIntel: "Inteligencia Regulatoria",
     tariffSimulator: "Simulador de Tarifas",
     agents: "Agentes de IA",

@@ -17,7 +17,6 @@ export const POST = withAuthenticatedRoute<Params>(
 
     const role = await addRole(partyActor(ctx, requestId), path.data.id, body.data);
 
-    return NextResponse.json({ role, requestId }, { status: 201 });
-  },
-  { permission: "parties.edit", write: true }
-);
+    return NextResponse.json({ role, requestId });
+
+}, { permission: "parties.edit", write: true });

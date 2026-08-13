@@ -16,7 +16,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import {
   DocumentParserError,
   isDocumentParserError,
@@ -149,9 +149,10 @@ export async function enqueueDocumentParse(input: EnqueueParseInput): Promise<{
     await createAuditLog({
       accountId: input.accountId,
       userId: null,
-      action: "document.processing.queued",
+      action: AuditAction.DOCUMENT_QUEUED,
       entity: "DocumentParseVersion",
       entityId: run.id,
+      source: "SYSTEM",
       metadata: {
         documentId: input.documentId,
         profile,
@@ -279,9 +280,10 @@ async function submitRun(
     await createAuditLog({
       accountId: run.document.accountId,
       userId: null,
-      action: "document.processing.submitted",
+      action: AuditAction.DOCUMENT_STORED,
       entity: "DocumentParseVersion",
       entityId: run.id,
+      source: "SYSTEM",
       metadata: {
         documentId: run.documentId,
         profile,
@@ -458,9 +460,10 @@ async function finishRun(
   await createAuditLog({
     accountId: run.document.accountId,
     userId: null,
-    action: finalState === "SUCCEEDED" ? "document.processing.completed" : "document.processing.needs_review",
+    action: finalState === "SUCCEEDED" ? AuditAction.DOCUMENT_CLASSIFIED : AuditAction.DOCUMENT_UPLOADED,
     entity: "DocumentParseVersion",
     entityId: run.id,
+    source: "SYSTEM",
     metadata: {
       documentId: run.documentId,
       profile,
@@ -526,6 +529,7 @@ async function queueOcrRetry(run: DueRun, profile: ProcessingProfile): Promise<b
       action: "document.processing.ocr_retry",
       entity: "DocumentParseVersion",
       entityId: enqueued.runId ?? run.id,
+      source: "SYSTEM",
       metadata: { documentId: run.documentId, supersedingRunId: run.id, profile },
       correlationId: run.correlationId,
     });
@@ -570,6 +574,7 @@ async function handleRunFailure(
     action: "document.processing.failed",
     entity: "DocumentParseVersion",
     entityId: run.id,
+    source: "SYSTEM",
     metadata: {
       documentId: run.documentId,
       stage,
@@ -719,6 +724,7 @@ async function tryAutoMatchShipment(run: DueRun): Promise<string | null> {
     action: "document.auto_matched",
     entity: "ShipmentDocument",
     entityId: run.documentId,
+    source: "SYSTEM",
     metadata: { shipmentId: matchedShipmentId, algorithmVersion: "v1-exact-identifier" },
     correlationId: run.correlationId,
   });

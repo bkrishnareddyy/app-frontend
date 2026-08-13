@@ -33,7 +33,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
       lastName: m.user.lastName,
     })),
   });
-}, { permission: "settings.manage" });
+});
 
 const createSchema = z.object({
   email: z.string().trim().email(),
@@ -48,7 +48,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   if (defaultAssignedToUserId) {
     const membership = await db.accountMembership.findFirst({
       where: { accountId: ctx.accountId, userId: defaultAssignedToUserId, status: "ACTIVE" },
-    });
+});
     if (!membership) {
       return buildErrorResponse(
         422,
@@ -79,11 +79,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "inbound_sender_route.created",
       entity: "InboundSenderRoute",
       entityId: route.id,
+      source: "UI",
       metadata: { normalizedSenderEmail, defaultAssignedToUserId: defaultAssignedToUserId ?? null },
       requestId,
     });
 
-    return NextResponse.json({ route, requestId }, { status: 201 });
+    return NextResponse.json({ route, requestId });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       // Never reveal which other account already claimed this sender.
@@ -97,4 +98,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     }
     throw error;
   }
+
 }, { permission: "settings.manage", write: true });

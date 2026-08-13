@@ -12,7 +12,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { name, targetType } = body;
 
   if (!name) {
-    return NextResponse.json({ error: "Name is required for screening" }, { status: 400 });
+    return NextResponse.json({ error: "Name is required for screening" });
   }
 
   const cleanName = name.trim().toLowerCase();
@@ -33,7 +33,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         matchedParty: null,
         listSource: null,
       },
-    });
+});
 
     await createAuditLog({
       accountId: ctx.accountId,
@@ -41,6 +41,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       action: "screening.dps",
       entity: "ScreeningLog",
       entityId: emptyListLog.id,
+      source: "UI",
       metadata: { targetName: name, matchStatus: "INDETERMINATE", matchScore: 0 },
     });
 
@@ -107,6 +108,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "screening.dps",
     entity: "ScreeningLog",
     entityId: log.id,
+    source: "UI",
     metadata: { targetName: name, matchStatus, matchScore: maxScore },
   });
 
@@ -131,4 +133,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       publishDate: log.publishDate,
     },
   });
-}, { write: true });
+
+}, { permission: "ai.use", write: true });

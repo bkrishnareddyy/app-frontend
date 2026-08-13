@@ -1,5 +1,5 @@
 import { Decimal } from "./decimal";
-import { calculateDutyStack, calculateMPF, calculateHMF } from "./dutyEngine";
+import { calculateDutyStack, calculateMPF, calculateHMF, DutyRateInput } from "./dutyEngine";
 
 export interface LandedCostBreakdown {
   productCost: Decimal;       // FOB value
@@ -33,7 +33,7 @@ export interface LandedCostInput {
 /**
  * Calculates landed cost breakdown (Task D-1, D-2)
  */
-export function computeLandedCost(input: LandedCostInput): LandedCostBreakdown {
+export function computeLandedCost(input: LandedCostInput, ratesInput?: DutyRateInput | null): LandedCostBreakdown {
   const qty = new Decimal(input.quantity || 1);
   const prodCost = new Decimal(input.productCost);
   const freight = new Decimal(input.freight || 0);
@@ -52,7 +52,7 @@ export function computeLandedCost(input: LandedCostInput): LandedCostBreakdown {
       totalValue: customsVal.toNumber(),
       countryOfOrigin: input.countryOfOrigin,
     },
-    {
+    ratesInput ?? {
       generalDutyRate: "2.8%",
       section301Applicable: input.countryOfOrigin === "CN",
       section301Tranche: "List3",

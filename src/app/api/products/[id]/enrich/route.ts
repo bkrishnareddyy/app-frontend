@@ -65,7 +65,7 @@ export const POST = withAuthenticatedRoute<Params>(async ({ ctx, params, request
       brand: true,
       model: true,
     },
-  });
+});
 
   const activeAttributes = product
     ? await db.productAttribute.findMany({
@@ -158,4 +158,5 @@ export const POST = withAuthenticatedRoute<Params>(async ({ ctx, params, request
     enrichmentNotes: parsed.enrichmentNotes ?? null,
     requestId,
   });
-});
+
+}, { permission: "products.edit", write: true });

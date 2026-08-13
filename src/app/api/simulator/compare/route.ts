@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { computeLandedCost } from "@/lib/tariff/landedCost";
+import { loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+import { Decimal, roundToCents } from "@/lib/tariff/decimal";
 import { z } from "zod";
 
 const compareSchema = z.object({
@@ -12,7 +14,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const body = await req.json();
   const parsed = compareSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Provide between 1 and 5 scenarioIds to compare." }, { status: 400 });
+    return NextResponse.json({ error: "Provide between 1 and 5 scenarioIds to compare." });
   }
 
   const { scenarioIds } = parsed.data;
@@ -24,13 +26,19 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
         include: { htsCode: true },
       },
     },
-  });
+});
+
+  // Load HTS duty rates from the database for all line items across all scenarios
+  const allLineItems = scenariosData.flatMap((sc) => sc.lineItems).map((item) => ({
+    htsCode: item.htsCode.htsNumberDisplay,
+  }));
+  const htsCodesMap = await loadHtsCodesMap(allLineItems);
 
   const compared = scenariosData.map((sc) => {
-    let totalDuty = 0;
-    let totalMpf = 0;
-    let totalHmf = 0;
-    let totalLandedCost = 0;
+    let totalDutyDec = new Decimal(0);
+    let totalMpfDec = new Decimal(0);
+    let totalHmfDec = new Decimal(0);
+    let totalLandedCostDec = new Decimal(0);
 
     for (const item of sc.lineItems) {
       const breakdown = computeLandedCost({
@@ -40,34 +48,36 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
         countryOfOrigin: sc.originCountry,
         freight: Number(item.freightCost),
         insurance: Number(item.insuranceCost),
-      });
+      }, htsCodesMap[item.htsCode.htsNumberDisplay]);
 
-      totalDuty += breakdown.baseDuty.plus(breakdown.section301).plus(breakdown.section232).toNumber();
-      totalMpf += breakdown.mpf.toNumber();
-      totalHmf += breakdown.hmf.toNumber();
-      totalLandedCost += breakdown.total.toNumber();
+      totalDutyDec = totalDutyDec.plus(breakdown.baseDuty).plus(breakdown.section301).plus(breakdown.section232);
+      totalMpfDec = totalMpfDec.plus(breakdown.mpf);
+      totalHmfDec = totalHmfDec.plus(breakdown.hmf);
+      totalLandedCostDec = totalLandedCostDec.plus(breakdown.total);
     }
 
     return {
       id: sc.id,
       name: sc.name,
       originCountry: sc.originCountry,
-      totalDuty: Math.round(totalDuty * 100) / 100,
-      totalMpf: Math.round(totalMpf * 100) / 100,
-      totalHmf: Math.round(totalHmf * 100) / 100,
-      totalLandedCost: Math.round(totalLandedCost * 100) / 100,
+      totalDuty: roundToCents(totalDutyDec).toNumber(),
+      totalMpf: roundToCents(totalMpfDec).toNumber(),
+      totalHmf: roundToCents(totalHmfDec).toNumber(),
+      totalLandedCost: roundToCents(totalLandedCostDec).toNumber(),
     };
   });
 
   // Calculate savings matrix compared to the most expensive scenario
   const maxLandedCost = Math.max(...compared.map((c) => c.totalLandedCost));
+  const maxLandedCostDec = new Decimal(maxLandedCost);
   const savingsMatrix = compared.map((c) => ({
     scenarioId: c.id,
-    savingsDelta: Math.max(0, maxLandedCost - c.totalLandedCost),
+    savingsDelta: roundToCents(Decimal.max(0, maxLandedCostDec.minus(new Decimal(c.totalLandedCost)))).toNumber(),
   }));
 
   return NextResponse.json({
     scenarios: compared,
     savingsMatrix,
   });
-});
+
+}, { permission: "intel.read", write: true });

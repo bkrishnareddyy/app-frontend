@@ -73,7 +73,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     fileName: file.name,
     byteSize: file.size,
     bytes: fileBuffer,
-  });
+});
   if (scan.verdict === "QUARANTINE") {
     await createAuditLog({
       accountId,
@@ -81,6 +81,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "document.upload.quarantined",
       entity: "ShipmentDocument",
       entityId: "unpersisted",
+      source: "UI",
       metadata: { fileName: file.name, byteSize: file.size, reason: scan.reason },
       correlationId,
       requestId,
@@ -115,8 +116,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       targetShipmentId = await resolveTenantShipmentId(accountId, shipmentIdParam);
     } catch (err) {
       if (err instanceof ShipmentResolutionError) {
-        return NextResponse.json(
-          { error: err.code, message: err.message, requestId },
+        return NextResponse.json({ error: err.code, message: err.message, requestId },
           { status: shipmentResolutionStatus(err.code) }
         );
       }
@@ -166,6 +166,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       : "document.upload.parked",
     entity: "ShipmentDocument",
     entityId: docRecord.id,
+    source: "UI",
     metadata: {
       fileName: file.name,
       docType: resolvedDocType,
@@ -260,6 +261,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: "DOCUMENT_UPLOADED",
     entity: "ShipmentDocument",
     entityId: docRecord.id,
+    source: "UI",
     metadata: {
       fileName: file.name,
       docType: resolvedDocType,
@@ -285,4 +287,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     },
     { status: 202 }
   );
+
 }, { permission: "documents.create", write: true });

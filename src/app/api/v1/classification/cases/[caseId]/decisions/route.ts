@@ -26,15 +26,14 @@ export const POST = withAuthenticatedRoute<{ caseId: string }>(
       } = body;
 
       if (!approvedHtsNodeId || !decisionStatus || !rationale) {
-        return NextResponse.json(
-          { error: "approvedHtsNodeId, decisionStatus, and rationale are required" },
+        return NextResponse.json({ error: "approvedHtsNodeId, decisionStatus, and rationale are required" },
           { status: 400 }
         );
       }
 
       // E-3: if the decision differs from current, changeReason is required
       if (decisionStatus !== "REJECTED" && !changeReason && !rationale) {
-        return NextResponse.json({ error: "changeReason or rationale is required" }, { status: 400 });
+        return NextResponse.json({ error: "changeReason or rationale is required" });
       }
 
       const decision = await ClassificationCaseEngine.recordDecision({
@@ -48,12 +47,11 @@ export const POST = withAuthenticatedRoute<{ caseId: string }>(
         overrideReason,
         changeReason,
         isRollback: Boolean(isRollback),
-      });
+});
 
       return NextResponse.json({ decision }, { status: 201 });
     } catch (error: unknown) {
       return handleApiError(error);
     }
-  },
-  { permission: "classification.approve", write: true }
-);
+  
+}, { permission: "classification.approve", write: true });

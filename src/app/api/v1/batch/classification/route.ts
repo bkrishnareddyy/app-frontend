@@ -3,7 +3,7 @@ import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { ClassificationCaseEngine } from "@/modules/classification/classificationCaseEngine";
-import { applyAutoApprovalPolicy } from "@/modules/decisions/autoApprovalPolicy";
+import { applyAutoApprovalPolicy, getAgentPolicyConfig } from "@/modules/decisions/autoApprovalPolicy";
 
 const MAX_BATCH = 100;
 
@@ -13,7 +13,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     const { productIds } = body as { productIds?: string[] };
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
-      return NextResponse.json({ error: "productIds array is required" }, { status: 400 });
+      return NextResponse.json({ error: "productIds array is required" });
     }
 
     if (productIds.length > MAX_BATCH) {
@@ -33,7 +33,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         const approvedClassification = await db.productClassification.findFirst({
           where: { productId, accountId: ctx.accountId, status: "APPROVED" },
           select: { id: true },
-        });
+});
 
         if (approvedClassification) {
           skipped.push(productId);
@@ -75,12 +75,17 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
           void runResult;
 
           // Apply routing policy for immediate status update
-          const policy = applyAutoApprovalPolicy({
-            confidence: null, // not known yet; worker will update
-            partMasterMatch: false,
-            partMasterHtsAgrees: false,
-            agentName: "batch-classification",
-          });
+          const policyConfig = await getAgentPolicyConfig(ctx.accountId, "HTS Classification Agent");
+          const policy = applyAutoApprovalPolicy(
+            {
+              confidence: null, // not known yet; worker will update
+              partMasterMatch: false,
+              partMasterHtsAgrees: false,
+              agentName: "batch-classification",
+              policyConfig,
+            },
+            policyConfig
+          );
 
           if (policy.outcome === "REVIEW") {
             await db.classificationCase.update({
@@ -100,4 +105,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}, { write: true });
+
+}, { permission: "classification.create", write: true });

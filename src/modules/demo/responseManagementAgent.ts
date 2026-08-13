@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { logAgentError } from "../agents/agentLogger";
 
 export interface PostEntryRefundOpportunity {
@@ -108,9 +108,10 @@ export class ResponseManagementAgent {
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
-          action: "AGENT_EXECUTION_COMPLETED",
+          action: AuditAction.AGENT_EXECUTION_COMPLETED,
           entity: "AGENT_DECISION",
           entityId: agentDecisionId,
+          source: "SYSTEM",
           metadata: {
             agentName: "Response Agent",
             hasEntryNumber: Boolean(input.entryNumber),

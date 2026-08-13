@@ -40,8 +40,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "bond.create",
       entity: "Bond",
       entityId: result.bond.id,
+      source: "UI",
       metadata: { bondNumber: result.bond.bondNumber, amount: result.bond.bondAmount },
-    });
+});
 
     const responsePayload = { bond: result.bond, metadata: result.metadata, requestId };
 
@@ -56,4 +57,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     }
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to create bond", undefined, requestId);
   }
+
 }, { permission: "bonds.manage", write: true });

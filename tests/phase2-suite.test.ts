@@ -16,12 +16,12 @@ import {
 describe("Tariff engine: statutory fee bounds", () => {
   it("applies the MPF floor to small entries", () => {
     // 0.3464% of $1,000 is $3.46, below the statutory minimum.
-    expect(calculateMPF(1000)).toBe(MPF_MINIMUM);
+    expect(calculateMPF(1000)).toBe(MPF_MINIMUM.toNumber());
   });
 
   it("applies the MPF ceiling to large entries", () => {
     // Unclamped this would be $3,464 on a $1M entry.
-    expect(calculateMPF(1_000_000)).toBe(MPF_MAXIMUM);
+    expect(calculateMPF(1_000_000)).toBe(MPF_MAXIMUM.toNumber());
   });
 
   it("charges the rate between the floor and the ceiling", () => {
@@ -101,7 +101,7 @@ describe("Tariff engine: entry level aggregation", () => {
     const result = computeFilingTariff(lines as never);
 
     const mpfLine = result.dutyBreakdown.find((f) => f.feeName.includes("MPF"));
-    expect(mpfLine?.amount).toBe(MPF_MAXIMUM);
+    expect(mpfLine?.amount).toBe(MPF_MAXIMUM.toNumber());
   });
 
   it("counts lines with no resolvable rate so a total is never mistaken for complete", () => {

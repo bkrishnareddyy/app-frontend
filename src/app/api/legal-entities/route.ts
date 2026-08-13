@@ -35,7 +35,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
   const val = createLegalEntitySchema.safeParse(body);
   if (!val.success) {
-    return NextResponse.json({ error: "Invalid payload", details: val.error.format() }, { status: 400 });
+    return NextResponse.json({ error: "Invalid payload", details: val.error.format() });
   }
 
   const data = val.data;
@@ -70,7 +70,8 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       client: true,
       customsProfiles: true,
     },
-  });
+});
 
   return NextResponse.json({ legalEntity: entity }, { status: 201 });
-});
+
+}, { permission: "parties.manage", write: true });

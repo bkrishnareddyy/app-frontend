@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -39,10 +39,10 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const existingPsc = await db.postSummaryCorrection.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!existingPsc) {
-    return NextResponse.json({ error: "PSC not found" }, { status: 404 });
+    return NextResponse.json({ error: "PSC not found" });
   }
 
   const updateData: import("@prisma/client").Prisma.PostSummaryCorrectionUpdateInput = {};
@@ -68,11 +68,13 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "psc.update",
+    action: AuditAction.REFUND_PSC_UPDATED,
     entity: "PostSummaryCorrection",
     entityId: id,
+    source: "UI",
     metadata: { newStatus: status || existingPsc.status },
   });
 
   return NextResponse.json({ psc: updatedPsc });
-}, { write: true });
+
+}, { permission: "refunds.manage", write: true });

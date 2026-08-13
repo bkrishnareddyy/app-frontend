@@ -12,7 +12,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // This used to fall back to findFirst() and write issue rows against whichever
   // shipment came back, so a request with no id reconciled an arbitrary shipment.
   if (typeof shipmentId !== "string" || shipmentId.trim() === "") {
-    return NextResponse.json({ error: "shipmentId is required" }, { status: 400 });
+    return NextResponse.json({ error: "shipmentId is required" });
   }
 
   const targetShipmentId = shipmentId;
@@ -23,7 +23,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       documents: true,
       lineItems: true,
     },
-    });
+});
 
   if (!shipment) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
@@ -115,6 +115,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "reconciliation.run",
     entity: "ReconciliationIssue",
     entityId: targetShipmentId,
+    source: "UI",
     metadata: { openIssueCount: openIssues.length, resolvedCount: staleIds.length },
   });
 
@@ -139,4 +140,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       issues: openIssues,
     },
   });
-}, { write: true });
+
+}, { permission: "shipments.manage", write: true });

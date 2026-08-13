@@ -41,10 +41,10 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const existingClaim = await db.drawbackClaim.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!existingClaim) {
-    return NextResponse.json({ error: "Drawback claim not found" }, { status: 404 });
+    return NextResponse.json({ error: "Drawback claim not found" });
   }
 
   const updateData: import("@prisma/client").Prisma.DrawbackClaimUpdateInput = {};
@@ -68,8 +68,10 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     action: "drawback.claim_update",
     entity: "DrawbackClaim",
     entityId: id,
+    source: "UI",
     metadata: { newStatus: status || existingClaim.status },
   });
 
   return NextResponse.json({ drawbackClaim: updatedClaim });
-}, { write: true });
+
+}, { permission: "drawback.claim", write: true });

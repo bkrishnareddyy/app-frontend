@@ -35,7 +35,7 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
     const [shipment, document] = await Promise.all([
       db.shipment.findFirst({
         where: { id: shipmentId, accountId: ctx.accountId },
-        }),
+      }),
       db.shipmentDocument.findFirst({ where: { id: documentId, accountId: ctx.accountId } }),
     ]);
 
@@ -208,4 +208,5 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
   } catch (error: unknown) {
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to save field review", undefined, requestId);
   }
-});
+
+}, { permission: "shipments.manage", write: true });

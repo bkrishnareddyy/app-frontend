@@ -22,7 +22,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     userId,
     surface: "document-intake",
     requestId,
-  });
+});
   if (refused) return refused;
 
   const contentType = req.headers.get("content-type") || "";
@@ -33,8 +33,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   // file proxy refuses to fetch. A caller-supplied fileUrl is not accepted
   // either: the proxy later fetches stored URLs with the storage credential.
   if (!contentType.includes("multipart/form-data")) {
-    return NextResponse.json(
-      {
+    return NextResponse.json({
         error: "FILE_REQUIRED",
         message:
           "Document intake requires a multipart/form-data upload containing the file to read.",
@@ -109,4 +108,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     success: true,
     result,
   });
-}, { write: true });
+
+}, { permission: "ai.use", write: true });

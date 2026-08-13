@@ -8,7 +8,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // Resolve target shipment
   const targetShipmentId = body.shipmentId;
   if (!targetShipmentId) {
-    return NextResponse.json({ error: "Shipment ID is required" }, { status: 400 });
+    return NextResponse.json({ error: "Shipment ID is required" });
   }
 
   // Dispatch to PG Queue for background orchestration
@@ -24,7 +24,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       },
     },
     totalSteps: 10,
-  });
+});
 
   return NextResponse.json({
     success: true,
@@ -32,4 +32,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     jobId: job.id,
     result: { status: "processing", shipmentId: targetShipmentId },
   });
-}, { write: true });
+
+}, { permission: "ai.use", write: true });

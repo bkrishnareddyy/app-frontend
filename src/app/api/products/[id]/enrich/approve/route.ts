@@ -38,7 +38,7 @@ export const POST = withAuthenticatedRoute<Params>(
     const product = await db.product.findFirst({
       where: { id: productId, accountId: ctx.accountId, deletedAt: null },
       select: { id: true, productName: true },
-    });
+});
 
     if (product === null) {
       return buildErrorResponse(404, "PRODUCT_NOT_FOUND", "No such product.", undefined, requestId);
@@ -80,6 +80,7 @@ export const POST = withAuthenticatedRoute<Params>(
       action: "product.enrich.approve",
       entity: "Product",
       entityId: productId,
+      source: "UI",
       metadata: {
         productName: product.productName,
         applied: body.data.approvedSuggestions.length,
@@ -88,8 +89,7 @@ export const POST = withAuthenticatedRoute<Params>(
       },
     });
 
-    return NextResponse.json(
-      {
+    return NextResponse.json({
         applied: body.data.approvedSuggestions.length,
         evidenceId: evidence.id,
         changes: allChanges,
@@ -98,6 +98,5 @@ export const POST = withAuthenticatedRoute<Params>(
       },
       { status: 201 }
     );
-  },
-  { permission: "products.edit", write: true }
-);
+  
+}, { permission: "products.classification.approve", write: true });

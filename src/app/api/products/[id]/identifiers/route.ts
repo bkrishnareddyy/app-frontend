@@ -18,9 +18,8 @@ export const POST = withAuthenticatedRoute<Params>(
     const identifier = await addIdentifier(productActor(ctx, requestId), path.data.id, {
       ...body.data,
       issuerPartyId: body.data.issuerPartyId ?? null,
-    });
+});
 
-    return NextResponse.json({ identifier, requestId }, { status: 201 });
-  },
-  { permission: "products.edit", write: true }
-);
+    return NextResponse.json({ identifier, requestId });
+  
+}, { permission: "products.edit", write: true });

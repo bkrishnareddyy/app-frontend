@@ -1,12 +1,18 @@
 import { db } from "./db";
 import { headers } from "next/headers";
+import { AuditAction } from "./audit/auditActions";
+
+export { AuditAction };
+export type AuditSource = "UI" | "CHAT" | "SYSTEM" | "API";
 
 export interface CreateAuditLogParams {
   accountId: string;
   userId?: string | null;
-  action: string;
+  action: AuditAction | string;
   entity: string;
   entityId: string;
+  /** Provenance source: "UI" (default), "CHAT" (copilot), "SYSTEM" (cron/worker), "API" (external API) */
+  source?: AuditSource | string | null;
   metadata?: Record<string, unknown> | null;
   /** Snapshot of the record BEFORE the mutation (for immutable evidence trail). */
   beforeJson?: Record<string, unknown> | null;
@@ -51,9 +57,10 @@ export async function createAuditLog(params: CreateAuditLogParams) {
       data: {
         accountId: params.accountId,
         userId: params.userId ?? null,
-        action: params.action,
+        action: String(params.action),
         entity: params.entity,
         entityId: params.entityId,
+        source: params.source ?? "UI",
         metadata: params.metadata ? JSON.parse(JSON.stringify(params.metadata)) : undefined,
         ipAddress: ipAddress || null,
         userAgent: userAgent || null,

@@ -14,10 +14,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
 
   const update = await db.regulatoryUpdate.findUnique({
     where: { id },
-  });
+});
 
   if (!update) {
-    return NextResponse.json({ error: "Regulatory Update not found" }, { status: 404 });
+    return NextResponse.json({ error: "Regulatory Update not found" });
   }
 
   // Parse affected HTS codes from metadata
@@ -73,4 +73,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       estimatedDutyDelta: result.estimatedDutyDelta,
     },
   });
-});
+
+}, { permission: "regulatory.review", write: true });

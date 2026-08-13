@@ -39,6 +39,7 @@ export const GET = withAuthenticatedRoute<{ filingId: string }>(async ({ ctx, pa
     action: "FOCUSED_ASSESSMENT_ACCESSED",
     entity: "CustomsFiling",
     entityId: filingId,
+    source: "UI",
     metadata: { entryNumber: filing.entryNumber },
   });
 
@@ -48,4 +49,4 @@ export const GET = withAuthenticatedRoute<{ filingId: string }>(async ({ ctx, pa
     reasonableCarePackage: rcPackage,
     focusedAssessment: faFile,
   });
-}, { permission: "documents.read" });
+});

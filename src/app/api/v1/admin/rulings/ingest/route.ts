@@ -5,7 +5,7 @@ import { CrossIngestionService, RULING_TYPES } from "@/modules/regulatory/crossI
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   if (!ctx.isPlatformAdmin) {
-    return NextResponse.json({ error: "Platform Admin privileges required for CROSS ruling ingestion" }, { status: 403 });
+    return NextResponse.json({ error: "Platform Admin privileges required for CROSS ruling ingestion" });
   }
 
   try {
@@ -41,10 +41,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       fragments,
       accountId: ctx.accountId,
       userId: ctx.userId,
-    });
+});
 
     return NextResponse.json({ ruling, status: "INGESTED" }, { status: 201 });
   } catch (error: unknown) {
     return handleApiError(error);
   }
-});
+
+}, { permission: "settings.manage", write: true });

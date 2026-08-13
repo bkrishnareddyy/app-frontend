@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 
 /** The two CROSS ruling types. */
 export const RULING_TYPES = ["HQ", "NY"] as const;
@@ -73,9 +73,10 @@ export class CrossIngestionService {
       await createAuditLog({
         accountId: input.accountId,
         userId: input.userId,
-        action: "regulatory.ruling.ingest",
+        action: AuditAction.REGULATORY_RULING_INGESTED,
         entity: "Ruling",
         entityId: ruling.id,
+        source: "UI",
         metadata: { rulingNumber: input.rulingNumber, htsCodes: input.htsCodes },
       });
     }

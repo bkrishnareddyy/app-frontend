@@ -17,7 +17,6 @@ export const POST = withAuthenticatedRoute<Params>(
 
     const relationship = await addRelationship(partyActor(ctx, requestId), path.data.id, body.data);
 
-    return NextResponse.json({ relationship, requestId }, { status: 201 });
-  },
-  { permission: "parties.edit", write: true }
-);
+    return NextResponse.json({ relationship, requestId });
+
+}, { permission: "parties.edit", write: true });

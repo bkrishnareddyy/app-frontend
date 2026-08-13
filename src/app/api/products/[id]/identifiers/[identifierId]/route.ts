@@ -19,6 +19,5 @@ export const DELETE = withAuthenticatedRoute<Params>(
 
     await removeIdentifier(productActor(ctx, requestId), path.data.id, path.data.identifierId);
     return NextResponse.json({ removed: true, requestId });
-  },
-  { permission: "products.edit", write: true }
-);
+
+}, { permission: "products.edit", write: true });

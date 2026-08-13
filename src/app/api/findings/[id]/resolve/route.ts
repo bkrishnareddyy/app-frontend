@@ -20,15 +20,14 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   // An absent status used to default to "Resolved", so an empty body closed the
   // finding, and any string at all was written straight through.
   if (typeof status !== "string" || !FINDING_STATUSES.includes(status)) {
-    return NextResponse.json(
-      { error: `status must be one of ${FINDING_STATUSES.join(", ")}` },
+    return NextResponse.json({ error: `status must be one of ${FINDING_STATUSES.join(", ")}` },
       { status: 400 }
     );
   }
 
   const finding = await db.complianceFinding.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!finding) {
     return NextResponse.json({ error: "Compliance finding not found" }, { status: 404 });
@@ -63,8 +62,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     action: "finding.resolve",
     entity: "ComplianceFinding",
     entityId: id,
+    source: "UI",
     metadata: { newStatus, notes },
   });
 
   return NextResponse.json({ finding: updatedFinding });
-}, { write: true });
+
+}, { permission: "exceptions.resolve", write: true });

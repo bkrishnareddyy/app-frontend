@@ -24,10 +24,8 @@ export const POST = withAuthenticatedRoute<Params>(
 
     const outcome = await addRegistration(partyActor(ctx, requestId), path.data.id, body.data);
 
-    return NextResponse.json(
-      { changes: outcome.changes, raisedFlags: outcome.raisedFlags, requestId },
+    return NextResponse.json({ changes: outcome.changes, raisedFlags: outcome.raisedFlags, requestId },
       { status: 201 }
     );
-  },
-  { permission: "parties.edit", write: true }
-);
+
+}, { permission: "parties.edit", write: true });

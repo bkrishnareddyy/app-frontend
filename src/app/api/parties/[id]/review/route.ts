@@ -32,6 +32,5 @@ export const POST = withAuthenticatedRoute<Params>(
     );
 
     return NextResponse.json({ party, requestId });
-  },
-  { permission: "parties.edit", write: true }
-);
+
+}, { permission: "parties.review.approve", write: true });

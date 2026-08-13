@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { determineOrigin } from "@/lib/origin/originEngine";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
@@ -9,7 +9,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { shipmentLineItemId, tradeAgreementCode, claimedCountry } = body;
 
   if (!shipmentLineItemId) {
-    return NextResponse.json({ error: "shipmentLineItemId is required" }, { status: 400 });
+    return NextResponse.json({ error: "shipmentLineItemId is required" });
   }
 
   const lineItem = await db.shipmentLineItem.findFirst({
@@ -23,7 +23,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         },
       },
     },
-  });
+});
 
   if (!lineItem) {
     return NextResponse.json({ error: "Shipment line item not found" }, { status: 404 });
@@ -98,9 +98,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "advisory.origin.determined",
+    action: AuditAction.ORIGIN_DETERMINED,
     entity: "ShipmentLineItem",
     entityId: shipmentLineItemId,
+    source: "UI",
     metadata: {
       tradeAgreementCode,
       qualifies: result.qualifies,
@@ -115,4 +116,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     determination: originDetermination,
     analysis: result,
   });
-}, { permission: "documents.create", write: true });
+
+}, { permission: "ai.use", write: true });

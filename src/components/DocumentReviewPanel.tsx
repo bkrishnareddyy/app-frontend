@@ -47,10 +47,11 @@ type RollupCategory = "VERIFIED" | "REVIEW" | "BLOCKED";
 interface RollupDecision {
   id: string;
   status: string;
+  triageState?: string | null;
   proposedDescription?: string | null;
 }
 
-function classifyDecision(d: { status: string; proposedDescription?: string | null }): RollupCategory {
+function classifyDecision(d: { status: string; triageState?: string | null; proposedDescription?: string | null }): RollupCategory {
   const triage = triageDecision(d);
   if (triage === "blocked") return "BLOCKED";
   if (triage === "verified") return "VERIFIED";
@@ -336,6 +337,8 @@ export interface ReviewDecision {
   agentName?: string | null;
   /** Required: the narrative renderer branches on it and the pill displays it. */
   status: string;
+  triageState?: string | null;
+  proposedDescription?: string | null;
   /** Required: `latestPerAgent` keeps the most recent row per agent by this. */
   createdAt: string | Date;
   decisionSummary?: string | null;

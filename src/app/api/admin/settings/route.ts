@@ -5,4 +5,4 @@ import { getSettingsAuditData } from "@/lib/admin/auditData";
 export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   const data = await getSettingsAuditData(ctx);
   return NextResponse.json({ accountName: ctx.accountName, ...data, requestId });
-}, { permission: "settings.manage" });
+});

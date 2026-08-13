@@ -3,6 +3,8 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { computeLandedCost } from "@/lib/tariff/landedCost";
+import { loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+import { Decimal, roundToCents } from "@/lib/tariff/decimal";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -19,17 +21,23 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
         include: { htsCode: true },
       },
     },
-  });
+});
 
   if (!scenario) {
-    return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
+    return NextResponse.json({ error: "Scenario not found" });
   }
 
+  // Load HTS duty rates from the database for the scenario's line items
+  const allLineItems = scenario.lineItems.map((item) => ({
+    htsCode: item.htsCode.htsNumberDisplay,
+  }));
+  const htsCodesMap = await loadHtsCodesMap(allLineItems);
+
   const lineCalculations = [];
-  let totalCustomsValue = 0;
-  let totalDuty = 0;
-  let totalFees = 0;
-  let totalLandedCost = 0;
+  let totalCustomsValueDec = new Decimal(0);
+  let totalDutyDec = new Decimal(0);
+  let totalFeesDec = new Decimal(0);
+  let totalLandedCostDec = new Decimal(0);
 
   for (const item of scenario.lineItems) {
     // Run Landed Cost breakdown computation
@@ -40,12 +48,12 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       countryOfOrigin: scenario.originCountry,
       freight: Number(item.freightCost),
       insurance: Number(item.insuranceCost),
-    });
+    }, htsCodesMap[item.htsCode.htsNumberDisplay]);
 
-    totalCustomsValue += breakdown.customsValue.toNumber();
-    totalDuty += breakdown.baseDuty.plus(breakdown.section301).plus(breakdown.section232).toNumber();
-    totalFees += breakdown.mpf.plus(breakdown.hmf).toNumber();
-    totalLandedCost += breakdown.total.toNumber();
+    totalCustomsValueDec = totalCustomsValueDec.plus(breakdown.customsValue);
+    totalDutyDec = totalDutyDec.plus(breakdown.baseDuty.plus(breakdown.section301).plus(breakdown.section232));
+    totalFeesDec = totalFeesDec.plus(breakdown.mpf.plus(breakdown.hmf));
+    totalLandedCostDec = totalLandedCostDec.plus(breakdown.total);
 
     // Update database row with computed values
     await db.landedCostScenarioLineItem.update({
@@ -65,19 +73,32 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       },
     });
 
+    const customsValNum = breakdown.customsValue.toNumber();
+    const effectiveRateStr = customsValNum > 0
+      ? `${(breakdown.baseDuty.plus(breakdown.section301).dividedBy(breakdown.customsValue).times(100)).toNumber().toFixed(1)}%`
+      : "0.0%";
+
     lineCalculations.push({
       id: item.id,
       description: item.description,
       htsCode: item.htsCode.htsNumberDisplay,
-      customsValue: breakdown.customsValue.toNumber(),
+      customsValue: customsValNum,
       baseDuty: breakdown.baseDuty.toNumber(),
       section301: breakdown.section301.toNumber(),
-      totalEffectiveDutyRate: `${((breakdown.baseDuty.plus(breakdown.section301).toNumber() / breakdown.customsValue.toNumber()) * 100).toFixed(1)}%`,
+      totalEffectiveDutyRate: effectiveRateStr,
       duty: breakdown.baseDuty.plus(breakdown.section301).plus(breakdown.section232).toNumber(),
       freightCost: breakdown.freightToUSPort.toNumber(),
       insuranceCost: breakdown.insuranceToUSPort.toNumber(),
     });
   }
+
+  const roundedCustomsValue = roundToCents(totalCustomsValueDec);
+  const roundedDuty = roundToCents(totalDutyDec);
+  const roundedFees = roundToCents(totalFeesDec);
+  const roundedLandedCost = roundToCents(totalLandedCostDec);
+
+  const mpfSplit = roundToCents(roundedFees.times(0.7)).toNumber();
+  const hmfSplit = roundToCents(roundedFees.times(0.3)).toNumber();
 
   return NextResponse.json({
     calculation: {
@@ -85,14 +106,15 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       scenarioName: scenario.name,
       originCountry: scenario.originCountry,
       destinationPort: scenario.destinationPort,
-      totalCustomsValue,
-      totalDuty,
-      totalFees,
-      feeBreakdown: { mpfAmount: totalFees * 0.7, hmfAmount: totalFees * 0.3 }, // illustrative split
-      totalLandedCost,
+      totalCustomsValue: roundedCustomsValue.toNumber(),
+      totalDuty: roundedDuty.toNumber(),
+      totalFees: roundedFees.toNumber(),
+      feeBreakdown: { mpfAmount: mpfSplit, hmfAmount: hmfSplit }, // illustrative split
+      totalLandedCost: roundedLandedCost.toNumber(),
       unratedLineCount: 0,
-      effectiveLandedMultiplier: totalCustomsValue > 0 ? (totalLandedCost / totalCustomsValue).toFixed(4) : null,
+      effectiveLandedMultiplier: roundedCustomsValue.gt(0) ? roundedLandedCost.dividedBy(roundedCustomsValue).toFixed(4) : null,
       lineCalculations,
     },
   });
-});
+
+}, { permission: "intel.read", write: true });

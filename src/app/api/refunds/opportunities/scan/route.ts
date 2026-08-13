@@ -3,7 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { determineOrigin } from "@/lib/origin/originEngine";
-import { calculateDutyStack } from "@/lib/tariff/dutyEngine";
+import { calculateDutyStack, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { Decimal } from "@/lib/tariff/decimal";
 
 export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
@@ -35,10 +35,31 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     });
   }
 
+  // Load HTS duty rates from the database for all line items across all filings
+  const allLineItems = filings.flatMap((f) => f.shipment.lineItems).map((item) => ({
+    htsCode: item.htsCode,
+  }));
+  const htsCodesMap = await loadHtsCodesMap(allLineItems);
+
   const opportunitiesCreated = [];
 
   for (const filing of filings) {
     for (const item of filing.shipment.lineItems) {
+      const htsRateInput = item.htsCode ? htsCodesMap[item.htsCode] : null;
+      const stack = calculateDutyStack(
+        {
+          htsCode: item.htsCode,
+          totalValue: Number(item.totalValue || 0),
+          countryOfOrigin: item.countryOfOrigin,
+        },
+        htsRateInput ?? {
+          generalDutyRate: "2.8%",
+          section301Applicable: item.countryOfOrigin === "CN",
+          section301Tranche: "List3",
+        },
+        "hts_rel_v1"
+      );
+
       // 1. check SECTION_301_EXCLUSION: if CN origin and description matches active exclusion Hts
       const isChina = item.countryOfOrigin.toUpperCase() === "CN";
       if (isChina) {
@@ -57,7 +78,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
                 accountId,
                 filingId: filing.id,
                 opportunityType: "SECTION_301_EXCLUSION",
-                estimatedRefundAmount: new Decimal(Number(item.totalValue || 0) * 0.075), // 7.5% section 301 refund
+                estimatedRefundAmount: stack.section301, // real Section 301 duty paid
                 confidence: 95,
                 basis: {
                   reason: "Product description matches Section 301 retroactive exclusion language.",
@@ -102,7 +123,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
                 accountId,
                 filingId: filing.id,
                 opportunityType: "TRADE_AGREEMENT",
-                estimatedRefundAmount: new Decimal(Number(item.totalValue || 0) * 0.028), // preferential duty savings
+                estimatedRefundAmount: stack.base, // real base duty to recover under USMCA
                 confidence: 88,
                 basis: {
                   reason: "Product qualifies for preferential USMCA duty rate but was entered under general rate.",
@@ -125,6 +146,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     action: "DUTY_RECOVERY_SCAN_RUN",
     entity: "Account",
     entityId: accountId,
+    source: "UI",
     metadata: {
       opportunitiesCreated: opportunitiesCreated.length,
     },
@@ -141,4 +163,5 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     })),
     message: `Scan complete. Found and created ${opportunitiesCreated.length} refund opportunities.`,
   });
-}, { permission: "documents.create", write: true });
+
+}, { permission: "refunds.manage", write: true });

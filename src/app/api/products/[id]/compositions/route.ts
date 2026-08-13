@@ -19,10 +19,8 @@ export const POST = withAuthenticatedRoute<Params>(
 
     // Composition always bears on classification and origin, so a caller adding
     // a material should expect flags back and is told so here.
-    return NextResponse.json(
-      { changes: outcome.changes, raisedFlags: outcome.raisedFlags, requestId },
+    return NextResponse.json({ changes: outcome.changes, raisedFlags: outcome.raisedFlags, requestId },
       { status: 201 }
     );
-  },
-  { permission: "products.edit", write: true }
-);
+
+}, { permission: "products.edit", write: true });

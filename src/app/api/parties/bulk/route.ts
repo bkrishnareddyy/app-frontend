@@ -21,6 +21,5 @@ export const POST = withAuthenticatedRoute(
 
     const result = await bulkCreateParties(partyActor(ctx, requestId), body.data.items);
     return NextResponse.json({ result, requestId });
-  },
-  { permission: "parties.create", write: true }
-);
+
+}, { permission: "parties.edit", write: true });

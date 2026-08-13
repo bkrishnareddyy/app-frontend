@@ -60,7 +60,7 @@ export const POST = withAuthenticatedRoute<Params>(
         accountId: ctx.accountId,
       },
       select: { id: true },
-    });
+});
 
     if (canonicalProduct === null) {
       return buildErrorResponse(
@@ -105,7 +105,6 @@ export const POST = withAuthenticatedRoute<Params>(
       metadata: { productId: path.data.id, canonicalProductId: body.data.canonicalProductId, aliasName: body.data.aliasName },
     });
 
-    return NextResponse.json({ alias, requestId }, { status: 201 });
-  },
-  { permission: "products.edit", write: true }
-);
+    return NextResponse.json({ alias, requestId });
+  
+}, { permission: "products.edit", write: true });

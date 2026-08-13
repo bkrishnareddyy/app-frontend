@@ -8,7 +8,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { importerOfRecordId, periodFrom, periodTo, entryIds } = body;
 
   if (!periodFrom || !periodTo) {
-    return NextResponse.json({ error: "periodFrom and periodTo are required" }, { status: 400 });
+    return NextResponse.json({ error: "periodFrom and periodTo are required" });
   }
 
   // Import focused assessment module
@@ -19,7 +19,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     periodFrom,
     periodTo,
     entryIds,
-  });
+});
 
   // Write AuditTimeline event record
   if (entryIds?.[0]) {
@@ -44,6 +44,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "FOCUSED_ASSESSMENT_ASSEMBLED",
     entity: "FocusedAssessment",
     entityId: faFile.auditId,
+    source: "UI",
     metadata: {
       periodCovered: faFile.periodCovered,
       totalEntries: faFile.entryPopulation.total,
@@ -51,4 +52,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 
   return NextResponse.json({ defenseFile: faFile });
-}, { permission: "documents.create", write: true });
+
+}, { permission: "audits.read", write: true });

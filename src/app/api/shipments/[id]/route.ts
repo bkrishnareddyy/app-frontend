@@ -48,10 +48,10 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
-    });
+});
 
   if (!shipment) {
-    return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+    return NextResponse.json({ error: "Shipment not found" });
   }
 
   // Handle Destination Country update. Validated against the ISO 3166-1
@@ -264,4 +264,5 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const updatedCanonical = await CanonicalShipmentService.getCanonicalState(id);
   return NextResponse.json(updatedCanonical);
-});
+
+}, { permission: "shipments.manage", write: true });

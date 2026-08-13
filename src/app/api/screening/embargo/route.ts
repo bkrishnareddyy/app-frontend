@@ -12,8 +12,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   // No rules loaded means nothing was checked. "CLEARED" would be a false all-clear.
   if (rules.length === 0) {
-    return NextResponse.json(
-      {
+    return NextResponse.json({
         embargoResult: {
           countryOfOrigin,
           isEmbargoed: null,
@@ -47,8 +46,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "screening.embargo",
     entity: "EmbargoRule",
     entityId: ctx.accountId,
+    source: "UI",
     metadata: { countryOfOrigin, isEmbargoed, matchedCount: matchedRules.length },
-  });
+});
 
   return NextResponse.json({
     embargoResult: {
@@ -59,4 +59,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       actionRequired: isEmbargoed ? "Obtain specific OFAC/CBP authorization license before entry filing." : "None",
     },
   });
-}, { write: true });
+
+}, { permission: "ai.use", write: true });

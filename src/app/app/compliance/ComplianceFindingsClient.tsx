@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -134,6 +134,9 @@ export function ComplianceFindingsClient({ findings, recentAudits }: ComplianceF
   const [runningAudit, setRunningAudit] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditSuccess, setAuditSuccess] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportSuccessUrl, setExportSuccessUrl] = useState<string | null>(null);
   const [showAudits, setShowAudits] = useState(false);
 
   const openFindings = findings.filter((f) => f.status !== "Resolved");
@@ -172,6 +175,28 @@ export function ComplianceFindingsClient({ findings, recentAudits }: ComplianceF
     }
   }
 
+  async function handleExportCompliance() {
+    setExporting(true);
+    setExportError(null);
+    setExportSuccessUrl(null);
+    try {
+      const res = await fetch("/api/audit/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Export failed.");
+      }
+      setExportSuccessUrl(data.downloadUrl);
+      window.open(data.downloadUrl, "_blank");
+    } catch (err: unknown) {
+      setExportError(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const criticalCount = grouped.CRITICAL.length;
   const highCount = grouped.HIGH.length;
 
@@ -202,15 +227,27 @@ export function ComplianceFindingsClient({ findings, recentAudits }: ComplianceF
             </span>
           )}
         </div>
-        <Button
-          variant="secondary"
-          onClick={handleRunAudit}
-          loading={runningAudit}
-          disabled={runningAudit}
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Run Compliance Audit
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={handleRunAudit}
+            loading={runningAudit}
+            disabled={runningAudit}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Run Compliance Audit
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={handleExportCompliance}
+            loading={exporting}
+            disabled={exporting}
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export Compliance Record
+          </Button>
+        </div>
       </div>
 
       {auditError && (
@@ -222,6 +259,19 @@ export function ComplianceFindingsClient({ findings, recentAudits }: ComplianceF
         <p role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
           {auditSuccess}
         </p>
+      )}
+      {exportError && (
+        <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          {exportError}
+        </p>
+      )}
+      {exportSuccessUrl && (
+        <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+          <span>Compliance export successfully generated and uploaded.</span>
+          <a href={exportSuccessUrl} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+            Click here to download if it did not start automatically
+          </a>
+        </div>
       )}
 
       {/* Open findings grouped by severity */}

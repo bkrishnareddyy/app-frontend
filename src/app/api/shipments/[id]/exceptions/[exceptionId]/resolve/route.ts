@@ -20,10 +20,10 @@ export const POST = withAuthenticatedRoute<{ id: string; exceptionId: string }>(
     const exception = await db.exceptionItem.findFirst({
       where: { id: exceptionId, shipmentId: id },
       omit: { resolutionReasonCode: true },
-    });
+});
 
     if (!exception) {
-      return NextResponse.json({ error: "Exception item not found" }, { status: 404 });
+      return NextResponse.json({ error: "Exception item not found" });
     }
 
     await db.exceptionItem.update({
@@ -50,5 +50,5 @@ export const POST = withAuthenticatedRoute<{ id: string; exceptionId: string }>(
     // The internal message stays in the log rather than going back to the caller.
     return NextResponse.json({ error: "Failed to resolve exception" }, { status: 500 });
   }
-});
 
+}, { permission: "shipments.manage", write: true });

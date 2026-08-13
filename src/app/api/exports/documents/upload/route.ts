@@ -8,7 +8,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { exportShipmentId, docType, fileName } = body;
 
   if (!exportShipmentId || !fileName) {
-    return NextResponse.json({ error: "exportShipmentId and fileName are required" }, { status: 400 });
+    return NextResponse.json({ error: "exportShipmentId and fileName are required" });
   }
 
   const exportDoc = await db.exportDocument.create({
@@ -20,7 +20,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       fileUrl: `/uploads/exports/${fileName}`,
       status: "Verified",
     },
-  });
+});
 
   await createAuditLog({
     accountId: ctx.accountId,
@@ -28,8 +28,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "export.document_upload",
     entity: "ExportDocument",
     entityId: exportDoc.id,
+    source: "UI",
     metadata: { fileName },
   });
 
   return NextResponse.json({ exportDocument: exportDoc }, { status: 201 });
-}, { write: true });
+
+}, { permission: "documents.create", write: true });

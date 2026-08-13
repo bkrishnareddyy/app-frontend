@@ -22,4 +22,5 @@ export const POST = withAuthenticatedRoute<{ caseId: string }>(async ({ ctx, req
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}, { write: true });
+
+}, { permission: "classification.create", write: true });

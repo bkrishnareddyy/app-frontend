@@ -33,7 +33,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
         contactEmail: bodyVal.data.contactEmail?.trim() || null,
         contactPhone: bodyVal.data.contactPhone?.trim() || null,
       },
-    });
+});
 
     await createAuditLog({
       accountId: ctx.accountId,
@@ -41,11 +41,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "client.create",
       entity: "Client",
       entityId: client.id,
+      source: "UI",
       metadata: { name: client.name },
     });
 
-    return NextResponse.json({ client, requestId }, { status: 201 });
+    return NextResponse.json({ client, requestId });
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to create client", undefined, requestId);
   }
-});
+
+}, { permission: "parties.manage", write: true });

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { authenticateApiKey, apiKeyHasScope } from "@/lib/api/api-key-auth";
 import { generateRequestId } from "@/lib/api/error";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 
 const lineItemSchema = z.object({
   lineNumber: z.number().int().positive(),
@@ -147,6 +148,17 @@ export async function POST(req: Request): Promise<Response> {
       });
     }
   }
+
+  await createAuditLog({
+    accountId: apiCtx.accountId,
+    userId: null,
+    action: AuditAction.INTAKE_SHIPMENT_CREATED,
+    entity: "Shipment",
+    entityId: shipment.id,
+    source: "API",
+    metadata: { externalReference, sourceSystem, lineItemCount: lineItems.length },
+    requestId,
+  });
 
   return NextResponse.json(
     {

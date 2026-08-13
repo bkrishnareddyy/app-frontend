@@ -30,6 +30,7 @@ export type ActionItem =
       agentName: string;
       decisionSummary: string | null;
       status: string;
+      triageState?: string | null;
       proposedDescription: string | null;
       createdAt: string | Date;
       documentId: string | null;

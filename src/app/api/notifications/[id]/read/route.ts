@@ -14,11 +14,12 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const result = await db.notification.updateMany({
     where: { id, userId: ctx.userId, accountId: ctx.accountId },
     data: { read: true },
-  });
+});
 
   if (result.count === 0) {
-    return NextResponse.json({ error: "Notification not found", requestId }, { status: 404 });
+    return NextResponse.json({ error: "Notification not found", requestId });
   }
 
   return NextResponse.json({ requestId });
-});
+
+}, { permission: "users.read", write: true });

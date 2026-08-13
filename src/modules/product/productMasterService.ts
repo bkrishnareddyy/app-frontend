@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { normalizeClassificationCode } from "@/modules/product/productNormalization";
 
 export interface CreateCanonicalProductInput {
@@ -48,9 +48,10 @@ export class ProductMasterService {
     await createAuditLog({
       accountId: input.accountId,
       userId: input.userId,
-      action: "product.canonical.create",
+      action: AuditAction.PRODUCT_CREATED,
       entity: "CanonicalProduct",
       entityId: product.id,
+      source: "UI",
       metadata: { canonicalName: input.canonicalName, sku: input.sku },
     });
 
@@ -143,9 +144,10 @@ export class ProductMasterService {
     await createAuditLog({
       accountId: input.accountId,
       userId: input.userId,
-      action: "product.canonical.bind_classification",
+      action: AuditAction.PRODUCT_CLASSIFIED,
       entity: "CanonicalProduct",
       entityId: canonicalProduct.id,
+      source: "UI",
       metadata: {
         decisionId: input.decisionId,
         approvedHtsCode: htsCode,

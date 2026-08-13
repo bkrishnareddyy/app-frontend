@@ -12,6 +12,9 @@ vi.mock("../../src/lib/db", () => {
         create: vi.fn(),
         update: vi.fn(),
       },
+      htsChange: {
+        findMany: vi.fn(),
+      },
       product: {
         findMany: vi.fn(),
       },
@@ -55,9 +58,21 @@ describe("Capability B — Policy Impact Tests", () => {
       { id: "lot_1", entryNumber: "ENT-201", htsCode: "8541.43.0010", availableQty: new Decimal(50) },
     ];
 
+    const mockHtsChanges = [
+      {
+        changeType: "RATE_CHANGED",
+        changedFields: {
+          htsNumber: "8541.43.0010",
+          oldRate: "2.8%",
+          newRate: "5.8%",
+        },
+      },
+    ];
+
     vi.mocked(db.product.findMany).mockResolvedValue(mockProducts as any);
     vi.mocked(db.shipment.findMany).mockResolvedValue(mockShipments as any);
     vi.mocked(db.drawbackLot.findMany).mockResolvedValue(mockLots as any);
+    vi.mocked(db.htsChange.findMany).mockResolvedValue(mockHtsChanges as any);
 
     const result = await computeRegulatoryImpact("acc_1", ["8541.43.0010"]);
 
@@ -65,8 +80,8 @@ describe("Capability B — Policy Impact Tests", () => {
     expect(result.shipmentsAffectedCount).toBe(1);
     expect(result.lotsAffectedCount).toBe(1);
     
-    // Duty delta: 10000 * 0.017 = 170.00
-    expect(result.estimatedDutyDelta).toBe(170);
+    // Duty delta: 10000 * (0.058 - 0.028) = 10000 * 0.03 = 300.00
+    expect(result.estimatedDutyDelta).toBe(300);
   });
 });
 

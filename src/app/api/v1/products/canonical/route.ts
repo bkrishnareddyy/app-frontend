@@ -9,7 +9,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     const { canonicalName, sku, partNumber, manufacturer, countryOfOrigin, htsCode, dutyRate, aliases } = body;
 
     if (!canonicalName) {
-      return NextResponse.json({ error: "canonicalName is required" }, { status: 400 });
+      return NextResponse.json({ error: "canonicalName is required" });
     }
 
     const product = await ProductMasterService.createCanonicalProduct({
@@ -23,10 +23,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       htsCode,
       dutyRate,
       aliases,
-    });
+});
 
     return NextResponse.json({ product }, { status: 201 });
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}, { write: true });
+
+}, { permission: "products.create", write: true });

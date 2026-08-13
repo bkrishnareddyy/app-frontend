@@ -717,6 +717,7 @@ function categorize(item: ActionItem): TriageCategory {
   // Delegate to the single source of truth in decisionState.ts.
   return triageDecision({
     status: item.status,
+    triageState: item.triageState ?? item.raw.triageState,
     proposedDescription: item.proposedDescription,
   });
 }

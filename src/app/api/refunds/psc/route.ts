@@ -3,8 +3,9 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { checkPscEligibility } from "@/lib/refunds/pscEligibility";
+import { Decimal } from "@/lib/tariff/decimal";
 import { z } from "zod";
 
 const createPscSchema = z.object({
@@ -37,6 +38,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
   const { originalFilingId, refundOpportunityId, reason, correctionType, originalDutyAmount, correctedDutyAmount } = bodyVal.data;
 
+  if (refundOpportunityId) {
+    const opp = await db.refundOpportunity.findFirst({
+      where: { id: refundOpportunityId, accountId: ctx.accountId },
+});
+    if (!opp) {
+      return buildErrorResponse(404, "NOT_FOUND", "Refund opportunity not found", undefined, requestId);
+    }
+  }
+
   // 1. Fetch filing
   const filing = await db.customsFiling.findFirst({
     where: { id: originalFilingId, accountId: ctx.accountId },
@@ -53,13 +63,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   }
 
   // 3. Confirm actual duty paid is available (Task D-1)
-  const origDuty = originalDutyAmount !== undefined ? originalDutyAmount : (filing.totalDuties ? Number(filing.totalDuties) : null);
-  if (origDuty === null) {
+  const origDutyDec = originalDutyAmount !== undefined 
+    ? new Decimal(originalDutyAmount) 
+    : (filing.totalDuties ? new Decimal(filing.totalDuties) : null);
+  if (origDutyDec === null) {
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", "PSC calculation requires actual duty paid from accepted filing data.", undefined, requestId);
   }
 
-  const corrDuty = correctedDutyAmount;
-  const refundAmount = Math.max(0, origDuty - corrDuty);
+  const corrDutyDec = new Decimal(correctedDutyAmount);
+  const refundAmountDec = Decimal.max(0, origDutyDec.minus(corrDutyDec));
 
   const psc = await db.postSummaryCorrection.create({
     data: {
@@ -68,9 +80,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       refundOpportunityId,
       reason: reason ?? "Post-Summary Correction",
       correctionType: correctionType ?? "classification",
-      originalDutyAmount: origDuty,
-      correctedDutyAmount: corrDuty,
-      refundAmount,
+      originalDutyAmount: origDutyDec,
+      correctedDutyAmount: corrDutyDec,
+      refundAmount: refundAmountDec,
       status: "Draft",
       createdByUserId: ctx.userId,
     },
@@ -90,11 +102,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "psc.create",
+    action: AuditAction.REFUND_PSC_CREATED,
     entity: "PostSummaryCorrection",
     entityId: psc.id,
-    metadata: { originalFilingId, refundAmount },
+    source: "UI",
+    metadata: { originalFilingId, refundAmount: refundAmountDec.toNumber() },
   });
 
-  return NextResponse.json({ psc, requestId }, { status: 201 });
+  return NextResponse.json({ psc, requestId });
+
 }, { permission: "refunds.manage", write: true });

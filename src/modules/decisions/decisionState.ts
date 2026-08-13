@@ -122,17 +122,33 @@ export function actionableStatusVariants(): string[] {
   return [...variants];
 }
 
+export const ACTIONABLE_TRIAGE_STATES: readonly DecisionState[] = [
+  "NEEDS_REVIEW",
+  "BLOCKED",
+];
+
 /**
  * Normalizes and categorizes a decision for display purposes.
- * Returns the triaged category regardless of the raw status string.
+ * Uses triageState directly when present, falling back to legacy status normalization.
  */
 export type TriageCategory = "blocked" | "review" | "verified";
 
 export function triageDecision(decision: {
   status: string;
+  triageState?: string | null;
   proposedDescription?: string | null;
   reviewedByUserId?: string | null;
 }): TriageCategory {
+  // Authoritative server-computed triageState column if set
+  if (decision.triageState) {
+    const ts = decision.triageState;
+    if (ts === "BLOCKED" || ts === "REJECTED") return "blocked";
+    if (ts === "APPROVED" || ts === "AUTO_VERIFIED" || ts === "COMPLETED" || ts === "IN_PROGRESS") {
+      return "verified";
+    }
+    if (ts === "NEEDS_REVIEW") return "review";
+  }
+
   // The blocked sentinels are authoritative when written to proposedDescription:
   // they record that the agent actively declined to run, not a judgment call.
   if (

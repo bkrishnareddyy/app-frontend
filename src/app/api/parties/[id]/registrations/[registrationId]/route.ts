@@ -39,6 +39,5 @@ export const POST = withAuthenticatedRoute<Params>(
     );
 
     return NextResponse.json({ registration, requestId });
-  },
-  { permission: "parties.edit", write: true }
-);
+
+}, { permission: "parties.edit", write: true });

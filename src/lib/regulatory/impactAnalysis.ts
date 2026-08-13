@@ -72,15 +72,32 @@ export async function computeRegulatoryImpact(
     },
   });
 
-  // 4. Calculate estimated duty exposure delta using Decimal
+  // 4. Load HtsChange records to calculate real rate deltas
+  const rateChanges = await db.htsChange.findMany({
+    where: {
+      changeType: "RATE_CHANGED",
+    },
+  });
+
+  const rateDeltaByHts = new Map<string, Decimal>();
+  for (const change of rateChanges) {
+    const fields = change.changedFields as any;
+    if (fields && fields.htsNumber && affectedHtsCodes.includes(fields.htsNumber)) {
+      const oldRate = parseFloat((fields.oldRate || "0").replace("%", "")) / 100;
+      const newRate = parseFloat((fields.newRate || "0").replace("%", "")) / 100;
+      rateDeltaByHts.set(fields.htsNumber, new Decimal(newRate - oldRate));
+    }
+  }
+
+  // 5. Calculate estimated duty exposure delta using Decimal
   let totalDelta = new Decimal(0);
   const shipmentImpacts = openShipments.map((s) => {
     let shipDelta = new Decimal(0);
     s.lineItems.forEach((item) => {
       if (affectedHtsCodes.includes(item.htsCode)) {
         const customsVal = new Decimal(Number(item.totalValue || 0));
-        // Assume old rate is general 2.8% and new rate is 4.5% (represented as 1.7% delta)
-        const rateDelta = new Decimal(0.017); 
+        // Retrieve the real rate delta from the HtsChange mapping, fallback to 0.017 if not found
+        const rateDelta = rateDeltaByHts.get(item.htsCode) ?? new Decimal(0.017); 
         shipDelta = shipDelta.plus(customsVal.times(rateDelta));
       }
     });

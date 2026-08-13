@@ -20,6 +20,7 @@ import {
   type ExceptionRow,
   type DeadlineRow,
 } from "./workQueue";
+import { ACTIONABLE_TRIAGE_STATES } from "@/modules/decisions/decisionState";
 
 const ROW_CAP = 500; // per source — prevents loading the whole account
 
@@ -40,7 +41,10 @@ export async function loadWorkQueueForAccount(
     db.agentDecision.findMany({
       where: {
         accountId,
-        status: { in: [...DECISION_ACTIONABLE_STATUSES] },
+        OR: [
+          { triageState: { in: [...ACTIONABLE_TRIAGE_STATES] } },
+          { triageState: null, status: { in: [...DECISION_ACTIONABLE_STATUSES] } },
+        ],
         ...shipmentFilter,
       },
       select: {
@@ -48,6 +52,7 @@ export async function loadWorkQueueForAccount(
         agentName: true,
         decisionSummary: true,
         status: true,
+        triageState: true,
         proposedDescription: true,
         confidence: true,
         createdAt: true,
@@ -138,6 +143,7 @@ export async function loadWorkQueueForAccount(
     agentName: d.agentName,
     decisionSummary: d.decisionSummary,
     status: d.status,
+    triageState: d.triageState,
     proposedDescription: d.proposedDescription,
     confidence: d.confidence,
     createdAt: d.createdAt,

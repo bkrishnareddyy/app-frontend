@@ -141,8 +141,30 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
 
     // Create notifications for members with regulatory.review permissions (Task A-3)
     if (extracted.actionRequired) {
+      const { searchParams } = new URL(req.url);
+      const accountId = searchParams.get("accountId");
+
       // Fetch account users via memberships
-      const memberships = await db.accountMembership.findMany();
+      const memberships = await db.accountMembership.findMany({
+        where: {
+          status: "ACTIVE",
+          deletedAt: null,
+          ...(accountId ? { accountId } : {}),
+          roles: {
+            some: {
+              role: {
+                rolePermissions: {
+                  some: {
+                    permission: {
+                      name: "regulatory.review",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
 
       for (const m of memberships) {
         await db.notification.create({

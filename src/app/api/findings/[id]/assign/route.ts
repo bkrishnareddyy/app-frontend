@@ -17,10 +17,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
 
   const finding = await db.complianceFinding.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!finding) {
-    return NextResponse.json({ error: "Compliance finding not found" }, { status: 404 });
+    return NextResponse.json({ error: "Compliance finding not found" });
   }
 
   const updatedFinding = await db.complianceFinding.update({
@@ -38,8 +38,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     action: "finding.assign",
     entity: "ComplianceFinding",
     entityId: id,
+    source: "UI",
     metadata: { assignedToUserId: assignedToUserId || ctx.userId },
   });
 
   return NextResponse.json({ finding: updatedFinding });
-}, { write: true });
+
+}, { permission: "exceptions.resolve", write: true });

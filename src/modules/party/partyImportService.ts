@@ -24,7 +24,7 @@
 
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { DomainError } from "@/lib/api/error";
 import {
   parseCsv,
@@ -279,9 +279,10 @@ export async function commitImport(
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "party.import.commit",
+    action: AuditAction.PARTY_IMPORTED,
     entity: "Party",
     entityId: contentDigest,
+    source: "UI",
     metadata: {
       fileName,
       contentDigest,
@@ -464,9 +465,10 @@ export async function bulkCreateParties(
   await createAuditLog({
     accountId: actor.accountId,
     userId: actor.userId,
-    action: "party.bulk.create",
+    action: AuditAction.PARTY_IMPORTED,
     entity: "Party",
     entityId: actor.requestId ?? "bulk-create",
+    source: "UI",
     metadata: {
       counts,
       itemCount: items.length,

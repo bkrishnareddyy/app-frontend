@@ -54,8 +54,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       action: "drawback.claim_create",
       entity: "DrawbackClaim",
       entityId: result.claim.id,
+      source: "UI",
       metadata: { claimType: result.claim.claimType, totalRefund: result.claim.totalRefundClaimed },
-    });
+});
 
     const responsePayload = { drawbackClaim: result.claim, internalRef: result.internalClaimRef, requestId };
 
@@ -67,4 +68,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   } catch (error: unknown) {
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to create drawback claim", undefined, requestId);
   }
+
 }, { permission: "drawback.claim", write: true });

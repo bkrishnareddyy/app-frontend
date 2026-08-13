@@ -126,6 +126,33 @@ export default function SimulatorPage() {
     }
   };
 
+  const [baseDutyPct, setBaseDutyPct] = useState(0.028);
+  const [section301Pct, setSection301Pct] = useState(0.075);
+
+  useEffect(() => {
+    let active = true;
+    const fetchRates = async () => {
+      try {
+        const countryCode = newOrigin === "China" ? "CN" : newOrigin === "Vietnam" ? "VN" : newOrigin === "Mexico" ? "MX" : "IN";
+        const res = await fetch(`/api/v1/hts/codes/${encodeURIComponent(htsCode)}/rates?countryOfOrigin=${countryCode}&value=${unitCost * quantity}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!active) return;
+        if (data.dutyStack) {
+          const totalVal = unitCost * quantity;
+          const base = totalVal > 0 ? data.dutyStack.base / totalVal : 0.028;
+          const sec301 = totalVal > 0 ? data.dutyStack.section301 / totalVal : 0.0;
+          setBaseDutyPct(Number.isFinite(base) ? base : 0.028);
+          setSection301Pct(Number.isFinite(sec301) ? sec301 : 0.0);
+        }
+      } catch (err) {
+        console.error("Failed to fetch HTS rates in simulator UI:", err);
+      }
+    };
+    fetchRates();
+    return () => { active = false; };
+  }, [htsCode, newOrigin, unitCost, quantity]);
+
   const toggleSelectScenario = (id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -133,9 +160,6 @@ export default function SimulatorPage() {
   };
 
   // Client-side real-time calculation delta
-  const isChina = newOrigin === "China";
-  const baseDutyPct = 0.028; // 2.8% general rate
-  const section301Pct = isChina ? 0.075 : 0.0; // 7.5% China section 301
   const customsVal = unitCost * quantity;
   const calculatedDuty = customsVal * (baseDutyPct + section301Pct);
   const calculatedMpf = Math.max(25, Math.min(500, customsVal * 0.003464));
@@ -143,7 +167,8 @@ export default function SimulatorPage() {
   const calculatedTotal = customsVal + freight + insurance + calculatedDuty + calculatedMpf + calculatedHmf + inland;
 
   // Sourcing Breakeven Analysis (Task D-4)
-  const breakevenPoint = Math.round((freight * 1.5) / 0.075);
+  const section301Ref = section301Pct > 0 ? section301Pct : 0.075;
+  const breakevenPoint = Math.round((freight * 1.5) / section301Ref);
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto pb-12">

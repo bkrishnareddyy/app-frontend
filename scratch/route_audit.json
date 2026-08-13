@@ -1,0 +1,1218 @@
+[
+  {
+    "method": "PATCH",
+    "routePath": "/api/admin/account",
+    "file": "admin/account/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "account.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/roles",
+    "file": "admin/roles/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "roles.manage"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/admin/roles",
+    "file": "admin/roles/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "roles.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/agent-policies",
+    "file": "admin/settings/agent-policies/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/api-keys/[id]/revoke",
+    "file": "admin/settings/api-keys/[id]/revoke/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/api-keys",
+    "file": "admin/settings/api-keys/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/settings/webhooks",
+    "file": "admin/settings/webhooks/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/admin/users",
+    "file": "admin/users/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/admin/users",
+    "file": "admin/users/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/advisory/origin-determination/[lineItemId]",
+    "file": "advisory/origin-determination/[lineItemId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/advisory/origin-determination",
+    "file": "advisory/origin-determination/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/advisory/query",
+    "file": "advisory/query/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/agents/[agentId]",
+    "file": "agents/[agentId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/agents/orchestrate",
+    "file": "agents/orchestrate/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/assistant/chat",
+    "file": "assistant/chat/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/assistant/chats/[id]",
+    "file": "assistant/chats/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/assistant/chats/[id]",
+    "file": "assistant/chats/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/assistant/chats",
+    "file": "assistant/chats/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/audit/export",
+    "file": "audit/export/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "audits.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/audit/package",
+    "file": "audit/package/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "audits.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/audit/room",
+    "file": "audit/room/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "audits.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/auth/switch-account",
+    "file": "auth/switch-account/route.ts",
+    "isAuthRoute": false,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/bonds",
+    "file": "bonds/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/classification/classify",
+    "file": "classification/classify/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/clients",
+    "file": "clients/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/compliance/audits/run",
+    "file": "compliance/audits/run/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "audits.run"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/document-processing",
+    "file": "cron/document-processing/route.ts",
+    "isAuthRoute": false,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/hts-refresh",
+    "file": "cron/hts-refresh/route.ts",
+    "isAuthRoute": false,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/inbound-email-processing",
+    "file": "cron/inbound-email-processing/route.ts",
+    "isAuthRoute": false,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/cron/regulatory-ingest",
+    "file": "cron/regulatory-ingest/route.ts",
+    "isAuthRoute": false,
+    "hasPermission": true,
+    "permissionValue": "configured"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/decisions/bulk",
+    "file": "decisions/bulk/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "[\n    \"decisions.approve\",\n    \"decisions.reject\",\n    \"decisions.reevaluate\",\n    \"decisions.override\",\n    \"decisions.review\",\n  ]"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/decisions",
+    "file": "decisions/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "[\n    \"decisions.approve\",\n    \"decisions.reject\",\n    \"decisions.reevaluate\",\n    \"decisions.override\",\n    \"decisions.review\",\n  ]"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/demo/screening/dps",
+    "file": "demo/screening/dps/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/attach",
+    "file": "documents/[id]/attach/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/detach",
+    "file": "documents/[id]/detach/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/extractions",
+    "file": "documents/[id]/extractions/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "documents.create"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/documents/[id]/extractions",
+    "file": "documents/[id]/extractions/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/[id]/reprocess",
+    "file": "documents/[id]/reprocess/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/documents/upload",
+    "file": "documents/upload/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "documents.create"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/drawback/claims/[id]",
+    "file": "drawback/claims/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "drawback.claim"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/drawback/claims",
+    "file": "drawback/claims/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/drawback/match",
+    "file": "drawback/match/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "drawback.claim"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/exceptions/[id]",
+    "file": "exceptions/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "exceptions.resolve"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/exceptions/bulk",
+    "file": "exceptions/bulk/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "exceptions.resolve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/exports/documents/upload",
+    "file": "exports/documents/upload/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "documents.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/exports/shipments",
+    "file": "exports/shipments/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/approve",
+    "file": "filing/[id]/approve/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/cancel",
+    "file": "filing/[id]/cancel/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/resubmit",
+    "file": "filing/[id]/resubmit/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/filing/[id]",
+    "file": "filing/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "filings.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/transmit",
+    "file": "filing/[id]/transmit/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "filings.submit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing/[id]/validate",
+    "file": "filing/[id]/validate/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "filings.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/filing",
+    "file": "filing/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "filings.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/findings/[id]/assign",
+    "file": "findings/[id]/assign/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "exceptions.resolve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/findings/[id]/resolve",
+    "file": "findings/[id]/resolve/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "exceptions.resolve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/importers-of-record/[id]/poa",
+    "file": "importers-of-record/[id]/poa/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/importers-of-record",
+    "file": "importers-of-record/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/intake/agent",
+    "file": "intake/agent/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/legal-entities",
+    "file": "legal-entities/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/notifications/[id]/read",
+    "file": "notifications/[id]/read/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "users.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/notifications/read-all",
+    "file": "notifications/read-all/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "users.read"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/addresses/[addressId]",
+    "file": "parties/[id]/addresses/[addressId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/addresses",
+    "file": "parties/[id]/addresses/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/contacts/[contactId]",
+    "file": "parties/[id]/contacts/[contactId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/contacts",
+    "file": "parties/[id]/contacts/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/evidence",
+    "file": "parties/[id]/evidence/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/identifiers/[identifierId]",
+    "file": "parties/[id]/identifiers/[identifierId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/identifiers",
+    "file": "parties/[id]/identifiers/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/names/[nameId]",
+    "file": "parties/[id]/names/[nameId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/names",
+    "file": "parties/[id]/names/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/registrations/[registrationId]",
+    "file": "parties/[id]/registrations/[registrationId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/registrations",
+    "file": "parties/[id]/registrations/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/relationships/[relationshipId]",
+    "file": "parties/[id]/relationships/[relationshipId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/relationships",
+    "file": "parties/[id]/relationships/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/revalidation/[flagId]",
+    "file": "parties/[id]/revalidation/[flagId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/review",
+    "file": "parties/[id]/review/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/roles/[roleId]",
+    "file": "parties/[id]/roles/[roleId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/roles",
+    "file": "parties/[id]/roles/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/parties/[id]",
+    "file": "parties/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]",
+    "file": "parties/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/parties/[id]/sites/[siteId]",
+    "file": "parties/[id]/sites/[siteId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/[id]/sites",
+    "file": "parties/[id]/sites/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/bulk",
+    "file": "parties/bulk/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/import/commit",
+    "file": "parties/import/commit/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/import/preview",
+    "file": "parties/import/preview/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties/match",
+    "file": "parties/match/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/parties",
+    "file": "parties/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "parties.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/pga/screen",
+    "file": "pga/screen/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/platform-admin/accounts/[id]/deactivate",
+    "file": "platform-admin/accounts/[id]/deactivate/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "account.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/platform-admin/accounts",
+    "file": "platform-admin/accounts/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "account.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/adcvd-screen",
+    "file": "products/[id]/adcvd-screen/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/aliases/[aliasId]",
+    "file": "products/[id]/aliases/[aliasId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/aliases",
+    "file": "products/[id]/aliases/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/attributes/[attributeId]",
+    "file": "products/[id]/attributes/[attributeId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/attributes",
+    "file": "products/[id]/attributes/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/classifications/[classificationId]",
+    "file": "products/[id]/classifications/[classificationId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/classifications",
+    "file": "products/[id]/classifications/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/compositions/[compositionId]",
+    "file": "products/[id]/compositions/[compositionId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/compositions",
+    "file": "products/[id]/compositions/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/country-facts/[factId]",
+    "file": "products/[id]/country-facts/[factId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "configured"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/country-facts",
+    "file": "products/[id]/country-facts/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/enrich/approve",
+    "file": "products/[id]/enrich/approve/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.classification.approve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/enrich",
+    "file": "products/[id]/enrich/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/evidence",
+    "file": "products/[id]/evidence/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/identifiers/[identifierId]",
+    "file": "products/[id]/identifiers/[identifierId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/identifiers",
+    "file": "products/[id]/identifiers/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]/parties/[partyId]",
+    "file": "products/[id]/parties/[partyId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/parties",
+    "file": "products/[id]/parties/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/revalidation/[flagId]",
+    "file": "products/[id]/revalidation/[flagId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/products/[id]",
+    "file": "products/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/products/[id]",
+    "file": "products/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/[id]/valuation",
+    "file": "products/[id]/valuation/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/bulk",
+    "file": "products/bulk/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/import/commit",
+    "file": "products/import/commit/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/import/preview",
+    "file": "products/import/preview/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/line-items/[lineItemId]",
+    "file": "products/line-items/[lineItemId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/match",
+    "file": "products/match/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products/normalize",
+    "file": "products/normalize/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.edit"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/products",
+    "file": "products/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/reconcile",
+    "file": "reconcile/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/refunds/opportunities/scan",
+    "file": "refunds/opportunities/scan/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": false,
+    "permissionValue": null
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/refunds/psc/[id]",
+    "file": "refunds/psc/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "refunds.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/refunds/psc",
+    "file": "refunds/psc/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "refunds.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/regulatory/[id]/impact-analysis",
+    "file": "regulatory/[id]/impact-analysis/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "regulatory.review"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/screening/embargo",
+    "file": "screening/embargo/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "ai.use"
+  },
+  {
+    "method": "DELETE",
+    "routePath": "/api/settings/inbound-senders/[id]",
+    "file": "settings/inbound-senders/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/settings/inbound-senders",
+    "file": "settings/inbound-senders/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/documents/[documentId]/field-review",
+    "file": "shipments/[id]/documents/[documentId]/field-review/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/documents/reorder",
+    "file": "shipments/[id]/documents/reorder/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/documents/request",
+    "file": "shipments/[id]/documents/request/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/exceptions/[exceptionId]/resolve",
+    "file": "shipments/[id]/exceptions/[exceptionId]/resolve/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/reconcile/issues/[issueId]",
+    "file": "shipments/[id]/reconcile/issues/[issueId]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments/[id]/reconcile",
+    "file": "shipments/[id]/reconcile/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "PATCH",
+    "routePath": "/api/shipments/[id]",
+    "file": "shipments/[id]/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/shipments",
+    "file": "shipments/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "shipments.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/compare",
+    "file": "simulator/compare/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/scenarios/[id]/calculate",
+    "file": "simulator/scenarios/[id]/calculate/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/scenarios/[id]/line-items",
+    "file": "simulator/scenarios/[id]/line-items/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/simulator/scenarios",
+    "file": "simulator/scenarios/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/hts/ingestions",
+    "file": "v1/admin/hts/ingestions/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/hts/releases/[releaseId]/publish",
+    "file": "v1/admin/hts/releases/[releaseId]/publish/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/hts/releases/[releaseId]/rollback",
+    "file": "v1/admin/hts/releases/[releaseId]/rollback/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/admin/rulings/ingest",
+    "file": "v1/admin/rulings/ingest/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "settings.manage"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/batch/classification",
+    "file": "v1/batch/classification/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "classification.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/classification/cases/[caseId]/decisions",
+    "file": "v1/classification/cases/[caseId]/decisions/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "classification.approve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/classification/cases/[caseId]/runs",
+    "file": "v1/classification/cases/[caseId]/runs/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "classification.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/classification/cases",
+    "file": "v1/classification/cases/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "classification.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/products/canonical/[productId]/bind-classification",
+    "file": "v1/products/canonical/[productId]/bind-classification/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.classification.approve"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/products/canonical",
+    "file": "v1/products/canonical/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "products.create"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/regulatory/impact-analysis",
+    "file": "v1/regulatory/impact-analysis/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "regulatory.review"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/v1/trade-agreements/qualify",
+    "file": "v1/trade-agreements/qualify/route.ts",
+    "isAuthRoute": true,
+    "hasPermission": true,
+    "permissionValue": "intel.read"
+  },
+  {
+    "method": "POST",
+    "routePath": "/api/webhooks/resend/inbound",
+    "file": "webhooks/resend/inbound/route.ts",
+    "isAuthRoute": false,
+    "hasPermission": false,
+    "permissionValue": null
+  }
+]

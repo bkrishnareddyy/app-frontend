@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
 import { logAgentError } from "@/modules/agents/agentLogger";
@@ -420,9 +420,10 @@ Target File Name: "${input.fileName}"`;
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
-          action: "agent.document_intake",
+          action: AuditAction.DOCUMENT_UPLOADED,
           entity: "AgentDecision",
           entityId: agentDecisionId,
+          source: "SYSTEM",
           metadata: {
             packetId,
             fileName: input.fileName,

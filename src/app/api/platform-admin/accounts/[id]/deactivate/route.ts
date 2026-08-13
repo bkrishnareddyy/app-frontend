@@ -5,8 +5,7 @@ import { db } from "@/lib/db";
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
   if (!ctx.isPlatformAdmin) {
-    return NextResponse.json(
-      { error: "Forbidden: Platform Admin privileges required" },
+    return NextResponse.json({ error: "Forbidden: Platform Admin privileges required" },
       { status: 403 }
     );
   }
@@ -28,7 +27,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const updated = await db.account.update({
     where: { id },
     data: { status: "INACTIVE", deletedAt: new Date() },
-  });
+});
 
   await createAuditLog({
     accountId: id,
@@ -36,6 +35,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     action: "ACCOUNT_DEACTIVATED",
     entity: "Account",
     entityId: id,
+    source: "UI",
     metadata: { deactivatedBy: ctx.email, previousStatus: account.status },
     success: true,
   });
@@ -45,4 +45,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     account: { id: updated.id, status: updated.status, deletedAt: updated.deletedAt },
     requestId,
   });
-}, { permission: "account.manage" });
+
+}, { permission: "account.manage", write: true });

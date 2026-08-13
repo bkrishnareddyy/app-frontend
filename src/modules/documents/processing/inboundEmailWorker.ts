@@ -13,7 +13,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { storeDocumentFile, StorageValidationError } from "@/lib/storage";
 import { screenUploadForMalware } from "./malwarePolicy";
 import { assertParseableFormat } from "./documentSource";
@@ -211,6 +211,7 @@ async function processOneAttachment(params: {
         action: "inbound_email.attachment_quarantined",
         entity: "InboundAttachment",
         entityId: attachmentRow.id,
+        source: "SYSTEM",
         metadata: { fileName: filename, reason: scan.reason },
         correlationId,
         success: false,
@@ -257,9 +258,10 @@ async function processOneAttachment(params: {
 
     await createAuditLog({
       accountId,
-      action: "inbound_email.document_stored",
+      action: AuditAction.DOCUMENT_STORED,
       entity: "ShipmentDocument",
       entityId: document.id,
+      source: "SYSTEM",
       metadata: {
         fileName: filename,
         docType,

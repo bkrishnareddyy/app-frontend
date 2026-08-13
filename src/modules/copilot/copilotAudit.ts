@@ -95,6 +95,7 @@ export async function auditConversationStarted(
     action: COPILOT_AUDIT_ACTIONS.conversationStarted,
     entity: ENTITY,
     entityId: subject.conversationId,
+    source: "CHAT",
     correlationId: subject.conversationId,
     requestId: subject.requestId,
     metadata: {
@@ -142,6 +143,7 @@ export async function auditQuery(
     action: COPILOT_AUDIT_ACTIONS.query,
     entity: ENTITY,
     entityId: subject.conversationId,
+    source: "CHAT",
     correlationId: subject.conversationId,
     requestId: subject.requestId,
     // The answer text is not stored. The question, the outcome and the shape of
@@ -175,6 +177,7 @@ export async function auditToolExecuted(
     action: COPILOT_AUDIT_ACTIONS.toolExecuted,
     entity: ENTITY,
     entityId: subject.conversationId,
+    source: "CHAT",
     correlationId: subject.conversationId,
     requestId: subject.requestId,
     // Tool name and outcome, never the arguments: those name the records the
@@ -194,6 +197,7 @@ export async function auditNavigationAction(
     action: COPILOT_AUDIT_ACTIONS.navigationAction,
     entity: ENTITY,
     entityId: detail.entityId,
+    source: "CHAT",
     correlationId: subject.conversationId,
     requestId: subject.requestId,
     metadata: { promptVersion: COPILOT_PROMPT_VERSION, ...detail },
@@ -210,6 +214,7 @@ export async function auditError(
     action: COPILOT_AUDIT_ACTIONS.error,
     entity: ENTITY,
     entityId: subject.conversationId,
+    source: "CHAT",
     correlationId: subject.conversationId,
     requestId: subject.requestId,
     // `reason` is one of a fixed set of stage failures, not an exception

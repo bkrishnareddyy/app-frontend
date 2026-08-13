@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { FactAuditService } from "@/modules/audit/factAuditService";
 import { FactService } from "@/modules/shipment/factService";
 import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
@@ -11,6 +11,7 @@ import { ReconciliationEngine } from "@/modules/shipment/reconciliationEngine";
 import {
   OVERRIDE_PERMISSION,
   REVIEW_ACTIONS,
+  REVIEW_TRIAGE_STATES,
   checkReviewPermission,
   decisionProvenance,
   isClassificationOverride,
@@ -261,7 +262,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   // Prisma drops an undefined filter, so a missing id would match an arbitrary decision.
   if (typeof decisionId !== "string" || decisionId.trim() === "") {
-    return NextResponse.json({ error: "decisionId is required" }, { status: 400 });
+    return NextResponse.json({ error: "decisionId is required" });
   }
 
   // The base permission is checked before the decision is read, so a caller
@@ -355,6 +356,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     where: { id: decisionId, accountId: ctx.accountId, updatedAt: guard },
     data: {
       status: newStatus,
+      triageState: REVIEW_TRIAGE_STATES[action],
       humanNotes: rationale === "" ? decision.humanNotes : rationale,
       reviewedByUserId: ctx.userId,
     },
@@ -418,9 +420,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: `decision.${action.toLowerCase()}`,
+    action: action === "APPROVE" ? (overridesClassification ? AuditAction.DECISION_OVERRIDDEN : AuditAction.DECISION_APPROVED) : AuditAction.DECISION_REJECTED,
     entity: "AgentDecision",
     entityId: decisionId,
+    source: "UI",
     metadata: {
       newStatus,
       humanNotes: rationale,
@@ -439,4 +442,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     reviewedAs: reviewer,
     overridesClassification,
   });
-}, { write: true });
+}, {
+  permission: [
+    "decisions.approve",
+    "decisions.reject",
+    "decisions.reevaluate",
+    "decisions.override",
+    "decisions.review",
+  ],
+  write: true,
+});

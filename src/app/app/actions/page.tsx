@@ -49,19 +49,21 @@ export default async function ActionsPage(props: {
     db.agentDecision.findMany({
       where: {
         accountId: context.accountId,
-        // DECISION_ACTIONABLE_STATUSES now covers every legacy status string
-        // that maps to NEEDS_REVIEW or BLOCKED. "Approved" is still included so
-        // brokers can see recently-approved decisions in the verified section.
-        status: { in: [...DECISION_ACTIONABLE_STATUSES, "Approved", "AUTO_VERIFIED", "Auto-Approved", "Verified"] },
+        OR: [
+          { triageState: { in: ["NEEDS_REVIEW", "BLOCKED", "APPROVED", "AUTO_VERIFIED", "REJECTED"] } },
+          { triageState: null, status: { in: [...DECISION_ACTIONABLE_STATUSES, "Approved", "AUTO_VERIFIED", "Auto-Approved", "Verified"] } },
+        ],
         ...(shipmentId ? { shipmentId } : {}),
       },
-      // Explicit select to avoid triageState/blockedReason/autoApprovalPolicy which
-      // are in the Prisma schema but not yet applied to the live DB (migration pending).
       select: {
         id: true,
         accountId: true,
         agentName: true,
         status: true,
+        triageState: true,
+        blockedReason: true,
+        autoApprovalPolicy: true,
+        autoApproved: true,
         createdAt: true,
         updatedAt: true,
         decisionSummary: true,

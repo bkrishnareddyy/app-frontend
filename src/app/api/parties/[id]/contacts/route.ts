@@ -17,7 +17,6 @@ export const POST = withAuthenticatedRoute<Params>(
 
     const contact = await addContact(partyActor(ctx, requestId), path.data.id, body.data);
 
-    return NextResponse.json({ contact, requestId }, { status: 201 });
-  },
-  { permission: "parties.edit", write: true }
-);
+    return NextResponse.json({ contact, requestId });
+
+}, { permission: "parties.edit", write: true });

@@ -17,7 +17,6 @@ export const POST = withAuthenticatedRoute<Params>(
 
     const site = await addSite(partyActor(ctx, requestId), path.data.id, body.data);
 
-    return NextResponse.json({ site, requestId }, { status: 201 });
-  },
-  { permission: "parties.edit", write: true }
-);
+    return NextResponse.json({ site, requestId });
+
+}, { permission: "parties.edit", write: true });

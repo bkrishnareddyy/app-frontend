@@ -39,7 +39,6 @@ export const POST = withAuthenticatedRoute(
     if ("response" in body) return body.response;
 
     const party = await createParty(partyActor(ctx, requestId), body.data);
-    return NextResponse.json({ party, requestId }, { status: 201 });
-  },
-  { permission: "parties.create", write: true }
-);
+    return NextResponse.json({ party, requestId });
+
+}, { permission: "parties.create", write: true });

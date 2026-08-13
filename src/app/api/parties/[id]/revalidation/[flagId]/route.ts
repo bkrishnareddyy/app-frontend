@@ -43,6 +43,5 @@ export const POST = withAuthenticatedRoute<Params>(
     );
 
     return NextResponse.json({ resolved: true, requestId });
-  },
-  { permission: "parties.edit", write: true }
-);
+
+}, { permission: "parties.revalidation.resolve", write: true });

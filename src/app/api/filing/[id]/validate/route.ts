@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { applyTransition, canTransition } from "@/modules/filings/filingStateMachine";
 import { runFilingValidation, type ValidatorInput } from "@/lib/filing/filingValidator";
 import { z } from "zod";
@@ -30,10 +30,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
         },
       },
     },
-  });
+});
 
   if (!filing) {
-    return NextResponse.json({ error: "Filing not found" }, { status: 404 });
+    return NextResponse.json({ error: "Filing not found" });
   }
 
   // Fetch readiness threshold from AgentPolicyConfig (falls back to 80)
@@ -96,9 +96,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "filing.validate",
+    action: AuditAction.FILING_VALIDATED,
     entity: "CustomsFiling",
     entityId: filing.id,
+    source: "UI",
     metadata: {
       valid: outcome.valid,
       blockerCount: outcome.blockers.length,
@@ -118,4 +119,5 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       filingStatus: newStatus ?? filing.filingStatus,
     },
   });
-}, { write: true });
+
+}, { permission: "filings.create", write: true });

@@ -22,12 +22,12 @@ export const POST = withAuthenticatedRoute<{ id: string; issueId: string }>(
     const body = await req.json();
     const parsed = bodySchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid request body" });
     }
 
     const issue = await db.reconciliationIssue.findFirst({
       where: { id: issueId, shipmentId: id, accountId: ctx.accountId },
-    });
+});
 
     if (!issue) {
       return NextResponse.json({ error: "Issue not found" }, { status: 404 });
@@ -41,6 +41,5 @@ export const POST = withAuthenticatedRoute<{ id: string; issueId: string }>(
     });
 
     return NextResponse.json({ resolved: true, status: newStatus });
-  },
-  { write: true }
-);
+  
+}, { permission: "shipments.manage", write: true });

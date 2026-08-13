@@ -20,6 +20,5 @@ export const DELETE = withAuthenticatedRoute<Params>(
     await removeSite(partyActor(ctx, requestId), path.data.id, path.data.siteId);
 
     return NextResponse.json({ removed: true, requestId });
-  },
-  { permission: "parties.edit", write: true }
-);
+
+}, { permission: "parties.edit", write: true });

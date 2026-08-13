@@ -21,6 +21,5 @@ export const POST = withAuthenticatedRoute(
 
     const result = await bulkCreateProducts(productActor(ctx, requestId), body.data.items);
     return NextResponse.json({ result, requestId });
-  },
-  { permission: "products.create", write: true }
-);
+
+}, { permission: "products.edit", write: true });

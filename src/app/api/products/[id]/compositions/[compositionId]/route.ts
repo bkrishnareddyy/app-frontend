@@ -28,7 +28,6 @@ export const DELETE = withAuthenticatedRoute<Params>(
       changes: outcome.changes,
       raisedFlags: outcome.raisedFlags,
       requestId,
-    });
-  },
-  { permission: "products.edit", write: true }
-);
+});
+  
+}, { permission: "products.edit", write: true });

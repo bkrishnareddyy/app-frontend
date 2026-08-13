@@ -19,6 +19,5 @@ export const POST = withAuthenticatedRoute(
     );
 
     return NextResponse.json({ result, requestId });
-  },
-  { permission: "parties.import", write: true }
-);
+
+}, { permission: "parties.import", write: true });

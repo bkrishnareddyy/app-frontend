@@ -40,10 +40,8 @@ export const PATCH = withAuthenticatedRoute<Params>(
       changes: outcome.changes,
       raisedFlags: outcome.raisedFlags,
       requestId,
-    });
-  },
-  { permission: "products.edit", write: true }
-);
+});
+  });
 
 /** Soft delete. The row, its history and its evidence stay readable to an audit. */
 export const DELETE = withAuthenticatedRoute<Params>(
@@ -53,6 +51,5 @@ export const DELETE = withAuthenticatedRoute<Params>(
 
     await archiveProduct(productActor(ctx, requestId), path.data.id);
     return NextResponse.json({ archived: true, requestId });
-  },
-  { permission: "products.edit", write: true }
-);
+
+}, { permission: "products.edit", write: true });

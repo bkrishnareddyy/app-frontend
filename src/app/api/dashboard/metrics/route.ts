@@ -47,4 +47,4 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     emptyState,
     clientId: clientId ?? null,
   });
-}, { permission: "documents.read" });
+});

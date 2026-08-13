@@ -32,7 +32,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     })),
     requestId,
   });
-}, { permission: "settings.manage" });
+});
 
 const createKeySchema = z.object({
   label: z.string().min(1).max(100),
@@ -60,7 +60,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
   const existing = await db.accountApiKey.count({
     where: { accountId: ctx.accountId, status: "ACTIVE" },
-  });
+});
   if (existing >= 20) {
     return buildErrorResponse(429, "TOO_MANY_KEYS", "Maximum of 20 active API keys per account.", undefined, requestId);
   }
@@ -88,12 +88,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     action: "API_KEY_CREATED",
     entity: "AccountApiKey",
     entityId: apiKey.id,
+    source: "UI",
     metadata: { label, scopes, prefix },
     success: true,
   });
 
-  return NextResponse.json(
-    {
+  return NextResponse.json({
       success: true,
       apiKey: {
         id: apiKey.id,
@@ -109,4 +109,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     },
     { status: 201 }
   );
+
 }, { permission: "settings.manage", write: true });

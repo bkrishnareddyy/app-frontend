@@ -24,7 +24,6 @@ export const DELETE = withAuthenticatedRoute<Params>(
       changes: outcome.changes,
       raisedFlags: outcome.raisedFlags,
       requestId,
-    });
-  },
-  { permission: "parties.edit", write: true }
-);
+});
+  
+}, { permission: "parties.edit", write: true });

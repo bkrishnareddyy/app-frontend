@@ -22,7 +22,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { name, originCountry, destinationPort, incoterm, currency } = body;
 
   if (!name) {
-    return NextResponse.json({ error: "Scenario name is required" }, { status: 400 });
+    return NextResponse.json({ error: "Scenario name is required" });
   }
 
   const scenario = await db.landedCostScenario.create({
@@ -37,7 +37,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       status: "Draft",
     },
     include: { lineItems: true },
-  });
+});
 
   await createAuditLog({
     accountId: ctx.accountId,
@@ -45,8 +45,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "simulator.scenario_create",
     entity: "LandedCostScenario",
     entityId: scenario.id,
+    source: "UI",
     metadata: { name },
   });
 
   return NextResponse.json({ scenario }, { status: 201 });
-}, { write: true });
+
+}, { permission: "intel.read", write: true });

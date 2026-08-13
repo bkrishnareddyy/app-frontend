@@ -17,10 +17,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
 
   const importer = await db.importerOfRecord.findFirst({
     where: { id, accountId: ctx.accountId },
-  });
+});
 
   if (!importer) {
-    return NextResponse.json({ error: "Importer of Record not found" }, { status: 404 });
+    return NextResponse.json({ error: "Importer of Record not found" });
   }
 
   const poa = await db.powerOfAttorney.create({
@@ -40,8 +40,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     action: "poa.create",
     entity: "PowerOfAttorney",
     entityId: poa.id,
+    source: "UI",
     metadata: { importerOfRecordId: id },
   });
 
   return NextResponse.json({ powerOfAttorney: poa }, { status: 201 });
-}, { write: true });
+
+}, { permission: "parties.manage", write: true });

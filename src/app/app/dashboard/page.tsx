@@ -50,7 +50,7 @@ export default async function CommandCenterPage() {
       documents: { select: { docType: true, fileName: true, status: true, fileUrl: true, extractedJson: true } },
       lineItems: { select: { htsCode: true, countryOfOrigin: true, quantity: true, unitPrice: true, totalValue: true } },
       exceptionItems: { select: { status: true, severity: true } },
-      agentDecisions: { select: { id: true, agentName: true, status: true, createdAt: true } },
+      agentDecisions: { select: { id: true, agentName: true, status: true, triageState: true, proposedDescription: true, createdAt: true } },
     },
     orderBy: { createdAt: "desc" },
     take: SHIPMENT_ROW_CAP,
@@ -69,6 +69,7 @@ export default async function CommandCenterPage() {
     select: {
       id: true,
       status: true,
+      triageState: true,
       shipment: {
         select: {
           assignedBrokerId: true,
@@ -146,7 +147,7 @@ export default async function CommandCenterPage() {
     let verifiedDecisions = 0;
 
     for (const d of latestByAgent.values()) {
-      const triage = triageDecision({ status: d.status });
+      const triage = triageDecision({ status: d.status, triageState: d.triageState, proposedDescription: d.proposedDescription });
       if (triage === "blocked") blockedDecisions++;
       else if (triage === "review") needsReviewDecisions++;
       else verifiedDecisions++;

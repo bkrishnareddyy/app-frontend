@@ -41,7 +41,6 @@ export const POST = withAuthenticatedRoute(
     if ("response" in body) return body.response;
 
     const product = await createProduct(productActor(ctx, requestId), body.data);
-    return NextResponse.json({ product, requestId }, { status: 201 });
-  },
-  { permission: "products.create", write: true }
-);
+    return NextResponse.json({ product, requestId });
+
+}, { permission: "products.create", write: true });

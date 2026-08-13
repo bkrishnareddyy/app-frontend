@@ -48,14 +48,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const { query } = body;
 
   if (!query || typeof query !== "string" || !query.trim()) {
-    return NextResponse.json({ error: "Query prompt is required" }, { status: 400 });
+    return NextResponse.json({ error: "Query prompt is required" });
   }
   const trimmed = query.trim();
 
   const updates = await db.regulatoryUpdate.findMany({
     orderBy: { effectiveDate: "desc" },
     take: 5,
-  });
+});
 
   // D-5: bare HTS code — direct reference lookup, no LLM call.
   if (BARE_HTS_CODE.test(trimmed)) {
@@ -139,4 +139,5 @@ document number.`;
 
   const fallback = templateFallback(trimmed, updates);
   return NextResponse.json({ ...fallback, regulatoryUpdates: updates });
-}, { permission: "intel.read" });
+
+}, { permission: "ai.use", write: true });

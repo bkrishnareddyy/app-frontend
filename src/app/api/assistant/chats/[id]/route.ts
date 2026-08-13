@@ -22,9 +22,9 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const existing = await db.assistantChatSession.findFirst({
     where: { id: paramsVal.data.id, accountId: ctx.accountId, userId: ctx.userId },
-  });
+});
   if (!existing) {
-    return NextResponse.json({ error: "Chat session not found", requestId }, { status: 404 });
+    return NextResponse.json({ error: "Chat session not found", requestId });
   }
 
   const session = await db.assistantChatSession.update({
@@ -37,7 +37,8 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   });
 
   return NextResponse.json({ session, requestId });
-});
+
+}, { permission: "ai.use", write: true });
 
 export const DELETE = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
@@ -45,12 +46,13 @@ export const DELETE = withAuthenticatedRoute<{ id: string }>(async ({ ctx, reque
 
   const existing = await db.assistantChatSession.findFirst({
     where: { id: paramsVal.data.id, accountId: ctx.accountId, userId: ctx.userId },
-  });
+});
   if (!existing) {
-    return NextResponse.json({ error: "Chat session not found", requestId }, { status: 404 });
+    return NextResponse.json({ error: "Chat session not found", requestId });
   }
 
   await db.assistantChatSession.delete({ where: { id: existing.id } });
 
   return NextResponse.json({ success: true, requestId });
-});
+
+}, { permission: "ai.use", write: true });

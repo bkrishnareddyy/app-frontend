@@ -36,7 +36,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       messages: body.data.messages as Prisma.InputJsonValue,
       history: body.data.history as Prisma.InputJsonValue,
     },
-  });
+});
 
   // Prune anything beyond the most-recent MAX_SESSIONS_PER_USER for this user/account.
   const stale = await db.assistantChatSession.findMany({
@@ -49,5 +49,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     await db.assistantChatSession.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
   }
 
-  return NextResponse.json({ session: created }, { status: 201 });
-});
+  return NextResponse.json({ session: created });
+
+}, { permission: "ai.use", write: true });

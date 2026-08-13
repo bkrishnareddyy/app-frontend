@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import type { ProductMatchStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { createAuditLog } from "@/lib/audit";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
 import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
@@ -552,9 +552,10 @@ ${item.countryOfOrigin ? `Country of Origin (from shipment context, if it inform
         await createAuditLog({
           accountId: input.accountId,
           userId: input.userId,
-          action: "AGENT_EXECUTION_COMPLETED",
+          action: AuditAction.AGENT_EXECUTION_COMPLETED,
           entity: "AGENT_DECISION",
           entityId: agentDecisionId,
+          source: "SYSTEM",
           metadata: { agentName: "Product Intelligence Agent", profilesCount: profiles.length, overallConfidence },
         });
       } catch (err) {
