@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDate, cn } from "@/lib/utils";
-import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Search, Globe2, Rocket } from "lucide-react";
+import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Search, Globe2, Rocket, Bot } from "lucide-react";
 import { HtsAdminPanel, HtsAdminData } from "./HtsAdminPanel";
 import { DeploymentsPanel } from "./DeploymentsPanel";
+import { AgentsAnalyticsPanel } from "./AgentsAnalyticsPanel";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, FormField } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import type { AiUsageAnalytics } from "@/lib/ai/aiUsageAnalytics";
 
 interface AccountItem {
   id: string;
@@ -22,11 +24,12 @@ interface AccountItem {
 interface PlatformAdminConsoleProps {
   accounts: AccountItem[];
   htsAdmin: HtsAdminData;
+  aiUsage: AiUsageAnalytics;
 }
 
-export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsoleProps) {
+export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage }: PlatformAdminConsoleProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"accounts" | "hts" | "deployments">("accounts");
+  const [activeTab, setActiveTab] = useState<"accounts" | "hts" | "deployments" | "agents">("accounts");
   const [companyName, setCompanyName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -120,11 +123,22 @@ export function PlatformAdminConsole({ accounts, htsAdmin }: PlatformAdminConsol
           <Rocket className="w-3.5 h-3.5" />
           <span>Deployments</span>
         </button>
+        <button
+          onClick={() => setActiveTab("agents")}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
+            activeTab === "agents" ? "bg-brand text-white" : "bg-white border border-border text-ink-muted hover:text-ink"
+          }`}
+        >
+          <Bot className="w-3.5 h-3.5" />
+          <span>Agents</span>
+        </button>
       </div>
 
       {activeTab === "hts" && <HtsAdminPanel data={htsAdmin} />}
 
       {activeTab === "deployments" && <DeploymentsPanel />}
+
+      {activeTab === "agents" && <AgentsAnalyticsPanel data={aiUsage} />}
 
       {activeTab === "accounts" && (
         <>

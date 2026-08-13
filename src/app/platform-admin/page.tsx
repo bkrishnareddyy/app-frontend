@@ -5,6 +5,7 @@ import { ShieldAlert, Shield } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+import { getAiUsageAnalytics } from "@/lib/ai/aiUsageAnalytics";
 
 export default async function PlatformAdminPage() {
   const context = await getAccountContext();
@@ -96,6 +97,8 @@ export default async function PlatformAdminPage() {
     lastRefreshAt: mostRecentRelease?.retrievedAt.toISOString() || null,
   };
 
+  const aiUsage = await getAiUsageAnalytics(30);
+
   return (
     <div className="min-h-screen bg-surface-muted text-ink p-8 selection:bg-brand/20 selection:text-brand">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -123,7 +126,7 @@ export default async function PlatformAdminPage() {
           </Link>
         </div>
 
-        <PlatformAdminConsole accounts={formattedAccounts} htsAdmin={htsAdmin} />
+        <PlatformAdminConsole accounts={formattedAccounts} htsAdmin={htsAdmin} aiUsage={aiUsage} />
       </div>
     </div>
   );
