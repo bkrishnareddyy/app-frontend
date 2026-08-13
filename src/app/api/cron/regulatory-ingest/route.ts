@@ -33,7 +33,7 @@ export const POST = withPublicRoute(async ({ req, requestId }) => {
   }
 
   // 1. Fetch Federal Register documents for Customs and Border Protection
-  const url = "https://www.federalregister.gov/api/v1/documents.json?conditions[agencies][]=customs-border-protection&per_page=20&order=newest";
+  const url = "https://www.federalregister.gov/api/v1/documents.json?conditions[agencies][]=u-s-customs-and-border-protection&per_page=20&order=newest";
   
   let documents = [];
   try {
@@ -141,16 +141,14 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
 
     // Create notifications for members with regulatory.review permissions (Task A-3)
     if (extracted.actionRequired) {
-      // Fetch account users
-      const users = await db.user.findMany({
-        where: { role: { in: ["OWNER", "ADMIN"] } }, // representative of regulatory review permission
-      });
+      // Fetch account users via memberships
+      const memberships = await db.accountMembership.findMany();
 
-      for (const u of users) {
+      for (const m of memberships) {
         await db.notification.create({
           data: {
-            accountId: u.accountId,
-            userId: u.id,
+            accountId: m.accountId,
+            userId: m.userId,
             title: `Regulatory Action Required: ${update.title}`,
             message: `New CBP regulatory notice published affecting HTS codes: ${extracted.affectedHtsCodes.join(", ")}. Review required.`,
             type: "regulatory_alert",
