@@ -11,6 +11,7 @@ import {
   checkReviewPermission,
   permissionDeniedMessage,
 } from "@/modules/decisions/reviewAuthority";
+import { buildReviewFields } from "@/modules/documents/extractionReview";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -104,7 +105,12 @@ function serialize(doc: DocumentWithRelations, extractedJson: unknown, requestId
     version: doc.version,
     extractedJson,
     rawContent: doc.rawContent || null,
+    // C-3: Raw rows preserved for backward compatibility.
     extractionFields: doc.extractionFields,
+    // C-3: Grouped, bbox-parsed, history-tracked fields for the document viewer.
+    // Each entry is the current authoritative reading for one field name, with
+    // BoundingBox parsed from the stored JSON and full correction history attached.
+    reviewFields: buildReviewFields(doc.extractionFields),
     requestId,
   };
 }

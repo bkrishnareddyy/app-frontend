@@ -8,6 +8,11 @@ import { logAgentError } from "./agentLogger";
 import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
 import { ShipmentPartyService } from "@/modules/shipment/shipmentPartyService";
 import { ExceptionService } from "@/modules/exceptions/exception.service";
+import {
+  mapToDocumentType,
+  normaliseConfidence,
+  CLASSIFICATION_CONFIDENCE_THRESHOLD,
+} from "@/lib/documents/classificationMapping";
 
 export const DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT = `
 ROLE
@@ -277,6 +282,7 @@ export interface DocumentIntelligenceOutput {
     confidence: number;
     page?: number;
     section?: string;
+    bbox?: { x: number; y: number; w: number; h: number } | null;
   }>;
   relationships?: Array<{
     type: string;
@@ -387,6 +393,15 @@ const intelligenceSchema: Schema = {
           confidence: { type: Type.NUMBER },
           page: { type: Type.INTEGER },
           section: { type: Type.STRING },
+          bbox: {
+            type: Type.OBJECT,
+            properties: {
+              x: { type: Type.NUMBER },
+              y: { type: Type.NUMBER },
+              w: { type: Type.NUMBER },
+              h: { type: Type.NUMBER },
+            },
+          },
         },
       },
     },
@@ -520,7 +535,7 @@ export class DocumentIntelligenceAgent {
     let documentClassification: DocumentClassificationResult | undefined = undefined;
     let filingDetermination: FilingDetermination | undefined = undefined;
     let tradeMetadata: TradeMetadata | undefined = undefined;
-    let entities: Array<{ type: string; value: string; confidence: number; page?: number; section?: string }> | undefined = undefined;
+    let entities: Array<{ type: string; value: string; confidence: number; page?: number; section?: string; bbox?: { x: number; y: number; w: number; h: number } | null }> | undefined = undefined;
     let relationships: Array<{ type: string; from: string; to: string; description?: string }> | undefined = undefined;
     let tables: Array<{ purpose: string; headers: string[]; rows: unknown[][]; page?: number; confidence?: number }> | undefined = undefined;
     let validations: Array<{ check: string; result: "pass" | "fail" | "warning"; details: string }> | undefined = undefined;
@@ -896,6 +911,33 @@ ${instructions}`;
             );
           }
 
+          // B-2: Write structured classification result regardless of whether
+          // the extraction blob was persisted. Classification is valid even when
+          // a stronger parse-derived extraction holds the extractedJson slot.
+          if (documentClassification?.documentType) {
+            try {
+              const mappedType = mapToDocumentType(documentClassification.documentType);
+              const classificationConfidence = normaliseConfidence(documentClassification.confidence);
+              const needsHumanReview = classificationConfidence < CLASSIFICATION_CONFIDENCE_THRESHOLD;
+
+              await db.shipmentDocument.update({
+                where: { id: docToUpdate.id },
+                data: {
+                  documentType: mappedType,
+                  documentTypeConfidence: classificationConfidence,
+                  // Route to human review when the model is uncertain. Status is
+                  // not reset here if already NEEDS_CLASSIFICATION — a reviewer
+                  // who has not yet acted should not lose their queue entry.
+                  ...(needsHumanReview ? { status: "NEEDS_CLASSIFICATION" } : {}),
+                },
+              });
+            } catch (err) {
+              // Classification write is non-fatal: the extraction result is still
+              // valid and must reach the caller even if this secondary write fails.
+              logAgentError("Document Intelligence Agent", input.shipmentId, "writeClassification", err);
+            }
+          }
+
           // Save immutable DocumentParseVersion
           await db.documentParseVersion.create({
             data: {
@@ -979,22 +1021,50 @@ ${instructions}`;
             // the document viewer can show page-level provenance ("p.3") next
             // to each extracted value and jump the PDF to that page on click.
             // Human corrections carry their own source tag and are preserved.
+            const writtenFieldNames = new Set<string>();
             if (entities && entities.length > 0) {
               await db.extractionField.deleteMany({
                 where: { documentId: docToUpdate.id, source: "OCR_AI_AGENT" },
               });
+              const filteredEntities = entities.filter((e) => e.type && e.value);
+              for (const e of filteredEntities) writtenFieldNames.add(e.type);
               await db.extractionField.createMany({
-                data: entities
-                  .filter((e) => e.type && e.value)
-                  .map((e) => ({
-                    documentId: docToUpdate.id,
-                    fieldName: e.type,
-                    value: String(e.value),
-                    confidence: typeof e.confidence === "number" ? Math.round(e.confidence) : null,
-                    pageNumber: typeof e.page === "number" ? e.page : null,
-                    source: "OCR_AI_AGENT",
-                  })),
+                data: filteredEntities.map((e) => ({
+                  documentId: docToUpdate.id,
+                  fieldName: e.type,
+                  value: String(e.value),
+                  confidence: typeof e.confidence === "number" ? Math.round(e.confidence) : null,
+                  pageNumber: typeof e.page === "number" ? e.page : null,
+                  // C-1: Store AI-reported bounding box as {x,y,width,height} in PDF points.
+                  // Gemini returns {x,y,w,h}; we normalise the key names here.
+                  bbox: e.bbox
+                    ? { x: e.bbox.x, y: e.bbox.y, width: e.bbox.w, height: e.bbox.h }
+                    : undefined,
+                  source: "OCR_AI_AGENT",
+                })),
               });
+            }
+
+            // C-5: Open a MISSING_DATA exception for each required field that
+            // was not extracted, and resolve any that are now present.
+            // Uses the type just classified this run (preferred) or the type
+            // already stored on the document from a previous run.
+            const effectiveDocType = documentClassification?.documentType
+              ? mapToDocumentType(documentClassification.documentType)
+              : docToUpdate.documentType;
+            if (effectiveDocType) {
+              try {
+                await ExceptionService.syncExtractionFieldExceptions({
+                  accountId: input.accountId,
+                  shipmentId: input.shipmentId,
+                  documentId: docToUpdate.id,
+                  documentType: effectiveDocType,
+                  fileName: input.fileName || docToUpdate.fileName,
+                  writtenFieldNames,
+                });
+              } catch (err) {
+                logAgentError("Document Intelligence Agent", input.shipmentId, "syncExtractionFieldExceptions", err);
+              }
             }
           }
         }

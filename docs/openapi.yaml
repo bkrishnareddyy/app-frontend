@@ -1,0 +1,425 @@
+openapi: 3.0.3
+info:
+  title: Qubere Trade Compliance API
+  version: 1.0.0
+  description: Internal API for the Qubere trade compliance platform. Used by the AI assistant's tool-calling interface.
+servers:
+  - url: https://app.qubere.ai
+    description: Production
+components:
+  schemas:
+    ShipmentSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Shipment CUID
+        shipmentNumber:
+          type: string
+          description: Human-readable reference e.g. SHP-2026-001
+        importerName:
+          type: string
+        status:
+          type: string
+          description: Current shipment status
+        portOfEntry:
+          type: string
+          nullable: true
+        estimatedArrival:
+          type: string
+          nullable: true
+          description: ISO-8601 date
+        createdAt:
+          type: string
+          description: ISO-8601 datetime
+      required:
+        - id
+        - shipmentNumber
+        - importerName
+        - status
+        - portOfEntry
+        - estimatedArrival
+        - createdAt
+      description: Abbreviated shipment record for list views
+    ExceptionItem:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          description: Exception type code
+        severity:
+          type: string
+          enum:
+            - Critical
+            - High
+            - Medium
+            - Low
+        status:
+          type: string
+        description:
+          type: string
+        shipmentId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - severity
+        - status
+        - description
+        - shipmentId
+        - createdAt
+      description: Compliance exception requiring human review or waiver
+    ComplianceFinding:
+      type: object
+      properties:
+        id:
+          type: string
+        rule:
+          type: string
+        severity:
+          type: string
+          enum:
+            - Critical
+            - High
+            - Medium
+            - Low
+        status:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - rule
+        - severity
+        - status
+        - description
+        - createdAt
+      description: Finding produced by the compliance audit agent
+    DrawbackClaim:
+      type: object
+      properties:
+        id:
+          type: string
+        claimType:
+          type: string
+        status:
+          type: string
+        totalRefundClaimed:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - claimType
+        - status
+        - totalRefundClaimed
+        - createdAt
+      description: Duty drawback claim
+  parameters: {}
+paths:
+  /api/shipments:
+    get:
+      summary: List shipments
+      description: >-
+        Returns paginated shipments for the authenticated account. Supports cursor-based pagination, full-text search,
+        and status filtering.
+      tags:
+        - Shipments
+      parameters:
+        - schema:
+            type: string
+            description: Full-text search across shipment number and importer name
+          required: false
+          description: Full-text search across shipment number and importer name
+          name: q
+          in: query
+        - schema:
+            type: string
+            description: Filter by shipment status
+          required: false
+          description: Filter by shipment status
+          name: status
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            description: Page size (default 50, max 200)
+          required: false
+          description: Page size (default 50, max 200)
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Cursor returned from the previous page
+          required: false
+          description: Cursor returned from the previous page
+          name: cursor
+          in: query
+      responses:
+        '200':
+          description: Paginated shipment list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shipments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShipmentSummary'
+                  pagination:
+                    type: object
+                    properties:
+                      nextCursor:
+                        type: string
+                        nullable: true
+                      hasMore:
+                        type: boolean
+                      total:
+                        type: integer
+                    required:
+                      - nextCursor
+                      - hasMore
+                      - total
+                    description: Pagination metadata
+                  requestId:
+                    type: string
+                required:
+                  - shipments
+                  - pagination
+                  - requestId
+        '401':
+          description: Not authenticated
+        '403':
+          description: Insufficient permissions
+  /api/exceptions:
+    get:
+      summary: List compliance exceptions
+      tags:
+        - Exceptions
+      parameters:
+        - schema:
+            type: string
+            description: Filter by status
+          required: false
+          description: Filter by status
+          name: status
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: severity
+          in: query
+        - schema:
+            type: boolean
+            nullable: true
+          required: false
+          name: assignedToMe
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: cursor
+          in: query
+      responses:
+        '200':
+          description: Exception list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exceptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExceptionItem'
+                  requestId:
+                    type: string
+                required:
+                  - exceptions
+                  - requestId
+  /api/findings:
+    get:
+      summary: List compliance findings
+      tags:
+        - Findings
+      parameters:
+        - schema:
+            type: string
+          required: false
+          name: status
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: severity
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: cursor
+          in: query
+      responses:
+        '200':
+          description: Finding list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  findings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ComplianceFinding'
+                required:
+                  - findings
+  /api/drawback/claims:
+    get:
+      summary: List duty drawback claims
+      tags:
+        - Drawback
+      responses:
+        '200':
+          description: Drawback claim list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  drawbackClaims:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DrawbackClaim'
+                  requestId:
+                    type: string
+                required:
+                  - drawbackClaims
+                  - requestId
+  /api/classification/classify:
+    post:
+      summary: Classify a product by description
+      description: Runs the HTS classification AI agent. Requires classification.create permission.
+      tags:
+        - Classification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productDescription:
+                  type: string
+                  minLength: 2
+                  description: Plain-language product description
+                materialComposition:
+                  type: string
+                functionUsage:
+                  type: string
+                principalUse:
+                  type: string
+                partNumber:
+                  type: string
+                brandModel:
+                  type: string
+                countryOfOrigin:
+                  type: string
+                shipmentId:
+                  type: string
+                  description: Link result to a specific shipment
+              required:
+                - productDescription
+      responses:
+        '200':
+          description: Classification result with proposed HTS code and evidence
+        '400':
+          description: Invalid input
+        '401':
+          description: Not authenticated
+        '403':
+          description: Missing classification.create permission
+  /api/filing/{id}/transmit:
+    post:
+      summary: Transmit a customs filing to CBP
+      description: Requires filings.submit permission.
+      tags:
+        - Filing
+      parameters:
+        - schema:
+            type: string
+            description: CustomsFiling CUID
+          required: true
+          description: CustomsFiling CUID
+          name: id
+          in: path
+      responses:
+        '200':
+          description: Filing transmitted
+        '403':
+          description: Missing filings.submit permission
+        '404':
+          description: Filing not found
+  /api/refunds/psc:
+    post:
+      summary: Create a Post-Summary Correction
+      description: >-
+        Requires refunds.manage permission. correctedDutyAmount must be supplied by the caller — no estimated fallback
+        is applied.
+      tags:
+        - Refunds
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                originalFilingId:
+                  type: string
+                  description: CustomsFiling CUID
+                refundOpportunityId:
+                  type: string
+                reason:
+                  type: string
+                correctionType:
+                  type: string
+                originalDutyAmount:
+                  type: number
+                  minimum: 0
+                correctedDutyAmount:
+                  type: number
+                  minimum: 0
+                  description: Required — the actual corrected duty. No heuristic fallback.
+              required:
+                - originalFilingId
+                - correctedDutyAmount
+      responses:
+        '201':
+          description: PSC created
+        '400':
+          description: Missing or invalid correctedDutyAmount
+        '403':
+          description: Missing refunds.manage permission
+        '404':
+          description: Filing not found

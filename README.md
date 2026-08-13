@@ -368,6 +368,19 @@ To provision all 10 test users into your Clerk instance via the Clerk API:
 npx tsx scripts/seed-clerk-users.ts
 ```
 
+#### Manual seed scripts
+
+Some data is not seeded by `prisma db seed` and must be run explicitly:
+
+| Script | Purpose |
+|--------|---------|
+| `npx tsx prisma/import-hts.ts` | Import HTS tariff schedule from the USITC source file. Required before classification works. |
+| `npx tsx scripts/backfill-triage-state.ts` | One-time backfill: populates `AgentDecision.triageState` from legacy `status` strings. Run after deploying the 20260812060000 migration. |
+| `npx tsx scripts/seed-qubere-trade-network.ts` | Seed the Qubere demo trade-network data (parties, products, shipments). |
+| `npx tsx scripts/seed-inbound-demo.ts` | Seed inbound email demo routes and mailboxes. |
+
+GET endpoints **never** seed data. If a collection is empty, they return `[]`. Run the appropriate seed script above to populate it.
+
 ### 5. Run Development Server
 
 ```bash

@@ -98,6 +98,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
                 height: field.bbox.height,
               } satisfies Prisma.InputJsonObject),
         source: HUMAN_CORRECTION_SOURCE,
+        // C-4: Correction audit trail — who corrected what, and from which value.
+        correctedFromValue: field.currentValue,
+        correctedByUserId: ctx.userId,
+        correctedAt: new Date(),
       },
     });
 

@@ -59,4 +59,4 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   } catch (error: unknown) {
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to classify product", undefined, requestId);
   }
-}, { write: true });
+}, { permission: "classification.create", write: true });

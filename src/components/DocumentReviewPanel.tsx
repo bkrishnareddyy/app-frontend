@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare, Sparkles } from "lucide-react";
+import { X, Copy, Check, Code, FileText, ExternalLink, Edit2, RotateCcw, MessageSquare, Sparkles, MapPin, MapPinOff } from "lucide-react";
 import { decisionGroupLabel, reviewerLabel, editableFieldsFor, reviewCategory } from "@/modules/decisions/editableFields";
 import { triageDecision } from "@/modules/decisions/decisionState";
+import { type ReviewField, nextReviewIndex } from "@/modules/documents/extractionReview";
+import { PdfCanvas, type PdfCanvasBbox } from "@/components/PdfCanvas";
 
 const NEUTRAL_BADGE = "text-[10px] font-bold px-2 py-1 rounded-lg bg-surface-muted border border-border text-ink-muted";
 
@@ -307,6 +309,8 @@ interface ExtractionPayload {
   extractedJson?: Record<string, unknown> | null;
   rawContent?: string | null;
   extractionFields?: Array<ExtractionFieldRow>;
+  // C-3: Grouped, bbox-parsed review fields returned by the updated GET endpoint.
+  reviewFields?: ReviewField[];
 }
 
 type ReviewAction = "APPROVE" | "REJECT" | "RE_EVALUATE";
@@ -463,14 +467,19 @@ export function DocumentReviewPanel({
   // existing comments are never hidden behind an extra click.
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
 
-  // Click-to-provenance: which page is loaded in the PDF iframe, and which
+  // Click-to-provenance: which page is loaded in the PDF canvas, and which
   // field is currently highlighted (null = no highlight).
   const [pdfPage, setPdfPage] = useState(1);
   const [activeProvenance, setActiveProvenance] = useState<{
     name: string;
     page: number | null;
-    bbox: { x: number; y: number; width: number; height: number } | null;
+    bbox: PdfCanvasBbox | null;
   } | null>(null);
+
+  // D-3: Index of the focused ReviewField for keyboard navigation.
+  // -1 means no field is focused.
+  const [activeFieldIndex, setActiveFieldIndex] = useState(-1);
+  const fieldListRef = useRef<HTMLDivElement>(null);
 
   // This panel can stay mounted across document selections when embedded
   // inline on a page (unlike a modal, which unmounts on close), so switching
@@ -488,6 +497,7 @@ export function DocumentReviewPanel({
     setMissingFieldErrors({});
     setPdfPage(1);
     setActiveProvenance(null);
+    setActiveFieldIndex(-1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
 
@@ -747,6 +757,54 @@ export function DocumentReviewPanel({
     if (prov.page) setPdfPage(prov.page);
     setActiveTab("DOC");
   }
+
+  // Jump to a ReviewField by index in the right-pane field list.
+  const jumpToReviewField = useCallback(
+    (index: number) => {
+      const fields = data?.reviewFields ?? [];
+      if (fields.length === 0) return;
+      const clamped = ((index % fields.length) + fields.length) % fields.length;
+      const field = fields[clamped];
+      setActiveFieldIndex(clamped);
+      if (field.bbox) {
+        setActiveProvenance({ name: field.fieldName, page: field.pageNumber, bbox: field.bbox });
+        if (field.pageNumber) setPdfPage(field.pageNumber);
+      } else {
+        setActiveProvenance({ name: field.fieldName, page: field.pageNumber, bbox: null });
+      }
+      // Scroll the field row into view in the right pane.
+      const row = fieldListRef.current?.querySelector<HTMLElement>(`[data-field-index="${clamped}"]`);
+      row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    },
+    [data?.reviewFields]
+  );
+
+  // D-3: n = next review field, p = previous review field (wrapping).
+  useEffect(() => {
+    if (activeTab !== "DOC") return;
+    const fields = data?.reviewFields ?? [];
+    if (fields.length === 0) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      // Ignore when the user is typing in an input or textarea.
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "n") {
+        e.preventDefault();
+        const next = nextReviewIndex(fields, activeFieldIndex);
+        if (next !== -1) jumpToReviewField(next);
+        else jumpToReviewField((activeFieldIndex + 1) % fields.length);
+      } else if (e.key === "p") {
+        e.preventDefault();
+        const prev = (activeFieldIndex - 1 + fields.length) % fields.length;
+        jumpToReviewField(prev);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeTab, data?.reviewFields, activeFieldIndex, jumpToReviewField]);
 
   const isPending = parsedExtractedJson?.extractionStatus === "PENDING_VISION_PROCESSING";
 
@@ -1153,8 +1211,7 @@ export function DocumentReviewPanel({
                 </div>
               ) : isPdfFile(proxyUrl, fileName) ? (
                 (() => {
-                  const baseUrl = proxyUrl.split("#")[0];
-                  const pdfUrlWithParams = `${baseUrl}#page=${pdfPage}&view=FitH&toolbar=1`;
+                  const reviewFields = data?.reviewFields ?? [];
                   return (
                     <div className="flex-1 w-full h-full flex flex-col overflow-hidden">
                       {/* PDF Action Bar */}
@@ -1167,11 +1224,16 @@ export function DocumentReviewPanel({
                               p.{pdfPage}
                             </span>
                           )}
+                          {reviewFields.length > 0 && (
+                            <span className="text-[10px] text-slate-400 hidden sm:inline">
+                              n/p to navigate fields
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2 shrink-0">
                           {pdfPage > 1 && (
                             <button
-                              onClick={() => { setPdfPage(1); setActiveProvenance(null); }}
+                              onClick={() => { setPdfPage(1); setActiveProvenance(null); setActiveFieldIndex(-1); }}
                               className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors cursor-pointer"
                               title="Back to page 1"
                             >
@@ -1192,41 +1254,118 @@ export function DocumentReviewPanel({
                         </div>
                       </div>
 
-                      {/* Provenance banner — shown when a field was clicked in the KV tab */}
-                      {activeProvenance && (
-                        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between gap-3 shrink-0">
-                          <div className="flex items-center gap-2 min-w-0 text-xs">
-                            <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-bold text-[10px] uppercase shrink-0">
-                              Source
-                            </span>
-                            <span className="font-semibold text-amber-900 truncate">{activeProvenance.name}</span>
-                            {activeProvenance.page && (
-                              <span className="text-amber-700 shrink-0">— page {activeProvenance.page}</span>
-                            )}
-                            {activeProvenance.bbox && (
-                              <span className="text-amber-600 text-[10px] shrink-0 hidden sm:inline">
-                                ({Math.round(activeProvenance.bbox.x)}, {Math.round(activeProvenance.bbox.y)})
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => setActiveProvenance(null)}
-                            className="text-amber-700 hover:text-amber-900 transition-colors cursor-pointer shrink-0"
-                            title="Dismiss"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
+                      {/* D-2: Split pane — PdfCanvas (left) + extracted field list (right). */}
+                      <div className="flex-1 flex min-h-0 overflow-hidden">
+                        {/* Left: PDF canvas with bbox highlight */}
+                        <div className="flex-1 min-w-0 overflow-hidden relative">
+                          {activeProvenance && (
+                            <div className="absolute top-0 left-0 right-0 bg-amber-900/80 border-b border-amber-600/40 px-3 py-1.5 flex items-center justify-between gap-2 z-10 shrink-0">
+                              <div className="flex items-center gap-2 min-w-0 text-xs">
+                                <span className="px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 font-bold text-[10px] uppercase shrink-0">
+                                  Source
+                                </span>
+                                <span className="font-semibold text-amber-200 truncate">{activeProvenance.name}</span>
+                                {activeProvenance.page && (
+                                  <span className="text-amber-400 shrink-0">p.{activeProvenance.page}</span>
+                                )}
+                                {/* D-4: degrade gracefully when no bbox was recorded */}
+                                {!activeProvenance.bbox && (
+                                  <span className="text-amber-500 text-[10px] shrink-0 italic">location not recorded</span>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => { setActiveProvenance(null); setActiveFieldIndex(-1); }}
+                                className="text-amber-400 hover:text-amber-200 transition-colors cursor-pointer shrink-0"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                          <PdfCanvas
+                            url={proxyUrl}
+                            page={pdfPage}
+                            bbox={activeProvenance?.bbox ?? null}
+                            className="w-full h-full"
+                          />
                         </div>
-                      )}
 
-                      {/* PDF Canvas iFrame — key forces remount on page change */}
-                      <div className="flex-1 w-full h-full relative overflow-hidden bg-[#323639]">
-                        <iframe
-                          key={pdfUrlWithParams}
-                          src={pdfUrlWithParams}
-                          className="w-full h-full border-none block min-h-[450px]"
-                          title={fileName}
-                        />
+                        {/* Right: extracted field list with "view source" buttons */}
+                        {reviewFields.length > 0 && (
+                          <div
+                            ref={fieldListRef}
+                            className="w-72 shrink-0 border-l border-white/10 overflow-y-auto bg-[#1a1b1f] flex flex-col text-xs"
+                          >
+                            <div className="px-3 py-2 border-b border-white/10 shrink-0">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Extracted Fields
+                              </p>
+                            </div>
+                            <div className="flex-1 divide-y divide-white/5">
+                              {reviewFields.map((field, idx) => {
+                                const isActive = activeFieldIndex === idx;
+                                const hasLocation = field.pageNumber !== null || field.bbox !== null;
+                                return (
+                                  <div
+                                    key={field.fieldName}
+                                    data-field-index={idx}
+                                    className={`px-3 py-2.5 transition-colors ${
+                                      isActive
+                                        ? "bg-amber-900/25 border-l-2 border-amber-500"
+                                        : "hover:bg-white/5 border-l-2 border-transparent"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 truncate">
+                                          {field.fieldName}
+                                        </p>
+                                        <p
+                                          className={`font-mono font-semibold break-words mt-0.5 ${
+                                            field.corrected
+                                              ? "text-brand-light"
+                                              : field.needsReview
+                                              ? "text-amber-300"
+                                              : "text-slate-200"
+                                          }`}
+                                        >
+                                          {field.currentValue}
+                                        </p>
+                                      </div>
+                                      {/* D-4: view source / location not recorded */}
+                                      {hasLocation ? (
+                                        <button
+                                          onClick={() => jumpToReviewField(idx)}
+                                          title={
+                                            field.bbox
+                                              ? `Jump to page ${field.pageNumber ?? "?"} and highlight`
+                                              : `Jump to page ${field.pageNumber ?? "?"}`
+                                          }
+                                          className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors cursor-pointer"
+                                        >
+                                          <MapPin className="w-2.5 h-2.5" />
+                                          {field.pageNumber !== null ? `p.${field.pageNumber}` : ""}
+                                        </button>
+                                      ) : (
+                                        <span
+                                          title="Location not recorded by extraction pipeline"
+                                          className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-slate-600"
+                                        >
+                                          <MapPinOff className="w-2.5 h-2.5" />
+                                        </span>
+                                      )}
+                                    </div>
+                                    {field.confidence !== null && (
+                                      <p className="text-[10px] text-slate-600 mt-0.5">
+                                        {field.confidence}% confidence
+                                        {field.corrected && " · corrected"}
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

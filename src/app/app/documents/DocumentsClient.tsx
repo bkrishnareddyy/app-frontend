@@ -12,6 +12,8 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
 import { PAGE_SIZE_DEFAULT, pageWindow } from "@/modules/tables/tableQuery";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
@@ -24,6 +26,10 @@ interface ShipmentDocumentItem {
   name: string;
   type: string;
   docType?: string;
+  /** Structured enum value set by the classifier. Null until classification runs. */
+  documentType?: string | null;
+  /** Model confidence 0–1. Null until classification runs. */
+  documentTypeConfidence?: number | null;
   status: string;
   uploadedAt: string;
   url: string;
@@ -53,6 +59,8 @@ interface ApiDocument {
   name?: string | null;
   docType?: string | null;
   type?: string | null;
+  documentType?: string | null;
+  documentTypeConfidence?: number | null;
   status?: string | null;
   createdAt?: string | null;
   fileUrl?: string | null;
@@ -133,6 +141,10 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   const [previewDoc, setPreviewDoc] = useState<ShipmentDocumentItem | null>(null);
   const [targetShipmentId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  /** Tracks which doc's classification dropdown is open. */
+  const [classifyingDocId, setClassifyingDocId] = useState<string | null>(null);
+  /** In-flight classification overrides so the UI optimistically updates. */
+  const [typeOverrides, setTypeOverrides] = useState<Record<string, string>>({});
   const { t } = useLanguage();
 
   // Selected team member IDs. Default is [] (All Documents)
@@ -190,12 +202,14 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                   name: d.fileName || d.name || "Trade_Document.pdf",
                   type: d.docType || d.type || "Commercial Invoice",
                   docType: d.docType || d.type || "COMMERCIAL_INVOICE",
-                  status: d.status || "Processed",
+                  documentType: d.documentType ?? null,
+                  documentTypeConfidence: d.documentTypeConfidence ?? null,
+                  status: d.status || "Received",
                   uploadedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "Just now",
                   url: d.fileUrl || d.url || "#",
                   shipmentId: shp.id,
                   shipmentRef: shp.shipmentNumber || shp.id,
-                  confidenceScore: 98,
+                  confidenceScore: d.confidence ?? null,
                   assignedBrokerId: shp.assignedBrokerId,
                   assignedBrokerName: shp.assignedBroker
                     ? `${shp.assignedBroker.firstName ?? ""} ${shp.assignedBroker.lastName ?? ""}`.trim() || shp.assignedBroker.email
@@ -222,6 +236,8 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
               name: d.fileName || "Trade_Document.pdf",
               type: d.docType || "Commercial Invoice",
               docType: d.docType || "COMMERCIAL_INVOICE",
+              documentType: d.documentType ?? null,
+              documentTypeConfidence: d.documentTypeConfidence ?? null,
               status: d.status || "Received",
               uploadedAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "Just now",
               url: d.fileUrl || "#",
@@ -259,6 +275,38 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
     setSelectedUserIds((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
     );
+  };
+
+  const classifyDocument = async (docId: string, documentType: string) => {
+    setTypeOverrides((prev) => ({ ...prev, [docId]: documentType }));
+    setClassifyingDocId(null);
+    try {
+      await fetch(`/api/documents/${docId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentType }),
+      });
+      // Refresh list to pick up the cleared NEEDS_CLASSIFICATION status.
+      fetchDocuments();
+    } catch {
+      // Revert optimistic update on failure.
+      setTypeOverrides((prev) => { const next = { ...prev }; delete next[docId]; return next; });
+    }
+  };
+
+  const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+    COMMERCIAL_INVOICE: "Commercial Invoice",
+    PACKING_LIST: "Packing List",
+    BILL_OF_LADING: "Bill of Lading",
+    AIR_WAYBILL: "Air Waybill",
+    CERTIFICATE_OF_ORIGIN: "Certificate of Origin",
+    PHYTOSANITARY_CERTIFICATE: "Phytosanitary Certificate",
+    FUMIGATION_CERTIFICATE: "Fumigation Certificate",
+    CUSTOMS_BOND: "Customs Bond",
+    POWER_OF_ATTORNEY: "Power of Attorney",
+    ENTRY_SUMMARY: "Entry Summary",
+    ISF: "ISF (10+2)",
+    OTHER: "Other",
   };
 
   // Derived from the shipments loaded via /api/shipments (already includes client)
@@ -556,6 +604,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
               <tr>
                 <th className="py-3 px-5">{t.documents.colName}</th>
                 <th className="py-3 px-5">{t.documents.colType}</th>
+                <th className="py-3 px-5">Classification</th>
                 <th className="py-3 px-5">{t.documents.colShipment}</th>
                 <th className="py-3 px-5">{t.documents.colStatus}</th>
                 <th className="py-3 px-5">Client</th>
@@ -566,7 +615,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
             <tbody className="divide-y divide-border">
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={isEnterpriseAdmin ? 7 : 6} className="py-12 text-center text-ink-muted">
+                  <td colSpan={isEnterpriseAdmin ? 8 : 7} className="py-12 text-center text-ink-muted">
                     <FileText className="w-8 h-8 mx-auto text-ink-muted/40 mb-2" />
                     <p className="font-semibold text-xs text-ink">No Trade Documents Uploaded Yet</p>
                     <p className="text-[11px] text-ink-muted mt-1">
@@ -603,6 +652,65 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                       </span>
                     </td>
 
+                    {/* B-4: Classification column — type badge + confidence + manual override */}
+                    <td className="py-3.5 px-5">
+                      {(() => {
+                        const effectiveType = typeOverrides[doc.id] ?? doc.documentType;
+                        const needsClassification = doc.status === "NEEDS_CLASSIFICATION" && !typeOverrides[doc.id];
+                        if (needsClassification) {
+                          return (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setClassifyingDocId(classifyingDocId === doc.id ? null : doc.id)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>Needs Review</span>
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                              {classifyingDocId === doc.id && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setClassifyingDocId(null)} />
+                                  <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-border rounded-xl shadow-lg z-20 overflow-hidden">
+                                    <p className="px-3 py-2 text-[10px] font-bold text-ink-muted uppercase tracking-wide border-b border-border">
+                                      Set document type
+                                    </p>
+                                    {Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => (
+                                      <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => classifyDocument(doc.id, value)}
+                                        className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-surface-muted transition-colors cursor-pointer"
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        }
+                        if (!effectiveType) {
+                          return <span className="text-[11px] text-ink-muted">—</span>;
+                        }
+                        const pct = doc.documentTypeConfidence != null
+                          ? Math.round(doc.documentTypeConfidence * 100)
+                          : null;
+                        return (
+                          <span className="inline-flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                              {DOCUMENT_TYPE_LABELS[effectiveType] ?? effectiveType}
+                            </span>
+                            {pct != null && (
+                              <span className="text-[10px] text-ink-muted font-medium">{pct}%</span>
+                            )}
+                          </span>
+                        );
+                      })()}
+                    </td>
+
                     <td className="py-3.5 px-5 font-mono text-[11px]">
                       {doc.unattached ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
@@ -616,10 +724,22 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                     </td>
 
                     <td className="py-3.5 px-5">
-                      <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Processed (98% Conf)</span>
-                      </span>
+                      {doc.status === "NEEDS_CLASSIFICATION" ? (
+                        <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Needs Classification</span>
+                        </span>
+                      ) : doc.status === "Review Required" ? (
+                        <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-50 text-orange-700 border border-orange-200">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Review Required</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>{doc.status || "Received"}{doc.confidenceScore != null ? ` (${doc.confidenceScore}% Conf)` : ""}</span>
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-5">
