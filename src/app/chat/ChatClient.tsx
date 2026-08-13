@@ -245,8 +245,23 @@ async function deleteSessionInDb(id: string): Promise<void> {
   await fetch(`/api/assistant/chats/${id}`, { method: "DELETE" }).catch(() => { /* best-effort */ });
 }
 
+function safeRandomUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      /* fallback below */
+    }
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function freshSession(): ChatSession {
-  return { id: `local-${crypto.randomUUID()}`, title: "New chat", createdAt: Date.now(), messages: [], history: [], persisted: false };
+  return { id: `local-${safeRandomUUID()}`, title: "New chat", createdAt: Date.now(), messages: [], history: [], persisted: false };
 }
 
 function relativeTime(ts: number): string {
@@ -259,7 +274,7 @@ function relativeTime(ts: number): string {
   return d === 1 ? "Yesterday" : `${d}d ago`;
 }
 
-const nextId = () => `m-${crypto.randomUUID()}`;
+const nextId = () => `m-${safeRandomUUID()}`;
 
 // ── Markdown ──────────────────────────────────────────────────────────────────
 // Small hand-rolled renderer covering just what the assistant is instructed
