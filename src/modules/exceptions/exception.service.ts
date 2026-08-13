@@ -3,6 +3,7 @@ import { createAuditLog } from "@/lib/audit";
 import { ProviderMetadata } from "@/lib/providers";
 import {
   EXCEPTION_STATES,
+  isRiskAcceptance,
   isTerminalExceptionState,
   normalizeExceptionStatus,
   requiresResolutionReason,
@@ -10,6 +11,8 @@ import {
   type ExceptionState,
 } from "./exceptionState";
 import { validateReasonCode, isRiskAcceptanceReason, type ExceptionCategory } from "./resolutionReasons";
+import type { DocumentType } from "@prisma/client";
+import { getRequiredFields } from "@/lib/documents/extractionSchemas";
 
 export interface ExceptionListQuery {
   status?: string;
@@ -112,6 +115,10 @@ export class ExceptionService {
       if (requiresResolutionReason(normalized) && !input.resolutionReason?.trim()) {
         throw new Error(`A stated reason is required to move this exception to ${normalized}`);
       }
+      // Waiving requires a picklist reason code in addition to the free-text note.
+      if (isRiskAcceptance(normalized) && !input.resolutionReasonCode?.trim()) {
+        throw new Error(`Waiving an exception requires a reason code from the approved picklist.`);
+      }
       // Validate the picklist code when provided.
       if (input.resolutionReasonCode?.trim()) {
         const category = (existing.category as ExceptionCategory | null) ?? null;
@@ -156,6 +163,20 @@ export class ExceptionService {
       });
     }
 
+    // Append a history entry for this transition.
+    const historyEntry = {
+      timestamp: new Date().toISOString(),
+      userId: resolver?.userId ?? "SYSTEM",
+      action: nextStatus
+        ? `status_changed:${nextStatus}`
+        : input.assignedToUserId !== undefined
+          ? `assigned:${input.assignedToUserId ?? "unassigned"}`
+          : "updated",
+      note: input.resolutionReason?.trim() || undefined,
+    };
+    const currentHistory = Array.isArray(existing.history) ? (existing.history as object[]) : [];
+    const updatedHistory = [...currentHistory, historyEntry];
+
     const updated = await db.exceptionItem.update({
       where: { id: exceptionId },
       data: {
@@ -169,6 +190,7 @@ export class ExceptionService {
         resolutionReasonCode: isClosing && input.resolutionReasonCode?.trim()
           ? input.resolutionReasonCode.trim()
           : undefined,
+        history: updatedHistory,
         version: { increment: 1 },
       },
       include: {
@@ -233,6 +255,68 @@ export class ExceptionService {
             resolvedBy: "SYSTEM",
             resolvedByName: "Automated re-extraction",
             resolutionNote: `${label} was found on reprocessing: "${value}".`,
+          },
+        });
+      }
+    }
+  }
+
+  /**
+   * C-5: Sync MISSING_DATA exceptions for per-document-type required fields.
+   *
+   * For every required field in the extraction schema for `documentType`:
+   * - Opens a new MISSING_DATA ExceptionItem if the field was not extracted.
+   * - Resolves the existing open ExceptionItem if the field was extracted.
+   *
+   * Only one open exception per (documentId, fieldName) code is maintained.
+   */
+  static async syncExtractionFieldExceptions(input: {
+    accountId: string;
+    shipmentId: string;
+    documentId: string;
+    documentType: DocumentType;
+    fileName: string;
+    writtenFieldNames: Set<string>;
+  }) {
+    const requiredFields = getRequiredFields(input.documentType);
+    for (const field of requiredFields) {
+      const { fieldName, label } = field;
+      const code = `MISSING_EXTRACTION:${fieldName}`;
+      const isPresent = input.writtenFieldNames.has(fieldName);
+
+      const existingOpen = await db.exceptionItem.findFirst({
+        where: { documentId: input.documentId, fieldKey: fieldName, code, status: { not: "Resolved" } },
+        omit: { resolutionReasonCode: true },
+      });
+
+      if (!isPresent) {
+        if (!existingOpen) {
+          await db.exceptionItem.create({
+            data: {
+              accountId: input.accountId,
+              shipmentId: input.shipmentId,
+              documentId: input.documentId,
+              fieldKey: fieldName,
+              code,
+              category: "MISSING_DATA",
+              type: "missing_document",
+              severity: "Medium",
+              blocking: false,
+              description: `${label} was not extracted from ${input.fileName}.`,
+              requiredAction: `Review document and provide ${label}, or confirm it is not applicable.`,
+              sourceAgent: "Document Intelligence Agent",
+            },
+          });
+        }
+      } else if (existingOpen) {
+        await db.exceptionItem.update({
+          where: { id: existingOpen.id },
+          data: {
+            status: "Resolved",
+            resolvedAt: new Date(),
+            resolvedBy: "SYSTEM",
+            resolvedByName: "Automated re-extraction",
+            resolutionNote: `${label} was found on reprocessing.`,
           },
         });
       }

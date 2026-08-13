@@ -17,6 +17,24 @@ enum DataMode {
   SANDBOX
 }
 
+/// Canonical document type codes understood by the classification pipeline.
+/// OTHER is the explicit fallback; NEEDS_CLASSIFICATION is signalled via
+/// ShipmentDocument.status, not via this enum.
+enum DocumentType {
+  COMMERCIAL_INVOICE
+  PACKING_LIST
+  BILL_OF_LADING
+  AIR_WAYBILL
+  CERTIFICATE_OF_ORIGIN
+  PHYTOSANITARY_CERTIFICATE
+  FUMIGATION_CERTIFICATE
+  CUSTOMS_BOND
+  POWER_OF_ATTORNEY
+  ENTRY_SUMMARY
+  ISF
+  OTHER
+}
+
 // ---------------------------------------------------------------------------
 // COMPLIANCE DEADLINE ENUMS
 // ---------------------------------------------------------------------------
@@ -120,6 +138,7 @@ model Account {
   complianceDeadlines        ComplianceDeadline[]
   aiUsageWindows             AiUsageWindow[]
   assistantChatSessions      AssistantChatSession[]
+  agentPolicyConfigs         AgentPolicyConfig[]
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -376,6 +395,8 @@ model Shipment {
   transportMode      String?   // Ocean | Air | Truck | Rail — ISF applies to Ocean only
   filingDeadline     DateTime? // Derived cache: min(dueAt) over OPEN blocking ComplianceDeadlines
   status             String            @default("Draft") // Draft, In Progress, Ready to File, On Hold, Submitted, Completed
+  // Workflow lifecycle stage. Values: DOCUMENT_INTAKE | CLASSIFICATION | VALUATION | ORIGIN | COMPLIANCE | FILING_PREP | READY_TO_FILE
+  currentStage       String?
   healthStatus       String? // Healthy, At Risk, Critical — derived, null until evaluated
   readinessScore     Int? // 0 - 100 percentage, null until calculated
   riskScore          Int? // 0 - 100 risk score, null until calculated
@@ -409,6 +430,7 @@ model Shipment {
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
   @@index([status])
+  @@index([currentStage])
   @@index([deletedAt])
   @@index([masterShipmentId])
   @@index([filingDeadline])
@@ -480,13 +502,20 @@ model ShipmentDocument {
   accountId     String
   account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   docType       String // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin
+  /// Structured enum equivalent of docType, written by the classification
+  /// pipeline. Null until classification runs. Distinct from docType so the
+  /// 169+ callers of the legacy string field are unaffected.
+  documentType            DocumentType? // set by classifier; null = not yet classified
+  /// Model confidence for the documentType assignment (0.0–1.0). Values < 0.7
+  /// route to human review and cause status = "NEEDS_CLASSIFICATION".
+  documentTypeConfidence  Float?
   fileName      String // e.g. INV-45678.pdf
   pageCount     Int? // null until the document has been parsed
   fileUrl       String?
   checksum      String? // SHA-256 hash for duplicate detection
   version       String    @default("1.0")
   confidence    Int? // extraction confidence, null until extraction runs
-  status        String    @default("Received") // Received, Missing, Review Required
+  status        String    @default("Received") // Received, Missing, Review Required, NEEDS_CLASSIFICATION
   required      Boolean   @default(true)
   extractedJson String?   @db.Text
   rawContent    String?   @db.Text
@@ -529,6 +558,7 @@ model ShipmentDocument {
   @@index([shipmentId])
   @@index([accountId])
   @@index([accountId, checksum])
+  @@index([documentType])
 }
 
 /// Authorizes one normalized sender email to route inbound documents into
@@ -706,6 +736,9 @@ model AgentDecision {
   // Stable policy id when triageState = AUTO_VERIFIED, e.g. "hts-auto-v1".
   // Lets an auditor reconstruct exactly which policy version fired.
   autoApprovalPolicy  String?
+  // True when triageState = AUTO_VERIFIED. False for all human approvals (APPROVED).
+  // Never collapse AUTO_VERIFIED with APPROVED — auditors need the distinction.
+  autoApproved        Boolean           @default(false)
   confidence          Int? // model confidence, null until the model reports one
   decisionSummary     String // e.g. 2 line items need review
   purpose             String? // e.g. Determine correct HS/HTS classification for all line items
@@ -743,7 +776,30 @@ model AgentDecision {
   @@index([status])
   @@index([triageState])
   @@index([accountId, triageState])
+  @@index([autoApproved])
   @@index([documentId])
+}
+
+/// Per-account, per-agent overrides for the auto-approval thresholds in
+/// src/modules/decisions/autoApprovalPolicy.ts. When no row exists the module
+/// uses its built-in defaults. Storing overrides here (not in env vars) lets
+/// a compliance officer change thresholds without a deployment.
+model AgentPolicyConfig {
+  id                    String   @id @default(cuid())
+  accountId             String
+  account               Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  agentName             String
+  /// Minimum confidence for AUTO outcome (default 85).
+  autoThreshold         Int      @default(85)
+  /// Minimum confidence for CONFIRM outcome (default 60).
+  confirmThreshold      Int      @default(60)
+  /// When true, a missing part-master match forces REVIEW regardless of confidence.
+  requirePartMasterMatch Boolean @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([accountId, agentName])
+  @@index([accountId])
 }
 
 model CustomsFiling {
@@ -1386,6 +1442,9 @@ model ExceptionItem {
   // note so reason analytics are query-able. Null for pre-migration rows and for
   // cancellations (which do not require a stated reason).
   resolutionReasonCode String?
+  // Chronological log of status transitions, assignments, and notes.
+  // Each entry: { timestamp: ISO string, userId: string, action: string, note?: string }
+  history              Json              @default("[]")
 
   @@index([accountId])
   @@index([status])
@@ -1495,12 +1554,19 @@ model ExtractionField {
   value      String
   confidence Int? // null until the extractor reports one
   pageNumber Int?
-  bbox       Json? // { x: 120, y: 340, width: 200, height: 24 }
-  source     String           @default("OCR_AI_AGENT")
+  bbox       Json? // { x: 120, y: 340, width: 200, height: 24 } — PDF points
+  source     String           @default("OCR_AI_AGENT") // OCR_AI_AGENT | HUMAN_CORRECTION | PARSER
+  /// Set when source = HUMAN_CORRECTION. The value before the correction.
+  correctedFromValue String?
+  /// userId of the reviewer who made the correction.
+  correctedByUserId  String?
+  /// Wall-clock time of the correction.
+  correctedAt        DateTime?
   createdAt  DateTime         @default(now())
 
   @@index([documentId])
   @@index([fieldName])
+  @@index([documentId, source])
 }
 
 model ReconciliationIssue {
