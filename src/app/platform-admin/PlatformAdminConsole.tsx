@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, FormField } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import type { AiUsageAnalytics } from "@/lib/ai/aiUsageAnalytics";
+import type { DocumentProcessingAnalytics } from "@/lib/documents/documentProcessingAnalytics";
 
 interface AccountItem {
   id: string;
@@ -25,9 +26,10 @@ interface PlatformAdminConsoleProps {
   accounts: AccountItem[];
   htsAdmin: HtsAdminData;
   aiUsage: AiUsageAnalytics;
+  documentProcessing: DocumentProcessingAnalytics;
 }
 
-export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage }: PlatformAdminConsoleProps) {
+export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProcessing }: PlatformAdminConsoleProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"accounts" | "hts" | "deployments" | "agents">("accounts");
   const [companyName, setCompanyName] = useState("");
@@ -138,7 +140,7 @@ export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage }: PlatformAd
 
       {activeTab === "deployments" && <DeploymentsPanel />}
 
-      {activeTab === "agents" && <AgentsAnalyticsPanel data={aiUsage} />}
+      {activeTab === "agents" && <AgentsAnalyticsPanel data={aiUsage} documentProcessing={documentProcessing} />}
 
       {activeTab === "accounts" && (
         <>
