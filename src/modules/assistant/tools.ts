@@ -181,6 +181,7 @@ const listShipments: AssistantTool = {
         status: s.status,
         healthStatus: s.healthStatus,
         readinessScore: s.readinessScore,
+        value: shipmentValue(s),
         assignedBroker: s.assignedBroker
           ? [s.assignedBroker.firstName, s.assignedBroker.lastName].filter(Boolean).join(" ") || null
           : null,
@@ -213,6 +214,10 @@ const getValueAtRisk: AssistantTool = {
       shipments: atRisk.map((s) => ({
         shipmentNumber: s.shipmentNumber,
         importerName: s.importerName,
+        status: s.status,
+        assignedBroker: s.assignedBroker
+          ? [s.assignedBroker.firstName, s.assignedBroker.lastName].filter(Boolean).join(" ") || null
+          : null,
         readinessScore: s.readinessScore,
         value: shipmentValue(s),
         url: shipmentUrl(s),

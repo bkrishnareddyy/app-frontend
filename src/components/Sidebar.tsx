@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -85,6 +85,24 @@ export function Sidebar({
   const { t } = useLanguage();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingClassificationCount, setPendingClassificationCount] = useState(0);
+
+  const fetchPendingClassification = useCallback(async () => {
+    try {
+      const res = await fetch("/api/documents/pending-classification", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setPendingClassificationCount(typeof data.count === "number" ? data.count : 0);
+    } catch {
+      // Silent — a failed poll just tries again next interval.
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPendingClassification();
+    const interval = setInterval(fetchPendingClassification, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchPendingClassification]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -213,6 +231,7 @@ export function Sidebar({
                     const isActive = activeHref === item.href;
                     const Icon = ICONS[item.icon];
                     const label = labels[item.labelKey] ?? item.labelKey;
+                    const badgeCount = item.id === "documents" ? pendingClassificationCount : (item.badge ?? 0);
                     return (
                       <Link
                         key={item.id}
@@ -226,7 +245,14 @@ export function Sidebar({
                             : "bg-white/40 text-ink border-border/40 hover:bg-white hover:text-brand hover:border-border"
                         )}
                       >
-                        <Icon className={cn("w-3 h-3 shrink-0", isActive ? "text-brand" : "text-ink-muted")} />
+                        <span className="relative shrink-0">
+                          <Icon className={cn("w-3 h-3", isActive ? "text-brand" : "text-ink-muted")} />
+                          {badgeCount > 0 && (
+                            <span className="absolute -top-1 -right-1.5 min-w-[12px] h-3 px-0.5 rounded-full bg-amber-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                              {badgeCount > 9 ? "9+" : badgeCount}
+                            </span>
+                          )}
+                        </span>
                         <span className="truncate">{label}</span>
                       </Link>
                     );
@@ -239,6 +265,7 @@ export function Sidebar({
                     const Icon = ICONS[item.icon];
                     const label = labels[item.labelKey] ?? item.labelKey;
                     const isPlatform = section.id === "platform";
+                    const badgeCount = item.id === "documents" ? pendingClassificationCount : (item.badge ?? 0);
                     return (
                       <Link
                         key={item.id}
@@ -257,13 +284,29 @@ export function Sidebar({
                           !isActive && !isPlatform && "text-ink hover:text-brand hover:bg-white/60"
                         )}
                       >
-                        <Icon
-                          className={cn(
-                            "w-4 h-4 shrink-0",
-                            isPlatform ? "text-amber-600" : isActive ? "text-brand" : "text-ink-muted"
+                        <span className="relative shrink-0">
+                          <Icon
+                            className={cn(
+                              "w-4 h-4",
+                              isPlatform ? "text-amber-600" : isActive ? "text-brand" : "text-ink-muted"
+                            )}
+                          />
+                          {badgeCount > 0 && (
+                            <span className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                              {badgeCount > 99 ? "99+" : badgeCount}
+                            </span>
                           )}
-                        />
-                        {!collapsed && <span className="truncate">{label}</span>}
+                        </span>
+                        {!collapsed && (
+                          <span className="flex-1 flex items-center justify-between min-w-0">
+                            <span className="truncate">{label}</span>
+                            {badgeCount > 0 && collapsed === false && (
+                              <span className="ml-1.5 shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500/15 text-amber-700 text-[10px] font-bold flex items-center justify-center">
+                                {badgeCount > 99 ? "99+" : badgeCount}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </Link>
                     );
                   })}

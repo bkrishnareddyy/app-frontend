@@ -33,6 +33,8 @@ export interface NavItem {
   /** Permission that also grants visibility when the caller's role is not listed. */
   permission?: string;
   platformAdminOnly?: boolean;
+  /** Optional live count shown as a badge. Populated externally, not in the static definition. */
+  badge?: number;
 }
 
 export interface NavSection {
@@ -52,8 +54,8 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "operations",
     labelKey: "mainOperations",
     items: [
-      { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "actions", labelKey: "actions", href: "/app/actions", icon: "actions" },
+      { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
       { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },

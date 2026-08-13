@@ -545,7 +545,8 @@ export function ChatClient({ context }: ChatClientProps) {
   const [input, setInput] = useState("");
   const [isDark, setIsDark] = useState(true);
   const [navExpanded, setNavExpanded] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const pendingFile = pendingFiles[0] ?? null;
   const [dragActive, setDragActive] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -565,13 +566,18 @@ export function ChatClient({ context }: ChatClientProps) {
   historyRef.current = activeSession?.history ?? [];
   const isEmpty = messages.length === 0;
 
-  // Load sessions from the DB
+  // Load sessions from the DB, but always land on a fresh new chat screen on page load
   useEffect(() => {
     let cancelled = false;
     fetchSessions().then((loaded) => {
       if (cancelled) return;
-      if (loaded.length > 0) { setSessions(loaded); setActiveId(loaded[loaded.length - 1].id); }
-      else { const s = freshSession(); setSessions([s]); setActiveId(s.id); }
+      const initialNew = freshSession();
+      if (loaded.length > 0) {
+        setSessions([...loaded, initialNew]);
+      } else {
+        setSessions([initialNew]);
+      }
+      setActiveId(initialNew.id);
     });
     return () => { cancelled = true; };
   }, [context.accountId]);
@@ -616,14 +622,16 @@ export function ChatClient({ context }: ChatClientProps) {
     // If a file is attached and the user's own text names a shipment we've
     // already verified via a tool call this session, skip the back-and-forth
     // entirely and upload straight to it.
-    if (pendingFile) {
+    if (pendingFiles.length > 0) {
       const match = findKnownShipmentInText(trimmed, knownShipmentsRef.current);
       if (match) {
-        const file = pendingFile;
-        setPendingFile(null);
+        const filesToUpload = [...pendingFiles];
+        setPendingFiles([]);
         fileAnnouncedRef.current = false;
         setInput("");
-        await performUpload(file, match.id, match.number, trimmed);
+        for (const f of filesToUpload) {
+          await performUpload(f, match.id, match.number, trimmed);
+        }
         return;
       }
     }
@@ -800,13 +808,30 @@ export function ChatClient({ context }: ChatClientProps) {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("shipmentId", shipmentId);
+      if (shipmentId) form.append("shipmentId", shipmentId);
       const res = await fetch("/api/documents/upload", { method: "POST", body: form });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { await fail(data?.message ?? safeErrorMessage(data?.error) ?? `Upload failed (${res.status})`); return; }
 
       const documentId = data.documentId as string;
       const docType = data.docType as string | null;
+
+      if (data.parked || !shipmentId) {
+        asstMsg = {
+          ...asstMsg,
+          text: `Stored "${file.name}" in Document Library without attachment. You can attach it to a shipment anytime to run compliance extraction.`,
+          toolCalls: [{
+            name: "upload_document", status: "done",
+            result: {
+              phase: "parked",
+              fileName: file.name, docType, documentId, url: "/app/documents",
+            },
+          }],
+        };
+        pushUpdate();
+        await persistTurn();
+        return;
+      }
 
       asstMsg = { ...asstMsg, toolCalls: [{ name: "upload_document", status: "running", result: { phase: "processing", fileName: file.name, shipmentNumber, documentId, docType } }] };
       pushUpdate();
@@ -872,15 +897,23 @@ export function ChatClient({ context }: ChatClientProps) {
   }
 
   function handleAttachToShipment(shipmentId: string, shipmentNumber: string) {
-    if (!pendingFile) return;
-    const file = pendingFile;
-    setPendingFile(null);
+    if (pendingFiles.length === 0) return;
+    const filesToUpload = [...pendingFiles];
+    setPendingFiles([]);
     fileAnnouncedRef.current = false;
-    void performUpload(file, shipmentId, shipmentNumber);
+    for (const f of filesToUpload) {
+      void performUpload(f, shipmentId, shipmentNumber);
+    }
   }
 
-  function handleFilePicked(file: File) {
-    setPendingFile(file);
+  function handleFilesPicked(files: File[]) {
+    if (files.length === 0) return;
+    setPendingFiles((prev) => [...prev, ...files]);
+    fileAnnouncedRef.current = false;
+  }
+
+  function removePendingFile(index: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
     fileAnnouncedRef.current = false;
   }
 
@@ -901,8 +934,8 @@ export function ChatClient({ context }: ChatClientProps) {
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragActive(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFilePicked(file);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length > 0) handleFilesPicked(files);
   }
 
   return (
@@ -923,8 +956,9 @@ export function ChatClient({ context }: ChatClientProps) {
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             style={{ display: "none" }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); e.target.value = ""; }}
+            onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) handleFilesPicked(files); e.target.value = ""; }}
           />
 
           {dragActive && (
@@ -956,13 +990,17 @@ export function ChatClient({ context }: ChatClientProps) {
 
                 {/* Centered input card — no border, shadow only, so it floats on the page */}
                 <div style={{ background: th.surface, borderRadius: 16, boxShadow: isDark ? "0 12px 40px rgba(0,0,0,0.5)" : "0 12px 32px rgba(0,0,0,0.10)", overflow: "hidden", marginBottom: 16 }}>
-                  {pendingFile && <PendingFileChip file={pendingFile} onRemove={() => { setPendingFile(null); fileAnnouncedRef.current = false; }} />}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "8px 16px 0" }}>
+                    {pendingFiles.map((f, i) => (
+                      <PendingFileChip key={`${f.name}-${i}`} file={f} onRemove={() => removePendingFile(i)} />
+                    ))}
+                  </div>
                   <textarea
                     ref={textareaRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={onKey}
-                    placeholder={pendingFile ? "Which shipment should this attach to?" : `${SUGGESTED_PROMPT}  (Tab to use)`}
+                    placeholder={pendingFiles.length > 0 ? "Which shipment should these attach to? (or press Send to park in Document Library)" : `${SUGGESTED_PROMPT}  (Tab to use)`}
                     rows={3}
                     style={{ width: "100%", resize: "none", padding: "16px 20px 8px", fontSize: 14, color: th.ink, background: "transparent", border: "none", outline: "none", fontFamily: "inherit" }}
                     disabled={sending}
@@ -970,11 +1008,11 @@ export function ChatClient({ context }: ChatClientProps) {
                   />
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach a document"
+                      <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach documents"
                         style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "none", border: "none", cursor: "pointer", color: th.inkMuted }}>
                         <Paperclip style={{ width: 16, height: 16 }} />
                       </button>
-                      <span style={{ fontSize: 12, color: th.inkMuted }}>{context.accountName}</span>
+                      <span style={{ fontSize: 12, color: th.inkMuted }}>Active workspace: {context.accountName}</span>
                     </div>
                     <button type="button" onClick={() => sendMessage(input)}
                       disabled={sending || !input.trim()}
@@ -1007,7 +1045,7 @@ export function ChatClient({ context }: ChatClientProps) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, color: th.ink, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSession?.title ?? "Ask Qubere"}</div>
-                  <div style={{ fontSize: 11, color: th.inkMuted }}>{context.accountName}</div>
+                  <div style={{ fontSize: 11, color: th.inkMuted }}>Active workspace: {context.accountName}</div>
                 </div>
               </div>
 
@@ -1026,13 +1064,19 @@ export function ChatClient({ context }: ChatClientProps) {
               <div style={{ background: th.pageBg, padding: "12px 16px 16px", flexShrink: 0 }}>
                 <div style={{ maxWidth: 640, margin: "0 auto" }}>
                   <div style={{ background: th.surface, borderRadius: 16, boxShadow: isDark ? "0 12px 40px rgba(0,0,0,0.5)" : "0 12px 32px rgba(0,0,0,0.10)", overflow: "hidden" }}>
-                    {pendingFile && <PendingFileChip file={pendingFile} onRemove={() => { setPendingFile(null); fileAnnouncedRef.current = false; }} />}
+                    {pendingFiles.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "8px 16px 0" }}>
+                        {pendingFiles.map((f, i) => (
+                          <PendingFileChip key={`${f.name}-${i}`} file={f} onRemove={() => removePendingFile(i)} />
+                        ))}
+                      </div>
+                    )}
                     <textarea
                       ref={textareaRef}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={onKey}
-                      placeholder={pendingFile ? "Which shipment should this attach to?" : "Write a message…"}
+                      placeholder={pendingFiles.length > 0 ? "Which shipment should these attach to? (or press Send to park in Document Library)" : "Write a message…"}
                       rows={1}
                       style={{ width: "100%", resize: "none", padding: "14px 20px 8px", fontSize: 14, color: th.ink, background: "transparent", border: "none", outline: "none", maxHeight: 160, fontFamily: "inherit" }}
                       disabled={sending}
@@ -1147,7 +1191,15 @@ function MessageBubble({ message, onQuickReply }: { message: MessageDisplay; onQ
 
 // ── Tool cards ────────────────────────────────────────────────────────────────
 
-type ShipmentRow = { shipmentNumber: string; importerName: string; assignedBroker: string | null; readinessScore: number | null; url: string };
+type ShipmentRow = {
+  shipmentNumber: string;
+  importerName: string;
+  assignedBroker: string | null;
+  readinessScore: number | null;
+  value?: number | null;
+  status?: string | null;
+  url: string;
+};
 
 /** Small, deliberately unobtrusive link at the bottom of a tool card — lets the
  * user jump into the app to verify or act on the data without competing with
@@ -1358,6 +1410,19 @@ function UploadDocumentCard({ tc }: { tc: ToolCallDisplay }) {
     );
   }
 
+  if (phase === "parked") {
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <Badge variant="neutral">Parked (Unattached)</Badge>
+        <p style={{ fontSize: 14, fontWeight: 600, color: th.ink, marginTop: 8 }}>{r?.fileName}</p>
+        <p style={{ fontSize: 12, color: th.inkMuted, marginTop: 2 }}>
+          {r?.docType ? `${r.docType} · ` : ""}Stored in Document Library without processing. Attach to a shipment anytime to run compliance extraction.
+        </p>
+        <ViewInAppLink href={r?.url ?? "/app/documents"} label="documents" />
+      </Card>
+    );
+  }
+
   if (phase === "failed") {
     return (
       <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: "#fca5a5" } as React.CSSProperties}>
@@ -1404,6 +1469,12 @@ function ShipRow({ s }: { s: ShipmentRow }) {
           <div style={{ fontSize: 11, color: th.inkMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.importerName}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {typeof s.value === "number" && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: th.ink, fontVariantNumeric: "tabular-nums" }}>
+              ${s.value.toLocaleString()}
+            </span>
+          )}
+          {s.status && <Badge variant="neutral">{s.status}</Badge>}
           {s.assignedBroker
             ? <span style={{ fontSize: 12, color: th.inkMuted }}>{s.assignedBroker}</span>
             : <Badge variant="warning">Unassigned</Badge>}

@@ -1,9 +1,23 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { buildErrorResponse } from "@/lib/api/error";
+import { parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { z } from "zod";
 
-export const GET = withAuthenticatedRoute(async ({ ctx }) => {
+const createPscSchema = z.object({
+  originalFilingId: z.string().min(1, "originalFilingId is required"),
+  refundOpportunityId: z.string().optional(),
+  reason: z.string().optional(),
+  correctionType: z.string().optional(),
+  originalDutyAmount: z.number().nonnegative().optional(),
+  // correctedDutyAmount is required: callers must supply the actual corrected
+  // figure. No fallback heuristic — there is no statutory basis for one.
+  correctedDutyAmount: z.number().nonnegative({ message: "correctedDutyAmount is required and must be a non-negative number" }),
+});
+
+export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   const pscs = await db.postSummaryCorrection.findMany({
     where: { accountId: ctx.accountId },
     include: {
@@ -15,23 +29,21 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ pscs });
+  return NextResponse.json({ pscs, requestId });
 });
 
-export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
-  const body = await req.json();
-  const { originalFilingId, refundOpportunityId, reason, correctionType, originalDutyAmount, correctedDutyAmount } = body;
+export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
+  const bodyVal = await parseAndValidateBody(req, createPscSchema, requestId);
+  if ("response" in bodyVal) return bodyVal.response;
 
-  if (!originalFilingId) {
-    return NextResponse.json({ error: "originalFilingId is required" }, { status: 400 });
-  }
+  const { originalFilingId, refundOpportunityId, reason, correctionType, originalDutyAmount, correctedDutyAmount } = bodyVal.data;
 
   const filing = await db.customsFiling.findFirst({
     where: { id: originalFilingId, accountId: ctx.accountId },
   });
 
   if (!filing) {
-    return NextResponse.json({ error: "Original filing not found" }, { status: 404 });
+    return buildErrorResponse(404, "NOT_FOUND", "Original filing not found", undefined, requestId);
   }
 
   if (refundOpportunityId) {
@@ -40,12 +52,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       select: { id: true },
     });
     if (!opportunity) {
-      return NextResponse.json({ error: "Refund opportunity not found" }, { status: 404 });
+      return buildErrorResponse(404, "NOT_FOUND", "Refund opportunity not found", undefined, requestId);
     }
   }
 
-  const origDuty = originalDutyAmount !== undefined ? originalDutyAmount : filing.totalDuties;
-  const corrDuty = correctedDutyAmount !== undefined ? correctedDutyAmount : Math.round((origDuty * 0.7) * 100) / 100;
+  const origDuty = originalDutyAmount !== undefined ? originalDutyAmount : Number(filing.totalDuties);
+  const corrDuty = correctedDutyAmount;
   const refundAmount = Math.max(0, origDuty - corrDuty);
 
   const psc = await db.postSummaryCorrection.create({
@@ -53,8 +65,8 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       accountId: ctx.accountId,
       originalFilingId,
       refundOpportunityId,
-      reason: reason || "Post-Summary Correction for Tariff Classification Exclusion",
-      correctionType: correctionType || "classification",
+      reason: reason ?? "Post-Summary Correction",
+      correctionType: correctionType ?? "classification",
       originalDutyAmount: origDuty,
       correctedDutyAmount: corrDuty,
       refundAmount,
@@ -83,5 +95,5 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     metadata: { originalFilingId, refundAmount },
   });
 
-  return NextResponse.json({ psc }, { status: 201 });
-}, { write: true });
+  return NextResponse.json({ psc, requestId }, { status: 201 });
+}, { permission: "refunds.manage", write: true });

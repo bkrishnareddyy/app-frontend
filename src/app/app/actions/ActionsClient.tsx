@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Scale, TriangleAlert, Search, CheckCircle2, FileText, X, Upload } from "lucide-react";
 import { useDecisionActions } from "@/lib/decisions/useDecisionActions";
 import { ExceptionQuickActions } from "./ExceptionQuickActions";
+import { ExceptionSlideOver } from "./ExceptionSlideOver";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
 import { Modal, ModalHeader, ModalBody } from "@/components/ui/Modal";
 import { documentViewUrl } from "@/lib/documentUrl";
@@ -70,7 +71,15 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   const [clientFilter, setClientFilter] = useState<string>("all");
   const [activeCategory, setActiveCategory] = useState<"all" | "blocked" | "review" | "verified">("all");
   const [docModal, setDocModal] = useState<{ documentId: string; fileName: string; fileUrl: string | null } | null>(null);
+  const [exceptionSlideOver, setExceptionSlideOver] = useState<{ exceptionId: string; shipmentId: string | undefined } | null>(null);
   const [notesByDecision, setNotesByDecision] = useState<Record<string, string>>({});
+  const [selectedDecisionIds, setSelectedDecisionIds] = useState<Set<string>>(new Set());
+  const [bulkConfirmDialog, setBulkConfirmDialog] = useState<{
+    action: "APPROVE" | "REJECT";
+    ids: string[];
+    overrideCount: number;
+  } | null>(null);
+  const [bulkConfirmInput, setBulkConfirmInput] = useState("");
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [bulkApproveLoading, setBulkApproveLoading] = useState(false);
 
@@ -180,32 +189,69 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
     }
   };
 
-  const handleBulkApprove = async (decisionIds: string[]) => {
+  const triggerBulkDecision = (action: "APPROVE" | "REJECT", ids: string[]) => {
+    const overrideCount = ids.filter((id) => {
+      for (const g of localGroups) {
+        const item = g.items.find((i) => i.kind === "decision" && i.id === id);
+        if (item && item.kind === "decision" && typeof item.raw.confidence === "number" && item.raw.confidence < 70) return true;
+      }
+      return false;
+    }).length;
+    setBulkConfirmDialog({ action, ids, overrideCount });
+    setBulkConfirmInput("");
+  };
+
+  const executeBulkDecision = async () => {
+    if (!bulkConfirmDialog) return;
+    const { action, ids } = bulkConfirmDialog;
     setBulkApproveLoading(true);
     try {
       const res = await fetch("/api/decisions/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decisionIds, action: "APPROVE", humanNotes: "Sweep approved" }),
+        body: JSON.stringify({ decisionIds: ids, action, humanNotes: action === "APPROVE" ? "Bulk approved" : "Bulk rejected" }),
       });
       const data = await res.json() as { succeeded?: number; failed?: number };
       if (res.ok) {
+        const newStatus = action === "APPROVE" ? "APPROVED" : "REJECTED";
         setLocalGroups((prev) =>
           prev.map((g) => ({
             ...g,
             items: g.items.map((item) =>
-              item.kind === "decision" && decisionIds.includes(item.id)
-                ? { ...item, status: "APPROVED" }
+              item.kind === "decision" && ids.includes(item.id)
+                ? { ...item, status: newStatus }
                 : item
             ),
           }))
         );
-        setActionSuccess(`${data.succeeded ?? decisionIds.length} decision${(data.succeeded ?? decisionIds.length) !== 1 ? "s" : ""} approved & signed into audit log.`);
+        setSelectedDecisionIds(new Set());
+        setActionSuccess(`${data.succeeded ?? ids.length} decision${(data.succeeded ?? ids.length) !== 1 ? "s" : ""} ${action === "APPROVE" ? "approved" : "rejected"} & signed into audit log.`);
         router.refresh();
       }
     } finally {
       setBulkApproveLoading(false);
+      setBulkConfirmDialog(null);
     }
+  };
+
+  const handleBulkApprove = (decisionIds: string[]) => triggerBulkDecision("APPROVE", decisionIds);
+
+  const toggleDecisionSelection = (id: string) => {
+    setSelectedDecisionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllInBucket = (ids: string[]) => {
+    setSelectedDecisionIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
   };
 
   const handleExceptionResolved = (exceptionId: string) => {
@@ -505,14 +551,23 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                             .filter((i): i is Extract<ActionItem, { kind: "decision" }> => i.kind === "decision")
                             .map((i) => i.id);
                           if (reviewDecisionIds.length < 2) return null;
+                          const allSelected = reviewDecisionIds.every((id) => selectedDecisionIds.has(id));
                           return (
-                            <button
-                              onClick={() => handleBulkApprove(reviewDecisionIds)}
-                              disabled={bulkApproveLoading}
-                              className="shrink-0 px-2.5 py-1 rounded-lg bg-ink text-white text-[10px] font-bold disabled:opacity-40 hover:bg-ink/80 transition-colors whitespace-nowrap"
-                            >
-                              {bulkApproveLoading ? "Approving…" : `Approve All (${reviewDecisionIds.length})`}
-                            </button>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                onClick={() => selectAllInBucket(reviewDecisionIds)}
+                                className="px-2 py-1 rounded-lg border border-border text-[10px] font-bold text-ink-muted hover:text-ink hover:border-brand transition-colors whitespace-nowrap"
+                              >
+                                {allSelected ? "Deselect All" : "Select All"}
+                              </button>
+                              <button
+                                onClick={() => handleBulkApprove(reviewDecisionIds)}
+                                disabled={bulkApproveLoading}
+                                className="px-2.5 py-1 rounded-lg bg-ink text-white text-[10px] font-bold disabled:opacity-40 hover:bg-ink/80 transition-colors whitespace-nowrap"
+                              >
+                                {bulkApproveLoading ? "Approving…" : `Approve All (${reviewDecisionIds.length})`}
+                              </button>
+                            </div>
                           );
                         })()}
                       </div>
@@ -527,6 +582,8 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                             loading={actionLoadingId === item.id}
                             canWrite={canWrite}
                             verified={cat === "verified"}
+                            selected={selectedDecisionIds.has(item.id)}
+                            onToggleSelect={() => toggleDecisionSelection(item.id)}
                             onDocClick={(docId, fileName) => {
                               const doc = docLookup.get(docId);
                               setDocModal({ documentId: docId, fileName, fileUrl: doc?.fileUrl ?? null });
@@ -545,6 +602,7 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                               const doc = docLookup.get(docId);
                               setDocModal({ documentId: docId, fileName, fileUrl: doc?.fileUrl ?? null });
                             }}
+                            onOpenSlideOver={() => setExceptionSlideOver({ exceptionId: item.id, shipmentId: selectedGroup.shipmentId })}
                             documents={documents}
                           />
                         )
@@ -561,6 +619,62 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
           )}
         </div>
       </div>
+
+      {/* Floating selection toolbar */}
+      {selectedDecisionIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-3 bg-ink text-white rounded-2xl shadow-xl border border-white/10 animate-in slide-in-from-bottom-2">
+          <span className="text-sm font-semibold">{selectedDecisionIds.size} item{selectedDecisionIds.size !== 1 ? "s" : ""} selected</span>
+          <div className="w-px h-5 bg-white/20" />
+          <button
+            onClick={() => triggerBulkDecision("APPROVE", Array.from(selectedDecisionIds))}
+            className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-400 transition-colors"
+          >
+            Approve
+          </button>
+          <button
+            onClick={() => triggerBulkDecision("REJECT", Array.from(selectedDecisionIds))}
+            className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-bold hover:bg-red-400 transition-colors"
+          >
+            Reject
+          </button>
+          <button
+            onClick={() => setSelectedDecisionIds(new Set())}
+            className="ml-1 text-white/50 hover:text-white transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Bulk confirmation dialog */}
+      {bulkConfirmDialog && (
+        <BulkConfirmDialog
+          action={bulkConfirmDialog.action}
+          count={bulkConfirmDialog.ids.length}
+          overrideCount={bulkConfirmDialog.overrideCount}
+          confirmInput={bulkConfirmInput}
+          onConfirmInputChange={setBulkConfirmInput}
+          loading={bulkApproveLoading}
+          onConfirm={executeBulkDecision}
+          onCancel={() => setBulkConfirmDialog(null)}
+        />
+      )}
+
+      {/* Exception detail slide-over */}
+      {exceptionSlideOver && (
+        <ExceptionSlideOver
+          exceptionId={exceptionSlideOver.exceptionId}
+          shipmentId={exceptionSlideOver.shipmentId}
+          canWrite={canWrite}
+          canWaive={canWaive}
+          teamMembers={teamMembers}
+          onResolved={() => {
+            handleExceptionResolved(exceptionSlideOver.exceptionId);
+            setExceptionSlideOver(null);
+          }}
+          onClose={() => setExceptionSlideOver(null)}
+        />
+      )}
 
       {/* Document review modal */}
       {docModal && (() => {
@@ -826,6 +940,8 @@ function AgentResultCard({
   loading,
   canWrite,
   verified = false,
+  selected = false,
+  onToggleSelect,
   onDocClick,
 }: {
   item: Extract<ActionItem, { kind: "decision" }>;
@@ -835,6 +951,8 @@ function AgentResultCard({
   loading: boolean;
   canWrite: boolean;
   verified?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onDocClick: (docId: string, fileName: string) => void;
 }) {
   const [showNote, setShowNote] = useState(false);
@@ -844,15 +962,26 @@ function AgentResultCard({
   const isApproved = effectiveCategory === "verified";
 
   return (
-    <div className={`border rounded-2xl p-4 space-y-3 ${
-      verified
-        ? "border-emerald-200 bg-emerald-50/40 opacity-80"
-        : effectiveCategory === "blocked"
-          ? "border-red-300 bg-red-50/60"
-          : "border-amber-200 bg-amber-50/40"
+    <div className={`border rounded-2xl p-4 space-y-3 transition-all ${
+      selected
+        ? "border-brand bg-blue-50/60 ring-2 ring-brand/20"
+        : verified
+          ? "border-emerald-200 bg-emerald-50/40 opacity-80"
+          : effectiveCategory === "blocked"
+            ? "border-red-300 bg-red-50/60"
+            : "border-amber-200 bg-amber-50/40"
     }`}>
-      {/* Card header: doc link + approved pill */}
+      {/* Card header: checkbox + doc link + approved pill */}
       <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 min-w-0">
+          {!verified && onToggleSelect && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              className="mt-0.5 h-4 w-4 rounded border-border text-brand focus:ring-brand/30 shrink-0 cursor-pointer"
+            />
+          )}
         <div className="min-w-0 space-y-0.5">
           {item.documentName && docId ? (
             <button
@@ -869,6 +998,7 @@ function AgentResultCard({
             </div>
           ) : null}
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{label}</p>
+        </div>
         </div>
         {isApproved && (
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 bg-emerald-50 border-emerald-200 text-emerald-700">
@@ -1038,6 +1168,7 @@ function ExceptionCard({
   onResolved,
   verified = false,
   onDocClick,
+  onOpenSlideOver,
   documents = [],
 }: {
   item: Extract<ActionItem, { kind: "exception" }>;
@@ -1047,6 +1178,7 @@ function ExceptionCard({
   onResolved: () => void;
   verified?: boolean;
   onDocClick?: (docId: string, fileName: string) => void;
+  onOpenSlideOver?: () => void;
   documents?: DocSummary[];
 }) {
   const [resolved, setResolved] = useState(false);
@@ -1134,17 +1266,28 @@ function ExceptionCard({
         </div>
       </div>
 
-      {/* Date & Direct Action Link */}
+      {/* Date, action link, and Details button */}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50 text-[11px] text-ink-muted">
         <span>Open {new Date(item.createdAt).toLocaleDateString()}</span>
-        {shipmentId && (
-          <Link
-            href={`/app/shipments/${shipmentId}`}
-            className="text-brand font-semibold hover:underline flex items-center gap-1"
-          >
-            Go to Documents →
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {onOpenSlideOver && (
+            <button
+              type="button"
+              onClick={onOpenSlideOver}
+              className="text-brand font-semibold hover:underline"
+            >
+              Details →
+            </button>
+          )}
+          {shipmentId && (
+            <Link
+              href={`/app/shipments/${shipmentId}`}
+              className="text-ink-muted font-semibold hover:underline flex items-center gap-1"
+            >
+              Shipment →
+            </Link>
+          )}
+        </div>
       </div>
 
       {canWrite && (
@@ -1156,6 +1299,85 @@ function ExceptionCard({
           onResolved={() => { setResolved(true); onResolved(); }}
         />
       )}
+    </div>
+  );
+}
+
+function BulkConfirmDialog({
+  action,
+  count,
+  overrideCount,
+  confirmInput,
+  onConfirmInputChange,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  action: "APPROVE" | "REJECT";
+  count: number;
+  overrideCount: number;
+  confirmInput: string;
+  onConfirmInputChange: (v: string) => void;
+  loading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const needsConfirmText = overrideCount > 0;
+  const canSubmit = !needsConfirmText || confirmInput.trim() === "CONFIRM";
+
+  const overrideNote = overrideCount > 0
+    ? ` (${overrideCount} low-confidence override${overrideCount !== 1 ? "s" : ""})`
+    : "";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl border border-border shadow-2xl p-6 w-full max-w-md mx-4 space-y-4">
+        <div className="space-y-1">
+          <h3 className="text-base font-bold text-ink">
+            {action === "APPROVE" ? "Approve" : "Reject"} {count} decision{count !== 1 ? "s" : ""}
+          </h3>
+          <p className="text-xs text-ink-muted">
+            {action === "APPROVE"
+              ? `Approve ${count} decision${count !== 1 ? "s" : ""}${overrideNote} and sign into audit log?`
+              : `Reject ${count} decision${count !== 1 ? "s" : ""}${overrideNote} and return to queue?`}
+          </p>
+        </div>
+
+        {needsConfirmText && (
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+            <p className="text-xs text-amber-900 font-medium">
+              This includes {overrideCount} low-confidence decision{overrideCount !== 1 ? "s" : ""}. Type <span className="font-mono font-bold">CONFIRM</span> to proceed.
+            </p>
+            <input
+              type="text"
+              value={confirmInput}
+              onChange={(e) => onConfirmInputChange(e.target.value)}
+              placeholder="Type CONFIRM"
+              className="w-full px-3 py-2 rounded-lg border border-amber-300 text-xs text-ink focus:outline-none focus:border-brand font-mono"
+              autoFocus
+            />
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="px-4 py-2 rounded-xl border border-border text-xs font-semibold text-ink hover:bg-surface-muted disabled:opacity-40 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!canSubmit || loading}
+            className={`px-4 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40 transition-colors ${
+              action === "APPROVE" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"
+            }`}
+          >
+            {loading ? "Processing…" : action === "APPROVE" ? "Approve" : "Reject"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

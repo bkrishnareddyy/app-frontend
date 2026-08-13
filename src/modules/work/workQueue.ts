@@ -51,6 +51,10 @@ export interface DecisionRow {
   shipmentId: string;
   shipmentNumber: string | null;
   filingDeadline?: Date | null;
+  /** Sum of ShipmentLineItem.totalValue for the shipment, in USD. Used for B-1 ranking. */
+  valueAtRisk?: number | null;
+  /** True when the shipment has at least one open blocking ExceptionItem. */
+  hasBlockingException?: boolean | null;
 }
 
 export interface FindingRow {
@@ -93,6 +97,10 @@ export interface ExceptionRow {
   shipmentNumber: string | null;
   assignedToUserId: string | null;
   filingDeadline?: Date | null;
+  /** True when this exception is marked as blocking downstream pipeline stages. */
+  blocking?: boolean | null;
+  /** Sum of ShipmentLineItem.totalValue for the shipment. */
+  valueAtRisk?: number | null;
 }
 
 /** One open ComplianceDeadline row, for attaching urgency context to items. */
@@ -154,6 +162,25 @@ function raise(priority: WorkPriority): WorkPriority {
   return "critical";
 }
 
+// ── B-1 Spec scoring ──────────────────────────────────────────────────────
+// score = (1 / (hoursToDeadline + 1)) * log10(valueAtRisk + 1) * blockingMultiplier
+// When no deadline exists, hoursToDeadline = ∞ → first term collapses to 0;
+// in that case the spec formula contributes nothing and legacy scoring governs.
+
+const B1_WEIGHT = 0.25; // blend weight so legacy deadline/priority signals still govern
+
+export function computeB1Score(
+  hoursToDeadline: number | null,
+  valueAtRisk: number | null,
+  hasBlockingException: boolean
+): number {
+  if (hoursToDeadline === null) return 0;
+  const timeFactor = 1 / (Math.max(0, hoursToDeadline) + 1);
+  const moneyFactor = Math.log10((valueAtRisk ?? 0) + 1);
+  const blockingMultiplier = hasBlockingException ? 3 : 1;
+  return timeFactor * moneyFactor * blockingMultiplier;
+}
+
 // ── Scoring ────────────────────────────────────────────────────────────────
 // Score determines sort order. Higher = more urgent.
 // The score is never shown in the UI — the clock and dollar figure explain.
@@ -193,21 +220,27 @@ function computeScore(params: {
   priority: WorkPriority;
   blocking: boolean;
   assignedToMe: boolean;
+  valueAtRisk?: number | null;
 }): number {
-  const { urgency, priority, blocking, assignedToMe } = params;
+  const { urgency, priority, blocking, assignedToMe, valueAtRisk } = params;
 
   const tp = urgency ? timePressure(urgency.msRemaining) : 0;
   const exposure = urgency?.exposureUsd ?? null;
   const normalizedExposure = exposure != null ? Math.min(exposure / MAX_EXPOSURE_USD, 1) : 0;
   const basePriority = urgency ? 0 : PRIORITY_BASE[priority]; // priority base only when no urgency
 
-  return (
+  const legacyScore =
     tp * W_TIME +
     normalizedExposure * W_MONEY +
     basePriority * W_PRIORITY +
     (blocking ? BLOCKING_BOOST : 0) +
-    (assignedToMe ? ASSIGNED_BOOST : 0)
-  );
+    (assignedToMe ? ASSIGNED_BOOST : 0);
+
+  // Blend in B-1 spec score when deadline and value data are available.
+  const hoursToDeadline = urgency ? urgency.msRemaining / 3_600_000 : null;
+  const b1 = computeB1Score(hoursToDeadline, valueAtRisk ?? null, blocking);
+
+  return legacyScore + b1 * B1_WEIGHT;
 }
 
 /** Priority derived from urgency — for shipment-level rollup. */
@@ -290,7 +323,13 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
       applyDeadlineUrgency(base, decision.filingDeadline, now),
       urgency
     );
-    const score = computeScore({ urgency, priority, blocking: isBlocking, assignedToMe: false });
+    const score = computeScore({
+      urgency,
+      priority,
+      blocking: isBlocking,
+      assignedToMe: false,
+      valueAtRisk: decision.valueAtRisk,
+    });
 
     items.push({
       id: `decision:${decision.id}`,
@@ -384,12 +423,13 @@ export function buildWorkQueue(input: WorkQueueInput): WorkItem[] {
     if (!state || isTerminalExceptionState(state)) continue;
     const assignedToMe = exception.assignedToUserId === input.userId;
     const urgency = exception.shipmentId ? (deadlineIndex.get(exception.shipmentId) ?? null) : null;
+    const isBlocking = Boolean(exception.blocking);
     const base = applyUrgencyFloor(
       applyDeadlineUrgency(EXCEPTION_SEVERITY[exception.severity] ?? "normal", exception.filingDeadline, now),
       urgency
     );
     const priority = assignedToMe ? raise(base) : base;
-    const score = computeScore({ urgency, priority, blocking: false, assignedToMe });
+    const score = computeScore({ urgency, priority, blocking: isBlocking, assignedToMe, valueAtRisk: exception.valueAtRisk });
 
     items.push({
       id: `exception:${exception.id}`,

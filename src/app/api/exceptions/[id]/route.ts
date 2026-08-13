@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
+import { db } from "@/lib/db";
 import { hasPermission } from "@/lib/auth";
 import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody, validatePathParams } from "@/lib/api/validation";
@@ -81,3 +82,20 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to update exception item", undefined, requestId);
   }
 }, { write: true });
+
+export const GET = withAuthenticatedRoute<{ id: string }>(async ({ requestId, params, ctx }) => {
+  const paramsVal = validatePathParams(params, paramsSchema, requestId);
+  if ("response" in paramsVal) return paramsVal.response;
+  const { id } = paramsVal.data;
+
+  const exception = await db.exceptionItem.findFirst({
+    where: { id, accountId: ctx.accountId },
+    include: { assignedToUser: { select: { id: true, firstName: true, lastName: true, email: true } } },
+  });
+
+  if (!exception) {
+    return buildErrorResponse(404, "NOT_FOUND", "Exception item not found", undefined, requestId);
+  }
+
+  return NextResponse.json({ exception, requestId });
+});

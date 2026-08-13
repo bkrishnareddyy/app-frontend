@@ -106,37 +106,23 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     throw error;
   }
 
-  const shipmentIdParam = typeof formData.get("shipmentId") === "string"
-    ? (formData.get("shipmentId") as string)
+  const shipmentIdParam = typeof formData.get("shipmentId") === "string" && (formData.get("shipmentId") as string).trim()
+    ? (formData.get("shipmentId") as string).trim()
     : null;
 
-  let targetShipmentId: string;
-  try {
-    targetShipmentId = await resolveTenantShipmentId(accountId, shipmentIdParam);
-  } catch (err) {
-    if (err instanceof ShipmentResolutionError) {
-      if (err.code === "TARGET_NOT_DETERMINED") {
-        const intake = await recordUnassignedIntake(accountId, {
-          source: "document_upload",
-          fileName: file.name,
-          docType: typeof rawDocType === "string" ? rawDocType : null,
-        });
+  let targetShipmentId: string | null = null;
+  if (shipmentIdParam) {
+    try {
+      targetShipmentId = await resolveTenantShipmentId(accountId, shipmentIdParam);
+    } catch (err) {
+      if (err instanceof ShipmentResolutionError) {
         return NextResponse.json(
-          {
-            error: err.code,
-            message: `${err.message} The file was stored and raised as an exception for someone to assign.`,
-            exceptionId: intake.id,
-            requestId,
-          },
-          { status: 409 }
+          { error: err.code, message: err.message, requestId },
+          { status: shipmentResolutionStatus(err.code) }
         );
       }
-      return NextResponse.json(
-        { error: err.code, message: err.message, requestId },
-        { status: shipmentResolutionStatus(err.code) }
-      );
+      throw err;
     }
-    throw err;
   }
 
   const { DocumentTypeCatalog } = await import("@/modules/intake/documentTypeCatalog");
@@ -148,9 +134,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
         // parsed document; the classifier's result is what the document ends up with.
         DocumentTypeCatalog.matchDocumentType(file.name).name;
 
-  const existingDoc = await db.shipmentDocument.findFirst({
-    where: { accountId, shipmentId: targetShipmentId, fileName: file.name },
-  });
+  const existingDoc = targetShipmentId
+    ? await db.shipmentDocument.findFirst({
+        where: { accountId, shipmentId: targetShipmentId, fileName: file.name },
+      })
+    : await db.shipmentDocument.findFirst({
+        where: { accountId, shipmentId: null, fileName: file.name },
+      });
 
   // Superset of what upstream wrote: the original's size and media type are
   // recorded alongside its SHA-256 so the immutable original is fully described.
@@ -160,6 +150,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     checksum: storageResult.checksum,
     byteSize: file.size,
     mimeType: file.type === "" ? null : file.type,
+    status: targetShipmentId ? "Received" : "Parked",
   };
 
   const docRecord = existingDoc
@@ -171,23 +162,39 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   await createAuditLog({
     accountId,
     userId,
-    action: existingDoc ? "document.upload.replaced" : "document.upload.completed",
+    action: targetShipmentId
+      ? existingDoc ? "document.upload.replaced" : "document.upload.completed"
+      : "document.upload.parked",
     entity: "ShipmentDocument",
     entityId: docRecord.id,
     metadata: {
       fileName: file.name,
       docType: resolvedDocType,
       byteSize: file.size,
-      // The content hash, not the content, and not the storage URL.
       sha256: storageResult.checksum,
       mimeType: file.type === "" ? null : file.type,
       storageProvider: storageResult.provider,
       shipmentId: targetShipmentId,
       malwareScan: scan.verdict,
+      parked: !targetShipmentId,
     },
     correlationId,
     requestId,
   });
+
+  // If the document is unattached (no shipment ID specified), we park it in
+  // the document library without running extraction/pipeline processing.
+  if (!targetShipmentId) {
+    return NextResponse.json({
+      status: "PARKED",
+      parked: true,
+      documentId: docRecord.id,
+      fileName: file.name,
+      docType: resolvedDocType,
+      message: "Document stored in document library without attachment. Attach to a shipment to run extraction.",
+      requestId,
+    });
+  }
 
   // Two independent pieces of work are dispatched here, and both matter:
   //
@@ -244,11 +251,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     correlationId,
   });
 
-  // Enqueuing only records the run; something has to submit it to the parser.
-  // On a serverless host that something is this request, after the 202 has been
-  // sent — cron runs once a day and would leave the document sitting. Costs the
-  // caller nothing, and a quick conversion often finishes inside this same
-  // invocation. See advanceProcessing.ts for what happens when it does not.
   if (queued.blocker === null) {
     advanceDocumentProcessing({ reason: "document.upload" });
   }
@@ -261,24 +263,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       documentId: docRecord.id,
       shipmentId: targetShipmentId,
       docType: resolvedDocType,
-      original: {
-        fileName: file.name,
-        byteSize: file.size,
-        sha256: storageResult.checksum,
-        mimeType: file.type === "" ? null : file.type,
-      },
-      // Retained from the previous response shape so anything reading the agent
-      // pipeline's queue id keeps working.
+      fileName: file.name,
       jobId: job.id,
-      processing: {
-        runId: queued.runId,
-        // false means an identical parse already exists -- not a failure.
-        created: queued.created,
-        // Non-null when no parser provider is configured, so the caller is never
-        // told processing was queued when nothing will process it.
-        blocker: queued.blocker,
-        statusUrl: `/api/documents/${docRecord.id}/processing`,
-      },
+      processingRunId: queued.runId,
       malwareScan: { verdict: scan.verdict, detail: scan.reason },
     },
     { status: 202 }

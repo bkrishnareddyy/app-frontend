@@ -9,9 +9,9 @@ import { cn } from "@/lib/utils";
 export default async function LandingPage() {
   const { userId } = await auth();
 
-  // If user is already authenticated, redirect straight to application dashboard
+  // If user is already authenticated, redirect to the work queue (primary destination).
   if (userId) {
-    redirect("/app/dashboard");
+    redirect("/app");
   }
 
   return (
