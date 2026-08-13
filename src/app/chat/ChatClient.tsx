@@ -1162,6 +1162,23 @@ function ViewInAppLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+function safeErrorMessage(err: unknown): string | null {
+  if (!err) return null;
+  if (typeof err === "string") return err;
+  if (typeof err === "object") {
+    const record = err as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+    if (typeof record.code === "string") return record.code;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return "An unknown error occurred";
+    }
+  }
+  return String(err);
+}
+
 function ToolCard({ tc }: { tc: ToolCallDisplay }) {
   const th = useTh();
 
@@ -1229,7 +1246,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
     if (!r?.success) return (
       <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: "#fca5a5" } as React.CSSProperties}>
         <Badge variant="danger">Failed to create</Badge>
-        <p style={{ fontSize: 14, color: th.ink, marginTop: 8 }}>{(r?.error as string) ?? "Could not create the shipment."}</p>
+        <p style={{ fontSize: 14, color: th.ink, marginTop: 8 }}>{safeErrorMessage(r?.error) ?? "Could not create the shipment."}</p>
       </Card>
     );
     return (
@@ -1345,7 +1362,7 @@ function UploadDocumentCard({ tc }: { tc: ToolCallDisplay }) {
     return (
       <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: "#fca5a5" } as React.CSSProperties}>
         <Badge variant="danger">Upload failed</Badge>
-        <p style={{ fontSize: 13, color: th.ink, marginTop: 8 }}>{r?.error ?? "Something went wrong."}</p>
+        <p style={{ fontSize: 13, color: th.ink, marginTop: 8 }}>{safeErrorMessage(r?.error) ?? "Something went wrong."}</p>
       </Card>
     );
   }
