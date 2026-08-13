@@ -75,6 +75,25 @@ export default async function ShipmentsConsolePage() {
     }));
   }
 
+  // ISF and Entry Filing deadlines per shipment for the dedicated table columns.
+  const deadlineRows = await db.complianceDeadline.findMany({
+    where: { accountId: ctx.accountId, type: { in: ["ISF_10_2", "ENTRY_FILING"] },
+             status: { in: ["OPEN", "SATISFIED", "MISSED"] } },
+    select: { type: true, dueAt: true, status: true, estimated: true,
+              shipment: { select: { shipmentNumber: true } } },
+    orderBy: { dueAt: "asc" },
+  });
+  type DeadlineInfo = { dueAt: string | null; status: string; estimated: boolean };
+  const deadlinesByShipment: Record<string, { isf?: DeadlineInfo; entryFiling?: DeadlineInfo }> = {};
+  for (const d of deadlineRows) {
+    const num = d.shipment?.shipmentNumber;
+    if (!num) continue;
+    if (!deadlinesByShipment[num]) deadlinesByShipment[num] = {};
+    const info: DeadlineInfo = { dueAt: d.dueAt?.toISOString() ?? null, status: d.status, estimated: d.estimated };
+    if (d.type === "ISF_10_2" && !deadlinesByShipment[num].isf) deadlinesByShipment[num].isf = info;
+    if (d.type === "ENTRY_FILING" && !deadlinesByShipment[num].entryFiling) deadlinesByShipment[num].entryFiling = info;
+  }
+
   // Formatted shipments to fit client component props (ensures Next.js serialization compatibility)
   const formattedShipments = shipments.map((s) => ({
     id: s.id,
@@ -110,6 +129,7 @@ export default async function ShipmentsConsolePage() {
   return (
     <ShipmentsWorkbenchClient
       initialShipments={formattedShipments}
+      deadlinesByShipment={deadlinesByShipment}
       teamMembers={teamMembers}
       clients={clients.map((c) => ({ id: c.id, name: c.name }))}
       context={{

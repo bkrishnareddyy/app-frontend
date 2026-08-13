@@ -24,9 +24,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
       regulatoryUpdateId: id,
       shipment: { accountId: ctx.accountId, deletedAt: null },
     },
-    // filingDeadline is in the Prisma schema but not yet applied to the live
-    // DB (migration pending) -- must stay omitted or this 500s.
-    include: { shipment: { omit: { filingDeadline: true } } },
+    include: { shipment: true },
     orderBy: { createdAt: "desc" },
   });
 

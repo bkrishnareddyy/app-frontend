@@ -301,10 +301,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const shipment = await db.shipment.findFirst({
     where: { id: shipmentId, accountId: ctx.accountId },
     include: { lineItems: true, documents: true },
-    // filingDeadline is in the Prisma schema but not yet applied to the live
-    // DB (migration pending) -- must stay omitted or this 500s.
-    omit: { filingDeadline: true },
-  });
+    });
 
   if (!shipment) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
@@ -369,9 +366,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       dutyBreakdown,
     },
     include: {
-      // filingDeadline is in the Prisma schema but not yet applied to the
-      // live DB (migration pending) -- must stay omitted or this 500s.
-      shipment: { omit: { filingDeadline: true } },
+      shipment: true,
       responses: true,
     },
   });

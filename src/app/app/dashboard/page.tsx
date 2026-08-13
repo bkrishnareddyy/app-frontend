@@ -208,10 +208,26 @@ export default async function CommandCenterPage() {
     effectiveDate: ru.effectiveDate.toISOString(),
   }));
 
+  // Most-urgent open deadline per shipment for countdown chips.
+  const openDeadlines = await db.complianceDeadline.findMany({
+    where: { accountId, status: "OPEN", dueAt: { not: null } },
+    select: { shipmentId: true, type: true, dueAt: true, estimated: true, penaltyEstimate: true,
+              shipment: { select: { shipmentNumber: true } } },
+    orderBy: { dueAt: "asc" },
+  });
+  const urgencyByShipment: Record<string, { deadlineType: string; dueAt: string; estimated: boolean; exposureUsd: number | null }> = {};
+  for (const d of openDeadlines) {
+    const num = d.shipment?.shipmentNumber;
+    if (!num || urgencyByShipment[num]) continue;
+    urgencyByShipment[num] = { deadlineType: d.type, dueAt: d.dueAt!.toISOString(),
+      estimated: d.estimated, exposureUsd: d.penaltyEstimate != null ? Number(d.penaltyEstimate) : null };
+  }
+
   return (
     <CommandCenterClient
       accountName={context.accountName}
       initialShipments={formattedShipments}
+      urgencyByShipment={urgencyByShipment}
       initialDecisions={formattedDecisions}
       regUpdates={formattedRegUpdates}
       teamMembers={teamMembers}

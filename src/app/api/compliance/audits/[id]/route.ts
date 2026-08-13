@@ -16,12 +16,10 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     include: {
       filing: {
         include: {
-          // filingDeadline is in the Prisma schema but not yet applied to
           // the live DB (migration pending) -- must stay omitted or this 500s.
           shipment: {
             include: { documents: true, lineItems: true },
-            omit: { filingDeadline: true },
-          },
+            },
           responses: true,
         },
       },

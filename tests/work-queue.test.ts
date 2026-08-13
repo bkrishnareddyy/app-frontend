@@ -13,7 +13,9 @@ import {
   filterWorkQueue,
   paginateWorkQueue,
   parseWorkFilter,
+  timePressure,
   truncatedSources,
+  type DeadlineRow,
   type WorkQueueInput,
 } from "@/modules/work/workQueue";
 
@@ -418,5 +420,184 @@ describe("truncatedSources", () => {
         document: { loaded: 0, matching: 0 },
       })
     ).toEqual([]);
+  });
+});
+
+// ── timePressure monotonicity ──────────────────────────────────────────────
+
+describe("timePressure", () => {
+  it("returns 2 when breached (msRemaining <= 0)", () => {
+    expect(timePressure(0)).toBe(2);
+    expect(timePressure(-1)).toBe(2);
+  });
+
+  it("is monotonically decreasing as time remaining grows", () => {
+    const samples = [
+      1 * 3_600_000,   // 1h
+      24 * 3_600_000,  // 24h
+      3 * 24 * 3_600_000, // 3d
+      30 * 24 * 3_600_000, // 30d
+    ];
+    for (let i = 0; i < samples.length - 1; i++) {
+      expect(timePressure(samples[i])).toBeGreaterThan(timePressure(samples[i + 1]));
+    }
+  });
+
+  it("never returns a value below 0", () => {
+    expect(timePressure(365 * 24 * 3_600_000)).toBeGreaterThan(0);
+  });
+});
+
+// ── Deadline urgency in the work queue ────────────────────────────────────
+
+describe("deadline urgency and scoring", () => {
+  const baseDecision = {
+    id: "d1",
+    agentName: "Classification Agent",
+    decisionSummary: "review needed",
+    status: "Review Required",
+    createdAt: at("2026-01-01"),
+    shipmentId: "s1",
+    shipmentNumber: "SHP-001",
+  };
+
+  function deadline(overrides: Partial<DeadlineRow> = {}): DeadlineRow {
+    return {
+      shipmentId: "s1",
+      type: "ISF_10_2",
+      dueAt: at("2026-06-01T12:00:00Z"),
+      estimated: false,
+      penaltyEstimate: 5_000,
+      ...overrides,
+    };
+  }
+
+  it("attaches urgency context to a decision on a shipment with an open deadline", () => {
+    const queue = buildWorkQueue(
+      input({ decisions: [baseDecision], deadlines: [deadline()] })
+    );
+    expect(queue[0].urgency).not.toBeNull();
+    expect(queue[0].urgency?.deadlineType).toBe("ISF_10_2");
+    expect(queue[0].urgency?.exposureUsd).toBe(5_000);
+  });
+
+  it("leaves urgency null for items with no matching shipment deadline", () => {
+    const queue = buildWorkQueue(
+      input({
+        decisions: [baseDecision],
+        deadlines: [deadline({ shipmentId: "other-shipment" })],
+      })
+    );
+    expect(queue[0].urgency).toBeNull();
+  });
+
+  it("breached deadline outranks a critical item without a deadline", () => {
+    const now = Date.now();
+    const breachedDeadline: DeadlineRow = {
+      shipmentId: "s2",
+      type: "ENTRY_FILING",
+      dueAt: new Date(now - 3_600_000), // 1h ago — breached
+      estimated: false,
+      penaltyEstimate: null,
+    };
+    const queue = buildWorkQueue(
+      input({
+        decisions: [
+          { ...baseDecision, id: "d1", shipmentId: "s1" }, // critical, no deadline
+          { ...baseDecision, id: "d2", shipmentId: "s2", status: "BLOCKED_DEPENDENCY" }, // critical + breached deadline
+        ],
+        deadlines: [breachedDeadline],
+      })
+    );
+    // d2 has a breached deadline → higher score → first in queue
+    expect(queue[0].id).toBe("decision:d2");
+    expect(queue[0].urgency?.breached).toBe(true);
+  });
+
+  it("deadline urgency raises priority from high to critical at <24h", () => {
+    const now = Date.now();
+    const urgentDeadline: DeadlineRow = {
+      shipmentId: "s1",
+      type: "ISF_10_2",
+      dueAt: new Date(now + 2 * 3_600_000), // 2h away
+      estimated: false,
+      penaltyEstimate: 5_000,
+    };
+    const queue = buildWorkQueue(
+      input({ decisions: [baseDecision], deadlines: [urgentDeadline] })
+    );
+    expect(queue[0].priority).toBe("critical");
+  });
+
+  it("deadline urgency does not demote an already-critical item", () => {
+    const now = Date.now();
+    const farDeadline: DeadlineRow = {
+      shipmentId: "s1",
+      type: "ENTRY_FILING",
+      dueAt: new Date(now + 30 * 24 * 3_600_000), // 30 days away
+      estimated: false,
+      penaltyEstimate: null,
+    };
+    // The decision is "critical" due to BLOCKED status.
+    const blockedDecision = { ...baseDecision, status: "BLOCKED_DEPENDENCY" };
+    const queue = buildWorkQueue(
+      input({ decisions: [blockedDecision], deadlines: [farDeadline] })
+    );
+    expect(queue[0].priority).toBe("critical");
+  });
+
+  it("shipment rollup: a breached deadline on a shipment lifts all that shipment's items", () => {
+    const now = Date.now();
+    const breached: DeadlineRow = {
+      shipmentId: "s1",
+      type: "ISF_10_2",
+      dueAt: new Date(now - 1_000),
+      estimated: false,
+      penaltyEstimate: 5_000,
+    };
+    const queue = buildWorkQueue(
+      input({
+        decisions: [
+          { ...baseDecision, id: "d1", shipmentId: "s1", status: "Review Required" }, // high base
+        ],
+        documents: [
+          { id: "doc1", fileName: "INV.pdf", status: "Review Required", createdAt: at("2026-01-01"), shipmentId: "s1", shipmentNumber: "SHP-001" },
+        ],
+        deadlines: [breached],
+      })
+    );
+    for (const item of queue) {
+      if (item.id === "decision:d1" || item.id === "document:doc1") {
+        expect(item.priority).toBe("critical");
+      }
+    }
+  });
+
+  it("score monotonicity: lower msRemaining → higher score for otherwise identical items", () => {
+    const now = Date.now();
+    const soon: DeadlineRow = { shipmentId: "s1", type: "ISF_10_2", dueAt: new Date(now + 2 * 3_600_000), estimated: false, penaltyEstimate: 5_000 };
+    const later: DeadlineRow = { shipmentId: "s2", type: "ISF_10_2", dueAt: new Date(now + 72 * 3_600_000), estimated: false, penaltyEstimate: 5_000 };
+
+    const q1 = buildWorkQueue(input({ decisions: [{ ...baseDecision, shipmentId: "s1" }], deadlines: [soon] }));
+    const q2 = buildWorkQueue(input({ decisions: [{ ...baseDecision, shipmentId: "s2" }], deadlines: [later] }));
+    expect(q1[0].score).toBeGreaterThan(q2[0].score);
+  });
+
+  it("score is never exposed in the item's title, reason, or href", () => {
+    const queue = buildWorkQueue(input({ decisions: [baseDecision] }));
+    const item = queue[0];
+    expect(String(item.title)).not.toContain("score");
+    expect(String(item.reason)).not.toContain("score");
+    expect(String(item.href)).not.toContain("score");
+  });
+
+  it("tenant isolation: deadline from a different shipment never attaches to an unrelated item", () => {
+    const queue = buildWorkQueue(
+      input({
+        decisions: [{ ...baseDecision, shipmentId: "tenant-a-s1" }],
+        deadlines: [deadline({ shipmentId: "tenant-b-s99" })],
+      })
+    );
+    expect(queue[0].urgency).toBeNull();
   });
 });

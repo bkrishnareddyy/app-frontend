@@ -202,9 +202,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
   const decisions = await db.agentDecision.findMany({
     where: { accountId: ctx.accountId },
     include: {
-      // filingDeadline is in the Prisma schema but not yet applied to the
-      // live DB (migration pending) -- must stay omitted or this 500s.
-      shipment: { omit: { filingDeadline: true } },
+      shipment: true,
       reviewedByUser: { select: REVIEWER_SELECT },
     },
     orderBy: { createdAt: "desc" },

@@ -29,7 +29,6 @@ interface ShipmentItem {
   readinessScore?: number | null;
   healthStatus?: string | null;
   status: string;
-  /** Serialised to an ISO string by the page before it crosses to the client. */
   createdAt: string;
   clientId?: string | null;
   client?: { id: string; name: string } | null;
@@ -42,8 +41,12 @@ interface ShipmentItem {
   } | null;
 }
 
+type DeadlineInfo = { dueAt: string | null; status: string; estimated: boolean };
+type DeadlinesByShipment = Record<string, { isf?: DeadlineInfo; entryFiling?: DeadlineInfo }>;
+
 interface ShipmentsWorkbenchClientProps {
   initialShipments: ShipmentItem[];
+  deadlinesByShipment?: DeadlinesByShipment;
   teamMembers: Array<{
     userId: string;
     email: string;
@@ -62,8 +65,49 @@ interface ShipmentsWorkbenchClientProps {
   };
 }
 
+// Sort key for a deadline cell: lower = more urgent; Infinity = no data / satisfied.
+function deadlineSortMs(info: DeadlineInfo | undefined): number {
+  if (!info || info.status === "SATISFIED") return Infinity;
+  if (info.status === "MISSED") return -1;
+  if (!info.dueAt) return Infinity;
+  return Math.max(-1, new Date(info.dueAt).getTime() - Date.now());
+}
+
+// Renders a single ISF or Entry Filing deadline cell.
+// `warnDays` is when the cell turns amber. ISF's natural window is short, so
+// the default 3 days is timely; Entry Filing runs CBP's 15-day statutory
+// window with liquidated-damages exposure (19 CFR 141.68(a)/142.15), so it
+// needs to catch a broker's eye earlier to leave time to work the file.
+function DeadlineCell({ info, warnDays = 3 }: { info: DeadlineInfo | undefined; warnDays?: number }) {
+  if (!info) return <span className="text-ink-muted tabular-nums">—</span>;
+  if (info.status === "SATISFIED") return <span className="text-emerald-600 font-semibold text-[11px]">✓ Filed</span>;
+  if (info.status === "MISSED") return <span className="text-red-700 font-bold text-[11px] uppercase tracking-wide">Missed</span>;
+  if (!info.dueAt) return <span className="text-ink-muted tabular-nums">—</span>;
+
+  const ms = new Date(info.dueAt).getTime() - Date.now();
+  if (ms <= 0) return <span className="text-red-700 font-bold text-[11px] uppercase tracking-wide">Breached</span>;
+
+  const totalMins = Math.floor(ms / 60_000);
+  const days = Math.floor(totalMins / (60 * 24));
+  const hours = Math.floor((totalMins % (60 * 24)) / 60);
+  const mins = totalMins % 60;
+  const text = days > 0 ? `${days}d ${hours}h` : hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+  const color =
+    ms <= 24 * 3_600_000 ? "text-red-600 font-bold" :
+    ms <= warnDays * 24 * 3_600_000 ? "text-amber-700 font-semibold" :
+    "text-ink-muted";
+
+  return (
+    <span className={`text-[11px] tabular-nums ${color}`}>
+      {info.estimated && <span className="opacity-50 mr-0.5">~</span>}{text}
+    </span>
+  );
+}
+
 export function ShipmentsWorkbenchClient({
   initialShipments,
+  deadlinesByShipment = {},
   teamMembers,
   clients,
   context,
@@ -101,10 +145,6 @@ export function ShipmentsWorkbenchClient({
   // Column filters state
   const [columnFilters, setColumnFiltersValue] = useState({
     shipmentNumber: "",
-    importerName: "",
-    entryTypePo: "",
-    portMode: "",
-    readiness: "ALL", // ALL, READY, NOT_READY
     status: "ALL",
     owner: "ALL",
     client: "ALL",
@@ -112,6 +152,8 @@ export function ShipmentsWorkbenchClient({
 
   const [searchQuery, setSearchQueryValue] = useState("");
   const [shipmentsList, setShipmentsList] = useState<ShipmentItem[]>(initialShipments);
+  const [sortCol, setSortCol] = useState<"isf" | "ef" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Every filter change returns to the first page. Wrapped at the setter rather
   // than at each of the sixteen call sites, so a filter added later cannot forget
@@ -176,6 +218,15 @@ export function ShipmentsWorkbenchClient({
     }
   };
 
+  const toggleSort = (col: "isf" | "ef") => {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("asc"); }
+    setPage(1);
+  };
+
+  const sortIcon = (col: "isf" | "ef") =>
+    sortCol !== col ? " ↕" : sortDir === "asc" ? " ↑" : " ↓";
+
   // Filter shipments based on top-level filter, column filters, and global search query
   const filteredShipments = useMemo(() => {
     return shipmentsList.filter((shp) => {
@@ -193,10 +244,7 @@ export function ShipmentsWorkbenchClient({
         const q = searchQuery.toLowerCase();
         const matchesGlobal =
           shp.shipmentNumber.toLowerCase().includes(q) ||
-          shp.importerName.toLowerCase().includes(q) ||
-          (shp.entryType && shp.entryType.toLowerCase().includes(q)) ||
-          (shp.poReference && shp.poReference.toLowerCase().includes(q)) ||
-          (shp.portOfEntry && shp.portOfEntry.toLowerCase().includes(q));
+          shp.importerName.toLowerCase().includes(q);
         if (!matchesGlobal) return false;
       }
 
@@ -208,45 +256,12 @@ export function ShipmentsWorkbenchClient({
         return false;
       }
 
-      // 4. Column Importer of Record Filter
-      if (
-        columnFilters.importerName &&
-        !shp.importerName.toLowerCase().includes(columnFilters.importerName.toLowerCase())
-      ) {
-        return false;
-      }
-
-      // 5. Column Entry Type / PO Filter
-      if (columnFilters.entryTypePo) {
-        const q = columnFilters.entryTypePo.toLowerCase();
-        const match =
-          (shp.entryType && shp.entryType.toLowerCase().includes(q)) ||
-          (shp.poReference && shp.poReference.toLowerCase().includes(q));
-        if (!match) return false;
-      }
-
-      // 6. Column Port & Mode Filter
-      if (columnFilters.portMode) {
-        const q = columnFilters.portMode.toLowerCase();
-        const match =
-          (shp.portOfEntry && shp.portOfEntry.toLowerCase().includes(q)) ||
-          (shp.carrierName && shp.carrierName.toLowerCase().includes(q));
-        if (!match) return false;
-      }
-
-      // 7. Column Readiness Filter
-      if (columnFilters.readiness !== "ALL") {
-        const isReady = (shp.readinessScore ?? 0) >= 85;
-        if (columnFilters.readiness === "READY" && !isReady) return false;
-        if (columnFilters.readiness === "NOT_READY" && isReady) return false;
-      }
-
-      // 8. Column Status Filter
+      // 4. Column Status Filter
       if (columnFilters.status !== "ALL" && shp.status !== columnFilters.status) {
         return false;
       }
 
-      // 9. Column Owner Filter (Only if Admin)
+      // 5. Column Owner Filter (Only if Admin)
       if (isEnterpriseAdmin && columnFilters.owner !== "ALL") {
         if (columnFilters.owner === "UNASSIGNED") {
           if (shp.assignedBrokerId) return false;
@@ -255,7 +270,7 @@ export function ShipmentsWorkbenchClient({
         }
       }
 
-      // 10. Column Client Filter
+      // 6. Column Client Filter
       if (columnFilters.client !== "ALL") {
         if (columnFilters.client === "UNASSIGNED") {
           if (shp.clientId) return false;
@@ -265,11 +280,15 @@ export function ShipmentsWorkbenchClient({
       }
 
       return true;
+    }).sort((a, b) => {
+      if (!sortCol) return 0;
+      const da = deadlinesByShipment[a.shipmentNumber];
+      const db_ = deadlinesByShipment[b.shipmentNumber];
+      const msA = deadlineSortMs(sortCol === "isf" ? da?.isf : da?.entryFiling);
+      const msB = deadlineSortMs(sortCol === "isf" ? db_?.isf : db_?.entryFiling);
+      return sortDir === "asc" ? msA - msB : msB - msA;
     });
-    // Depends on `shipmentsList`, not `initialShipments`: reassigning a broker
-    // updates `shipmentsList`, and with the prop as the dependency this memo did
-    // not recompute, so the new owner never appeared in the table.
-  }, [shipmentsList, selectedUserIds, columnFilters, searchQuery, isEnterpriseAdmin]);
+  }, [shipmentsList, selectedUserIds, columnFilters, searchQuery, isEnterpriseAdmin, sortCol, sortDir, deadlinesByShipment]);
 
   // Derived KPI Counts based on the current filtered list
   const totalCount = filteredShipments.length;
@@ -479,10 +498,6 @@ export function ShipmentsWorkbenchClient({
 
           <div className="flex items-center space-x-3">
             {(columnFilters.shipmentNumber ||
-              columnFilters.importerName ||
-              columnFilters.entryTypePo ||
-              columnFilters.portMode ||
-              columnFilters.readiness !== "ALL" ||
               columnFilters.status !== "ALL" ||
               columnFilters.owner !== "ALL" ||
               columnFilters.client !== "ALL" ||
@@ -491,10 +506,6 @@ export function ShipmentsWorkbenchClient({
                 onClick={() => {
                   setColumnFilters({
                     shipmentNumber: "",
-                    importerName: "",
-                    entryTypePo: "",
-                    portMode: "",
-                    readiness: "ALL",
                     status: "ALL",
                     owner: "ALL",
                     client: "ALL",
@@ -525,10 +536,12 @@ export function ShipmentsWorkbenchClient({
             <thead className="bg-surface-muted text-ink-muted font-bold border-b border-border">
               <tr>
                 <th className="px-5 py-3.5">Shipment #</th>
-                <th className="px-5 py-3.5">Importer of Record</th>
-                <th className="px-5 py-3.5">Entry Type / PO</th>
-                <th className="px-5 py-3.5">Port & Mode</th>
-                <th className="px-5 py-3.5">Readiness</th>
+                <th className="px-5 py-3.5 cursor-pointer select-none hover:text-ink" onClick={() => toggleSort("isf")}>
+                  ISF{sortIcon("isf")}
+                </th>
+                <th className="px-5 py-3.5 cursor-pointer select-none hover:text-ink" onClick={() => toggleSort("ef")}>
+                  Entry Filing{sortIcon("ef")}
+                </th>
                 <th className="px-5 py-3.5">Status</th>
                 <th className="px-5 py-3.5">Client</th>
                 {isEnterpriseAdmin && <th className="px-5 py-3.5">Owner</th>}
@@ -541,59 +554,13 @@ export function ShipmentsWorkbenchClient({
                   <input
                     type="text"
                     value={columnFilters.shipmentNumber}
-                    onChange={(e) =>
-                      setColumnFilters({ ...columnFilters, shipmentNumber: e.target.value })
-                    }
+                    onChange={(e) => setColumnFilters({ ...columnFilters, shipmentNumber: e.target.value })}
                     placeholder="Filter #"
                     className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
                   />
                 </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="text"
-                    value={columnFilters.importerName}
-                    onChange={(e) =>
-                      setColumnFilters({ ...columnFilters, importerName: e.target.value })
-                    }
-                    placeholder="Filter Importer"
-                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="text"
-                    value={columnFilters.entryTypePo}
-                    onChange={(e) =>
-                      setColumnFilters({ ...columnFilters, entryTypePo: e.target.value })
-                    }
-                    placeholder="Filter Type/PO"
-                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="text"
-                    value={columnFilters.portMode}
-                    onChange={(e) =>
-                      setColumnFilters({ ...columnFilters, portMode: e.target.value })
-                    }
-                    placeholder="Filter Port"
-                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand"
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <select
-                    value={columnFilters.readiness}
-                    onChange={(e) =>
-                      setColumnFilters({ ...columnFilters, readiness: e.target.value })
-                    }
-                    className="px-2.5 py-1 w-full bg-white border border-border rounded-lg text-[11px] font-medium focus:outline-none focus:border-brand cursor-pointer"
-                  >
-                    <option value="ALL">All Readiness</option>
-                    <option value="READY">Ready (&gt;= 85%)</option>
-                    <option value="NOT_READY">Incomplete (&lt; 85%)</option>
-                  </select>
-                </td>
+                <td className="px-4 py-2" />
+                <td className="px-4 py-2" />
                 <td className="px-4 py-2">
                   <select
                     value={columnFilters.status}
@@ -617,9 +584,7 @@ export function ShipmentsWorkbenchClient({
                     <option value="ALL">All Clients</option>
                     <option value="UNASSIGNED">No Client</option>
                     {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
+                      <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                 </td>
@@ -647,7 +612,7 @@ export function ShipmentsWorkbenchClient({
               {filteredShipments.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={isEnterpriseAdmin ? 8 : 7}
+                    colSpan={isEnterpriseAdmin ? 6 : 5}
                     className="px-5 py-12 text-center text-ink-muted"
                   >
                     <Package className="w-8 h-8 mx-auto text-ink-muted mb-2 stroke-1" />
@@ -657,9 +622,6 @@ export function ShipmentsWorkbenchClient({
                 </tr>
               ) : (
                 pagedShipments.map((shp) => {
-                  const isReady = (shp.readinessScore ?? 0) >= 85;
-                  const isCritical = shp.healthStatus === "Critical";
-
                   return (
                     <tr key={shp.id} className="hover:bg-surface-muted/60 transition-colors">
                       <td className="px-5 py-4 font-bold text-brand">
@@ -670,41 +632,17 @@ export function ShipmentsWorkbenchClient({
                           <Package className="w-4 h-4 text-brand shrink-0" />
                           <span>{shp.shipmentNumber}</span>
                         </Link>
-                      </td>
-
-                      <td className="px-5 py-4">
-                        <div className="font-semibold text-ink">{shp.importerName}</div>
-                        <div className="text-[11px] text-ink-muted">
-                          {shp.countryOfExport || "Global"}
+                        <div className="mt-0.5 text-[11px] font-normal text-ink-muted truncate max-w-[180px]">
+                          {shp.importerName}
                         </div>
                       </td>
 
                       <td className="px-5 py-4">
-                        <div>{shp.entryType}</div>
-                        <div className="text-[11px] text-ink-muted">
-                          {shp.poReference || "No PO"}
-                        </div>
+                        <DeadlineCell info={deadlinesByShipment[shp.shipmentNumber]?.isf} />
                       </td>
 
                       <td className="px-5 py-4">
-                        <div>{shp.portOfEntry || "Port of LA"}</div>
-                        <div className="text-[11px] text-ink-muted">
-                          {shp.carrierName || "Ocean"}
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-16 bg-border h-1.5 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                isReady ? "bg-emerald-500" : isCritical ? "bg-red-500" : "bg-amber-500"
-                              }`}
-                              style={{ width: `${shp.readinessScore}%` }}
-                            />
-                          </div>
-                          <span className="font-semibold text-[11px]">{shp.readinessScore}%</span>
-                        </div>
+                        <DeadlineCell info={deadlinesByShipment[shp.shipmentNumber]?.entryFiling} warnDays={5} />
                       </td>
 
                       <td className="px-5 py-4">

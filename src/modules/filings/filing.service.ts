@@ -72,7 +72,6 @@ export class FilingService {
     // Validate shipment belongs to account
     const shipment = await db.shipment.findFirst({
       where: { id: input.shipmentId, accountId, deletedAt: null },
-      omit: { filingDeadline: true },
       include: { lineItems: true },
     });
 
@@ -106,9 +105,7 @@ export class FilingService {
         // Duties and taxes stay null until a real rate calculation runs. The
         // previous flat 2.8% of value was invented and had no HTS basis.
       },
-      // filingDeadline is in the Prisma schema but not yet applied to the
-      // live DB (migration pending) -- must stay omitted or this 500s.
-      include: { shipment: { omit: { filingDeadline: true } } },
+      include: { shipment: true },
     });
 
     return filing;
@@ -117,10 +114,8 @@ export class FilingService {
   static async transmitFiling(accountId: string, userId: string, filingId: string) {
     const filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId },
-      // filingDeadline is in the Prisma schema but not yet applied to the
-      // live DB (migration pending) -- must stay omitted or this 500s.
       include: {
-        shipment: { include: { documents: true, lineItems: true }, omit: { filingDeadline: true } },
+        shipment: { include: { documents: true, lineItems: true } },
       },
     });
 

@@ -23,10 +23,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       documents: true,
       lineItems: true,
     },
-    // filingDeadline is in the Prisma schema but not yet applied to the live
-    // DB (migration pending) -- must stay omitted or this 500s.
-    omit: { filingDeadline: true },
-  });
+    });
 
   if (!shipment) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });

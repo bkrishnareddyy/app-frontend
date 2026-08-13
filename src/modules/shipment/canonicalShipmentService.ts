@@ -48,7 +48,6 @@ const canonicalInclude = {
 
 export type CanonicalShipment = Prisma.ShipmentGetPayload<{
   include: typeof canonicalInclude;
-  omit: { filingDeadline: true };
 }>;
 
 /** The subset of a shipment the metric calculation actually reads. */
@@ -110,8 +109,7 @@ export class CanonicalShipmentService {
       db.shipment.findUnique({
         where: { id: shipmentId },
         include: canonicalInclude,
-        omit: { filingDeadline: true },
-      }),
+        }),
       db.agentExecutionLog.findMany({
         where: { shipmentId },
         orderBy: { timestamp: "desc" },

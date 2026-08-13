@@ -66,7 +66,7 @@ export class ExceptionService {
       where,
       omit: { resolutionReasonCode: true },
       include: {
-        shipment: { omit: { filingDeadline: true } },
+        shipment: true,
         filing: true,
         assignedToUser: true,
       },
@@ -172,9 +172,7 @@ export class ExceptionService {
         version: { increment: 1 },
       },
       include: {
-        // filingDeadline is in the Prisma schema but not yet applied to the
-        // live DB (migration pending) -- must stay omitted or this 500s.
-        shipment: { omit: { filingDeadline: true } },
+        shipment: true,
         filing: true,
         assignedToUser: true,
       },

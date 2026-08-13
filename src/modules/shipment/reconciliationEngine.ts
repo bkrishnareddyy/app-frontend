@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ShipmentEventBus } from "@/modules/events/shipmentEventBus";
 import { isPlaceholderValue, lineItemFactField } from "./lineItemReconciler";
+import { recomputeShipmentDeadlines } from "@/modules/deadlines/deadline.service";
 
 interface ComplianceAuditFinding {
   ruleId: string;
@@ -51,7 +52,6 @@ export class ReconciliationEngine {
   static async reconcileShipment(shipmentId: string, triggerSource: string = "SYSTEM"): Promise<ReconciliationResult> {
     const shipment = await db.shipment.findUnique({
       where: { id: shipmentId },
-      omit: { filingDeadline: true },
       include: {
         documents: { include: { parseVersions: true } },
         exceptionItems: { where: { status: { not: "Resolved" } } },
@@ -309,6 +309,13 @@ export class ReconciliationEngine {
       },
       triggeredBy: triggerSource,
     });
+
+    // Recompute statutory and commercial deadline clocks.
+    // Fire-and-forget: a deadline failure must never block the reconciliation
+    // result from returning — deadlines are advisory, not gating.
+    recomputeShipmentDeadlines(shipmentId).catch((err) =>
+      console.error("[ReconciliationEngine] deadline recompute failed", { shipmentId, err })
+    );
 
     return {
       shipmentId,

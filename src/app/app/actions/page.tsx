@@ -4,7 +4,8 @@ import { canWrite } from "@/lib/api/write-access";
 import { db } from "@/lib/db";
 import { groupDecisions } from "@/modules/decisions/groupDecisions";
 import { buildShipmentActionGroups } from "@/modules/actions/shipmentActions";
-import { DECISION_ACTIONABLE_STATUSES } from "@/modules/work/workQueue";
+import { DECISION_ACTIONABLE_STATUSES, buildWorkQueue, filterWorkQueue, parseWorkFilter } from "@/modules/work/workQueue";
+import { loadWorkQueueForAccount } from "@/modules/work/workQueueLoader";
 import { RISK_ACCEPTANCE_PERMISSION, openStatusVariants } from "@/modules/exceptions/exceptionState";
 import { ActionsClient } from "./ActionsClient";
 
@@ -107,8 +108,11 @@ export default async function ActionsPage(props: {
     }),
   ]);
 
-  const writable = canWrite(context);
-  const mayWaive = writable && (await hasPermission(RISK_ACCEPTANCE_PERMISSION));
+  const [writable, mayWaive, queueLoaderResult] = await Promise.all([
+    Promise.resolve(canWrite(context)),
+    hasPermission(RISK_ACCEPTANCE_PERMISSION).then((ok) => canWrite(context) && ok),
+    loadWorkQueueForAccount(context.accountId, context.userId, { shipmentId }),
+  ]);
 
   const serializedDecisions = JSON.parse(JSON.stringify(decisions));
   const serializedDocuments = JSON.parse(JSON.stringify(allDocuments));
@@ -116,6 +120,18 @@ export default async function ActionsPage(props: {
 
   const decisionGroups = groupDecisions(serializedDecisions, serializedDocuments);
   const groups = buildShipmentActionGroups(decisionGroups, serializedExceptions);
+
+  // Build the ordered work queue — first production call to buildWorkQueue.
+  // The queue drives ordering and urgency display; groups drive the detailed
+  // review UI. Both are passed so ActionsClient can show countdown chips.
+  const workQueueParams = new URLSearchParams(
+    Object.entries(searchParams)
+      .filter(([, v]) => typeof v === "string")
+      .map(([k, v]) => [k, v as string])
+  );
+  const workFilter = parseWorkFilter(workQueueParams);
+  const workQueue = buildWorkQueue(queueLoaderResult.input);
+  const filteredQueue = filterWorkQueue(workQueue, workFilter);
 
   const firstName = context.firstName ?? null;
   const lastName = context.lastName ?? null;
@@ -127,6 +143,39 @@ export default async function ActionsPage(props: {
     fileUrl: d.fileUrl ?? null,
   }));
 
+  // Apply deadline urgency as a priority floor on each group.
+  // buildShipmentActionGroups derives priority only from decisions/exceptions;
+  // a 17h deadline must escalate the group to "critical" regardless.
+  const urgencyFloor = (msRemaining: number): "critical" | "high" | "normal" =>
+    msRemaining <= 0 || msRemaining <= 24 * 3_600_000 ? "critical"
+    : msRemaining <= 3 * 24 * 3_600_000 ? "high"
+    : "normal";
+  const priorityRank = { critical: 0, high: 1, normal: 2 } as const;
+  for (const g of groups) {
+    const queueItem = filteredQueue.find((i) => i.shipmentNumber === g.shipmentNumber && i.urgency);
+    if (!queueItem?.urgency) continue;
+    const floor = urgencyFloor(queueItem.urgency.msRemaining);
+    if (priorityRank[floor] < priorityRank[g.priority]) g.priority = floor;
+  }
+
+  // Serialize the urgency map (shipmentId → most-urgent deadline) so the
+  // client can render countdown chips without its own DB access.
+  const urgencyByShipment = Object.fromEntries(
+    filteredQueue
+      .filter((item) => item.urgency != null && item.shipmentNumber != null)
+      .map((item) => [
+        item.shipmentNumber!,
+        {
+          deadlineType: item.urgency!.deadlineType,
+          dueAt: item.urgency!.dueAt.toISOString(),
+          msRemaining: item.urgency!.msRemaining,
+          breached: item.urgency!.breached,
+          estimated: item.urgency!.estimated,
+          exposureUsd: item.urgency!.exposureUsd,
+        },
+      ])
+  );
+
   return (
     <ActionsClient
       groups={groups}
@@ -136,6 +185,7 @@ export default async function ActionsPage(props: {
       userId={context.userId}
       userName={userName}
       documents={documents}
+      urgencyByShipment={urgencyByShipment}
     />
   );
 }
