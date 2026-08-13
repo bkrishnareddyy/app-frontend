@@ -1,17 +1,12 @@
 import { db } from "@/lib/db";
-import { MockCustomsTransmissionProvider } from "@/lib/providers";
-import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
+import { computeFilingTariff, loadHtsCodesMap, type TariffEngineResult } from "@/lib/tariff/dutyEngine";
 import { applyTransition, FilingTransitionError } from "./filingStateMachine";
-import { ENTRY_TYPE_CODES, normalizeEntryType } from "@/modules/filing/entryType";
-
-export interface FilingCreateInput {
-  shipmentId: string;
-  entryNumber: string;
-  importerOfRecordId?: string;
-  bondId?: string;
-  entryType: string;
-  authority?: string;
-}
+import { buildCanonicalDeclaration } from "@/lib/canonicalMessaging/declarationBuilder";
+import { resolveMessageContext } from "@/lib/canonicalMessaging/resolveMessageContext";
+import { PgCanonicalMessagePublisher } from "@/lib/canonicalMessaging/publisher";
+import { getActiveSchemaVersion } from "@/lib/canonicalMessaging/schemaValidator";
+import type { CanonicalCustomsDeclaration, CanonicalFilingRequestData, CanonicalMessage, FilingMessageAction } from "@/lib/canonicalMessaging/types";
+import { randomUUID } from "crypto";
 
 /** Shape frozen into FilingSnapshot.snapshotData at transmission. */
 export type FilingSnapshotData = {
@@ -55,63 +50,128 @@ export type FilingSnapshotData = {
 };
 
 export class FilingService {
-  static async createFiling(accountId: string, userId: string, input: FilingCreateInput) {
-    // Block 2 of the Form 7501. Was defaulted to "Consumption Entry", so a
-    // warehouse or FTZ entry was recorded as a consumption entry.
-    if (!input.entryType) {
-      throw new Error("entryType is required to create a filing.");
-    }
-
-    const entryTypeCode = normalizeEntryType(input.entryType);
-    if (!entryTypeCode) {
-      throw new Error(
-        `"${input.entryType}" is not a CBP entry type. Use one of: ${ENTRY_TYPE_CODES.join(", ")}.`
-      );
-    }
-
-    // Validate shipment belongs to account
-    const shipment = await db.shipment.findFirst({
-      where: { id: input.shipmentId, accountId, deletedAt: null },
-      include: { lineItems: true },
-    });
-
-    if (!shipment) {
-      throw new Error("Shipment not found or does not belong to active account.");
-    }
-
-    // Scoped to the account: a global check would let one tenant probe another
-    // tenant's entry numbers and would block legitimate filings.
-    const existing = await db.customsFiling.findFirst({
-      where: { entryNumber: input.entryNumber, accountId },
-    });
-
-    if (existing) {
-      throw new Error(`Entry number ${input.entryNumber} is already registered.`);
-    }
-
-    const totalVal = shipment.lineItems.reduce((acc, l) => acc + Number(l.totalValue), 0);
-
-    const filing = await db.customsFiling.create({
-      data: {
-        accountId,
-        shipmentId: shipment.id,
-        entryNumber: input.entryNumber,
-        importerOfRecordId: input.importerOfRecordId,
-        bondId: input.bondId,
-        entryType: entryTypeCode,
-        authority: input.authority || "US Customs (CBP)",
-        filingStatus: "Draft",
-        totalValue: totalVal,
-        // Duties and taxes stay null until a real rate calculation runs. The
-        // previous flat 2.8% of value was invented and had no HTS basis.
-      },
-      include: { shipment: true },
-    });
-
-    return filing;
+  static async transmitFiling(accountId: string, userId: string, filingId: string) {
+    return FilingService.buildSnapshotAndPublish(accountId, filingId, "SUBMIT", "transmit.send");
   }
 
-  static async transmitFiling(accountId: string, userId: string, filingId: string) {
+  /**
+   * Rebuilds the declaration from the shipment's *current* data (post-edit)
+   * and publishes a RESUBMIT message referencing the filing's last outbound
+   * message. Only legal from ValidationFailed/Rejected/DocumentsRequested --
+   * see the `resubmit` transition added to filingStateMachine.ts for this.
+   */
+  static async resubmitFiling(accountId: string, userId: string, filingId: string) {
+    const priorMessage = await db.filingMessage.findFirst({
+      where: { filingId, accountId, direction: "OUTBOUND" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!priorMessage) {
+      throw new Error("Cannot resubmit: no prior outbound message found for this filing.");
+    }
+    return FilingService.buildSnapshotAndPublish(accountId, filingId, "RESUBMIT", "resubmit", priorMessage.messageId);
+  }
+
+  /**
+   * Publishes a CANCELLATION message referencing the filing's last outbound
+   * message, reusing its already-transmitted declaration rather than
+   * rebuilding one -- a cancellation declares "cancel that specific
+   * declaration," not a fresh snapshot of current (possibly since-changed)
+   * shipment data.
+   *
+   * Applies `cancel.request` immediately (-> CancellationRequested) --
+   * sending the message is itself a visible operator action, not something
+   * that should leave filingStatus looking untouched until a response
+   * happens to arrive. The confirmed `cbp.cancel` (-> Cancelled) only fires
+   * once the response actually does, via FilingResponseStatusMapping.
+   * Which statuses offer this action at all is FilingChildActionRule's job
+   * (see resolveChildActions()), not this method's.
+   */
+  static async cancelFiling(accountId: string, userId: string, filingId: string) {
+    const filing = await db.customsFiling.findFirst({
+      where: { id: filingId, accountId },
+      include: { shipment: true },
+    });
+    if (!filing) throw new Error("NOT_FOUND");
+
+    const priorMessage = await db.filingMessage.findFirst({
+      where: { filingId, accountId, direction: "OUTBOUND" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!priorMessage) {
+      throw new Error("Cannot cancel: no prior outbound message found for this filing.");
+    }
+
+    let nextStatus: string;
+    try {
+      nextStatus = applyTransition(filing.filingStatus, "cancel.request");
+    } catch (error) {
+      if (error instanceof FilingTransitionError) throw new Error(error.message);
+      throw error;
+    }
+
+    const priorEnvelope = priorMessage.envelope as unknown as CanonicalMessage<CanonicalFilingRequestData>;
+    const declaration = priorEnvelope.data.declaration;
+
+    const context = await resolveMessageContext(
+      { entryType: filing.entryType, destinationCountry: filing.shipment.destinationCountry },
+      "CANCELLATION"
+    );
+
+    const message = await FilingService.buildMessage(accountId, filingId, filing.authority, context, declaration, priorMessage.messageId);
+    await new PgCanonicalMessagePublisher().publish(context.queueName, message);
+
+    const updatedFiling = await db.customsFiling.update({
+      where: { id: filingId },
+      data: { filingStatus: nextStatus },
+    });
+
+    return { filing: updatedFiling, messageId: message.header.messageId };
+  }
+
+  private static async buildMessage(
+    accountId: string,
+    filingId: string,
+    authority: string,
+    context: Awaited<ReturnType<typeof resolveMessageContext>>,
+    declaration: CanonicalCustomsDeclaration,
+    priorMessageId?: string
+  ): Promise<CanonicalMessage<CanonicalFilingRequestData>> {
+    return {
+      header: {
+        messageId: randomUUID(),
+        filingId,
+        priorMessageId,
+        messageName: context.messageName,
+        direction: "OUTBOUND",
+        customer: { accountId },
+        procedure: context.procedure,
+        country: context.country,
+        authority,
+        dateTime: new Date().toISOString(),
+        // Reflects whichever FILING_REQUEST_DECLARATION version is actually
+        // ACTIVE right now, not a value frozen at the time this code was
+        // written -- a schema promotion (see seedSchemas()) must not leave
+        // every subsequently published message claiming a stale version.
+        schemaVersion: await getActiveSchemaVersion("FILING_REQUEST_DECLARATION"),
+        senderSystem: "QUBERE",
+      },
+      data: { declaration },
+    };
+  }
+
+  /**
+   * Shared by transmitFiling (action SUBMIT) and resubmitFiling (action
+   * RESUBMIT): validates line items are rated, rebuilds and persists a fresh
+   * FilingSnapshot from the shipment's current data, builds the canonical
+   * declaration, publishes, and applies the given FilingTransition.
+   */
+  private static async buildSnapshotAndPublish(
+    accountId: string,
+    filingId: string,
+    action: FilingMessageAction,
+    transition: Parameters<typeof applyTransition>[1],
+    priorMessageId?: string
+  ) {
     const filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId },
       include: {
@@ -127,7 +187,7 @@ export class FilingService {
     // Rejected or unvalidated filing could still be transmitted.
     let nextStatus: string;
     try {
-      nextStatus = applyTransition(filing.filingStatus, "transmit.send");
+      nextStatus = applyTransition(filing.filingStatus, transition);
     } catch (error) {
       if (error instanceof FilingTransitionError) {
         throw new Error(error.message);
@@ -141,7 +201,7 @@ export class FilingService {
 
     // An entry summary declares the duty owed. If any line has no published rate
     // the total understates that duty, and transmitting it is a misdeclaration.
-    const tariff = computeFilingTariff(
+    const tariff: TariffEngineResult = computeFilingTariff(
       filing.shipment.lineItems,
       await loadHtsCodesMap(filing.shipment.lineItems)
     );
@@ -192,16 +252,38 @@ export class FilingService {
       }
     };
 
-    // Save the snapshot in db
-    await db.filingSnapshot.create({
-      data: {
-        filingId,
-        snapshotData,
-      }
+    // FilingSnapshot.filingId is unique (one snapshot per filing, "current
+    // effective state"), so a resubmit updates it rather than creating a
+    // second row. The full history of what was actually sent at each point in
+    // time still lives in FilingMessage.envelope, one immutable row per
+    // message -- this snapshot is deliberately "latest," not an archive.
+    await db.filingSnapshot.upsert({
+      where: { filingId },
+      update: { snapshotData },
+      create: { filingId, snapshotData },
     });
 
-    const provider = new MockCustomsTransmissionProvider();
-    const result = await provider.submitEntry({ entryNumber: filing.entryNumber });
+    // Build the canonical (country-agnostic) declaration and hand it to the
+    // third-party filing service via the outbound queue. No CBP response
+    // exists yet at this point -- it arrives later, asynchronously, and is
+    // applied by the inbound consumer (see canonicalMessaging/inboundConsumer.ts).
+    // This function intentionally does not return a response/transmissionResult.
+    const declaration = await buildCanonicalDeclaration({
+      accountId,
+      filingId,
+      shipmentId: filing.shipment.id,
+      snapshotData,
+      tariff,
+    });
+
+    const context = await resolveMessageContext(
+      { entryType: filing.entryType, destinationCountry: filing.shipment.destinationCountry },
+      action
+    );
+
+    const message = await FilingService.buildMessage(accountId, filingId, filing.authority, context, declaration, priorMessageId);
+
+    await new PgCanonicalMessagePublisher().publish(context.queueName, message);
 
     const updatedFiling = await db.customsFiling.update({
       where: { id: filingId },
@@ -212,17 +294,6 @@ export class FilingService {
       },
     });
 
-    const response = await db.customsResponse.create({
-      data: {
-        accountId,
-        filingId,
-        code: result.responseCode,
-        title: "ACK - ABI Entry Transmission Received",
-        description: result.message,
-        status: result.status,
-      },
-    });
-
-    return { filing: updatedFiling, response, transmissionResult: result };
+    return { filing: updatedFiling, messageId: message.header.messageId };
   }
 }

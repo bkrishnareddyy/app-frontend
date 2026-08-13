@@ -5,12 +5,11 @@ import { documentViewUrl } from "@/lib/documentUrl";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Scale, CheckCircle2, Clock, Search, Check, FileText, Layers } from "lucide-react";
+import { Scale, CheckCircle2, Clock, Search, Check, FileText } from "lucide-react";
 import {
   groupDecisions,
   type DecisionRow,
   type DecisionDocument,
-  type DecisionGroup,
 } from "@/modules/decisions/groupDecisions";
 import { useDecisionActions } from "@/lib/decisions/useDecisionActions";
 
@@ -227,7 +226,6 @@ export function DecisionReviewClient({
             <div className="space-y-3 max-h-[78vh] overflow-y-auto pr-1">
               {filteredGroups.map((g) => {
                 const isSelected = selectedGroup?.id === g.id;
-                const approvedCount = g.decisions.filter((d) => d.status === "Approved").length;
 
                 return (
                   <button

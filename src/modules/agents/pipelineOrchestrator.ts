@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { createAuditLog } from "@/lib/audit";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent, DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
 import { ProductIntelligenceAgent, ProductIntelligenceOutput } from "./productIntelligenceAgent";
@@ -253,8 +254,23 @@ export class PipelineOrchestrator {
         if (field === "countryOfOrigin" || field === "origin") {
           return ["Origin Rules Agent", "Compliance Audit Agent", "Filing Readiness Agent"];
         }
-        if (field === "htsCode" || field?.startsWith("lineItem")) {
+        if (field === "htsCode") {
           return [
+            "HTS Classification Agent",
+            "Origin Rules Agent",
+            "Valuation & Assists Agent",
+            "Compliance Audit Agent",
+            "Filing Readiness Agent",
+          ];
+        }
+        // A lineItem* edit (material, manufacturer, composition, model, MPN,
+        // SKU, GTIN, countryOfManufacture, description, ...) changes the facts
+        // Product Intelligence enriches, so it must rerun and refresh those
+        // facts before HTS Classification reads them again -- otherwise HTS
+        // classifies against a stale product picture.
+        if (field?.startsWith("lineItem")) {
+          return [
+            "Product Intelligence Agent",
             "HTS Classification Agent",
             "Origin Rules Agent",
             "Valuation & Assists Agent",
@@ -389,10 +405,22 @@ export class PipelineOrchestrator {
             sku: li.partNumber ?? undefined,
             description: li.description,
             countryOfOrigin: li.countryOfOrigin !== "Unknown" ? li.countryOfOrigin : factValue(context, "countryOfOrigin"),
+            // Not yet populated by any extraction stage today -- read from
+            // per-line facts so this agent picks them up automatically once a
+            // future document-extraction upgrade starts writing them, with no
+            // further pipeline wiring required.
+            supplierSku: context.facts[lineItemFactField(li.lineNumber, "supplierSku")]?.value ?? null,
+            manufacturerPartNumber: context.facts[lineItemFactField(li.lineNumber, "manufacturerPartNumber")]?.value ?? null,
+            model: context.facts[lineItemFactField(li.lineNumber, "model")]?.value ?? null,
+            gtin: context.facts[lineItemFactField(li.lineNumber, "gtin")]?.value ?? null,
+            manufacturerName: context.facts[lineItemFactField(li.lineNumber, "manufacturerName")]?.value ?? null,
+            supplierName: context.facts[lineItemFactField(li.lineNumber, "supplierName")]?.value ?? null,
+            brandOwnerName: context.facts[lineItemFactField(li.lineNumber, "brandOwnerName")]?.value ?? null,
+            countryOfManufacture: context.facts[lineItemFactField(li.lineNumber, "countryOfManufacture")]?.value ?? null,
           })),
         };
         const output = await ProductIntelligenceAgent.execute(agentInput);
-        await this.persistProductIntelligence(shipmentId, documentId, agentInput.lineItems, output);
+        await this.persistProductIntelligence(shipmentId, accountId, userId, documentId, agentInput.lineItems, output);
         const productCount = output.profiles?.length ?? 0;
         const productSummary = productCount > 0 ? `Enriched ${productCount} product profile${productCount !== 1 ? "s" : ""}` : undefined;
         return { decisionId: output.agentDecisionId, aiProviderUsed: output.aiProviderUsed, confidence: output.confidence, summary: productSummary, input: agentInput, output };
@@ -662,6 +690,8 @@ export class PipelineOrchestrator {
 
   private static async persistProductIntelligence(
     shipmentId: string,
+    accountId: string,
+    userId: string,
     documentId: string | null,
     lineItems: Array<{ lineNumber: number }>,
     output: ProductIntelligenceOutput
@@ -680,6 +710,136 @@ export class PipelineOrchestrator {
         casNumber: profile.casNumber,
         endUse: profile.endUse,
         confidence: profile.confidence,
+        // Additive facts from the Product Master upgrade -- HTS Classification
+        // does not read these, so adding them cannot change its behavior.
+        productMatchStatus: profile.productMatch,
+        existingProductId: profile.existingProductId,
+        verificationStatus: profile.verificationStatus,
+        productIdentityReadiness: profile.readiness.productIdentity,
+        classificationReadiness: profile.readiness.classification,
+        originReadiness: profile.readiness.origin,
+        regulatoryReadiness: profile.readiness.regulatory,
+        valuationReadiness: profile.readiness.valuation,
+        recommendedActions: profile.recommendedActions.length
+          ? JSON.stringify(profile.recommendedActions.map((a) => a.flag))
+          : null,
+      });
+
+      await this.auditProductIntelligenceFindings(shipmentId, accountId, userId, lineNumber, profile);
+      await this.raiseProductIntelligenceExceptions(shipmentId, accountId, documentId, lineNumber, profile);
+    }
+  }
+
+  /**
+   * Audit trail for what this agent decided per line item, distinct from the
+   * single AGENT_EXECUTION_COMPLETED entry the agent itself already writes --
+   * these are per-finding entries (match outcome, each conflict/change/gap)
+   * so the audit log names the specific thing that happened, not just that
+   * the agent ran.
+   */
+  private static async auditProductIntelligenceFindings(
+    shipmentId: string,
+    accountId: string,
+    userId: string,
+    lineNumber: number,
+    profile: ProductIntelligenceOutput["profiles"][number]
+  ): Promise<void> {
+    const entries: Array<{ action: string; metadata: Record<string, unknown> }> = [];
+
+    entries.push({
+      action: profile.productMatch === "NO_MATCH" ? "PRODUCT_INTELLIGENCE_NO_MATCH" : "PRODUCT_INTELLIGENCE_MATCHED",
+      metadata: { lineNumber, matchStatus: profile.productMatch, existingProductId: profile.existingProductId },
+    });
+    for (const conflict of profile.conflicts) {
+      entries.push({
+        action: "PRODUCT_INTELLIGENCE_CONFLICT",
+        metadata: { lineNumber, conflictType: conflict.type, field: conflict.field },
+      });
+    }
+    for (const change of profile.changes) {
+      entries.push({ action: "PRODUCT_INTELLIGENCE_CHANGE_DETECTED", metadata: { lineNumber, field: change.field } });
+    }
+    if (profile.missingInformation.length > 0) {
+      entries.push({
+        action: "PRODUCT_INTELLIGENCE_MISSING_DATA",
+        metadata: { lineNumber, fields: profile.missingInformation.map((m) => m.field) },
+      });
+    }
+    for (const rec of profile.recommendedActions) {
+      entries.push({ action: "PRODUCT_INTELLIGENCE_REVALIDATION_REQUESTED", metadata: { lineNumber, flag: rec.flag } });
+    }
+    if (profile.newProductCandidate) {
+      entries.push({ action: "PRODUCT_INTELLIGENCE_PROPOSAL_CREATED", metadata: { lineNumber } });
+    }
+
+    for (const entry of entries) {
+      try {
+        await createAuditLog({
+          accountId,
+          userId,
+          action: entry.action,
+          entity: "SHIPMENT",
+          entityId: shipmentId,
+          metadata: { agentName: "Product Intelligence Agent", ...entry.metadata },
+        });
+      } catch {
+        // Audit logging failures must not block the pipeline; the agent's own
+        // AGENT_EXECUTION_COMPLETED entry already records that this ran.
+      }
+    }
+  }
+
+  /**
+   * Surfaces conflicts and customs-significant changes as ExceptionItems --
+   * review-routing only, exactly as every other non-blocking finding in this
+   * pipeline is surfaced. Never mutates the Product Master and never resolves
+   * anything on its own; a conflict or change stays open until a person acts.
+   */
+  private static async raiseProductIntelligenceExceptions(
+    shipmentId: string,
+    accountId: string,
+    documentId: string | null,
+    lineNumber: number,
+    profile: ProductIntelligenceOutput["profiles"][number]
+  ): Promise<void> {
+    const findings: Array<{ code: string; category: string; description: string }> = [];
+
+    for (const conflict of profile.conflicts) {
+      findings.push({
+        code: `PRODUCT_${conflict.type}_LINE_${lineNumber}_${conflict.field}`,
+        category: "CONFLICT",
+        description: `Line ${lineNumber}: ${conflict.explanation} (incoming: "${conflict.incomingValue}", Product Master: "${conflict.masterValue}")`,
+      });
+    }
+
+    for (const action of profile.recommendedActions) {
+      findings.push({
+        code: `PRODUCT_${action.flag}_LINE_${lineNumber}`,
+        category: "CLASSIFICATION",
+        description: `Line ${lineNumber}: ${action.reason}`,
+      });
+    }
+
+    for (const finding of findings) {
+      const existing = await db.exceptionItem.findFirst({
+        where: { shipmentId, code: finding.code, status: { not: "Resolved" } },
+      });
+      if (existing) continue;
+
+      await db.exceptionItem.create({
+        data: {
+          accountId,
+          shipmentId,
+          documentId,
+          code: finding.code,
+          category: finding.category,
+          type: "data_mismatch",
+          severity: "Medium",
+          description: finding.description,
+          blocking: false,
+          sourceAgent: "Product Intelligence Agent",
+          status: "Open",
+        },
       });
     }
   }

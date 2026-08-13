@@ -7,6 +7,7 @@ import { createAuditLog } from "@/lib/audit";
 import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { generateShipmentNumber } from "@/modules/shipments/shipmentNumber";
 import { ENTRY_TYPE_CODES, normalizeEntryType } from "@/modules/filing/entryType";
+import { COUNTRY_CODES, normalizeCountryCode } from "@/modules/shipment/countryCode";
 
 const createShipmentSchema = z.object({
   importerName: z.string().trim().min(1, "Importer name is required").max(200),
@@ -16,6 +17,7 @@ const createShipmentSchema = z.object({
   portOfEntry: z.string().trim().max(200).optional(),
   carrierName: z.string().trim().max(200).optional(),
   countryOfExport: z.string().trim().max(100).optional(),
+  destinationCountry: z.string().trim().max(100).optional(),
   estimatedArrival: z.coerce.date().optional(),
   masterShipmentId: z.string().trim().min(1).optional(),
   clientId: z.string().trim().min(1).optional(),
@@ -142,6 +144,25 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     }
   }
 
+  let destinationCountryCode: string | null = null;
+  if (input.destinationCountry) {
+    destinationCountryCode = normalizeCountryCode(input.destinationCountry);
+    if (!destinationCountryCode) {
+      return NextResponse.json(
+        {
+          error: "ValidationError",
+          fieldErrors: {
+            destinationCountry: [
+              `"${input.destinationCountry}" is not a recognized country. Use an ISO 3166-1 alpha-2 code (e.g. "${COUNTRY_CODES[0]}") or a full country name.`,
+            ],
+          },
+          requestId,
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   // Verify masterShipment exists and belongs to the same account if specified
   if (input.masterShipmentId) {
     const master = await db.shipment.findFirst({
@@ -176,6 +197,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       portOfEntry: input.portOfEntry,
       carrierName: input.carrierName,
       countryOfExport: input.countryOfExport,
+      destinationCountry: destinationCountryCode,
       estimatedArrival: input.estimatedArrival,
       status: "Draft",
       ownerName: [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || null,

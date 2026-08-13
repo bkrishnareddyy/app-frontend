@@ -17,6 +17,10 @@ const eslintConfig = defineConfig([
     "fix_decimal*.js",
     "fix_engine.js",
     "scratch/**",
+    // One-off manual Playwright debug scripts against a demo deployment,
+    // hardcoded to another machine's filesystem path. Not part of the vitest
+    // suite and not maintained.
+    "tests/test_chat*.js",
   ]),
   {
     rules: {

@@ -24,7 +24,7 @@ export function AccountProfilePanel({ accountName, account, userRole, onSaved, c
       <PanelHeading
         icon={Building2}
         title="Account Profile"
-        subtitle=""
+        subtitle={accountName}
         compact={compact}
       />
 

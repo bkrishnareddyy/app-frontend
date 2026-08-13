@@ -371,16 +371,6 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   );
   const pagedDocs = filteredDocs.slice(start, end);
 
-  const isImageFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
-    return ext.includes(".png") || ext.includes(".jpg") || ext.includes(".jpeg") || ext.includes(".webp");
-  };
-
-  const isPdfFile = (url: string, name: string) => {
-    const ext = (url || name).toLowerCase();
-    return ext.includes(".pdf");
-  };
-
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header Banner */}

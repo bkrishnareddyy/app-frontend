@@ -44,9 +44,12 @@ export function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    fetchNotifications();
+    const initial = setTimeout(fetchNotifications, 0);
     const interval = setInterval(fetchNotifications, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
   }, [fetchNotifications]);
 
   useEffect(() => {

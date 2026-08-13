@@ -67,10 +67,17 @@ export function ExceptionQuickActions({
     setReprocessing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/documents/${encodeURIComponent(documentId)}/reprocess`, {
+      // Re-runs Document Intelligence directly against the stored file
+      // (force: true bypasses the "already extracted" short-circuit).
+      // A queued Docling re-parse (/reprocess) only helps when the OCR
+      // structure itself was the problem, and that parse has to clear a
+      // quality gate before it ever reaches this agent -- so for "fields
+      // came out missing/wrong," re-running extraction directly is the
+      // action that actually fixes it.
+      const res = await fetch(`/api/documents/${encodeURIComponent(documentId)}/extractions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile: "FULL_PAGE_OCR" }),
+        body: JSON.stringify({ force: true }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);

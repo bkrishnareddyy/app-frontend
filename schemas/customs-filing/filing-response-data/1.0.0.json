@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qubere.ai/schemas/customs-filing/filing-response-data/1.0.0.json",
+  "title": "Canonical Filing Response Data v1.0.0",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ACCEPTED", "REJECTED", "NEEDS_INFO", "RELEASED", "CANCELLED", "ERROR"],
+      "description": "Our shared canonical status enum -- the third party maps its own country-specific response code onto this before publishing."
+    },
+    "authorityReference": {
+      "type": "string",
+      "description": "The entry number the authority actually assigned, when applicable."
+    },
+    "humanMessage": {
+      "type": "string",
+      "description": "Plain-language reason, for display in the Response tab."
+    },
+    "rawResponsePayload": {
+      "description": "Opaque passthrough of whatever the authority actually sent, kept for audit only. Never parsed by Qubere.",
+      "type": ["object", "array", "string", "null"]
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Forward-compatible bucket for not-yet-formalized data.",
+      "additionalProperties": true
+    }
+  },
+  "required": ["status"],
+  "additionalProperties": false
+}

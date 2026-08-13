@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { ENTRY_TYPE_CODES, entryTypeVariants, normalizeEntryType } from "@/modules/filing/entryType";
+import { findMostSpecificMatch } from "@/lib/canonicalMessaging/wildcardLookup";
+import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
@@ -290,6 +293,15 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 });
 
+/** A neutral, non-authority-shaped internal reference -- not a real CBP/customs
+ *  entry number. The authority's own number (if any) arrives later as
+ *  `authorityReference` on the accepted response; this is only ever "how we
+ *  refer to this draft internally," and must never look like it was assigned
+ *  by anyone but us. */
+function generateInternalReference(shipmentNumber: string): string {
+  return `DFT-${shipmentNumber}-${randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
   const { shipmentId, entryType, filingType, customEntryNumber } = body;
@@ -307,8 +319,34 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
 
-  // Block 2 of the Form 7501. It was defaulted to "Consumption Entry", so a
-  // warehouse, FTZ or antidumping entry was recorded as a consumption entry.
+  if (shipment.lineItems.length === 0) {
+    return NextResponse.json(
+      { error: "Cannot start a filing for a shipment with no line items." },
+      { status: 400 }
+    );
+  }
+
+  // The single most load-bearing fact for everything downstream: every
+  // country-driven config table (FilingProcedureMapping, FilingMessageCatalog,
+  // FilingAuthorityConfig, ...) keys off this value. Checked here, at
+  // creation, rather than discovered three steps later at Transmit, so a
+  // broker never spends review effort approving a filing that can never
+  // actually be sent.
+  const destinationCountry = shipment.destinationCountry;
+  if (!destinationCountry) {
+    return NextResponse.json(
+      {
+        error:
+          "This shipment has no destination country set. Set it on the shipment (top of the shipment page) before starting a filing.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Block 2 of the Form 7501 (or the equivalent declaration-type field for
+  // another authority). Falls back to the shipment's own entryType, but is
+  // never silently defaulted to a specific one -- see schema.prisma's comment
+  // on why CustomsFiling.entryType/authority/filingType carry no @default.
   const declaredEntryType = entryType || shipment.entryType;
   if (!declaredEntryType) {
     return NextResponse.json(
@@ -327,8 +365,39 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     );
   }
 
+  // Fail closed if this destination has no procedure mapping yet, rather than
+  // creating a Draft that can pass Validate and Approve and only then fail at
+  // Transmit (resolveMessageContext throws the same underlying error, just
+  // much later in the workflow).
+  const procedureCandidates = await db.filingProcedureMapping.findMany({
+    where: { entryType: entryTypeCode, country: { in: [destinationCountry, "*"] } },
+  });
+  const procedureMatch = findMostSpecificMatch(procedureCandidates, ["country"], { country: destinationCountry });
+  if (!procedureMatch) {
+    return NextResponse.json(
+      {
+        error: `No filing procedure is configured for entry type "${entryTypeCode}" and destination "${destinationCountry}" yet. Add a FilingProcedureMapping row before filing to this destination.`,
+      },
+      { status: 422 }
+    );
+  }
+
+  // Authority/filing-system label are per-destination facts, not a hardcoded
+  // "US Customs (CBP)" default -- see FilingAuthorityConfig.
+  const authorityConfig = await db.filingAuthorityConfig.findUnique({ where: { country: destinationCountry } });
+  if (!authorityConfig) {
+    return NextResponse.json(
+      { error: `No filing authority is configured for destination "${destinationCountry}" yet. Add a FilingAuthorityConfig row for it first.` },
+      { status: 422 }
+    );
+  }
+
   // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine, grounded
   // in the real ingested HTS Master Release data rather than a flat rate guess.
+  // NOTE: this engine computes US CBP duty (MPF/HMF/general rate) unconditionally,
+  // regardless of destinationCountry. For any non-US destination these figures
+  // are not meaningful and should be treated as provisional/US-only until a
+  // country-scoped duty engine exists -- tracked as a known gap, not fixed here.
   const tariffResult = computeFilingTariff(
     shipment.lineItems,
     await loadHtsCodesMap(shipment.lineItems)
@@ -339,37 +408,47 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const calculatedValue = tariffResult.totalCustomsValue;
   const calculatedDuty = dutyIsComplete ? tariffResult.totalDuty : null;
   const calculatedTotal = dutyIsComplete ? tariffResult.totalAmount : null;
-
-  const entrySuffix = shipment.shipmentNumber.split("-")[2] || Math.floor(100000 + Math.random() * 900000).toString();
-  const entryNumber = customEntryNumber || `5901-26-${entrySuffix}`;
-
   const dutyBreakdown = tariffResult.dutyBreakdown;
 
   // QPR-001: POST /api/filing creates DRAFT only.
   // - paymentStatus and submittedAt are NOT set here.
   // - Customs responses (ACK/REJECT) are created only from real provider callbacks.
   // - Transmission happens via POST /api/filing/[id]/transmit after broker approval.
-  const filing = await db.customsFiling.create({
-    data: {
-      shipmentId,
-      accountId: ctx.accountId,
-      entryNumber,
-      authority: "US Customs (CBP)",
-      entryType: entryTypeCode,
-      filingType: filingType || "ABI - Automated",
-      filingStatus: "Draft",
-      totalValue: calculatedValue,
-      totalDuties: calculatedDuty,
-      // Null, not 0: no tax calculation runs here, and 0 would claim one did.
-      totalTaxes: null,
-      totalAmount: calculatedTotal,
-      dutyBreakdown,
-    },
-    include: {
-      shipment: true,
-      responses: true,
-    },
-  });
+  // entryNumber is scoped-unique per account (@@unique([accountId, entryNumber]));
+  // retry on the rare collision instead of trusting an unchecked random suffix.
+  let filing: Awaited<ReturnType<typeof db.customsFiling.create>> | null = null;
+  for (let attempt = 0; attempt < 5 && !filing; attempt++) {
+    const entryNumber = customEntryNumber || generateInternalReference(shipment.shipmentNumber);
+    try {
+      filing = await db.customsFiling.create({
+        data: {
+          shipmentId,
+          accountId: ctx.accountId,
+          entryNumber,
+          authority: authorityConfig.authorityName,
+          entryType: entryTypeCode,
+          filingType: filingType || authorityConfig.filingSystemLabel,
+          filingStatus: "Draft",
+          totalValue: calculatedValue,
+          totalDuties: calculatedDuty,
+          // Null, not 0: no tax calculation runs here, and 0 would claim one did.
+          totalTaxes: null,
+          totalAmount: calculatedTotal,
+          dutyBreakdown,
+        },
+        include: {
+          shipment: true,
+          responses: true,
+        },
+      });
+    } catch (err) {
+      const isDuplicate = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+      if (!isDuplicate || customEntryNumber) throw err; // an explicit custom number colliding is a real conflict, not retryable
+    }
+  }
+  if (!filing) {
+    return NextResponse.json({ error: "Could not generate a unique filing reference. Try again." }, { status: 500 });
+  }
 
   await db.shipment.update({
     where: { id: shipmentId },
@@ -382,7 +461,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: "customs_filing.create_draft",
     entity: "CustomsFiling",
     entityId: filing.id,
-    metadata: { entryNumber, shipmentId, filingStatus: "Draft" },
+    metadata: { entryNumber: filing.entryNumber, shipmentId, filingStatus: "Draft", destinationCountry },
   });
 
   return NextResponse.json(

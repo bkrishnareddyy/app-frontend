@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, createContext, useContext, type KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, createContext, useContext, type KeyboardEvent } from "react";
 import Link from "next/link";
 import type { Content } from "@google/genai";
 import {
@@ -558,13 +558,20 @@ export function ChatClient({ context }: ChatClientProps) {
   // True once the currently-attached file has been mentioned to the model —
   // prevents re-announcing the same [Attached file: ...] marker on every turn.
   const fileAnnouncedRef = useRef(false);
+  // Holds the in-flight assistant message so sendMessage/performUpload can
+  // mutate it across the async streaming/polling loop without React treating
+  // it as immutable once it has escaped into a setSessions closure.
+  const streamingAsstRef = useRef<MessageDisplay | null>(null);
 
   const th = isDark ? DARK : LIGHT;
 
   const activeSession = sessions.find((s) => s.id === activeId);
-  const messages = activeSession?.messages ?? [];
-  historyRef.current = activeSession?.history ?? [];
+  const messages = useMemo(() => activeSession?.messages ?? [], [activeSession?.messages]);
   const isEmpty = messages.length === 0;
+
+  useEffect(() => {
+    historyRef.current = activeSession?.history ?? [];
+  }, [activeSession?.history]);
 
   // Load sessions from the DB, but always land on a fresh new chat screen on page load
   useEffect(() => {
@@ -654,18 +661,16 @@ export function ChatClient({ context }: ChatClientProps) {
       id: uid, role: "user", text: trimmed, toolCalls: [],
       attachedFileName: announceFile ? pendingFile!.name : undefined,
     };
-    // Tracked outside React state so the final turn can be persisted without
-    // racing the async setSessions updates below.
-    let asstMsg: MessageDisplay = { id: aid, role: "assistant", text: "", toolCalls: [] };
+    streamingAsstRef.current = { id: aid, role: "assistant", text: "", toolCalls: [] };
     let workingHistory: Content[] = activeSession?.history ?? [];
 
     setSessions((prev) => prev.map((s) =>
-      s.id !== sessionId ? s : { ...s, title, messages: [...s.messages, userMsg, asstMsg] }
+      s.id !== sessionId ? s : { ...s, title, messages: [...s.messages, userMsg, streamingAsstRef.current!] }
     ));
 
     const pushAsstUpdate = () => {
       setSessions((prev) => prev.map((s) =>
-        s.id !== sessionId ? s : { ...s, messages: s.messages.map((m) => m.id === aid ? asstMsg : m) }
+        s.id !== sessionId ? s : { ...s, messages: s.messages.map((m) => m.id === aid ? streamingAsstRef.current! : m) }
       ));
     };
 
@@ -677,17 +682,18 @@ export function ChatClient({ context }: ChatClientProps) {
     };
 
     const apply = (ev: Record<string, unknown>) => {
+      const asstMsg = streamingAsstRef.current!;
       if (ev.type === "text") {
-        asstMsg = { ...asstMsg, text: asstMsg.text + (ev.delta as string) };
+        streamingAsstRef.current = { ...asstMsg, text: asstMsg.text + (ev.delta as string) };
       } else if (ev.type === "tool_call") {
-        asstMsg = { ...asstMsg, toolCalls: [...asstMsg.toolCalls, { name: ev.name as string, status: "running" as const }] };
+        streamingAsstRef.current = { ...asstMsg, toolCalls: [...asstMsg.toolCalls, { name: ev.name as string, status: "running" as const }] };
       } else if (ev.type === "tool_result") {
         const idx = [...asstMsg.toolCalls].reverse().findIndex((tc) => tc.name === (ev.name as string) && tc.status === "running");
         if (idx !== -1) {
           const real = asstMsg.toolCalls.length - 1 - idx;
           const tcs = [...asstMsg.toolCalls];
           tcs[real] = { ...tcs[real], status: "done", result: ev.result };
-          asstMsg = { ...asstMsg, toolCalls: tcs };
+          streamingAsstRef.current = { ...asstMsg, toolCalls: tcs };
         }
         const name = ev.name as string;
         const result = ev.result as Record<string, unknown>;
@@ -700,7 +706,7 @@ export function ChatClient({ context }: ChatClientProps) {
       } else if (ev.type === "history") {
         workingHistory = ev.turns as Content[];
       } else if (ev.type === "error") {
-        asstMsg = { ...asstMsg, text: asstMsg.text || `Error: ${ev.message}` };
+        streamingAsstRef.current = { ...asstMsg, text: asstMsg.text || `Error: ${ev.message}` };
       } else {
         return;
       }
@@ -729,14 +735,14 @@ export function ChatClient({ context }: ChatClientProps) {
       if (buf.trim()) apply(JSON.parse(buf));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      asstMsg = { ...asstMsg, text: asstMsg.text || `Something went wrong: ${msg}` };
+      streamingAsstRef.current = { ...streamingAsstRef.current!, text: streamingAsstRef.current!.text || `Something went wrong: ${msg}` };
       pushAsstUpdate();
     } finally {
       setSending(false);
       textareaRef.current?.focus();
     }
 
-    const finalMessages = [...priorMessages, userMsg, asstMsg];
+    const finalMessages = [...priorMessages, userMsg, streamingAsstRef.current!];
     if (!wasPersisted) {
       const created = await createSessionInDb({ title, messages: finalMessages, history: workingHistory });
       if (created) {
@@ -772,21 +778,21 @@ export function ChatClient({ context }: ChatClientProps) {
     const userMsg: MessageDisplay = {
       id: uid, role: "user", text: userText ?? `Attach to ${shipmentNumber}`, toolCalls: [], attachedFileName: file.name,
     };
-    let asstMsg: MessageDisplay = {
+    streamingAsstRef.current = {
       id: aid, role: "assistant", text: "",
       toolCalls: [{ name: "upload_document", status: "running", result: { phase: "uploading", fileName: file.name, shipmentNumber } }],
     };
 
     setSessions((prev) => prev.map((s) =>
-      s.id !== sessionId ? s : { ...s, title, messages: [...s.messages, userMsg, asstMsg] }
+      s.id !== sessionId ? s : { ...s, title, messages: [...s.messages, userMsg, streamingAsstRef.current!] }
     ));
     const pushUpdate = () => {
       setSessions((prev) => prev.map((s) =>
-        s.id !== sessionId ? s : { ...s, messages: s.messages.map((m) => m.id === aid ? asstMsg : m) }
+        s.id !== sessionId ? s : { ...s, messages: s.messages.map((m) => m.id === aid ? streamingAsstRef.current! : m) }
       ));
     };
     const persistTurn = async () => {
-      const finalMessages = [...priorMessages, userMsg, asstMsg];
+      const finalMessages = [...priorMessages, userMsg, streamingAsstRef.current!];
       if (!wasPersisted) {
         const created = await createSessionInDb({ title, messages: finalMessages, history: finalHistory });
         if (created) {
@@ -800,7 +806,7 @@ export function ChatClient({ context }: ChatClientProps) {
       }
     };
     const fail = async (error: string) => {
-      asstMsg = { ...asstMsg, toolCalls: [{ name: "upload_document", status: "done", result: { phase: "failed", fileName: file.name, shipmentNumber, error } }] };
+      streamingAsstRef.current = { ...streamingAsstRef.current!, toolCalls: [{ name: "upload_document", status: "done", result: { phase: "failed", fileName: file.name, shipmentNumber, error } }] };
       pushUpdate();
       await persistTurn();
     };
@@ -817,8 +823,8 @@ export function ChatClient({ context }: ChatClientProps) {
       const docType = data.docType as string | null;
 
       if (data.parked || !shipmentId) {
-        asstMsg = {
-          ...asstMsg,
+        streamingAsstRef.current = {
+          ...streamingAsstRef.current!,
           text: `Stored "${file.name}" in Document Library without attachment. You can attach it to a shipment anytime to run compliance extraction.`,
           toolCalls: [{
             name: "upload_document", status: "done",
@@ -833,7 +839,7 @@ export function ChatClient({ context }: ChatClientProps) {
         return;
       }
 
-      asstMsg = { ...asstMsg, toolCalls: [{ name: "upload_document", status: "running", result: { phase: "processing", fileName: file.name, shipmentNumber, documentId, docType } }] };
+      streamingAsstRef.current = { ...streamingAsstRef.current!, toolCalls: [{ name: "upload_document", status: "running", result: { phase: "processing", fileName: file.name, shipmentNumber, documentId, docType } }] };
       pushUpdate();
 
       let finalRun: { status: string; error?: { message?: string } | null } | null = null;
@@ -849,8 +855,8 @@ export function ChatClient({ context }: ChatClientProps) {
       const shipmentUrl = `/app/shipments/${shipmentId}`;
 
       if (!finalRun) {
-        asstMsg = {
-          ...asstMsg,
+        streamingAsstRef.current = {
+          ...streamingAsstRef.current!,
           text: `Still processing "${file.name}" — this is taking longer than usual. Check the shipment in the app for the latest status.`,
           toolCalls: [{ name: "upload_document", status: "done", result: { phase: "timeout", fileName: file.name, shipmentNumber, documentId, docType, url: shipmentUrl } }],
         };
@@ -876,8 +882,8 @@ export function ChatClient({ context }: ChatClientProps) {
       } catch { /* best-effort — omit the count rather than guess */ }
 
       const succeeded = finalRun.status === "SUCCEEDED";
-      asstMsg = {
-        ...asstMsg,
+      streamingAsstRef.current = {
+        ...streamingAsstRef.current!,
         text: succeeded
           ? `Processed "${file.name}" and attached it to ${shipmentNumber}.`
           : `Processed "${file.name}" and attached it to ${shipmentNumber} — flagged for review.`,

@@ -4,7 +4,9 @@ import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { validatePathParams } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
+import { db } from "@/lib/db";
 import { FilingService } from "@/modules/filings/filing.service";
+import { simulateAndApplyResponse } from "@/lib/canonicalMessaging/devStub";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -27,16 +29,33 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       action: "filing.transmit",
       entity: "CustomsFiling",
       entityId: id,
-      metadata: { entryNumber: result.filing.entryNumber, responseId: result.response.id },
+      metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
+
+    // No real third party exists yet, so there is no other process that will
+    // ever answer the outbound message we just published. In production,
+    // with a real integration wired up, this same message would sit PENDING
+    // until they respond -- CUSTOMS_FILING_MOCK_RESPONSES=false restores that
+    // behaviour. A simulation failure must never fail the transmit itself:
+    // the real outbound message is already durably published at this point.
+    let mockResponseApplied = false;
+    try {
+      mockResponseApplied = await simulateAndApplyResponse(result.messageId);
+    } catch (err) {
+      console.warn(`[transmit] dev-stub response simulation failed for filing ${id}:`, err);
+    }
+
+    const latestFiling = mockResponseApplied
+      ? await db.customsFiling.findUnique({ where: { id } })
+      : null;
 
     const responsePayload = {
       transmission: {
-        status: result.transmissionResult.status,
+        status: latestFiling?.filingStatus ?? result.filing.filingStatus,
         entryNumber: result.filing.entryNumber,
         transmittedAt: result.filing.submittedAt,
-        providerMetadata: result.transmissionResult.metadata,
-        response: result.response,
+        messageId: result.messageId,
+        mockResponseApplied,
       },
       requestId,
     };

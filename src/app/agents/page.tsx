@@ -151,34 +151,39 @@ const AGENTS: AgentSpec[] = [
     name: "Product Intelligence Agent",
     category: "Intake & Intelligence",
     iconName: "Boxes",
-    tagline: "SKU catalog enrichment & material composition breakdown for tariff logic",
+    tagline: "Deterministic Product Master matching, conflict detection & material enrichment",
     description:
-      "Enriches raw commercial descriptions with technical specifications, material composition ratios (e.g., 70% steel / 30% rubber), end-use application, CAS registry numbers, and historical SKU classification memory.",
+      "Matches each line item against the tenant's Product Master by SKU/GTIN/MPN and resolved manufacturer/supplier/brand-owner identity before ever calling a model. On an exact match, grounds enrichment in trusted Product Master facts and flags conflicts, missing information, and customs-significant changes for review instead of resolving them itself; on no match, proposes a structured new-product candidate.",
     latency: "< 190ms",
     accuracy: "99.2%",
     regulation: "General Rules of Interpretation (GRI 1 & GRI 3)",
     capabilities: [
+      "Deterministic Product Master matching (SKU/GTIN/MPN) before any model call",
+      "Independent manufacturer/supplier/brand-owner resolution",
+      "Conflict & customs-significant change detection, routed to human review",
       "Material composition breakdown & CAS lookup",
-      "Technical specification & datasheet parsing",
-      "Historical classification memory graph lookup",
-      "Ambiguity flagger for incomplete material descriptions"
+      "Structured new-product candidate proposal on no match"
     ],
     inputPayload: `{
   "sku": "SKU-992-FAST",
   "raw_description": "Stainless Steel Fasteners 1/4-20"
 }`,
     outputPayload: `{
+  "product_match": "EXACT_MATCH",
+  "verification_status": "AUTO_VERIFIED",
   "enriched_profile": {
     "material": "Cold-Forged Austenitic Stainless Steel (Grade 304)",
     "essential_character": "Threaded steel fastener for structural assembly",
     "finish": "Passivated",
     "carbon_content": "< 0.08%",
     "end_use": "Industrial machinery component"
-  }
+  },
+  "conflicts": [],
+  "recommended_actions": []
 }`,
     reasoningChain:
-      "Queried Product Knowledge Graph -> Matched SKU-992-FAST. Identified material composition: 18% Cr, 8% Ni Grade 304 Stainless Steel. Established essential character under GRI 3(b) as threaded steel fastener.",
-    humanInTheLoopRule: "Prompts user for spec sheet upload if material composition percentage is absent for multi-material goods."
+      "Matched SKU-992-FAST to Product Master (EXACT_MATCH) via internal SKU. No conflicts between line item and trusted facts. Material composition 18% Cr, 8% Ni Grade 304 Stainless Steel grounded from Product Master; essential character established under GRI 3(b) as threaded steel fastener.",
+    humanInTheLoopRule: "Routes to review when the Product Master match is ambiguous, a fact conflict is detected, or classification-relevant information is still missing."
   },
   {
     id: "hts-classification",

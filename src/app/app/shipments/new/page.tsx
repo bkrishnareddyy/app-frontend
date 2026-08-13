@@ -8,6 +8,7 @@ import { Card, CardHeader, CardHeaderIcon } from "@/components/ui/Card";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { Input, Select, Label, FormField } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import { COUNTRIES } from "@/modules/shipment/countryCode";
 
 export default function NewShipmentPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function NewShipmentPage() {
     portOfEntry: "Port of Los Angeles (2704)",
     carrierName: "Maersk Line",
     countryOfExport: "Germany",
+    destinationCountry: "",
     estimatedArrival: "2026-05-20",
     clientId: "",
   });
@@ -170,6 +172,22 @@ export default function NewShipmentPage() {
                 onChange={(e) => setFormData({ ...formData, countryOfExport: e.target.value })}
                 placeholder="e.g. Germany"
               />
+            </FormField>
+
+            <FormField>
+              <Label>Destination Country *</Label>
+              <Select
+                required
+                value={formData.destinationCountry}
+                onChange={(e) => setFormData({ ...formData, destinationCountry: e.target.value })}
+              >
+                <option value="">Select the country this shipment is being imported into</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name} ({c.code})
+                  </option>
+                ))}
+              </Select>
             </FormField>
 
             <FormField>

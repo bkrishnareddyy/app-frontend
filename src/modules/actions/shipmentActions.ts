@@ -1,5 +1,5 @@
 import type { DecisionGroup, DecisionRow } from "@/modules/decisions/groupDecisions";
-import { decisionPriority, exceptionPriority, DECISION_ACTIONABLE_STATUSES, type WorkPriority } from "@/modules/work/workQueue";
+import { decisionPriority, exceptionPriority, type WorkPriority } from "@/modules/work/workQueue";
 import { reviewCategory } from "@/modules/decisions/editableFields";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 
