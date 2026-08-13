@@ -1,3 +1,5 @@
+import { db } from "@/lib/db";
+
 /**
  * An active account member, as the assignee filters on the Documents,
  * Shipments and Command Center screens receive them.
@@ -14,4 +16,23 @@ export interface TeamMember {
   email: string;
   firstName: string | null;
   lastName: string | null;
+}
+
+/**
+ * Active members of an account. Unlike the Dashboard/Documents/Shipments
+ * pages, which only fetch this for ENTERPRISE ADMIN/OWNER callers, this is
+ * available to any authenticated member — the assistant's "who's on my
+ * team" answer is intentionally broader than those screens.
+ */
+export async function getActiveTeamMembers(accountId: string): Promise<TeamMember[]> {
+  const memberships = await db.accountMembership.findMany({
+    where: { accountId, status: "ACTIVE" },
+    include: { user: true },
+  });
+  return memberships.map((m) => ({
+    userId: m.userId,
+    email: m.user.email,
+    firstName: m.user.firstName,
+    lastName: m.user.lastName,
+  }));
 }
