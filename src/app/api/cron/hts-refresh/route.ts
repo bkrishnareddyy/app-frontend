@@ -63,7 +63,7 @@ async function handleRefresh(req: Request, requestId: string) {
     // Find previous active release
     const prevRelease = await db.htsRelease.findFirst({
       where: { country: "US", publicationStatus: "PUBLISHED" },
-      orderBy: { createdAt: "desc" },
+      orderBy: { retrievedAt: "desc" },
     });
 
     if (prevRelease) {

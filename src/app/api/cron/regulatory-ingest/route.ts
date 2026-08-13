@@ -89,7 +89,7 @@ Publication Date: "${doc.publication_date}"
 Extract matching type, affected HTS codes, effective date, short summary, and if action is required.`;
 
         const aiResponse = await aiClient.models.generateContent({
-          model: aiModel("regulatory-intelligence") || "gemini-3.6-flash",
+          model: aiModel("hts-classification") || "gemini-3.6-flash",
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: {
             responseMimeType: "application/json",
@@ -99,7 +99,7 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
         });
 
         await meterGeminiCall(
-          "regulatory-intelligence",
+          "hts-classification",
           { accountId: "system", userId: "cron" },
           aiResponse
         );
