@@ -138,6 +138,30 @@ Retrieved business content — extracted document fields especially — is passe
 the model inside a labelled data envelope and is never treated as instruction,
 per the system prompt's grounding clause.
 
+### 10. Customs Filing — Canonical Messaging
+
+Filing submission and response handling (`src/modules/filings/`,
+`src/lib/canonicalMessaging/`) are config-driven per country rather than
+hardcoded to one authority. A filing's `entryType`, procedure code, and
+authority resolve through `FilingProcedureMapping` / `FilingAuthorityConfig`
+lookups keyed on the shipment's `destinationCountry` — a country with no row
+for either simply cannot have a filing created for it yet (fail-closed, not a
+silent US fallback). Outbound/inbound messages are validated against
+versioned JSON Schemas (`schemas/customs-filing/`, tracked in
+`FilingSchemaVersion` with a `DRAFT → ACTIVE → DEPRECATED/SUPERSEDED`
+lifecycle) and applied to `filingStatus` through a table-driven state machine
+(`filingStateMachine.ts` for legal transitions, `FilingChildActionRule` for
+which actions like `CANCEL` are offered per country/procedure/status) —
+adding a country or a new child action is a data change, not new branching
+logic. No real third-party customs system is wired up yet: with
+`CUSTOMS_FILING_MOCK_RESPONSES` unset (default: on), transmitting, resubmitting,
+or cancelling a filing simulates and applies a matching inbound response
+inline so the Response tab populates without any manual step; set it to
+`false` once a real integration exists. See
+[docs/customs-filing-canonical-messaging-changelog.md](docs/customs-filing-canonical-messaging-changelog.md)
+for the full implementation history, including the second-country (Germany)
+proof and the gaps closed along the way.
+
 Cost is bounded per turn — at most 6 tool-calling rounds — and per caller: 15
 questions a minute per user and 60 per account (`checkCopilotRate`, reused
 as-is), answered with HTTP 429 and a plain explanation the client already knows
@@ -253,7 +277,8 @@ provenance cannot claim one model while another did the reading.
 │   ├── product-master.md    # Global Product / Item Master domain reference
 │   ├── party-master.md      # Global Party Master domain reference
 │   ├── document-intelligence.md # Document parsing pipeline reference
-│   └── ai-chat-interface.md # AI assistant design spec — see "AI Chat Assistant" above for the built shape
+│   ├── ai-chat-interface.md # AI assistant design spec — see "AI Chat Assistant" above for the built shape
+│   └── customs-filing-canonical-messaging-changelog.md # Multi-country filing/messaging implementation history
 ├── prisma/
 │   ├── schema.prisma        # Prisma data models & database relationships
 │   ├── migrations/          # Versioned schema migrations
@@ -345,6 +370,7 @@ feature's linked doc for what "unconfigured" looks like in the UI.
 | `ALLOW_DEMO_SEEDING` | Enables demo/mock seeding routines outside of `NODE_ENV=development` | Always blocked in production regardless of this flag — see `src/lib/environment.ts` |
 | `PLATFORM_ADMIN_EMAIL` | `scripts/bootstrap-admin.ts` | Only used by that one-off script |
 | `ENABLE_LEGACY_CLASSIFICATION_MOCK` | Legacy `/api/classification/classify` mock path | Dev/testing only |
+| `CUSTOMS_FILING_MOCK_RESPONSES` | Simulated third-party customs response on transmit/resubmit/cancel | Defaults on (`true`); set `false` once a real customs integration is wired up. See [Customs Filing — Canonical Messaging](#10-customs-filing--canonical-messaging) |
 
 ### 3. Install Dependencies
 
@@ -378,6 +404,7 @@ Some data is not seeded by `prisma db seed` and must be run explicitly:
 | `npx tsx scripts/backfill-triage-state.ts` | One-time backfill: populates `AgentDecision.triageState` from legacy `status` strings. Run after deploying the 20260812060000 migration. |
 | `npx tsx scripts/seed-qubere-trade-network.ts` | Seed the Qubere demo trade-network data (parties, products, shipments). |
 | `npx tsx scripts/seed-inbound-demo.ts` | Seed inbound email demo routes and mailboxes. |
+| `npx tsx scripts/seed-canonical-messaging.ts` | Seed customs-filing canonical messaging config: JSON Schema versions, message catalog, procedure/authority mappings, response-status and child-action rules. Required before creating a filing. |
 
 GET endpoints **never** seed data. If a collection is empty, they return `[]`. Run the appropriate seed script above to populate it.
 
@@ -422,6 +449,9 @@ See [docs/document-intelligence.md](docs/document-intelligence.md) for the archi
 
 ### Sanctions Watchlist Sync
 `scripts/nightly-watchlist-sync.ts` exists in the repo but is **not currently wired to any scheduler** — running it today requires invoking it manually (`npx tsx scripts/nightly-watchlist-sync.ts`). It also currently seeds hardcoded example OFAC/BIS entries rather than fetching from a real sanctions list source. Treat it as a stub, not a working scheduled job.
+
+### Customs Filing Inbound Message Worker
+With `CUSTOMS_FILING_MOCK_RESPONSES` at its default, the transmit/resubmit/cancel routes simulate and apply a response inline, so no separate worker is needed for local development. `scripts/customs-filing-inbound-worker.ts` (long-running poll loop over `FilingMessage`) and `scripts/dev-stub-third-party.ts` (answers a pending outbound message as a stand-in customs authority would) exist for exercising the real async queue path end-to-end, but like the sanctions sync above, neither is wired to a scheduler — run them manually with `npx tsx`.
 
 ---
 
