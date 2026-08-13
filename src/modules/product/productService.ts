@@ -1505,3 +1505,19 @@ export async function attachLineItemToProduct(
 
   return updated;
 }
+
+/**
+ * Loads a matched product's identity plus its current trusted-facts snapshot,
+ * for callers (Product Intelligence) that need to compare incoming line-item
+ * facts against the Product Master rather than mutate it. Tenant-scoped via
+ * `requireOwnedProduct` — a product id from another account is reported as
+ * not found, same as every other read here.
+ */
+export async function getProductSnapshotForIntelligence(
+  actor: ProductActor,
+  productId: string
+): Promise<{ product: Product; snapshot: ProductSnapshot }> {
+  const product = await requireOwnedProduct(db, actor, productId);
+  const snapshot = await loadSnapshot(db, actor.accountId, productId);
+  return { product, snapshot };
+}
