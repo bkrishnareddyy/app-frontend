@@ -63,16 +63,13 @@ async function loadAccountContext(): Promise<AccountContext | null> {
       return null;
     }
 
-    const clerkUser = await currentUser();
-    const userEmail = clerkUser?.emailAddresses[0]?.emailAddress?.toLowerCase();
+    let clerkUser: Awaited<ReturnType<typeof currentUser>> = null;
+    let userEmail: string | undefined = undefined;
 
-    // Query user by clerkUserId OR email address
+    // Try to find the user by clerkUserId first to avoid the slow Clerk API call (currentUser())
     let dbUser = await db.user.findFirst({
       where: {
-        OR: [
-          { clerkUserId },
-          ...(userEmail ? [{ email: userEmail }] : []),
-        ],
+        clerkUserId,
         deletedAt: null,
       },
       include: {
@@ -99,11 +96,19 @@ async function loadAccountContext(): Promise<AccountContext | null> {
       },
     });
 
-    // If user was found by email, sync current clerkUserId
-    if (dbUser && dbUser.clerkUserId !== clerkUserId) {
-      dbUser = await db.user.update({
-        where: { id: dbUser.id },
-        data: { clerkUserId },
+    if (!dbUser) {
+      clerkUser = await currentUser();
+      if (!clerkUser) {
+        return null;
+      }
+      userEmail = clerkUser.emailAddresses[0]?.emailAddress?.toLowerCase();
+
+      // Query user by email to see if they exist and just need clerkUserId linked
+      dbUser = await db.user.findFirst({
+        where: {
+          email: userEmail,
+          deletedAt: null,
+        },
         include: {
           platformRoles: {
             include: { platformRole: true },
@@ -127,6 +132,36 @@ async function loadAccountContext(): Promise<AccountContext | null> {
           },
         },
       });
+
+      // If user was found by email, sync current clerkUserId
+      if (dbUser && dbUser.clerkUserId !== clerkUserId) {
+        dbUser = await db.user.update({
+          where: { id: dbUser.id },
+          data: { clerkUserId },
+          include: {
+            platformRoles: {
+              include: { platformRole: true },
+            },
+            memberships: {
+              where: { deletedAt: null },
+              include: {
+                account: true,
+                roles: {
+                  include: {
+                    role: {
+                      include: {
+                        rolePermissions: {
+                          include: { permission: true },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
     }
 
     // Self-Service Onboarding for brand new users.

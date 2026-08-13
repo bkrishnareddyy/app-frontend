@@ -2,18 +2,19 @@ import { Type, type FunctionDeclaration, type Schema } from "@google/genai";
 import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getActiveTeamMembers } from "@/lib/team";
-import { GET as shipmentsGET, POST as shipmentsPOST } from "@/app/api/shipments/route";
-import { GET as shipmentDetailGET } from "@/app/api/shipments/[id]/route";
-import { GET as productsGET } from "@/app/api/products/route";
-import { GET as productDetailGET } from "@/app/api/products/[id]/route";
-import { POST as classificationsPOST } from "@/app/api/products/[id]/classifications/route";
-import { POST as classificationReviewPOST } from "@/app/api/products/[id]/classifications/[classificationId]/route";
-import { GET as partiesGET } from "@/app/api/parties/route";
-import { GET as documentsGET } from "@/app/api/documents/route";
-import { GET as documentExtractionsGET } from "@/app/api/documents/[id]/extractions/route";
-import { GET as decisionsGET, POST as decisionsPOST } from "@/app/api/decisions/route";
-import { GET as exceptionDetailGET, PATCH as exceptionPATCH } from "@/app/api/exceptions/[id]/route";
-import { GET as filingDetailGET } from "@/app/api/filing/[id]/route";
+// Lazy dynamic imports for route handlers to avoid compiling all routes on startup/first chat message
+const getShipmentsRoute = () => import("@/app/api/shipments/route");
+const getShipmentDetailRoute = () => import("@/app/api/shipments/[id]/route");
+const getProductsRoute = () => import("@/app/api/products/route");
+const getProductDetailRoute = () => import("@/app/api/products/[id]/route");
+const getClassificationsRoute = () => import("@/app/api/products/[id]/classifications/route");
+const getClassificationReviewRoute = () => import("@/app/api/products/[id]/classifications/[classificationId]/route");
+const getPartiesRoute = () => import("@/app/api/parties/route");
+const getDocumentsRoute = () => import("@/app/api/documents/route");
+const getDocumentExtractionsRoute = () => import("@/app/api/documents/[id]/extractions/route");
+const getDecisionsRoute = () => import("@/app/api/decisions/route");
+const getExceptionsRoute = () => import("@/app/api/exceptions/[id]/route");
+const getFilingRoute = () => import("@/app/api/filing/[id]/route");
 import { ExceptionService } from "@/modules/exceptions/exception.service";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 import { RulingService } from "@/modules/classification/rulingService";
@@ -66,6 +67,7 @@ const SHIPMENT_FETCH_MAX_PAGES = 5;
 
 async function fetchAllShipments(): Promise<FetchedShipment[]> {
   const all: FetchedShipment[] = [];
+  const shipmentsGET = (await getShipmentsRoute()).GET;
   for (let page = 1; page <= SHIPMENT_FETCH_MAX_PAGES; page++) {
     const res = await shipmentsGET(
       new Request(`http://internal.local/api/shipments?pageSize=${SHIPMENT_FETCH_PAGE_SIZE}&page=${page}`)
@@ -287,6 +289,7 @@ const createShipment: AssistantTool = {
   },
   access: { navHref: "/app/shipments" },
   execute: async (_ctx, args) => {
+    const shipmentsPOST = (await getShipmentsRoute()).POST;
     const res = await shipmentsPOST(
       new Request("http://internal.local/api/shipments", {
         method: "POST",
@@ -323,6 +326,7 @@ const searchProducts: AssistantTool = {
   execute: async (_ctx, rawArgs) => {
     const q = String(rawArgs.query ?? "");
     const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const productsGET = (await getProductsRoute()).GET;
     const res = await productsGET(
       new Request(`http://internal.local/api/products?q=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
     );
@@ -367,6 +371,7 @@ const searchParties: AssistantTool = {
   execute: async (_ctx, rawArgs) => {
     const q = String(rawArgs.query ?? "");
     const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const partiesGET = (await getPartiesRoute()).GET;
     const res = await partiesGET(
       new Request(`http://internal.local/api/parties?q=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
     );
@@ -411,6 +416,7 @@ const searchDocuments: AssistantTool = {
   execute: async (_ctx, rawArgs) => {
     const q = String(rawArgs.query ?? "");
     const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const documentsGET = (await getDocumentsRoute()).GET;
     const res = await documentsGET(
       new Request(`http://internal.local/api/documents?search=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
     );
@@ -517,6 +523,7 @@ const getShipment: AssistantTool = {
   access: { navHref: "/app/shipments" },
   execute: async (_ctx, rawArgs) => {
     const shipmentId = String(rawArgs.shipmentId ?? "");
+    const shipmentDetailGET = (await getShipmentDetailRoute()).GET;
     const res = await shipmentDetailGET(
       new Request(`http://internal.local/api/shipments/${shipmentId}`),
       { params: Promise.resolve({ id: shipmentId }) }
@@ -575,6 +582,7 @@ const getDocument: AssistantTool = {
   access: { navHref: "/app/documents" },
   execute: async (_ctx, rawArgs) => {
     const documentId = String(rawArgs.documentId ?? "");
+    const documentExtractionsGET = (await getDocumentExtractionsRoute()).GET;
     const res = await documentExtractionsGET(
       new Request(`http://internal.local/api/documents/${documentId}/extractions`),
       { params: Promise.resolve({ id: documentId }) }
@@ -604,6 +612,7 @@ const listDecisions: AssistantTool = {
   execute: async (_ctx, rawArgs) => {
     const shipmentId = rawArgs.shipmentId ? String(rawArgs.shipmentId) : undefined;
     const status = rawArgs.status ? String(rawArgs.status) : undefined;
+    const decisionsGET = (await getDecisionsRoute()).GET;
     const res = await decisionsGET(new Request("http://internal.local/api/decisions"));
     if (!res.ok) return { error: "Failed to fetch decisions" };
     const data = (await res.json()) as {
@@ -636,6 +645,7 @@ const getProduct: AssistantTool = {
   access: { navHref: "/app/products" },
   execute: async (_ctx, rawArgs) => {
     const productId = String(rawArgs.productId ?? "");
+    const productDetailGET = (await getProductDetailRoute()).GET;
     const res = await productDetailGET(
       new Request(`http://internal.local/api/products/${productId}`),
       { params: Promise.resolve({ id: productId }) }
@@ -785,6 +795,7 @@ const getFilingStatus: AssistantTool = {
   access: { navHref: "/app/filing" },
   execute: async (_ctx, rawArgs) => {
     const filingId = String(rawArgs.filingId ?? "");
+    const filingDetailGET = (await getFilingRoute()).GET;
     const res = await filingDetailGET(
       new Request(`http://internal.local/api/filing/${filingId}`),
       { params: Promise.resolve({ id: filingId }) }
@@ -829,6 +840,7 @@ const approveDecision: AssistantTool = {
   execute: async (_ctx, rawArgs) => {
     const decisionId = String(rawArgs.decisionId ?? "");
     const humanNotes = rawArgs.humanNotes ? String(rawArgs.humanNotes) : undefined;
+    const decisionsPOST = (await getDecisionsRoute()).POST;
     const res = await decisionsPOST(
       new Request("http://internal.local/api/decisions", {
         method: "POST",
@@ -863,6 +875,7 @@ const rejectDecision: AssistantTool = {
   execute: async (_ctx, rawArgs) => {
     const decisionId = String(rawArgs.decisionId ?? "");
     const humanNotes = String(rawArgs.humanNotes ?? "");
+    const decisionsPOST = (await getDecisionsRoute()).POST;
     const res = await decisionsPOST(
       new Request("http://internal.local/api/decisions", {
         method: "POST",
@@ -899,6 +912,9 @@ const resolveException: AssistantTool = {
     const exceptionId = String(rawArgs.exceptionId ?? "");
     const reasonCode = String(rawArgs.reasonCode ?? "");
     const note = String(rawArgs.note ?? "");
+
+    const exceptionDetailGET = (await getExceptionsRoute()).GET;
+    const exceptionPATCH = (await getExceptionsRoute()).PATCH;
 
     const current = await exceptionDetailGET(
       new Request(`http://internal.local/api/exceptions/${exceptionId}`),
@@ -950,6 +966,9 @@ const classifyProduct: AssistantTool = {
     const htsCode = String(rawArgs.htsCode ?? "");
     const overrideReason = rawArgs.overrideReason ? String(rawArgs.overrideReason) : undefined;
 
+    const classificationsPOST = (await getClassificationsRoute()).POST;
+    const classificationReviewPOST = (await getClassificationReviewRoute()).POST;
+
     const proposeRes = await classificationsPOST(
       new Request(`http://internal.local/api/products/${productId}/classifications`, {
         method: "POST",
@@ -994,7 +1013,6 @@ const classifyProduct: AssistantTool = {
     if (!approveRes.ok) {
       return { success: false, step: "approve", error: approveData.error ?? "Failed to approve classification" };
     }
-
     return { success: true, classification: approveData.classification };
   },
 };
