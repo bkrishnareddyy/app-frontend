@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { aiQuotaGate } from "@/lib/ai/aiQuotaGate";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { storeDocumentFile } from "@/lib/storage";
 import {
@@ -9,9 +10,20 @@ import {
 import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
 import { DocumentType } from "@/modules/intake/documentIntake.service";
 
-export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const accountId = ctx.accountId;
   const userId = ctx.userId;
+
+  // Before the upload is read, so a refusal does not first pull a file into
+  // memory and store it. Counts only until an AI quota is configured; see
+  // aiQuotaGate.
+  const refused = await aiQuotaGate({
+    accountId,
+    userId,
+    surface: "document-intake",
+    requestId,
+  });
+  if (refused) return refused;
 
   const contentType = req.headers.get("content-type") || "";
 

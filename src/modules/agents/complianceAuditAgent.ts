@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
+import { aiModel } from "@/lib/ai/aiModel";
 import { logAgentError } from "./agentLogger";
 import { screenValue } from "@/lib/screening/embargoMatch";
 import { Prisma } from "@prisma/client";
@@ -403,7 +405,7 @@ export class ComplianceAuditAgent {
         const prompt = `${SYNTHESIS_SYSTEM_PROMPT}\n\nEVIDENCE:\n${JSON.stringify(evidence, null, 2)}`;
 
         const response = await this.aiClient.models.generateContent({
-          model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+          model: aiModel("compliance-audit"),
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: {
             responseMimeType: "application/json",
@@ -411,6 +413,13 @@ export class ComplianceAuditAgent {
             temperature: 0.1,
           },
         });
+
+        // Accounting only — see meterGeminiCall. Never refuses and never throws.
+        await meterGeminiCall(
+          "compliance-audit",
+          { accountId: input.accountId, userId: input.userId },
+          response
+        );
 
         const parsed = JSON.parse(response.text || "{}");
         if (parsed.decisionSummary && Array.isArray(parsed.flags)) {

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import type { AiSurface } from "@/lib/ai/aiQuota";
+import { aiQuotaGate } from "@/lib/ai/aiQuotaGate";
 import { handleApiError } from "@/lib/api/error";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
@@ -21,6 +23,26 @@ import { z } from "zod";
 
 const paramsSchema = z.object({ agentId: z.string().min(1) });
 
+/**
+ * Which agents spend model tokens, for quota accounting. Origin Rules, Valuation
+ * & Assists and Filing Readiness are absent because they are deterministic — they
+ * call no model, so counting them would put a rate limit on arithmetic.
+ *
+ * The numeric aliases are the ones the UI still posts.
+ */
+const AGENT_AI_SURFACE: Record<string, AiSurface> = {
+  "document-intake": "document-intake",
+  "1": "document-intake",
+  "document-intelligence": "document-intelligence",
+  "2": "document-intelligence",
+  "product-intelligence": "product-intelligence",
+  "3": "product-intelligence",
+  "hts-classification": "hts-classification",
+  "4": "hts-classification",
+  "compliance-audit": "compliance-audit",
+  "7": "compliance-audit",
+};
+
 export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
@@ -28,6 +50,19 @@ export const POST = withAuthenticatedRoute<{ agentId: string }>(async ({ req, ct
 
   const accountId = ctx.accountId;
   const userId = ctx.userId;
+
+  // Counted here, at the earliest point the surface is known and before any read
+  // or write happens, because this is the last place a refusal is free: once an
+  // agent starts persisting decisions and findings against a shipment, stopping
+  // it leaves the shipment half-classified.
+  //
+  // With no AI quota variables configured this only counts and always allows, so
+  // the agents behave exactly as they did before.
+  const surface = AGENT_AI_SURFACE[agentId.toLowerCase()];
+  if (surface) {
+    const refused = await aiQuotaGate({ accountId, userId, surface, requestId });
+    if (refused) return refused;
+  }
 
   const body = await req.json().catch(() => ({}));
 

@@ -706,6 +706,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
       {/* Reusable Document Viewer Modal */}
       {previewDoc && (
+        <>
         <RawExtractionModal
           isOpen={!!previewDoc}
           onClose={() => setPreviewDoc(null)}
@@ -721,6 +722,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
               : undefined
           }
         />
+        </>
       )}
 
       {/* Document Upload Modal */}

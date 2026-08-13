@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { aiQuotaGate } from "@/lib/ai/aiQuotaGate";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { validatePathParams } from "@/lib/api/validation";
@@ -211,6 +212,18 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
         requestId
       );
     }
+
+    // Counted here rather than at the top of the handler: this route returns
+    // early for a document that already has an extraction, and that path spends
+    // nothing, so charging it against the account's quota would be wrong. Counts
+    // only until an AI quota is configured; see aiQuotaGate.
+    const refused = await aiQuotaGate({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      surface: "document-intelligence",
+      requestId,
+    });
+    if (refused) return refused;
 
     const { DocumentIntelligenceAgent } = await import(
       "@/modules/agents/documentIntelligenceAgent"

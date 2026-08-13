@@ -316,15 +316,13 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     status: "READY",
     tag: "AI Decisions",
   },
-
-  // 🚀 ROADMAP / IN PROGRESS
   {
     method: "POST",
-    path: "/api/copilot/chat",
-    name: "Streaming LLM Compliance Copilot",
-    description: "Interactive real-time streaming LLM compliance copilot and assistant.",
-    status: "IN_PROGRESS",
-    tag: "Roadmap",
+    path: "/api/assistant/chat",
+    name: "Streaming AI Chat Assistant",
+    description: "Interactive real-time streaming LLM chat assistant with RBAC-gated tool access, quota metering, and audit logging.",
+    status: "READY",
+    tag: "AI Decisions",
   },
 ];
 

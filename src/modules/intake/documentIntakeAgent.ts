@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { meterGeminiCall } from "@/lib/ai/aiMeter";
+import { aiModel } from "@/lib/ai/aiModel";
 import { logAgentError } from "@/modules/agents/agentLogger";
 import { EventEmitter } from "events";
 import {
@@ -237,7 +239,7 @@ export class DocumentIntakeAgent {
 Target File Name: "${input.fileName}"`;
 
         const response = await aiClient.models.generateContent({
-          model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+          model: aiModel("document-intake"),
           contents: [
             {
               role: "user",
@@ -253,6 +255,13 @@ Target File Name: "${input.fileName}"`;
             temperature: 0.1,
           },
         });
+
+        // Accounting only — see meterGeminiCall. Never refuses and never throws.
+        await meterGeminiCall(
+          "document-intake",
+          { accountId: input.accountId, userId: input.userId },
+          response
+        );
 
         const jsonText = response.text || "{}";
         const parsed = JSON.parse(jsonText);

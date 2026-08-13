@@ -89,6 +89,161 @@ See [docs/party-master.md](docs/party-master.md) for the domain model,
 matching rules, change-detection signals, CSV import, and what is
 deliberately not implemented.
 
+### 9. AI Chat Assistant
+
+A conversational layer over the data the console already shows, reached at
+`/chat`. It is not a database agent: the model never sees SQL, an internal API,
+or the page's DOM. It may call a registry of tools (`src/modules/assistant/tools.ts`
+— shipments, value-at-risk, shipment creation, products, parties, documents,
+team members), each reading through the same services and permission checks the
+screens use, in a single streaming tool-calling loop
+(`src/modules/assistant/orchestrator.ts`) — everything the model produces is
+streamed straight to the client, so there is no hidden reasoning stage to guard.
+
+This surface reuses the guardrail layer originally built for a standalone
+"Qubere AI Copilot" panel (`src/modules/copilot/`), which has since been
+removed in favour of wiring those same guardrails directly onto this chat
+interface instead of maintaining two parallel AI surfaces:
+
+- **RBAC.** Each tool optionally declares the nav route or permission it
+  requires (`canUseTool`, reused from `src/modules/copilot/copilotAccess.ts`).
+  `availableAssistantTools(ctx)` filters the registry down to what the caller
+  may use *before* it is declared to the model, and the orchestrator re-checks
+  a called tool name against that same filtered set before executing it — a
+  model that names a tool it was never offered still cannot run it. Tools with
+  no access requirement (e.g. team member lookup) are available to any
+  authenticated account member.
+- **Tenancy.** Every tool reads through the account-scoped services the
+  screens already use — there is no path from a chat message to another
+  tenant's rows.
+- **Origin safety.** None of the current tools surface a country-of-origin
+  field, so the system prompt carries an explicit clause: manufacturing,
+  supplier, ship-from, port and export country are never legal country of
+  origin, and the assistant says plainly that no such determination is
+  available here rather than inferring one. The original Copilot's
+  code-level enforcement (`copilotOrigin.ts`, `resolveOriginPosition`) remains
+  in place and tested, ready to be wired to a future tool that does surface
+  origin facts.
+- **Audit.** Turns are recorded in the existing audit log via the same
+  `COPILOT_CONVERSATION_STARTED`, `COPILOT_QUERY`, `COPILOT_TOOL_EXECUTED` and
+  `COPILOT_ERROR` actions the original Copilot used (`src/modules/copilot/copilotAudit.ts`),
+  keyed by the chat request's own request id (this surface has no persisted
+  server-side conversation id to key off instead) — question, outcome and
+  counts, never tool arguments or answer prose. `COPILOT_QUERY`'s status is
+  only ever `ANSWERED`, `PARTIAL` (stopped after too many tool rounds in one
+  turn) or `ERROR`; the richer statuses the original Copilot could report have
+  no equivalent signal on this freeform surface.
+
+Retrieved business content — extracted document fields especially — is passed to
+the model inside a labelled data envelope and is never treated as instruction,
+per the system prompt's grounding clause.
+
+Cost is bounded per turn — at most 6 tool-calling rounds — and per caller: 15
+questions a minute per user and 60 per account (`checkCopilotRate`, reused
+as-is), answered with HTTP 429 and a plain explanation the client already knows
+how to surface, plus the shared per-account daily token ceiling described in
+[AI cost controls](#-ai-cost-controls). Provider token counts are recorded via
+`meterGeminiCall` on each model round and on the `COPILOT_QUERY` audit entry, so
+spend can be attributed to an account without a separate billing export; a
+provider that reports nothing is recorded as `null`, never as zero.
+
+The assistant cannot approve a classification, determine origin, edit the
+Product or Party Master, submit a filing, or close an exception. Every workflow
+remains fully usable without it, and when no model is configured
+(`GEMINI_API_KEY` unset) the route says so rather than answering from nothing.
+
+---
+
+## 💰 AI Cost Controls
+
+Every AI capability here — the Copilot, HTS classification, document
+intelligence, product intelligence, normalization, the compliance audit and
+email intake — bills against one `GEMINI_API_KEY`. `src/lib/ai/aiQuota.ts` is the
+one counter all of them go through, backed by the `AiUsageWindow` table because
+the database is the only thing every serverless instance shares.
+
+**Metering is always on. Enforcement is opt-in.** With none of the variables below
+set, every AI call is counted and every AI call is allowed — the agents behave
+exactly as they did before, and an operator gets a spend history they did not
+have. Ceilings apply only where one is deliberately configured.
+
+| What | Where it applies | Default |
+| --- | --- | --- |
+| `AI_ACCOUNT_TOKENS_PER_DAY` | Every surface, per account, per UTC day | Unset — unlimited |
+| `AI_AGENT_USER_REQUESTS_PER_MIN` | Agent routes, per user per surface | Unset — unlimited |
+| `AI_AGENT_ACCOUNT_REQUESTS_PER_MIN` | Agent routes, per account per surface | Unset — unlimited |
+| `COPILOT_USER_REQUESTS_PER_MIN` | `/chat` assistant, per user | 15 |
+| `COPILOT_ACCOUNT_REQUESTS_PER_MIN` | `/chat` assistant, per account | 60 |
+
+A value of `0`, a negative number or anything unparseable is treated as unset
+rather than as a ceiling of zero, so a typo cannot refuse every request on the
+platform.
+
+Three properties are worth knowing before turning a ceiling on:
+
+- **Refusal happens at the route, before any work starts.** Once an agent has
+  begun writing decisions and findings against a shipment, stopping it would leave
+  the shipment half-classified — worse than the overspend. Cron routes are not
+  request-throttled for the same reason; the daily token ceiling still bounds what
+  they spend.
+- **Failure is not enforcement.** If the counter cannot be read or written — the
+  migration below not yet applied, a database blip — the call is allowed and
+  `ai.quota_unavailable` is logged once per process. A metering table must never be
+  able to stop customs classification.
+- **Windows are fixed, not sliding.** A minute window is a truncated minute, so a
+  burst of up to twice the nominal rate is possible across a boundary. That is the
+  trade for one atomic statement per increment, and for a cost guard it is the
+  right one.
+
+Counters are attributed to a real user where there is one and to `system` where
+there is not (a cron-triggered classification has no user). Old windows are swept
+by the existing `/api/cron/document-processing` tick, which reports
+`usageWindowsPruned`.
+
+`prisma/migrations/20260812200000_ai_usage_windows/migration.sql` is hand-written,
+purely additive and idempotent — one new table, three indexes and one foreign key,
+with `IF NOT EXISTS` throughout. It has been applied to the development database
+(`prisma migrate deploy`, confirmed by `prisma migrate status`). Any other
+environment needs the same step:
+
+```bash
+npx prisma migrate deploy
+```
+
+In an environment where it has not been applied — or during a database outage —
+every AI call takes the fail-open path above: unmetered, unrestricted, and logged
+as degraded.
+
+---
+
+## 🧠 AI Model Selection
+
+Each of the seven AI surfaces chooses its model independently, through
+`src/lib/ai/aiModel.ts`. It is keyed off the same surface names the quota layer
+uses, so a call site names its surface once and gets both its model and its meter
+under that name.
+
+Precedence, most specific first:
+
+| Rung | Variable | Scope |
+| --- | --- | --- |
+| 1 | `COPILOT_MODEL`, `HTS_CLASSIFICATION_MODEL`, `DOCUMENT_INTELLIGENCE_MODEL`, `PRODUCT_INTELLIGENCE_MODEL`, `NORMALIZATION_MODEL`, `COMPLIANCE_AUDIT_MODEL`, `DOCUMENT_INTAKE_MODEL` | One surface |
+| 2 | `AI_DEFAULT_MODEL` | Every surface without an override |
+| 3 | `GEMINI_MODEL` | Deprecated; honoured so existing environments do not silently move |
+| 4 | built-in default | Nothing configured |
+
+A blank value counts as unset at every rung, so `COPILOT_MODEL=` falls through
+rather than asking the provider for a model named empty string.
+
+This selects a model *name*, not a provider. The only adapter wired today is
+google-genai, so a name from another vendor would be handed to the Gemini client
+and rejected by it — adding a second vendor means an adapter, not a new variable.
+
+Two places record the model rather than call it: the `DocumentParseVersion` row
+written by the Document Intelligence Agent, and the `AgentExecution` row written
+by the classification extractor. Both now report the model that actually ran, so
+provenance cannot claim one model while another did the reading.
+
 ---
 
 ## 📁 Repository Structure
@@ -98,7 +253,7 @@ deliberately not implemented.
 │   ├── product-master.md    # Global Product / Item Master domain reference
 │   ├── party-master.md      # Global Party Master domain reference
 │   ├── document-intelligence.md # Document parsing pipeline reference
-│   └── ai-chat-interface.md # AI assistant design spec (not yet built)
+│   └── ai-chat-interface.md # AI assistant design spec — see "AI Chat Assistant" above for the built shape
 ├── prisma/
 │   ├── schema.prisma        # Prisma data models & database relationships
 │   ├── migrations/          # Versioned schema migrations
@@ -122,7 +277,7 @@ deliberately not implemented.
 │   ├── lib/                 # Core utilities (auth context, audit logger, db client,
 │   │                        #   csvExport, i18n)
 │   ├── modules/             # Domain logic (product, party, shipment, documents,
-│   │                        #   tables, …), independent of the route layer
+│   │                        #   assistant, copilot, tables, …), independent of the route layer
 │   └── middleware.ts        # Route protection middleware
 ├── tests/                   # Vitest unit and integration tests
 └── package.json
@@ -173,8 +328,13 @@ feature's linked doc for what "unconfigured" looks like in the UI.
 
 | Variable | Gates | Notes |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | AI agents (classification, document intelligence, normalization, product intelligence, HTS classification) | No default; agent calls fail closed without it |
-| `GEMINI_MODEL` | Same agents | Defaults to a built-in model name per agent if unset |
+| `GEMINI_API_KEY` | AI agents (classification, document intelligence, normalization, product intelligence, HTS classification) and the `/chat` assistant | No default; agent calls fail closed without it, and `/api/assistant/chat` reports itself unconfigured |
+| `AI_DEFAULT_MODEL` | The model every AI surface calls | Falls back to a built-in name. See [AI model selection](#-ai-model-selection) |
+| `COPILOT_MODEL`, `HTS_CLASSIFICATION_MODEL`, `DOCUMENT_INTELLIGENCE_MODEL`, `PRODUCT_INTELLIGENCE_MODEL`, `NORMALIZATION_MODEL`, `COMPLIANCE_AUDIT_MODEL`, `DOCUMENT_INTAKE_MODEL` | One surface each | Each overrides `AI_DEFAULT_MODEL` for that surface alone. `COPILOT_MODEL` governs the `/chat` assistant — it reuses the `"copilot"` surface name rather than a new one |
+| `GEMINI_MODEL` | Deprecated global model name | Still honoured below `AI_DEFAULT_MODEL` so existing environments do not move; prefer the variables above |
+| `AI_ACCOUNT_TOKENS_PER_DAY` | Daily token ceiling for an account, across every AI surface | Unset means unlimited; usage is still counted. See [AI cost controls](#-ai-cost-controls) |
+| `AI_AGENT_USER_REQUESTS_PER_MIN`, `AI_AGENT_ACCOUNT_REQUESTS_PER_MIN` | Request ceilings on the agent routes | Both unset by default, so agents are metered and never refused |
+| `COPILOT_USER_REQUESTS_PER_MIN`, `COPILOT_ACCOUNT_REQUESTS_PER_MIN` | `/chat` assistant request ceilings | Default 15 per user and 60 per account per minute |
 | `BLOB_READ_WRITE_TOKEN` | Document upload storage (Vercel Blob) | Required for any document upload in production; see [docs/document-intelligence.md](docs/document-intelligence.md) |
 | `MAX_UPLOAD_BYTES` | Upload size limit | Defaults to 50 MB |
 | `DOCUMENT_PARSER_PROVIDER` | Document Intelligence parsing pipeline | `ibm-docling` \| `mock` \| `none` (default `none` — see [docs/document-intelligence.md](docs/document-intelligence.md)) |
@@ -258,6 +418,19 @@ See [docs/document-intelligence.md](docs/document-intelligence.md) for the archi
 
 ```bash
 npm test
+```
+
+Some suites read the configured database, so prefer running the files that cover
+what you changed. The guardrails the `/chat` assistant reuses from the original
+Copilot backend (RBAC gating, origin safety, rate limiting) and the shared AI
+cost controls are covered by eight files that need no database and run in
+seconds:
+
+```bash
+npx vitest run tests/copilot-grounding.test.ts tests/copilot-tools.test.ts \
+  tests/copilot-rbac.test.ts tests/copilot-service.test.ts \
+  tests/copilot-origin-safety.test.ts tests/copilot-rate-limit.test.ts \
+  tests/ai-quota.test.ts tests/ai-meter.test.ts
 ```
 
 ### Production Build Verification
