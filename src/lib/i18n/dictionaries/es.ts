@@ -15,6 +15,7 @@ export const es: TranslationKeys = {
     exceptions: "Excepciones",
     customsFiling: "Declaración Aduanera",
     regulatoryIntel: "Inteligencia Regulatoria",
+    tariffSimulator: "Simulador de Tarifas",
     agents: "Agentes de IA",
     apiDocs: "API",
     accountProfile: "Perfil de Cuenta",

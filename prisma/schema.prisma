@@ -894,6 +894,8 @@ model RegulatoryUpdate {
   affectedShipmentsCount Int? // null until impact analysis runs
   publishedText          String?
   status                 String   @default("Immediate Action Required")
+  documentNumber         String?  @unique
+  metadata               Json?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -972,6 +974,7 @@ model LandedCostScenario {
   createdByUserId String?
   createdByUser   User?    @relation("ScenarioCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   status          String   @default("Draft") // Draft | Saved
+  htsReleaseId    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -995,6 +998,7 @@ model LandedCostScenarioLineItem {
   computedDuty       Decimal            @default(0.0)
   computedFees       Decimal            @default(0.0)
   computedLandedCost Decimal            @default(0.0)
+  dutyStack          Json?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 

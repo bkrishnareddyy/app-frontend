@@ -22,7 +22,8 @@ export type NavIcon =
   | "roles"
   | "settings"
   | "platform"
-  | "vault";
+  | "vault"
+  | "simulator";
 
 export interface NavItem {
   id: string;
@@ -60,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
       { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },
+      { id: "simulator", labelKey: "tariffSimulator", href: "/app/simulator", icon: "simulator" },
     ],
   },
   {

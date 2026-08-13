@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
+import { computeLandedCost } from "@/lib/tariff/landedCost";
+import { z } from "zod";
 
-export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
+const compareSchema = z.object({
+  scenarioIds: z.array(z.string()).min(1).max(5),
+});
+
+export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const body = await req.json();
-  const { scenarioIds } = body;
-
-  if (!Array.isArray(scenarioIds) || scenarioIds.length === 0) {
-    return NextResponse.json({ error: "scenarioIds array is required" }, { status: 400 });
+  const parsed = compareSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Provide between 1 and 5 scenarioIds to compare." }, { status: 400 });
   }
 
-  const scenarios = await db.landedCostScenario.findMany({
-    where: {
-      id: { in: scenarioIds },
-      accountId: ctx.accountId,
-    },
+  const { scenarioIds } = parsed.data;
+
+  const scenariosData = await db.landedCostScenario.findMany({
+    where: { id: { in: scenarioIds }, accountId: ctx.accountId },
     include: {
       lineItems: {
         include: { htsCode: true },
@@ -22,25 +26,48 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     },
   });
 
-  const comparisons = scenarios.map((s) => {
-    const totalCustomsValue = s.lineItems.reduce((acc, l) => acc + Number(l.unitValue) * Number(l.quantity), 0);
-    const totalDuty = s.lineItems.reduce((acc, l) => acc + Number(l.computedDuty), 0);
-    const totalFees = s.lineItems.reduce((acc, l) => acc + Number(l.computedFees), 0);
-    const totalLandedCost = s.lineItems.reduce((acc, l) => acc + (Number(l.computedLandedCost) || (Number(l.unitValue) * Number(l.quantity) + Number(l.computedDuty) + Number(l.computedFees))), 0);
+  const compared = scenariosData.map((sc) => {
+    let totalDuty = 0;
+    let totalMpf = 0;
+    let totalHmf = 0;
+    let totalLandedCost = 0;
+
+    for (const item of sc.lineItems) {
+      const breakdown = computeLandedCost({
+        productCost: Number(item.unitValue) * item.quantity,
+        quantity: item.quantity,
+        htsCode: item.htsCode.htsNumberDisplay,
+        countryOfOrigin: sc.originCountry,
+        freight: Number(item.freightCost),
+        insurance: Number(item.insuranceCost),
+      });
+
+      totalDuty += breakdown.baseDuty.plus(breakdown.section301).plus(breakdown.section232).toNumber();
+      totalMpf += breakdown.mpf.toNumber();
+      totalHmf += breakdown.hmf.toNumber();
+      totalLandedCost += breakdown.total.toNumber();
+    }
 
     return {
-      scenarioId: s.id,
-      name: s.name,
-      originCountry: s.originCountry,
-      destinationPort: s.destinationPort,
-      incoterm: s.incoterm,
-      totalCustomsValue,
-      totalDuty,
-      totalFees,
-      totalLandedCost,
-      dutyRatioPct: totalCustomsValue > 0 ? ((totalDuty / totalCustomsValue) * 100).toFixed(2) : "0.00",
+      id: sc.id,
+      name: sc.name,
+      originCountry: sc.originCountry,
+      totalDuty: Math.round(totalDuty * 100) / 100,
+      totalMpf: Math.round(totalMpf * 100) / 100,
+      totalHmf: Math.round(totalHmf * 100) / 100,
+      totalLandedCost: Math.round(totalLandedCost * 100) / 100,
     };
   });
 
-  return NextResponse.json({ comparisons });
-}, { write: true });
+  // Calculate savings matrix compared to the most expensive scenario
+  const maxLandedCost = Math.max(...compared.map((c) => c.totalLandedCost));
+  const savingsMatrix = compared.map((c) => ({
+    scenarioId: c.id,
+    savingsDelta: Math.max(0, maxLandedCost - c.totalLandedCost),
+  }));
+
+  return NextResponse.json({
+    scenarios: compared,
+    savingsMatrix,
+  });
+});

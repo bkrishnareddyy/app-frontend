@@ -55,6 +55,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   settings: Settings,
   platform: Shield,
   vault: Coins,
+  simulator: Scale,
 };
 
 interface SidebarProps {
