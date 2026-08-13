@@ -21,28 +21,22 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   if (idempError) return idempError;
 
   try {
-    const result = await FilingService.transmitFiling(ctx.accountId, ctx.userId, id);
+    const result = await FilingService.resubmitFiling(ctx.accountId, ctx.userId, id);
 
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
-      action: "filing.transmit",
+      action: "filing.resubmit",
       entity: "CustomsFiling",
       entityId: id,
       metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
 
-    // No real third party exists yet, so there is no other process that will
-    // ever answer the outbound message we just published. In production,
-    // with a real integration wired up, this same message would sit PENDING
-    // until they respond -- CUSTOMS_FILING_MOCK_RESPONSES=false restores that
-    // behaviour. A simulation failure must never fail the transmit itself:
-    // the real outbound message is already durably published at this point.
     let mockResponseApplied = false;
     try {
       mockResponseApplied = await simulateAndApplyResponse(result.messageId);
     } catch (err) {
-      console.warn(`[transmit] dev-stub response simulation failed for filing ${id}:`, err);
+      console.warn(`[resubmit] dev-stub response simulation failed for filing ${id}:`, err);
     }
 
     const latestFiling = mockResponseApplied
@@ -50,10 +44,9 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       : null;
 
     const responsePayload = {
-      transmission: {
+      resubmission: {
         status: latestFiling?.filingStatus ?? result.filing.filingStatus,
         entryNumber: result.filing.entryNumber,
-        transmittedAt: result.filing.submittedAt,
         messageId: result.messageId,
         mockResponseApplied,
       },
@@ -69,6 +62,6 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     if (errorMessage(error) === "NOT_FOUND") {
       return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
     }
-    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to transmit filing", undefined, requestId);
+    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to resubmit filing", undefined, requestId);
   }
 }, { permission: "filings.submit", write: true });

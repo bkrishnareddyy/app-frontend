@@ -149,6 +149,11 @@ export class CustomsFilingAgent {
           accountId: input.accountId,
           entryNumber: cbpEntryNumber,
           entryType: requireEntryTypeCode(input.entryType),
+          // This simulation path is CBP/ABI-specific by construction (fabricated
+          // "QBR-" entry number, hardcoded ACE response shape) -- not run through
+          // the country-agnostic FilingAuthorityConfig lookup real filings use.
+          authority: "US Customs (CBP)",
+          filingType: "ABI - Automated (Simulated)",
           // Simulated run: must not be stored as a real accepted CBP entry.
           filingStatus: "Simulation",
           submittedAt: new Date(),

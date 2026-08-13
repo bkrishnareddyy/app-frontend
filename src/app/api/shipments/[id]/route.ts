@@ -8,6 +8,7 @@ import { FactAuditService } from "@/modules/audit/factAuditService";
 import { FactService } from "@/modules/shipment/factService";
 import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
 import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment/shipmentPartyService";
+import { normalizeCountryCode } from "@/modules/shipment/countryCode";
 import { z } from "zod";
 
 const paramsSchema = z.object({
@@ -43,7 +44,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   const { id } = paramsVal.data;
 
   const body = await req.json();
-  const { lineItems, clientId, parties, countryOfOrigin, incoterm } = body;
+  const { lineItems, clientId, parties, countryOfOrigin, incoterm, destinationCountry } = body;
 
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
@@ -51,6 +52,38 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   if (!shipment) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
+  }
+
+  // Handle Destination Country update. Validated against the ISO 3166-1
+  // vocabulary because every canonical-messaging config table (procedure
+  // mapping, message catalog, response-status mapping, action rules) keys its
+  // wildcard lookups on this exact value -- a free-text mismatch there fails
+  // closed with a confusing error three steps later instead of a clear one now.
+  if (destinationCountry !== undefined) {
+    const normalized = destinationCountry === null || destinationCountry === "" ? null : normalizeCountryCode(destinationCountry);
+    if (destinationCountry && !normalized) {
+      return NextResponse.json(
+        {
+          error: `"${destinationCountry}" is not a recognized country. Use an ISO 3166-1 alpha-2 code (e.g. "US", "DE") or a full country name.`,
+        },
+        { status: 400 }
+      );
+    }
+    if (normalized !== shipment.destinationCountry) {
+      await FactAuditService.logChangeEvent({
+        shipmentId: id,
+        userId: ctx.userId,
+        changeType: "USER_FIELD_UPDATE",
+        field: "destinationCountry",
+        previousValue: shipment.destinationCountry,
+        newValue: normalized,
+        reason: "User manual update",
+      });
+      await db.shipment.update({
+        where: { id },
+        data: { destinationCountry: normalized, version: { increment: 1 } },
+      });
+    }
   }
 
   // Handle Country of Origin update

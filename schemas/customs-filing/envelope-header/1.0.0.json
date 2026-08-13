@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qubere.ai/schemas/customs-filing/envelope-header/1.0.0.json",
+  "title": "Canonical Filing Message Header v1.0.0",
+  "type": "object",
+  "properties": {
+    "messageId": { "type": "string", "minLength": 1 },
+    "filingId": { "type": "string", "minLength": 1 },
+    "correlationId": {
+      "type": "string",
+      "description": "Response messages only. Equals the messageId of the request being answered."
+    },
+    "priorMessageId": {
+      "type": "string",
+      "description": "AMENDMENT / CANCELLATION / RESUBMIT / STATUS_INQUIRY only. The messageId this message supersedes/acts on."
+    },
+    "messageName": { "type": "string", "minLength": 1 },
+    "direction": { "type": "string", "enum": ["OUTBOUND", "INBOUND"] },
+    "customer": {
+      "type": "object",
+      "properties": {
+        "accountId": { "type": "string", "minLength": 1 },
+        "accountName": { "type": "string" }
+      },
+      "required": ["accountId"],
+      "additionalProperties": false
+    },
+    "procedure": { "type": "string", "minLength": 1 },
+    "country": { "type": "string", "minLength": 2, "maxLength": 2 },
+    "authority": { "type": "string" },
+    "dateTime": { "type": "string", "format": "date-time" },
+    "schemaVersion": { "type": "string" },
+    "senderSystem": { "type": "string", "minLength": 1 },
+    "priority": { "type": "integer" },
+    "retryCount": { "type": "integer", "minimum": 0 },
+    "extensions": {
+      "type": "object",
+      "description": "Forward-compatible bucket for not-yet-formalized data.",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "messageId",
+    "filingId",
+    "messageName",
+    "direction",
+    "customer",
+    "procedure",
+    "country",
+    "dateTime",
+    "schemaVersion",
+    "senderSystem"
+  ],
+  "additionalProperties": false
+}

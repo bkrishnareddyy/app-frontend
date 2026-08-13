@@ -23,6 +23,8 @@
     "@google/genai": "^2.16.0",
     "@prisma/client": "^6.19.3",
     "@vercel/blob": "^2.6.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "decimal.js": "^10.6.0",

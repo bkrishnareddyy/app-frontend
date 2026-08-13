@@ -16,6 +16,7 @@ export const FILING_STATUSES = [
   "DocumentsRequested",
   "CustomsHold",
   "Released",
+  "CancellationRequested",
   "Cancelled",
   "Closed",
   "Simulation",
@@ -52,8 +53,11 @@ export type FilingTransition =
   | "cbp.requestDocuments"
   | "cbp.hold"
   | "cbp.release"
+  | "cancel.request"
+  | "cbp.cancel"
   | "cancel"
-  | "close";
+  | "close"
+  | "resubmit";
 
 interface TransitionRule {
   from: readonly FilingStatus[];
@@ -84,7 +88,29 @@ const TRANSITIONS: Record<FilingTransition, TransitionRule> = {
     ],
     to: "Cancelled",
   },
+  // Sending a CANCELLATION message is itself an operator action with an
+  // immediate, visible effect -- the filing is now mid-cancellation, not
+  // silently still "Transmitted" until a response happens to arrive.
+  // FilingChildActionRule decides *which* statuses offer CANCEL at all (see
+  // resolveChildActions()); this transition is what firing it actually does.
+  "cancel.request": {
+    from: ["TransmissionPending", "Transmitted", "Accepted", "Rejected", "DocumentsRequested", "CustomsHold"],
+    to: "CancellationRequested",
+  },
+  // A confirmed cancellation, applied once the CANCELLED response actually
+  // arrives -- via FilingResponseStatusMapping, exactly like
+  // cbp.accept/cbp.reject/etc. Distinct from `cancel` above (which withdraws
+  // a filing before CBP ever saw it): this one only ever follows
+  // cancel.request, never fires directly from a live status.
+  "cbp.cancel": {
+    from: ["CancellationRequested"],
+    to: "Cancelled",
+  },
   close: { from: ["Released", "Rejected"], to: "Closed" },
+  // Correcting and resending after CBP (or pre-transmission validation)
+  // flagged a problem. Added for the canonical-messaging RESUBMIT message
+  // type -- deliberately does not touch any existing transition's from/to list.
+  resubmit: { from: ["ValidationFailed", "Rejected", "DocumentsRequested"], to: "Transmitted" },
 };
 
 export class FilingTransitionError extends Error {
@@ -133,8 +159,8 @@ type StageKey = (typeof STAGE_ORDER)[number];
 const STAGE_LABELS: Record<StageKey, string> = {
   prepare: "Prepare filing package",
   review: "Validation & broker review",
-  transmit: "Transmit to CBP",
-  clearance: "CBP response & closure",
+  transmit: "Transmit to customs authority",
+  clearance: "Customs response & closure",
 };
 
 /** How far each status has progressed: index of the stage it currently sits in. */
@@ -151,6 +177,7 @@ const STATUS_STAGE: Record<FilingStatus, { index: number; blocked: boolean }> = 
   DocumentsRequested: { index: 3, blocked: true },
   CustomsHold: { index: 3, blocked: true },
   Released: { index: 3, blocked: false },
+  CancellationRequested: { index: 3, blocked: false },
   Cancelled: { index: 3, blocked: true },
   Closed: { index: 3, blocked: false },
   Simulation: { index: 0, blocked: false },
