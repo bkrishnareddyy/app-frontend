@@ -254,6 +254,22 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     advanceDocumentProcessing({ reason: "document.upload" });
   }
 
+  await createAuditLog({
+    accountId,
+    userId,
+    action: "DOCUMENT_UPLOADED",
+    entity: "ShipmentDocument",
+    entityId: docRecord.id,
+    metadata: {
+      fileName: file.name,
+      docType: resolvedDocType,
+      shipmentId: targetShipmentId,
+      correlationId,
+      requestId,
+    },
+    requestId,
+  });
+
   return NextResponse.json(
     {
       status: "ACCEPTED",

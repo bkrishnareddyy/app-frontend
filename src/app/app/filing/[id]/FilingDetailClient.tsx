@@ -176,7 +176,7 @@ const STAGE_STATE_LABELS: Record<FilingStageState, string> = {
 
 type LineItemEdit = { htsCode: string; countryOfOrigin: string };
 
-type Tab = "overview" | "declaration" | "response";
+type Tab = "overview" | "declaration" | "response" | "form7501";
 
 function errorFromResponse(data: unknown, fallback: string): string {
   if (data && typeof data === "object" && "error" in data) {
@@ -209,6 +209,11 @@ export function FilingDetailClient({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [validationBlockers, setValidationBlockers] = useState<Array<{ field: string; rule: string; message: string }>>([]);
+  const [form7501Data, setForm7501Data] = useState<Record<string, unknown> | null>(null);
+  const [form7501Loading, setForm7501Loading] = useState(false);
+  const [form7501Error, setForm7501Error] = useState<string | null>(null);
+  const [provenanceDetail, setProvenanceDetail] = useState<Record<string, unknown> | null>(null);
   /** Action code (e.g. "CANCEL") pending confirmation, or null when no modal is open. */
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
   const [showRawPayload, setShowRawPayload] = useState(false);
@@ -275,16 +280,33 @@ export function FilingDetailClient({
       const res = await fetch(`/api/filing/${filing.id}/validate`, { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(errorFromResponse(data, "Validation failed."));
+      const blockers: Array<{ field: string; rule: string; message: string }> = data?.validation?.blockers ?? [];
+      setValidationBlockers(blockers);
       setSuccess(
-        data?.validation?.isValid
+        data?.validation?.valid
           ? "Validation passed — ready for broker review."
-          : `Validation failed: ${data?.validation?.exceptions?.[0]?.description ?? "see exceptions."}`
+          : `Validation failed: ${blockers[0]?.message ?? "see blockers below."}`
       );
       router.refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function loadForm7501() {
+    setForm7501Loading(true);
+    setForm7501Error(null);
+    try {
+      const res = await fetch(`/api/filing/${filing.id}/entry-summary`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorFromResponse(data, "Failed to load 7501 data."));
+      setForm7501Data(data?.form7501 ?? null);
+    } catch (err: unknown) {
+      setForm7501Error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setForm7501Loading(false);
     }
   }
 

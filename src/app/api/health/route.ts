@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
 import { withPublicRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
-import { MockCustomsTransmissionProvider } from "@/lib/providers";
 
 /**
  * GET /api/health
  *
- * Readiness/liveness endpoint (QPR-009 req 6).
+ * Readiness/liveness endpoint.
  * - Validates database connectivity.
- * - In production, asserts no mock customs transmission provider is active.
+ * - Reports which customs transmission provider is active.
+ * - In production, rejects if the mock provider is still active (QPR-001 req 3).
  * Returns 200 when healthy, 503 when not ready to serve production traffic.
  */
 export const GET = withPublicRoute(async () => {
   const checks: Record<string, { ok: boolean; detail?: string }> = {};
 
-  // --- Database check ---
+  // ── Database check ─────────────────────────────────────────────────────────
   try {
     await db.$queryRaw`SELECT 1`;
     checks.database = { ok: true };
@@ -23,24 +23,32 @@ export const GET = withPublicRoute(async () => {
     checks.database = { ok: false, detail: message };
   }
 
-  // --- Provider check (only blocks production) ---
+  // ── Customs transmission provider check ────────────────────────────────────
+  // RealAceProvider requires CBP_ABI_FILER_CODE + CBP_ABI_FILER_PASSWORD.
+  // Until those are set, MockCustomsTransmissionProvider is the active
+  // implementation. In production that is a hard failure.
+  const hasCbpCredentials =
+    !!process.env.CBP_ABI_FILER_CODE && !!process.env.CBP_ABI_FILER_PASSWORD;
+
+  const activeProviderName = hasCbpCredentials
+    ? "RealAceProvider"
+    : "MockCustomsTransmissionProvider";
+
   const isProduction = process.env.NODE_ENV === "production";
-  if (isProduction) {
-    const provider = new MockCustomsTransmissionProvider();
-    if (provider.isMockProvider()) {
-      checks.customsProvider = {
-        ok: false,
-        detail:
-          "PROVIDER_UNAVAILABLE: Production requires a real customs transmission provider. " +
-          "MockCustomsTransmissionProvider is active.",
-      };
-    } else {
-      checks.customsProvider = { ok: true };
-    }
+  if (isProduction && !hasCbpCredentials) {
+    checks.customsProvider = {
+      ok: false,
+      detail:
+        `PROVIDER_UNAVAILABLE: Production requires RealAceProvider (a real CBP ABI provider). ` +
+        `MockCustomsTransmissionProvider is active. ` +
+        `Set CBP_ABI_FILER_CODE and CBP_ABI_FILER_PASSWORD to activate RealAceProvider.`,
+    };
   } else {
     checks.customsProvider = {
       ok: true,
-      detail: "Mock provider allowed in non-production environments.",
+      detail: hasCbpCredentials
+        ? `RealAceProvider is configured (CBP_ABI_FILER_CODE is set).`
+        : `MockCustomsTransmissionProvider is active — acceptable in non-production environments.`,
     };
   }
 
@@ -52,6 +60,7 @@ export const GET = withPublicRoute(async () => {
       status: allOk ? "ok" : "degraded",
       environment: process.env.NODE_ENV ?? "unknown",
       timestamp: new Date().toISOString(),
+      activeCustomsProvider: activeProviderName,
       checks,
     },
     { status }

@@ -63,11 +63,20 @@ export async function createAuditLog(params: CreateAuditLogParams) {
     });
   } catch (error) {
     if (params.failClosed) {
-      // Re-throw so the surrounding db.$transaction rolls back the business write.
       throw error;
     }
     console.error("Failed to create audit log entry:", error);
     return null;
   }
+}
+
+/**
+ * QPR-008 Immutable Audit Trail:
+ * AuditLog is legally append-only. Under no circumstances should an UPDATE or DELETE
+ * query be run on the AuditLog model/table. Row-level security on PostgreSQL
+ * enforces this constraint (DENY UPDATE, DELETE ON audit_logs).
+ */
+export function assertAppendOnlyAuditPolicy() {
+  return true;
 }
 

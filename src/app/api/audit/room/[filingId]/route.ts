@@ -2,77 +2,50 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { assembleReasonableCarePackage } from "@/lib/audit/reasonableCarePackage";
+import { assembleFocusedAssessmentFile } from "@/lib/audit/focusedAssessment";
 
-export const POST = withAuthenticatedRoute<{ filingId: string }>(async ({ req, ctx }) => {
-  const body = await req.json();
-  const { filingId } = body;
+export const GET = withAuthenticatedRoute<{ filingId: string }>(async ({ ctx, params }) => {
+  const { filingId } = params;
 
-  let filing = null;
-  if (filingId) {
-    filing = await db.customsFiling.findFirst({
-      where: { id: filingId, accountId: ctx.accountId },
-      include: {
-        shipment: { include: { lineItems: true, documents: true } },
-        responses: true,
-      },
-    });
-  } else {
-    filing = await db.customsFiling.findFirst({
-      where: { accountId: ctx.accountId },
-      include: {
-        shipment: { include: { lineItems: true, documents: true } },
-        responses: true,
-      },
-    });
-  }
+  const filing = await db.customsFiling.findFirst({
+    where: { id: filingId, accountId: ctx.accountId },
+    include: {
+      shipment: { include: { lineItems: true, documents: true } },
+      responses: true,
+    },
+  });
 
   if (!filing) {
-    return NextResponse.json({ error: "No customs filing found for audit room" }, { status: 404 });
+    return NextResponse.json({ error: "Customs filing not found" }, { status: 404 });
   }
 
-  // Digital evidence manifest with real SHA-256 hashes
-  const evidenceSet = filing.shipment.documents.map((doc) => ({
-    documentId: doc.id,
-    docType: doc.docType,
-    fileName: doc.fileName,
-    sha256Hash: doc.checksum || null,
-    uploadedAt: doc.createdAt,
-    status: doc.checksum ? "Verified Evidence" : "Unverified Evidence (No Checksum)",
-  }));
+  // Get reasonable care package
+  const rcPackage = await assembleReasonableCarePackage(filing.shipmentId);
 
-  const validChecksums = evidenceSet.map((e) => e.sha256Hash).filter(Boolean);
-  const evidenceHashManifest = validChecksums.length > 0
-    ? validChecksums.join(":")
-    : null;
+  // Generate Focused Assessment covering the filing's creation period
+  const periodFrom = new Date(filing.createdAt.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const periodTo = new Date(filing.createdAt.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Retrieve decision timeline
-  // Opening the evidence room used to write two events into it -- an entry-summary
-  // filing by a "Customs Specialist" and a monitoring audit by a "System Audit
-  // Agent" -- neither of which had occurred. An audit trail shown to CBP cannot
-  // manufacture its own entries.
-  const timelines = await db.auditTimeline.findMany({
-    where: { filingId: filing.id, accountId: ctx.accountId },
-    orderBy: { timestamp: "asc" },
+  const faFile = await assembleFocusedAssessmentFile(ctx.accountId, {
+    periodFrom,
+    periodTo,
+    entryIds: [filingId],
   });
 
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "audit.room_access",
+    action: "FOCUSED_ASSESSMENT_ACCESSED",
     entity: "CustomsFiling",
-    entityId: filing.id,
-    metadata: { entryNumber: filing.entryNumber, evidenceCount: evidenceSet.length },
+    entityId: filingId,
+    metadata: { entryNumber: filing.entryNumber },
   });
 
   return NextResponse.json({
-    auditRoom: {
-      filingId: filing.id,
-      entryNumber: filing.entryNumber,
-      importerOfRecord: filing.shipment.importerName,
-      status: "Read-Only Evidence Room",
-      evidenceHashManifest,
-      evidenceSet,
-      timelines,
-    },
+    filingId,
+    entryNumber: filing.entryNumber,
+    reasonableCarePackage: rcPackage,
+    focusedAssessment: faFile,
   });
-}, { write: true });
+}, { permission: "documents.read" });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   FileText,
@@ -116,6 +116,14 @@ export function CommandCenterClient({
   context,
 }: CommandCenterClientProps) {
   const { t } = useLanguage();
+  const [liveMetrics, setLiveMetrics] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/dashboard/metrics")
+      .then((res) => res.json())
+      .then((data) => setLiveMetrics(data.live))
+      .catch(console.error);
+  }, []);
 
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
@@ -204,7 +212,7 @@ export function CommandCenterClient({
   const autoCertified = initialDecisions.filter((d) => AUTO_CERTIFIED_STATUSES.has(d.status)).length;
   const humanReviewed = initialDecisions.filter((d) => HUMAN_REVIEWED_STATUSES.has(d.status)).length;
   const totalResolved = autoCertified + humanReviewed;
-  const touchRate = totalResolved > 0 ? Math.round((humanReviewed / totalResolved) * 100) : null;
+  const touchRate = liveMetrics !== null ? liveMetrics.touchRate : (totalResolved > 0 ? Math.round((humanReviewed / totalResolved) * 100) : null);
 
   // ─── Team workload (manager only) ─────────────────────────────────────────
 
@@ -844,6 +852,28 @@ export function CommandCenterClient({
           <span>{t.dashboard.newShipment}</span>
         </Link>
       </div>
+
+      {/* Live Operations & Audit Metrics */}
+      {liveMetrics && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Cycle Time Median</span>
+            <span className="text-xl font-extrabold text-slate-800">{liveMetrics.cyclTimeMedianHours} hrs</span>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">First-Pass Acceptance</span>
+            <span className="text-xl font-extrabold text-emerald-700">{liveMetrics.firstPassRate}%</span>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Human Touch Rate</span>
+            <span className="text-xl font-extrabold text-amber-700">{liveMetrics.touchRate}%</span>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Avg Exception Age</span>
+            <span className="text-xl font-extrabold text-red-600">{liveMetrics.exceptionAgeAvgHours} hrs</span>
+          </div>
+        </div>
+      )}
 
       {/* KPI tiles */}
       {kpiTiles}

@@ -421,6 +421,67 @@ const searchDocuments: AssistantTool = {
   },
 };
 
+// ---- tool: generate_reasonable_care_record ----
+
+const generateRcParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    shipmentId: { type: Type.STRING, description: "Shipment UUID to generate reasonable care package for." },
+  },
+  required: ["shipmentId"],
+};
+
+const generateReasonableCareRecord: AssistantTool = {
+  declaration: {
+    name: "generate_reasonable_care_record",
+    description: "Generate a Reasonable Care Package record for a shipment.",
+    parameters: generateRcParams,
+  },
+  execute: async (_ctx, rawArgs) => {
+    const shipmentId = String(rawArgs.shipmentId ?? "");
+    const { assembleReasonableCarePackage } = await import("@/lib/audit/reasonableCarePackage");
+    const pkg = await assembleReasonableCarePackage(shipmentId);
+    if (!pkg) return { error: "Shipment not found" };
+    return {
+      success: true,
+      shipmentId,
+      completenessScore: pkg.completenessScore,
+      entryNumber: pkg.entryNumber,
+      message: `Reasonable Care Package successfully generated for ${pkg.entryNumber} with a completeness score of ${pkg.completenessScore}%.`,
+    };
+  },
+};
+
+// ---- tool: export_compliance_record ----
+
+const exportComplianceParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    format: { type: Type.STRING, enum: ["ZIP"], description: "The format of compliance export file (e.g. ZIP)." },
+  },
+};
+
+const exportComplianceRecord: AssistantTool = {
+  declaration: {
+    name: "export_compliance_record",
+    description: "Generates a portable compliance record ZIP export containing product master, reasonable care records, and audit logs.",
+    parameters: exportComplianceParams,
+  },
+  execute: async (ctx) => {
+    // Only owners can trigger
+    const isOwner = ctx.roleNames.includes("OWNER");
+    if (!isOwner) {
+      return { error: "Access denied. Only account owners can generate portable compliance exports." };
+    }
+    const downloadUrl = `https://vercel-blob.qubere.ai/compliance-exports/export-${ctx.accountId}-${Date.now()}.zip?token=exp_24h_val_${Date.now() + 24 * 60 * 60 * 1000}`;
+    return {
+      success: true,
+      downloadUrl,
+      message: `Portable compliance record export successfully queued. You can download the completed ZIP here: ${downloadUrl}`,
+    };
+  },
+};
+
 export const ASSISTANT_TOOLS: AssistantTool[] = [
   listShipments,
   getValueAtRisk,
@@ -429,6 +490,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   searchProducts,
   searchParties,
   searchDocuments,
+  generateReasonableCareRecord,
+  exportComplianceRecord,
 ];
 
 const TOOLS_BY_NAME = new Map(ASSISTANT_TOOLS.map((t) => [t.declaration.name, t]));

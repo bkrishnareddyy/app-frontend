@@ -4,9 +4,12 @@ import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { applyTransition, canTransition } from "@/modules/filings/filingStateMachine";
+import { runFilingValidation, type ValidatorInput } from "@/lib/filing/filingValidator";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
+
+const DEFAULT_READINESS_THRESHOLD = 80;
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
@@ -16,9 +19,16 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const filing = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
     include: {
+      importerOfRecord: true,
+      bond: true,
       shipment: {
-        include: { documents: true, lineItems: true },
+        include: {
+          documents: true,
+          lineItems: { include: { product: { include: { productClassifications: { where: { status: "APPROVED" } } } } } },
+          exceptionItems: { where: { status: "Open", blocking: true } },
+          reconciliationIssues: { where: { status: "Open" } },
         },
+      },
     },
   });
 
@@ -26,44 +36,54 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     return NextResponse.json({ error: "Filing not found" }, { status: 404 });
   }
 
-  const raisedExceptions = [];
+  // Fetch readiness threshold from AgentPolicyConfig (falls back to 80)
+  const policyConfig = await db.agentPolicyConfig.findFirst({
+    where: { accountId: ctx.accountId, agentName: "FilingReadinessAgent" },
+    select: { autoThreshold: true },
+  });
+  const readinessThreshold = policyConfig?.autoThreshold ?? DEFAULT_READINESS_THRESHOLD;
 
-  // Pre-filing validation checks
-  if (!filing.shipment.documents || filing.shipment.documents.length === 0) {
-    const exc = await db.exceptionItem.create({
-      data: {
-        accountId: ctx.accountId,
-        filingId: filing.id,
-        shipmentId: filing.shipmentId,
-        type: "missing_document",
-        severity: "High",
-        description: "Pre-filing validation failed: No shipping documents attached.",
-        status: "Open",
-      },
-    });
-    raisedExceptions.push(exc);
-  }
+  // HTS release freshness
+  const publishedRelease = await db.htsRelease.findFirst({
+    where: { country: "US", publicationStatus: "PUBLISHED" },
+    orderBy: { effectiveFrom: "desc" },
+    select: { effectiveFrom: true },
+  });
+  const htsReleaseAgeInDays = publishedRelease?.effectiveFrom
+    ? Math.floor((Date.now() - publishedRelease.effectiveFrom.getTime()) / 86_400_000)
+    : null;
 
-  if (Number(filing.totalValue) <= 0) {
-    const exc = await db.exceptionItem.create({
-      data: {
-        accountId: ctx.accountId,
-        filingId: filing.id,
-        shipmentId: filing.shipmentId,
-        type: "data_mismatch",
-        severity: "Critical",
-        description: "Pre-filing validation failed: Total customs declared value must be greater than zero.",
-        status: "Open",
-      },
-    });
-    raisedExceptions.push(exc);
-  }
+  const lineItems: ValidatorInput["lineItems"] = filing.shipment.lineItems.map((li) => ({
+    id: li.id,
+    lineNumber: li.lineNumber,
+    htsCode: li.htsCode,
+    hasApprovedDecision: (li.product?.productClassifications?.length ?? 0) > 0,
+  }));
 
-  const isValid = raisedExceptions.length === 0;
-  const transition = isValid ? "validate.pass" : "validate.fail";
+  const validatorInput: ValidatorInput = {
+    filingId: filing.id,
+    entryType: filing.entryType,
+    portOfEntry: filing.shipment.portOfEntry,
+    importerOfRecordId: filing.importerOfRecordId ?? null,
+    importerCbpNumber: filing.importerOfRecord?.cbpImporterNumber ?? null,
+    readinessScore: filing.shipment.readinessScore,
+    readinessThreshold,
+    bondExpirationDate: filing.bond?.expirationDate ?? null,
+    bondAmount: filing.bond?.bondAmount ? Number(filing.bond.bondAmount) : null,
+    estimatedTotalDuties: filing.totalDuties ? Number(filing.totalDuties) : null,
+    lineItems,
+    blockingExceptions: filing.shipment.exceptionItems.map((e) => ({ id: e.id })),
+    blockingReconciliationIssues: filing.shipment.reconciliationIssues
+      .filter((r) => r.severity === "Critical")
+      .map((r) => ({ id: r.id })),
+    htsReleaseAgeInDays,
+    transportMode: filing.shipment.transportMode,
+  };
 
-  // Validation result only moves the filing when the transition is legal from
-  // its current status; an already-transmitted filing is not rewound.
+  const outcome = runFilingValidation(validatorInput);
+
+  // Advance filing status through the state machine when legal
+  const transition = outcome.valid ? "validate.pass" : "validate.fail";
   let newStatus: string | null = null;
   if (canTransition(filing.filingStatus, transition)) {
     newStatus = applyTransition(filing.filingStatus, transition);
@@ -80,8 +100,9 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     entity: "CustomsFiling",
     entityId: filing.id,
     metadata: {
-      isValid,
-      raisedExceptionsCount: raisedExceptions.length,
+      valid: outcome.valid,
+      blockerCount: outcome.blockers.length,
+      warningCount: outcome.warnings.length,
       previousStatus: filing.filingStatus,
       newStatus,
     },
@@ -90,12 +111,11 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   return NextResponse.json({
     validation: {
       filingId: filing.id,
-      isValid,
-      status: isValid ? "PASSED" : "FAILED",
+      valid: outcome.valid,
+      blockers: outcome.blockers,
+      warnings: outcome.warnings,
       previousFilingStatus: filing.filingStatus,
       filingStatus: newStatus ?? filing.filingStatus,
-      raisedExceptionsCount: raisedExceptions.length,
-      exceptions: raisedExceptions,
     },
   });
 }, { write: true });

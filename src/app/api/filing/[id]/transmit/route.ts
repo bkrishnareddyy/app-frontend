@@ -7,9 +7,12 @@ import { createAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { FilingService } from "@/modules/filings/filing.service";
 import { simulateAndApplyResponse } from "@/lib/canonicalMessaging/devStub";
+import { runFilingValidation, type ValidatorInput } from "@/lib/filing/filingValidator";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
+
+const DEFAULT_READINESS_THRESHOLD = 80;
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
@@ -19,6 +22,94 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   const { idempotencyKey, requestHash, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
+
+  // ── Server-side filing validation gate (Task B-3) ──────────────────────────
+  // The client cannot bypass this check — it runs unconditionally on every
+  // transmit attempt, regardless of what the client reports about validation state.
+
+  const filingForValidation = await db.customsFiling.findFirst({
+    where: { id, accountId: ctx.accountId },
+    include: {
+      importerOfRecord: true,
+      bond: true,
+      shipment: {
+        include: {
+          lineItems: {
+            include: {
+              product: { include: { productClassifications: { where: { status: "APPROVED" } } } },
+            },
+          },
+          exceptionItems: { where: { status: "Open", blocking: true } },
+          reconciliationIssues: { where: { status: "Open" } },
+        },
+      },
+    },
+  });
+
+  if (!filingForValidation) {
+    return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
+  }
+
+  const policyConfig = await db.agentPolicyConfig.findFirst({
+    where: { accountId: ctx.accountId, agentName: "FilingReadinessAgent" },
+    select: { autoThreshold: true },
+  });
+  const readinessThreshold = policyConfig?.autoThreshold ?? DEFAULT_READINESS_THRESHOLD;
+
+  const publishedRelease = await db.htsRelease.findFirst({
+    where: { country: "US", publicationStatus: "PUBLISHED" },
+    orderBy: { effectiveFrom: "desc" },
+    select: { effectiveFrom: true },
+  });
+  const htsReleaseAgeInDays = publishedRelease?.effectiveFrom
+    ? Math.floor((Date.now() - publishedRelease.effectiveFrom.getTime()) / 86_400_000)
+    : null;
+
+  const lineItemsForValidation: ValidatorInput["lineItems"] = filingForValidation.shipment.lineItems.map((li) => ({
+    id: li.id,
+    lineNumber: li.lineNumber,
+    htsCode: li.htsCode,
+    hasApprovedDecision: (li.product?.productClassifications?.length ?? 0) > 0,
+  }));
+
+  const validatorInput: ValidatorInput = {
+    filingId: id,
+    entryType: filingForValidation.entryType,
+    portOfEntry: filingForValidation.shipment.portOfEntry,
+    importerOfRecordId: filingForValidation.importerOfRecordId ?? null,
+    importerCbpNumber: filingForValidation.importerOfRecord?.cbpImporterNumber ?? null,
+    readinessScore: filingForValidation.shipment.readinessScore,
+    readinessThreshold,
+    bondExpirationDate: filingForValidation.bond?.expirationDate ?? null,
+    bondAmount: filingForValidation.bond?.bondAmount ? Number(filingForValidation.bond.bondAmount) : null,
+    estimatedTotalDuties: filingForValidation.totalDuties ? Number(filingForValidation.totalDuties) : null,
+    lineItems: lineItemsForValidation,
+    blockingExceptions: filingForValidation.shipment.exceptionItems.map((e) => ({ id: e.id })),
+    blockingReconciliationIssues: filingForValidation.shipment.reconciliationIssues
+      .filter((r) => r.severity === "Critical")
+      .map((r) => ({ id: r.id })),
+    htsReleaseAgeInDays,
+    transportMode: filingForValidation.shipment.transportMode,
+  };
+
+  const outcome = runFilingValidation(validatorInput);
+
+  if (!outcome.valid) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "VALIDATION_BLOCKERS",
+          message: `Transmission blocked: ${outcome.blockers.length} validation issue(s) must be resolved before filing.`,
+          blockers: outcome.blockers,
+          warnings: outcome.warnings,
+        },
+        requestId,
+      },
+      { status: 422 }
+    );
+  }
+
+  // ── Proceed to transmission ────────────────────────────────────────────────
 
   try {
     const result = await FilingService.transmitFiling(ctx.accountId, ctx.userId, id);

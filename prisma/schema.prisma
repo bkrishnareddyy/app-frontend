@@ -138,6 +138,7 @@ model Account {
   notifications              Notification[]
   complianceDeadlines        ComplianceDeadline[]
   aiUsageWindows             AiUsageWindow[]
+  controlEvidence            ControlEvidence[]
   assistantChatSessions      AssistantChatSession[]
   filingMessages             FilingMessage[]
   agentPolicyConfigs         AgentPolicyConfig[]
@@ -3818,4 +3819,36 @@ model FilingAuthorityConfig {
   country           String @unique // ISO 3166-1 alpha-2
   authorityName     String // e.g. "U.S. Customs and Border Protection (CBP)"
   filingSystemLabel String // e.g. "ABI - Automated"
+}
+
+model WorkMetricSnapshot {
+  id                   String   @id @default(cuid())
+  accountId            String
+  date                 DateTime
+  period               String   // DAILY | WEEKLY | MONTHLY
+  cyclTimeMedianHours  Float?
+  firstPassRate        Float?
+  exceptionAgeAvgHours Float?
+  touchRate            Float?
+  dutyPerEntry         Decimal?
+  openExceptions       Int
+  filedEntries         Int
+  pscCount             Int
+  createdAt            DateTime @default(now())
+
+  @@index([accountId, date])
+}
+
+model ControlEvidence {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    String   // e.g. training, vendor_certification, procedures
+  version     String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
 }
