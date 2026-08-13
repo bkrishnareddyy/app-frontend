@@ -231,35 +231,42 @@ export function Sidebar({
               )}
 
               {section.renderAs === "pills" && !collapsed ? (
-                <div className="flex gap-1.5">
-                  {section.items.map((item) => {
-                    const isActive = activeHref === item.href;
-                    const Icon = ICONS[item.icon];
-                    const label = labels[item.labelKey] ?? item.labelKey;
-                    const badgeCount = item.id === "documents" ? pendingClassificationCount : (item.badge ?? 0);
+                <div className="space-y-1.5">
+                  {Array.from({ length: Math.ceil(section.items.length / 2) }).map((_, rowIndex) => {
+                    const rowItems = section.items.slice(rowIndex * 2, rowIndex * 2 + 2);
                     return (
-                      <Link
-                        key={item.id}
-                        href={item.href}
-                        onClick={() => setMobileOpen(false)}
-                        aria-current={isActive ? "page" : undefined}
-                        className={cn(
-                          "flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all border min-w-0",
-                          isActive
-                            ? "bg-white text-brand border-border shadow-sm font-semibold"
-                            : "bg-white/40 text-ink border-border/40 hover:bg-white hover:text-brand hover:border-border"
-                        )}
-                      >
-                        <span className="relative shrink-0">
-                          <Icon className={cn("w-3 h-3", isActive ? "text-brand" : "text-ink-muted")} />
-                          {badgeCount > 0 && (
-                            <span className="absolute -top-1 -right-1.5 min-w-[12px] h-3 px-0.5 rounded-full bg-amber-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
-                              {badgeCount > 9 ? "9+" : badgeCount}
-                            </span>
-                          )}
-                        </span>
-                        <span className="truncate">{label}</span>
-                      </Link>
+                      <div key={rowIndex} className="flex gap-1.5">
+                        {rowItems.map((item) => {
+                          const isActive = activeHref === item.href;
+                          const Icon = ICONS[item.icon];
+                          const label = labels[item.labelKey] ?? item.labelKey;
+                          const badgeCount = item.id === "documents" ? pendingClassificationCount : (item.badge ?? 0);
+                          return (
+                            <Link
+                              key={item.id}
+                              href={item.href}
+                              onClick={() => setMobileOpen(false)}
+                              aria-current={isActive ? "page" : undefined}
+                              className={cn(
+                                "flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all border min-w-0",
+                                isActive
+                                  ? "bg-white text-brand border-border shadow-sm font-semibold"
+                                  : "bg-white/40 text-ink border-border/40 hover:bg-white hover:text-brand hover:border-border"
+                              )}
+                            >
+                              <span className="relative shrink-0">
+                                <Icon className={cn("w-3 h-3", isActive ? "text-brand" : "text-ink-muted")} />
+                                {badgeCount > 0 && (
+                                  <span className="absolute -top-1 -right-1.5 min-w-[12px] h-3 px-0.5 rounded-full bg-amber-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                                    {badgeCount > 9 ? "9+" : badgeCount}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="truncate">{label}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
                     );
                   })}
                 </div>
