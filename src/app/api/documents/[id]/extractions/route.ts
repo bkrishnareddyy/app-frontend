@@ -150,10 +150,13 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
  * Source bytes come only from an allowlisted storage origin or from a local
  * upload path that is confined to the uploads directory.
  */
-export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
+export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
+
+  const body = await req.json().catch(() => null);
+  const force = Boolean(body && typeof body === "object" && (body as Record<string, unknown>).force);
 
   try {
     const doc = await db.shipmentDocument.findFirst({
@@ -166,7 +169,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     }
 
     const existing = parseStoredJson(doc);
-    if (existing) {
+    if (existing && !force) {
       return NextResponse.json({ ...serialize(doc, existing, requestId), extracted: false });
     }
 

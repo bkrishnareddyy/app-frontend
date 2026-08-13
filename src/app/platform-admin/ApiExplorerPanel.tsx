@@ -178,9 +178,7 @@ export function ApiExplorerPanel() {
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<string | null>(null);
 
-  const fetchCatalog = () => {
-    setLoading(true);
-    setError(null);
+  const loadCatalog = () => {
     fetch("/api/platform-admin/api-catalog")
       .then((r) => r.json())
       .then((data: ApiCatalogResponse) => {
@@ -193,7 +191,13 @@ export function ApiExplorerPanel() {
       });
   };
 
-  useEffect(() => { fetchCatalog(); }, []);
+  const fetchCatalog = () => {
+    setLoading(true);
+    setError(null);
+    loadCatalog();
+  };
+
+  useEffect(() => { loadCatalog(); }, []);
 
   const filtered = useMemo(() => {
     if (!catalog) return [];

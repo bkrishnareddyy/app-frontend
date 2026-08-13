@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   Package,
@@ -78,13 +78,15 @@ function deadlineSortMs(info: DeadlineInfo | undefined): number {
 // the default 3 days is timely; Entry Filing runs CBP's 15-day statutory
 // window with liquidated-damages exposure (19 CFR 141.68(a)/142.15), so it
 // needs to catch a broker's eye earlier to leave time to work the file.
-function DeadlineCell({ info, warnDays = 3 }: { info: DeadlineInfo | undefined; warnDays?: number }) {
+// `now` is passed in (rather than read via Date.now() here) so the render
+// stays pure -- the caller ticks it on an interval.
+function DeadlineCell({ info, now, warnDays = 3 }: { info: DeadlineInfo | undefined; now: number; warnDays?: number }) {
   if (!info) return <span className="text-ink-muted tabular-nums">—</span>;
   if (info.status === "SATISFIED") return <span className="text-emerald-600 font-semibold text-[11px]">✓ Filed</span>;
   if (info.status === "MISSED") return <span className="text-red-700 font-bold text-[11px] uppercase tracking-wide">Missed</span>;
   if (!info.dueAt) return <span className="text-ink-muted tabular-nums">—</span>;
 
-  const ms = new Date(info.dueAt).getTime() - Date.now();
+  const ms = new Date(info.dueAt).getTime() - now;
   if (ms <= 0) return <span className="text-red-700 font-bold text-[11px] uppercase tracking-wide">Breached</span>;
 
   const totalMins = Math.floor(ms / 60_000);
@@ -115,6 +117,13 @@ export function ShipmentsWorkbenchClient({
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
     (context.roleNames.includes("ADMIN") || context.roleNames.includes("OWNER"));
+
+  // Ticked on an interval so DeadlineCell's countdowns can stay pure during render.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Construct full team list containing the logged-in admin themselves
   const fullTeamList = useMemo(() => {
@@ -638,11 +647,11 @@ export function ShipmentsWorkbenchClient({
                       </td>
 
                       <td className="px-5 py-4">
-                        <DeadlineCell info={deadlinesByShipment[shp.shipmentNumber]?.isf} />
+                        <DeadlineCell info={deadlinesByShipment[shp.shipmentNumber]?.isf} now={now} />
                       </td>
 
                       <td className="px-5 py-4">
-                        <DeadlineCell info={deadlinesByShipment[shp.shipmentNumber]?.entryFiling} warnDays={5} />
+                        <DeadlineCell info={deadlinesByShipment[shp.shipmentNumber]?.entryFiling} now={now} warnDays={5} />
                       </td>
 
                       <td className="px-5 py-4">

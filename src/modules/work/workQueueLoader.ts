@@ -15,13 +15,11 @@ import {
   EXCEPTION_ACTIONABLE_STATUSES,
   type WorkQueueInput,
   type DecisionRow,
-  type FindingRow,
   type FilingRow,
   type DocumentRow,
   type ExceptionRow,
   type DeadlineRow,
 } from "./workQueue";
-import { actionableStatusVariants } from "@/modules/decisions/decisionState";
 
 const ROW_CAP = 500; // per source — prevents loading the whole account
 

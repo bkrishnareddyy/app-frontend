@@ -10,7 +10,6 @@ import {
   shipmentResolutionStatus,
   ShipmentResolutionError,
 } from "@/modules/shipments/resolveShipment";
-import { recordUnassignedIntake } from "@/modules/intake/unassignedIntake";
 import { PipelineOrchestrator } from "@/modules/agents/pipelineOrchestrator";
 import { PgQueue, toJobState } from "@/lib/queue/pgQueue";
 import { enqueueDocumentParse } from "@/modules/documents/processing/documentProcessingWorker";
