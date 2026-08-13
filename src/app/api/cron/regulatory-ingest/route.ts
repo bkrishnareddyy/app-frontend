@@ -149,8 +149,7 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
           data: {
             accountId: m.accountId,
             userId: m.userId,
-            title: `Regulatory Action Required: ${update.title}`,
-            message: `New CBP regulatory notice published affecting HTS codes: ${extracted.affectedHtsCodes.join(", ")}. Review required.`,
+            message: `Regulatory Action Required: ${update.title}. New CBP regulatory notice published affecting HTS codes: ${extracted.affectedHtsCodes.join(", ")}. Review required.`,
             type: "regulatory_alert",
           },
         });
