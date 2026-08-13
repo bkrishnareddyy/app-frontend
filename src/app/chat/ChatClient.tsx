@@ -66,16 +66,18 @@ const PendingUploadCtx = createContext<PendingUploadState>({ pendingFile: null, 
 const usePendingUpload = () => useContext(PendingUploadCtx);
 
 /** Pulls the id out of a `/app/shipments/{id}` URL — the only place these tool results carry it. */
-function extractShipmentId(url: string): string | null {
+function extractShipmentId(url?: string | null): string | null {
+  if (!url || typeof url !== "string") return null;
   const m = url.match(/\/app\/shipments\/([^/?#]+)/);
   return m ? m[1] : null;
 }
 
 /** First real (tool-verified) shipment number found as a substring of the text, case-insensitive. */
-function findKnownShipmentInText(text: string, known: Map<string, string>): { number: string; id: string } | null {
+function findKnownShipmentInText(text?: string | null, known?: Map<string, string>): { number: string; id: string } | null {
+  if (!text || typeof text !== "string" || !known) return null;
   const upper = text.toUpperCase();
   for (const [number, id] of known) {
-    if (upper.includes(number.toUpperCase())) return { number, id };
+    if (number && upper.includes(number.toUpperCase())) return { number, id };
   }
   return null;
 }
@@ -191,22 +193,33 @@ const QUICK_CHIPS = [
 // idle empty sessions never count against that cap.
 
 async function fetchSessions(): Promise<ChatSession[]> {
-  const res = await fetch("/api/assistant/chats");
-  if (!res.ok) return [];
-  const data = (await res.json()) as { sessions: DbChatSession[] };
-  // Server returns newest-first; keep the internal array oldest-first so the
-  // active tab (last element) and the reversed display list stay consistent.
-  return data.sessions
-    .slice()
-    .reverse()
-    .map((s) => ({
-      id: s.id,
-      title: s.title,
-      createdAt: new Date(s.updatedAt).getTime(),
-      messages: (s.messages as MessageDisplay[]) ?? [],
-      history: (s.history as Content[]) ?? [],
-      persisted: true,
-    }));
+  try {
+    const res = await fetch("/api/assistant/chats");
+    if (!res.ok) return [];
+    const data = (await res.json()) as { sessions: DbChatSession[] };
+    if (!Array.isArray(data?.sessions)) return [];
+    // Server returns newest-first; keep the internal array oldest-first so the
+    // active tab (last element) and the reversed display list stay consistent.
+    return data.sessions
+      .slice()
+      .reverse()
+      .map((s) => ({
+        id: s.id,
+        title: s.title ?? "Chat",
+        createdAt: s.updatedAt ? new Date(s.updatedAt).getTime() : Date.now(),
+        messages: Array.isArray(s.messages)
+          ? (s.messages as MessageDisplay[]).map((m) => ({
+              ...m,
+              toolCalls: Array.isArray(m?.toolCalls) ? m.toolCalls : [],
+            }))
+          : [],
+        history: Array.isArray(s.history) ? (s.history as Content[]) : [],
+        persisted: true,
+      }));
+  } catch (err) {
+    console.error("Failed to fetch chat sessions:", err);
+    return [];
+  }
 }
 
 async function createSessionInDb(data: { title: string; messages: MessageDisplay[]; history: Content[] }): Promise<DbChatSession | null> {
@@ -1086,16 +1099,17 @@ function MessageBubble({ message, onQuickReply }: { message: MessageDisplay; onQ
     );
   }
 
+  const toolCalls = Array.isArray(message.toolCalls) ? message.toolCalls : [];
   const isConfirmPending =
     message.text &&
     /shall i proceed|ready to create|confirm.*shipment|want me to create|go ahead/i.test(message.text) &&
-    message.toolCalls.every((tc) => tc.name !== "create_shipment");
+    toolCalls.every((tc) => tc?.name !== "create_shipment");
 
   return (
     <div style={{ marginBottom: 24 }}>
-      {message.toolCalls.map((tc, i) => <ToolCard key={i} tc={tc} />)}
+      {toolCalls.map((tc, i) => <ToolCard key={i} tc={tc} />)}
       {message.text && <MdText text={message.text} />}
-      {!message.text && message.toolCalls.length === 0 && (
+      {!message.text && toolCalls.length === 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: th.inkMuted }}>
           <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Thinking…
         </div>
@@ -1250,7 +1264,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                 <div style={{ fontSize: 14, fontWeight: 500, color: th.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
                 {p.code && <div style={{ fontSize: 11, color: th.inkMuted }}>{p.code}</div>}
               </div>
-              <div style={{ display: "flex", gap: 4 }}>{p.roles.slice(0, 2).map((role) => <Badge key={role} variant="neutral">{role}</Badge>)}</div>
+              <div style={{ display: "flex", gap: 4 }}>{(p.roles ?? []).slice(0, 2).map((role) => <Badge key={role} variant="neutral">{role}</Badge>)}</div>
             </Link>
           ))}
         <ViewInAppLink href="/app/parties" label="parties" />

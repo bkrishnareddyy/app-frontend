@@ -1,10 +1,11 @@
 import { getAccountContext } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { ChatClient } from "./ChatClient";
 
 export default async function ChatPage() {
   const ctx = await getAccountContext();
   if (!ctx) {
-    return null;
+    redirect("/sign-in");
   }
 
   return (
@@ -17,3 +18,4 @@ export default async function ChatPage() {
     />
   );
 }
+
