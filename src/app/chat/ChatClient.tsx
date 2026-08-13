@@ -245,8 +245,23 @@ async function deleteSessionInDb(id: string): Promise<void> {
   await fetch(`/api/assistant/chats/${id}`, { method: "DELETE" }).catch(() => { /* best-effort */ });
 }
 
+function safeRandomUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      /* fallback below */
+    }
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function freshSession(): ChatSession {
-  return { id: `local-${crypto.randomUUID()}`, title: "New chat", createdAt: Date.now(), messages: [], history: [], persisted: false };
+  return { id: `local-${safeRandomUUID()}`, title: "New chat", createdAt: Date.now(), messages: [], history: [], persisted: false };
 }
 
 function relativeTime(ts: number): string {
@@ -259,7 +274,7 @@ function relativeTime(ts: number): string {
   return d === 1 ? "Yesterday" : `${d}d ago`;
 }
 
-const nextId = () => `m-${crypto.randomUUID()}`;
+const nextId = () => `m-${safeRandomUUID()}`;
 
 // ── Markdown ──────────────────────────────────────────────────────────────────
 // Small hand-rolled renderer covering just what the assistant is instructed
@@ -788,7 +803,7 @@ export function ChatClient({ context }: ChatClientProps) {
       form.append("shipmentId", shipmentId);
       const res = await fetch("/api/documents/upload", { method: "POST", body: form });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { await fail(data?.message ?? data?.error ?? `Upload failed (${res.status})`); return; }
+      if (!res.ok) { await fail(data?.message ?? safeErrorMessage(data?.error) ?? `Upload failed (${res.status})`); return; }
 
       const documentId = data.documentId as string;
       const docType = data.docType as string | null;
@@ -1147,6 +1162,23 @@ function ViewInAppLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+function safeErrorMessage(err: unknown): string | null {
+  if (!err) return null;
+  if (typeof err === "string") return err;
+  if (typeof err === "object") {
+    const record = err as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+    if (typeof record.code === "string") return record.code;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return "An unknown error occurred";
+    }
+  }
+  return String(err);
+}
+
 function ToolCard({ tc }: { tc: ToolCallDisplay }) {
   const th = useTh();
 
@@ -1214,7 +1246,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
     if (!r?.success) return (
       <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: "#fca5a5" } as React.CSSProperties}>
         <Badge variant="danger">Failed to create</Badge>
-        <p style={{ fontSize: 14, color: th.ink, marginTop: 8 }}>{(r?.error as string) ?? "Could not create the shipment."}</p>
+        <p style={{ fontSize: 14, color: th.ink, marginTop: 8 }}>{safeErrorMessage(r?.error) ?? "Could not create the shipment."}</p>
       </Card>
     );
     return (
@@ -1330,7 +1362,7 @@ function UploadDocumentCard({ tc }: { tc: ToolCallDisplay }) {
     return (
       <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: "#fca5a5" } as React.CSSProperties}>
         <Badge variant="danger">Upload failed</Badge>
-        <p style={{ fontSize: 13, color: th.ink, marginTop: 8 }}>{r?.error ?? "Something went wrong."}</p>
+        <p style={{ fontSize: 13, color: th.ink, marginTop: 8 }}>{safeErrorMessage(r?.error) ?? "Something went wrong."}</p>
       </Card>
     );
   }
