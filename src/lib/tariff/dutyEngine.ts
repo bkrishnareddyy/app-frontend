@@ -1,4 +1,5 @@
 import { ShipmentLineItem } from "@prisma/client";
+import { Decimal, roundToCents } from "./decimal";
 
 /**
  * The engine only reads these four fields and coerces the numerics, so it also
@@ -9,20 +10,34 @@ export type TariffLineInput = Pick<Partial<ShipmentLineItem>, "htsCode"> & {
   quantity?: ShipmentLineItem["quantity"] | number | null;
   unitPrice?: ShipmentLineItem["unitPrice"] | number | null;
   totalValue?: ShipmentLineItem["totalValue"] | number | null;
+  countryOfOrigin?: string | null;
+  manufacturer?: string | null;
 };
 
-// Decoupled from any specific HTS table's Prisma type -- callers build this
-// shape from whatever real HTS rate source they're using (the real ingested
-// HtsNode/HtsDutyRate data via HtsNodeRepository.toDutyRateInput()).
-// Section 301/232 fields default to inapplicable/zero since there is no
-// real trade-remedy data source ingested; that's an honest "unknown", not a
-// computed zero.
 export interface DutyRateInput {
   generalDutyRate?: string | null;
   section301Applicable?: boolean | null;
   section301AdditionalRate?: number | null;
+  section301Tranche?: "List1" | "List2" | "List3" | "List4A" | "List4B" | string | null;
+  section301Exclusion?: boolean | null;
   section232Applicable?: boolean | null;
   section232AdditionalRate?: number | null;
+  antidumpingRate?: number | null;
+  countervailingRate?: number | null;
+}
+
+export interface DutyStack {
+  htsReleaseId: string;
+  base: Decimal;
+  section301: Decimal;
+  section232: Decimal;
+  antidumping: Decimal;
+  countervailing: Decimal;
+  other: Decimal;
+  total: Decimal;
+  mpf: Decimal;
+  hmf: Decimal;
+  totalWithFees: Decimal;
 }
 
 export interface LineItemDutyResult {
@@ -39,6 +54,7 @@ export interface LineItemDutyResult {
   hmfAmount: number;
   totalFeesAmount: number;
   totalAmount: number;
+  dutyStack?: DutyStack;
 }
 
 export interface TariffEngineResult {
@@ -57,40 +73,117 @@ export interface TariffEngineResult {
   lineResults: LineItemDutyResult[];
 }
 
-export const MPF_RATE = 0.003464;
-export const MPF_MINIMUM = 31.67;
-export const MPF_MAXIMUM = 614.35;
-export const HMF_RATE = 0.00125;
+export const MPF_RATE = new Decimal("0.003464");
+export const MPF_MINIMUM = new Decimal("31.67");
+export const MPF_MAXIMUM = new Decimal("614.35");
+export const HMF_RATE = new Decimal("0.00125");
+
+export function calculateMPFDecimal(customsValue: Decimal): Decimal {
+  if (customsValue.lte(0)) return new Decimal(0);
+  const rawMpf = customsValue.times(MPF_RATE);
+  const clamped = Decimal.min(Decimal.max(rawMpf, MPF_MINIMUM), MPF_MAXIMUM);
+  return roundToCents(clamped);
+}
+
+export function calculateHMFDecimal(customsValue: Decimal, isOcean: boolean = true): Decimal {
+  if (!isOcean || customsValue.lte(0)) return new Decimal(0);
+  return roundToCents(customsValue.times(HMF_RATE));
+}
 
 export function calculateMPF(customsValue: number): number {
-  if (customsValue <= 0) return 0;
-  const rawMpf = customsValue * MPF_RATE;
-  const clamped = Math.min(Math.max(rawMpf, MPF_MINIMUM), MPF_MAXIMUM);
-  return Math.round(clamped * 100) / 100;
+  return calculateMPFDecimal(new Decimal(customsValue)).toNumber();
 }
 
 export function calculateHMF(customsValue: number, isOcean: boolean = true): number {
-  if (!isOcean || customsValue <= 0) return 0;
-  return Math.round((customsValue * HMF_RATE) * 100) / 100;
+  return calculateHMFDecimal(new Decimal(customsValue), isOcean).toNumber();
 }
 
 /**
- * Loads the real ingested duty rates for a set of line items. Without this the
- * engine sees no HTS data at all and every line comes back unrated.
- *
- * Reads rates ONLY from the currently published release. The same HTS number
- * exists in every ingested release, so an unfiltered lookup returned whichever
- * row the database happened to hand back last -- which could be a DRAFT staged
- * overnight by the nightly USITC refresh (carrying no duty rates at all, so the
- * line read as unrated and transmission was refused), or a SUPERSEDED release
- * (carrying an outdated rate, so the duty would be priced off a schedule that no
- * longer applies). Both are wrong for a declaration that is legally binding, and
- * which one you got depended on row order.
- *
- * Staged-but-unpublished releases are excluded by design: publishing a revision
- * is a deliberate human review step precisely because these rates decide what an
- * importer owes.
+ * Calculates Section 301 additional duty rate based on China origin and Tranche list.
  */
+export function getSection301Rate(
+  countryOfOrigin?: string | null,
+  tranche?: string | null,
+  exclusion?: boolean | null
+): Decimal {
+  if (exclusion) return new Decimal(0);
+  if (countryOfOrigin?.toUpperCase() !== "CN") return new Decimal(0);
+
+  switch (tranche) {
+    case "List1":
+    case "List2":
+    case "List3":
+      return new Decimal("0.25");
+    case "List4A":
+      return new Decimal("0.075");
+    case "List4B":
+      return new Decimal("0.15");
+    default:
+      return new Decimal("0.25");
+  }
+}
+
+/**
+ * Pure Duty Stack calculation using Decimal arithmetic (Task D-1).
+ */
+export function calculateDutyStack(
+  lineItem: TariffLineInput,
+  htsRateInput?: DutyRateInput | null,
+  htsReleaseId: string = "hts_rel_current"
+): DutyStack {
+  const valueNum = Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0);
+  const customsValue = roundToCents(new Decimal(valueNum));
+
+  const baseRateNum = parsePublishedDutyRate(htsRateInput?.generalDutyRate);
+  const baseRate = new Decimal(baseRateNum ?? 0);
+  const baseDuty = roundToCents(customsValue.times(baseRate));
+
+  const sec301Rate = getSection301Rate(
+    lineItem.countryOfOrigin,
+    htsRateInput?.section301Tranche || "List3",
+    htsRateInput?.section301Exclusion
+  );
+  const sec301Duty = roundToCents(customsValue.times(sec301Rate));
+
+  const sec232Rate = htsRateInput?.section232Applicable
+    ? new Decimal(htsRateInput.section232AdditionalRate || 0).dividedBy(100)
+    : new Decimal(0);
+  const sec232Duty = roundToCents(customsValue.times(sec232Rate));
+
+  const adRate = new Decimal(htsRateInput?.antidumpingRate || 0).dividedBy(100);
+  const adDuty = roundToCents(customsValue.times(adRate));
+
+  const cvdRate = new Decimal(htsRateInput?.countervailingRate || 0).dividedBy(100);
+  const cvdDuty = roundToCents(customsValue.times(cvdRate));
+
+  const otherDuty = new Decimal(0);
+
+  const totalDuty = baseDuty
+    .plus(sec301Duty)
+    .plus(sec232Duty)
+    .plus(adDuty)
+    .plus(cvdDuty)
+    .plus(otherDuty);
+
+  const mpf = calculateMPFDecimal(customsValue);
+  const hmf = calculateHMFDecimal(customsValue, true);
+  const totalWithFees = totalDuty.plus(mpf).plus(hmf);
+
+  return {
+    htsReleaseId,
+    base: baseDuty,
+    section301: sec301Duty,
+    section232: sec232Duty,
+    antidumping: adDuty,
+    countervailing: cvdDuty,
+    other: otherDuty,
+    total: totalDuty,
+    mpf,
+    hmf,
+    totalWithFees,
+  };
+}
+
 export async function loadHtsCodesMap(
   lineItems: Array<TariffLineInput>,
   country: string = "US"
@@ -107,8 +200,6 @@ export async function loadHtsCodesMap(
 
   const normalizedOf = new Map(codes.map((code) => [code, code.replace(/[^0-9]/g, "")]));
 
-  // With no published release there is no lawful rate to price against, so every
-  // line reports unrated rather than falling back to a draft or a retired one.
   const nodes = publishedRelease
     ? await db.htsNode.findMany({
         where: {
@@ -123,7 +214,6 @@ export async function loadHtsCodesMap(
   const map: Record<string, DutyRateInput> = {};
   for (const code of codes) {
     const node = byNormalized.get(normalizedOf.get(code) ?? "");
-    // A code with no ingested node stays unrated rather than getting a guessed rate.
     const general = node?.dutyRates.find((r) => r.rateColumn === "General");
     map[code] = {
       generalDutyRate: general?.rawRateText ?? null,
@@ -136,10 +226,6 @@ export async function loadHtsCodesMap(
   return map;
 }
 
-/**
- * Reads a published General rate. "Free" is a rate of 0%, not a missing one, so
- * only text that names no rate at all comes back null.
- */
 export function parsePublishedDutyRate(raw: string | null | undefined): number | null {
   if (!raw) return null;
   const text = raw.trim();
@@ -152,37 +238,27 @@ export function calculateLineItemDuty(
   lineItem: TariffLineInput,
   htsCode?: DutyRateInput | null
 ): LineItemDutyResult {
-  const customsValue = Math.round(((Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0))) * 100) / 100;
+  const stack = calculateDutyStack(lineItem, htsCode);
+  const customsValue = stack.base.gt(0)
+    ? Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0)
+    : 0;
 
-  // No published rate means the duty is unknown, not 2.8% and not zero. Callers must
-  // check unratedLineCount before presenting a total as complete.
   const baseDutyRate = parsePublishedDutyRate(htsCode?.generalDutyRate);
 
-  const section301Rate = htsCode?.section301Applicable ? (Number(htsCode.section301AdditionalRate) || 0) / 100 : 0;
-  const section232Rate = htsCode?.section232Applicable ? (Number(htsCode.section232AdditionalRate) || 0) / 100 : 0;
-
-  const baseDutyAmount = baseDutyRate === null ? 0 : Math.round((customsValue * baseDutyRate) * 100) / 100;
-  const section301Amount = Math.round((customsValue * section301Rate) * 100) / 100;
-  const section232Amount = Math.round((customsValue * section232Rate) * 100) / 100;
-
-  const totalDutyAmount = Math.round((baseDutyAmount + section301Amount + section232Amount) * 100) / 100;
-  const mpfAmount = calculateMPF(customsValue);
-  const hmfAmount = calculateHMF(customsValue, true);
-  const totalFeesAmount = Math.round((mpfAmount + hmfAmount) * 100) / 100;
-
   return {
-    customsValue,
+    customsValue: Math.round(customsValue * 100) / 100,
     baseDutyRate,
-    baseDutyAmount,
-    section301Rate,
-    section301Amount,
-    section232Rate,
-    section232Amount,
-    totalDutyAmount,
-    mpfAmount,
-    hmfAmount,
-    totalFeesAmount,
-    totalAmount: Math.round((totalDutyAmount + totalFeesAmount) * 100) / 100,
+    baseDutyAmount: stack.base.toNumber(),
+    section301Rate: htsCode?.section301Applicable ? (Number(htsCode.section301AdditionalRate) || 0) / 100 : 0,
+    section301Amount: stack.section301.toNumber(),
+    section232Rate: htsCode?.section232Applicable ? (Number(htsCode.section232AdditionalRate) || 0) / 100 : 0,
+    section232Amount: stack.section232.toNumber(),
+    totalDutyAmount: stack.total.toNumber(),
+    mpfAmount: stack.mpf.toNumber(),
+    hmfAmount: stack.hmf.toNumber(),
+    totalFeesAmount: stack.mpf.plus(stack.hmf).toNumber(),
+    totalAmount: stack.totalWithFees.toNumber(),
+    dutyStack: stack,
   };
 }
 

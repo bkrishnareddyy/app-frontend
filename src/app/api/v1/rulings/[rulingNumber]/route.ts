@@ -1,18 +1,31 @@
 import { NextResponse } from "next/server";
 import { handleApiError } from "@/lib/api/error";
 import { withPublicRoute } from "@/lib/api/auth-guards";
-import { CrossIngestionService } from "@/modules/regulatory/crossIngestionService";
+import { db } from "@/lib/db";
 
 export const GET = withPublicRoute<{ rulingNumber: string }>(async ({ params }) => {
   try {
     const { rulingNumber } = params;
-    const verification = await CrossIngestionService.verifyCitation(rulingNumber);
 
-    if (!verification.verified) {
-      return NextResponse.json({ error: verification.reason, verified: false }, { status: 404 });
+    const ruling = await db.ruling.findUnique({
+      where: { rulingNumber },
+      include: {
+        fragments: { orderBy: { id: "asc" } },
+        htsReferences: true,
+        fromRelations: {
+          include: { toRuling: { select: { rulingNumber: true, title: true } } },
+        },
+      },
+    });
+
+    if (!ruling) {
+      return NextResponse.json(
+        { error: `Ruling '${rulingNumber}' not found in verified CBP CROSS database.` },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json(verification);
+    return NextResponse.json({ ruling });
   } catch (error: unknown) {
     return handleApiError(error);
   }

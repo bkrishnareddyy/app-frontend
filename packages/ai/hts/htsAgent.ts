@@ -1,29 +1,61 @@
-export interface HTSClassificationResult {
-  htsCode: string | null;
-  dutyRate: string | null;
-  description: string | null;
-  /** Null unless a classifier actually ran; an unclassified line has no confidence. */
-  confidenceScore: number | null;
-  reasoning: string | null;
-  /** Why the line was not classified. Null when a classifier genuinely ran. */
-  unavailableReason: string | null;
+import { GriRulesEngine, type SubjectInput, type HtsCandidateLookup } from "../../../src/modules/classification/griRulesEngine";
+
+export interface HtsRulingCitation {
+  rulingNumber: string;
+  relevance: string;
 }
 
-/**
- * No classifier is wired up in this build. This previously returned
- * 8481.20.00.00 at 0.96 confidence with invented reasoning for every product.
- * src/modules/agents/htsClassificationAgent.ts is the real implementation.
- */
+export interface HtsGriStep {
+  rule: string;
+  applied: boolean;
+  reasoning: string;
+}
+
+export interface HtsProposal {
+  htsCode: string;
+  description: string;
+  confidence: number;
+  griSteps: HtsGriStep[];
+  rulingCitations: HtsRulingCitation[];
+}
+
+export interface HtsAgentOutput {
+  proposals: HtsProposal[];
+}
+
+export interface HtsAgentInput extends SubjectInput {
+  rulingCitations?: HtsRulingCitation[];
+}
+
 export class HTSClassificationAgent {
-  static async classifyProduct(description: string, origin?: string): Promise<HTSClassificationResult> {
-    const subject = description.trim() ? `"${description.trim()}"` : "this line item";
-    return {
-      htsCode: null,
-      dutyRate: null,
-      description: null,
-      confidenceScore: null,
-      reasoning: null,
-      unavailableReason: `No HTS classifier is configured, so ${subject}${origin ? ` (origin ${origin})` : ""} has not been classified.`,
-    };
+  static async classifyProduct(
+    input: HtsAgentInput,
+    releaseId?: string,
+    lookup?: HtsCandidateLookup
+  ): Promise<HtsAgentOutput> {
+    const result = await GriRulesEngine.evaluate(input, releaseId, lookup);
+
+    if (!result.candidateHtsCode || !result.candidateNodeId) {
+      return { proposals: [] };
+    }
+
+    const proposals: HtsProposal[] = [
+      {
+        htsCode: result.candidateHtsCode,
+        description: result.summary,
+        confidence: result.calibratedConfidence,
+        griSteps: result.griSteps.map((step) => ({
+          rule: step.griRule,
+          applied: step.outcome === "APPLIED",
+          reasoning: step.conclusion,
+        })),
+        rulingCitations: input.rulingCitations ?? [],
+      },
+    ];
+
+    return { proposals };
   }
 }
+
+// Legacy compat export used by older imports
+export type { HtsAgentOutput as HTSClassificationResult };

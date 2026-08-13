@@ -28,8 +28,10 @@ import { extractedCurrency } from "@/modules/documents/extractedCurrency";
 import { DocumentWorkspacePanel } from "./DocumentWorkspacePanel";
 import { ShipmentTabsPanel } from "./ShipmentTabsPanel";
 import { DeadlineRail } from "@/components/deadlines/DeadlineRail";
+import { computeReadinessBreakdown } from "@/lib/shipmentReadiness";
 import type { ExtractedLineItem } from "./workspaceTypes";
 import type { CategoryDetail } from "./PreFilingReadiness";
+import type { ReadinessBreakdown } from "@/lib/shipmentReadiness";
 
 /**
  * Sums the quantities on a document's extracted line items.
@@ -76,9 +78,8 @@ export default async function ShipmentWorkspacePage(props: {
     isEnterpriseAdmin ||
     (context.roleNames.includes("PLANNER") && shipment.assignedBrokerId === context.userId);
 
-  // None of these three depend on each other, and each database round-trip
-  // costs about a second against the remote pooler.
-  const [canonical, clients, fieldApprovals] = await Promise.all([
+  // None of these four depend on each other; run them in parallel.
+  const [canonical, clients, fieldApprovals, reconciliationIssues] = await Promise.all([
     CanonicalShipmentService.getCanonicalState(shipment.id),
     canEditClient
       ? db.client.findMany({
@@ -86,13 +87,16 @@ export default async function ShipmentWorkspacePage(props: {
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
-    // Real per-field approval provenance ("who confirmed this value, and
-    // when") -- see FieldApproval in schema.prisma. Ordered desc so the first
-    // entry found for a given key (whether keyed by fieldKey alone or by
-    // documentId+fieldKey) is always the latest.
+    // Real per-field approval provenance — ordered desc so the first entry
+    // found for a given key is always the latest.
     db.fieldApproval.findMany({
       where: { shipmentId: shipment.id },
       orderBy: { approvedAt: "desc" },
+    }),
+    // Open cross-document reconciliation conflicts for the CONFLICT drawer cards.
+    db.reconciliationIssue.findMany({
+      where: { shipmentId: shipment.id, accountId: context.accountId, status: "Open" },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
 
@@ -899,7 +903,8 @@ export default async function ShipmentWorkspacePage(props: {
   const missingDocExceptionsCount = missingDocTypes.filter(
     (type) => !activeExceptions.some((ex) => ex.description?.toLowerCase().includes(type.toLowerCase()))
   ).length;
-  const totalActionableExceptionsCount = activeExceptions.length + missingDocExceptionsCount;
+  const blockingReconciliationCount = reconciliationIssues.filter((i) => i.severity === "Critical").length;
+  const totalActionableExceptionsCount = activeExceptions.length + missingDocExceptionsCount + blockingReconciliationCount;
   const displayBlockerCount = Math.max(blockedCount, totalActionableExceptionsCount);
 
   let overallStatusText = "Ready to File";
@@ -923,6 +928,29 @@ export default async function ShipmentWorkspacePage(props: {
     overallStatusSubtext = "All pre-filing compliance checks passed cleanly.";
     overallStatusType = "READY";
   }
+
+  const avgExtractionConfidence =
+    documents.length === 0
+      ? null
+      : documents.reduce((sum, d) => sum + (d.confidence ?? 0), 0) / documents.length;
+
+  const readinessBreakdown: ReadinessBreakdown = computeReadinessBreakdown({
+    documents: documents.map((d) => ({ docType: d.docType ?? "", status: d.status ?? "" })),
+    lineItems: displayLineItems.map((li) => ({
+      htsCode: li.htsCode,
+      countryOfOrigin: li.countryOfOrigin,
+      quantity: li.quantity,
+      unitPrice: li.unitPrice,
+      status: li.status,
+    })),
+    exceptionItems: activeExceptions.map((e) => ({
+      status: e.status ?? "Open",
+      severity: e.severity ?? "Medium",
+      blocking: e.severity === "Critical" || e.severity === "High",
+    })),
+    avgExtractionConfidence: avgExtractionConfidence ?? undefined,
+    blockingReconciliationIssues: blockingReconciliationCount,
+  });
 
   // Pre-built once here (not inline in the ternary they replaced) so
   // `ShipmentTabsPanel` -- a Client Component -- can hold which tab is active
@@ -1164,7 +1192,50 @@ export default async function ShipmentWorkspacePage(props: {
             />
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-wrap gap-y-2">
+            {/* Health status badge — derived by CanonicalShipmentService or last reconciliation. */}
+            {shipment.healthStatus && (
+              <span
+                title={
+                  shipment.healthStatus === "Critical"
+                    ? "Blocking exceptions or reconciliation conflicts prevent filing"
+                    : shipment.healthStatus === "At Risk"
+                      ? "Open exceptions or missing data require attention before filing"
+                      : "No blocking issues detected"
+                }
+                className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border cursor-help ${
+                  shipment.healthStatus === "Critical"
+                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                    : shipment.healthStatus === "At Risk"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                }`}
+              >
+                {shipment.healthStatus}
+              </span>
+            )}
+
+            {/* Readiness score — progress bar with percentage. */}
+            {shipment.readinessScore !== null && shipment.readinessScore !== undefined && (
+              <div className="flex items-center space-x-2" title={`Filing readiness: ${shipment.readinessScore}%`}>
+                <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      shipment.readinessScore >= 80
+                        ? "bg-emerald-500"
+                        : shipment.readinessScore >= 50
+                          ? "bg-amber-500"
+                          : "bg-rose-500"
+                    }`}
+                    style={{ width: `${shipment.readinessScore}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-extrabold text-ink-muted tabular-nums">
+                  {shipment.readinessScore}%
+                </span>
+              </div>
+            )}
+
             {metrics.isReadyForFiling ? (
               <Link
                 href={`/app/filing?shipmentId=${shipment.id}`}
@@ -1198,6 +1269,7 @@ export default async function ShipmentWorkspacePage(props: {
             subtext: overallStatusSubtext,
             type: overallStatusType,
           }}
+          readinessBreakdown={readinessBreakdown}
         />
 
         {/* Compliance Deadline Rail — every statutory and commercial clock for this
@@ -1218,6 +1290,7 @@ export default async function ShipmentWorkspacePage(props: {
             lineItems={displayLineItems}
             missingDocumentTypes={missingDocTypes}
             documentFieldSummaries={documentFieldSummaries}
+            reconciliationIssues={reconciliationIssues}
           />
         </div>
       </div>

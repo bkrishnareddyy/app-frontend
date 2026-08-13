@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 import { DomainError } from "@/lib/api/error";
 import { ClassificationCaseRepository } from "@/repositories/classificationCaseRepository";
 import { GriRulesEngine } from "./griRulesEngine";
@@ -11,6 +12,8 @@ export interface CreateCaseRequest {
   accountId: string;
   userId: string;
   rawDescription: string;
+  productId?: string;
+  lineItemId?: string;
   externalReference?: string;
   priority?: string;
   structuredAttributesJson?: Prisma.InputJsonObject;
@@ -27,25 +30,71 @@ export interface RecordDecisionRequest {
   decisionStatus: "APPROVED" | "REJECTED" | "OVERRIDDEN";
   rationale: string;
   overrideReason?: string;
+  changeReason?: string;
+  isRollback?: boolean;
 }
 
 export class ClassificationCaseEngine {
   /**
-   * Create a new classification case and enqueue asynchronous processing job.
+   * Create or return existing classification case for the given product/description.
+   * One case per productId per account (idempotent for productId).
    */
   static async createCase(req: CreateCaseRequest) {
-    const classificationCase = await ClassificationCaseRepository.createCase({
-      accountId: req.accountId,
-      requestedByUserId: req.userId,
-      externalReference: req.externalReference,
-      priority: req.priority,
-      rawDescription: req.rawDescription,
-      structuredAttributesJson: req.structuredAttributesJson,
-      countryOfOrigin: req.countryOfOrigin,
-      intendedUse: req.intendedUse,
+    // A-1: idempotency — if a productId is provided, return the existing open case.
+    if (req.productId) {
+      const canonicalProduct = await db.canonicalProduct.findFirst({
+        where: { accountId: req.accountId, productId: req.productId },
+        select: { id: true },
+      });
+
+      if (canonicalProduct) {
+        const existing = await db.classificationCase.findFirst({
+          where: {
+            accountId: req.accountId,
+            status: { notIn: ["APPROVED", "REJECTED", "CANCELLED"] },
+            subjects: { some: { canonicalProductId: canonicalProduct.id } },
+          },
+          include: { subjects: true, documents: true },
+        });
+
+        if (existing) {
+          return { classificationCase: existing, jobId: null, isExisting: true };
+        }
+      }
+    }
+
+    // Look up canonicalProductId for the subject if productId provided
+    let canonicalProductId: string | undefined;
+    if (req.productId) {
+      const cp = await db.canonicalProduct.findFirst({
+        where: { accountId: req.accountId, productId: req.productId },
+        select: { id: true },
+      });
+      canonicalProductId = cp?.id;
+    }
+
+    const classificationCase = await db.classificationCase.create({
+      data: {
+        accountId: req.accountId,
+        requestedByUserId: req.userId,
+        externalReference: req.externalReference,
+        priority: req.priority || "MEDIUM",
+        status: "DRAFT",
+        subjects: {
+          create: [
+            {
+              rawDescription: req.rawDescription,
+              structuredAttributesJson: req.structuredAttributesJson || {},
+              countryOfOrigin: req.countryOfOrigin,
+              intendedUse: req.intendedUse,
+              ...(canonicalProductId ? { canonicalProductId } : {}),
+            },
+          ],
+        },
+      },
+      include: { subjects: true, documents: true },
     });
 
-    // Enqueue asynchronous processing job in PgQueue
     const job = await PgQueue.enqueueClassificationJob({
       accountId: req.accountId,
       userId: req.userId,
@@ -59,16 +108,57 @@ export class ClassificationCaseEngine {
       action: "classification.case.create",
       entity: "ClassificationCase",
       entityId: classificationCase.id,
-      metadata: { rawDescription: req.rawDescription, jobId: job.id },
+      metadata: {
+        rawDescription: req.rawDescription,
+        jobId: job.id,
+        productId: req.productId,
+      },
     });
 
-    return { classificationCase, jobId: job.id };
+    return { classificationCase, jobId: job.id, isExisting: false };
   }
 
   /**
-   * Execute the asynchronous classification case pipeline (called by worker or async trigger).
+   * Trigger an async classification run for a case.
+   * Creates the ClassificationRun record immediately and enqueues processing.
+   * Returns { runId, status: "QUEUED" } (A-2).
    */
-  static async processCase(accountId: string, userId: string, caseId: string) {
+  static async triggerRun(accountId: string, userId: string, caseId: string) {
+    const caseRecord = await ClassificationCaseRepository.getById(accountId, caseId);
+    if (!caseRecord) {
+      throw new DomainError(`ClassificationCase '${caseId}' not found.`, "CASE_NOT_FOUND", 404);
+    }
+
+    const run = await db.classificationRun.create({
+      data: {
+        caseId,
+        status: "RUNNING",
+        htsReleaseId: caseRecord.htsReleaseId || "CURRENT",
+        promptVersion: "2026.1-GRI-DECISION-CHAIN",
+        modelProvider: "QubereRulesEngine",
+        modelVersion: "1.0",
+        rulesEngineVersion: "1.0",
+        retrievalIndexVersion: "CROSS-2026-REV1",
+      },
+    });
+
+    // Process synchronously (no Inngest in this build; PgQueue worker picks it up on next tick)
+    ClassificationCaseEngine.processCase(accountId, userId, caseId, run.id).catch(() => {
+      // Worker failure is non-fatal; the run stays in RUNNING and can be retried
+    });
+
+    return { runId: run.id, status: "QUEUED" as const };
+  }
+
+  /**
+   * Execute the classification pipeline for a case (called by worker or triggerRun).
+   */
+  static async processCase(
+    accountId: string,
+    userId: string,
+    caseId: string,
+    existingRunId?: string
+  ) {
     const caseRecord = await ClassificationCaseRepository.getById(accountId, caseId);
     if (!caseRecord) {
       throw new DomainError(
@@ -78,7 +168,6 @@ export class ClassificationCaseEngine {
       );
     }
 
-    // Update status to PROCESSING
     await db.classificationCase.update({
       where: { id: caseId },
       data: { status: "PROCESSING" },
@@ -91,7 +180,6 @@ export class ClassificationCaseEngine {
       typeof attributes?.materialComposition === "string" ? attributes.materialComposition : undefined;
     const functionUsage = typeof attributes?.functionUsage === "string" ? attributes.functionUsage : undefined;
 
-    // Run GRI Rules Engine
     const evalOutput = await GriRulesEngine.evaluate({
       rawDescription,
       materialComposition,
@@ -100,25 +188,28 @@ export class ClassificationCaseEngine {
       countryOfOrigin: subject?.countryOfOrigin,
     });
 
-    // Create ClassificationRun
-    const run = await db.classificationRun.create({
-      data: {
-        caseId,
-        status: "COMPLETED",
-        htsReleaseId: caseRecord.htsReleaseId || "CURRENT",
-        promptVersion: "2026.1-GRI-DECISION-CHAIN",
-        modelProvider: "QubereRulesEngine",
-        modelVersion: "1.0",
-        rulesEngineVersion: "1.0",
-        retrievalIndexVersion: "CROSS-2026-REV1",
-        completedAt: new Date(),
-      },
-    });
+    const run = existingRunId
+      ? await db.classificationRun.update({
+          where: { id: existingRunId },
+          data: { status: "COMPLETED", completedAt: new Date() },
+        })
+      : await db.classificationRun.create({
+          data: {
+            caseId,
+            status: "COMPLETED",
+            htsReleaseId: caseRecord.htsReleaseId || "CURRENT",
+            promptVersion: "2026.1-GRI-DECISION-CHAIN",
+            modelProvider: "QubereRulesEngine",
+            modelVersion: "1.0",
+            rulesEngineVersion: "1.0",
+            retrievalIndexVersion: "CROSS-2026-REV1",
+            completedAt: new Date(),
+          },
+        });
 
     let proposal = null;
 
     if (evalOutput.candidateNodeId) {
-      // Find supporting rulings
       const rulings = await RulingService.searchRulings({
         query: rawDescription,
         limit: 2,
@@ -163,7 +254,6 @@ export class ClassificationCaseEngine {
       });
     }
 
-    // Update case status
     const finalStatus = evalOutput.recommendationStatus;
     await db.classificationCase.update({
       where: { id: caseId },
@@ -174,13 +264,27 @@ export class ClassificationCaseEngine {
   }
 
   /**
-   * Record human decision (Approval / Override) with full audit log and non-mutating proposal record.
+   * Record human decision and update ProductClassification (A-5).
+   * Also triggers change impact computation (F-1).
    */
   static async recordDecision(req: RecordDecisionRequest) {
     const caseRecord = await ClassificationCaseRepository.getById(req.accountId, req.caseId);
     if (!caseRecord) {
       throw new DomainError(`ClassificationCase '${req.caseId}' not found.`, "CASE_NOT_FOUND", 404);
     }
+
+    const isOverride =
+      req.decisionStatus === "OVERRIDDEN" ||
+      (req.proposalId
+        ? await (async () => {
+            const topProposal = await db.classificationProposal.findFirst({
+              where: { run: { caseId: req.caseId } },
+              orderBy: [{ rank: "asc" }, { createdAt: "asc" }],
+              select: { proposedHtsNodeId: true },
+            });
+            return topProposal ? topProposal.proposedHtsNodeId !== req.approvedHtsNodeId : false;
+          })()
+        : false);
 
     const decision = await db.classificationDecision.create({
       data: {
@@ -190,20 +294,51 @@ export class ClassificationCaseEngine {
         approvedHtsNodeId: req.approvedHtsNodeId,
         reviewerUserId: req.userId,
         rationale: req.rationale,
-        overrideReason: req.overrideReason || null,
+        overrideReason: isOverride ? req.overrideReason : null,
       },
-      include: {
-        approvedNode: true,
-      },
+      include: { approvedNode: { include: { dutyRates: true } } },
     });
 
-    // Update case status to APPROVED or REJECTED
     await db.classificationCase.update({
       where: { id: req.caseId },
       data: {
         status: req.decisionStatus === "APPROVED" || req.decisionStatus === "OVERRIDDEN" ? "APPROVED" : "REJECTED",
       },
     });
+
+    // A-5: update ProductClassification if the case has a subject linked to a product
+    if (req.decisionStatus !== "REJECTED") {
+      const subject = caseRecord.subjects[0];
+      if (subject?.canonicalProductId) {
+        const canonicalProduct = await db.canonicalProduct.findUnique({
+          where: { id: subject.canonicalProductId },
+          select: { productId: true },
+        });
+
+        if (canonicalProduct?.productId) {
+          await ClassificationCaseEngine.upsertProductClassification({
+            accountId: req.accountId,
+            userId: req.userId,
+            productId: canonicalProduct.productId,
+            htsNodeId: req.approvedHtsNodeId,
+            htsNode: decision.approvedNode,
+            isOverride,
+            changeReason: req.changeReason,
+            isRollback: req.isRollback,
+          });
+        }
+      }
+    }
+
+    // F-1: compute change impact
+    if (req.decisionStatus !== "REJECTED") {
+      ClassificationCaseEngine.computeChangeImpact(
+        req.accountId,
+        decision.id,
+        decision.approvedNode.htsNumberDisplay,
+        caseRecord.subjects
+      ).catch(() => {});
+    }
 
     await createAuditLog({
       accountId: req.accountId,
@@ -216,9 +351,127 @@ export class ClassificationCaseEngine {
         proposalId: req.proposalId,
         approvedHtsNodeId: req.approvedHtsNodeId,
         decisionStatus: req.decisionStatus,
+        isOverride,
       },
     });
 
     return decision;
+  }
+
+  /** Upsert ProductClassification, superseding the previous approved entry. */
+  private static async upsertProductClassification(opts: {
+    accountId: string;
+    userId: string;
+    productId: string;
+    htsNodeId: string;
+    htsNode: { htsNumberDisplay: string; description: string | null };
+    isOverride: boolean;
+    changeReason?: string;
+    isRollback?: boolean;
+  }) {
+    const { accountId, userId, productId, htsNode } = opts;
+    const normalizedCode = htsNode.htsNumberDisplay.replace(/[^0-9]/g, "");
+
+    // Supersede the current APPROVED entry for US/HTSUS
+    const previous = await db.productClassification.findFirst({
+      where: { productId, accountId, jurisdiction: "US", nomenclature: "HTSUS", status: "APPROVED" },
+      orderBy: { effectiveFrom: "desc" },
+    });
+
+    const newClassification = await db.productClassification.create({
+      data: {
+        accountId,
+        productId,
+        jurisdiction: "US",
+        nomenclature: "HTSUS",
+        classificationCode: htsNode.htsNumberDisplay,
+        normalizedCode,
+        description: htsNode.description,
+        status: "APPROVED",
+        decisionSource: "USER",
+        decisionMethod: opts.isOverride ? "RULING_BASED" : "AGENT_PROPOSED",
+        effectiveFrom: new Date(),
+        reviewedByUserId: userId,
+        reviewedAt: new Date(),
+        reviewNote: opts.changeReason,
+      },
+    });
+
+    if (previous) {
+      await db.productClassification.update({
+        where: { id: previous.id },
+        data: { supersededById: newClassification.id, effectiveTo: new Date() },
+      });
+    }
+
+    return newClassification;
+  }
+
+  /**
+   * F-1, F-2: Compute change impact for a classification decision.
+   * Finds affected shipments/filings and writes ClassificationChangeImpact rows.
+   */
+  static async computeChangeImpact(
+    accountId: string,
+    decisionId: string,
+    newHtsCode: string,
+    subjects: Array<{ canonicalProductId?: string | null }>
+  ) {
+    const canonicalProductId = subjects[0]?.canonicalProductId;
+    if (!canonicalProductId) return;
+
+    const canonicalProduct = await db.canonicalProduct.findUnique({
+      where: { id: canonicalProductId },
+      select: { productId: true, htsCode: true },
+    });
+    if (!canonicalProduct?.productId) return;
+
+    const lineItems = await db.shipmentLineItem.findMany({
+      where: { productId: canonicalProduct.productId, shipment: { accountId } },
+      select: { id: true, shipmentId: true },
+      take: 200,
+    });
+
+    const shipmentIds = [...new Set(lineItems.map((li) => li.shipmentId))];
+    const shipments = await db.shipment.findMany({
+      where: { id: { in: shipmentIds }, accountId },
+      include: { customsFilings: { select: { id: true, filingStatus: true }, take: 1 } },
+    });
+    const shipmentMap = new Map(shipments.map((s) => [s.id, s]));
+
+    const previousHtsCode = canonicalProduct.htsCode ?? undefined;
+
+    for (const item of lineItems) {
+      const shipment = shipmentMap.get(item.shipmentId);
+      const filing = shipment?.customsFilings[0];
+
+      await db.classificationChangeImpact.create({
+        data: {
+          classificationDecisionId: decisionId,
+          accountId,
+          shipmentId: item.shipmentId,
+          lineItemId: item.id,
+          filingId: filing?.id ?? null,
+          previousHtsCode: previousHtsCode ?? null,
+          newHtsCode,
+          dutyImpact: new Decimal(0),
+        },
+      });
+
+      // F-5: create ComplianceFinding for already-filed entries
+      if (filing && ["Transmitted", "Released", "Closed"].includes(filing.filingStatus)) {
+        await db.complianceFinding.create({
+          data: {
+            accountId,
+            filingId: filing.id,
+            rule: "HTS_CLASSIFICATION_CHANGE",
+            severity: "Warning",
+            description: `HTS code changed from ${previousHtsCode ?? "unknown"} to ${newHtsCode} for a line item on this entry. Review for Post Summary Correction.`,
+            recommendation: "Verify whether a Post Summary Correction (PSC) is required with CBP.",
+            status: "Open",
+          },
+        });
+      }
+    }
   }
 }

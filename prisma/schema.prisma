@@ -125,8 +125,9 @@ model Account {
   agentExecutionRecords      AgentExecutionRecord[]
   shipmentStateRecords       ShipmentStateRecord[]
   pipelineJobs               PipelineJob[]
-  classificationCases        ClassificationCase[]
-  caseDocuments              CaseDocument[]
+  classificationCases          ClassificationCase[]
+  classificationChangeImpacts  ClassificationChangeImpact[]
+  caseDocuments                CaseDocument[]
   clients                    Client[]
   legalEntities              LegalEntity[]
   shipmentSequences          ShipmentSequence[]
@@ -422,10 +423,11 @@ model Shipment {
   agentDecisions          AgentDecision[]
   customsFilings          CustomsFiling[]
   exceptionItems          ExceptionItem[]
-  regulatoryUpdateImpacts RegulatoryUpdateImpact[]
-  reconciliationIssues    ReconciliationIssue[]
-  pipelineJobs            PipelineJob[]
-  facts                   Fact[]
+  regulatoryUpdateImpacts      RegulatoryUpdateImpact[]
+  classificationChangeImpacts  ClassificationChangeImpact[]
+  reconciliationIssues         ReconciliationIssue[]
+  pipelineJobs                 PipelineJob[]
+  facts                        Fact[]
   shipmentParties         ShipmentParty[]
   changeEvents            ShipmentChangeEvent[]
   eventLogs               ShipmentEventLog[]
@@ -524,6 +526,10 @@ model ShipmentDocument {
   confidence    Int? // extraction confidence, null until extraction runs
   status        String    @default("Received") // Received, Missing, Review Required, NEEDS_CLASSIFICATION
   required      Boolean   @default(true)
+  /// Display order within the shipment's document list. Lower = earlier.
+  /// Null until the broker reorders; documents without an explicit order
+  /// are sorted by createdAt (the existing default).
+  displayOrder  Int?
   extractedJson String?   @db.Text
   rawContent    String?   @db.Text
   createdAt     DateTime  @default(now())
@@ -701,6 +707,7 @@ model ShipmentLineItem {
   htsConfidence   Int? // model confidence, null until classified
   eccnCode        String?
   status          String   @default("Unreviewed") // Unreviewed, Valid, Review Required, Issue
+  dutyStack       Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -844,10 +851,11 @@ model CustomsFiling {
   refundOpportunities    RefundOpportunity[]
   postSummaryCorrections PostSummaryCorrection[]
   complianceAuditRecords ComplianceAuditRecord[]
-  complianceFindings     ComplianceFinding[]
-  valuationAssistsRecord ValuationAssistsRecord?
-  auditTimelines         AuditTimeline[]
-  snapshot               FilingSnapshot?
+  complianceFindings          ComplianceFinding[]
+  classificationChangeImpacts ClassificationChangeImpact[]
+  valuationAssistsRecord      ValuationAssistsRecord?
+  auditTimelines              AuditTimeline[]
+  snapshot                    FilingSnapshot?
   filingMessages         FilingMessage[]
 
   @@unique([accountId, entryNumber])
@@ -932,6 +940,23 @@ model OriginDetermination {
 
   @@index([shipmentLineItemId])
   @@index([tradeAgreementId])
+}
+
+model AdcvdOrder {
+  id                  String   @id @default(cuid())
+  caseNumber          String   @unique // e.g. A-570-601
+  title               String
+  petitioner          String?
+  respondentCountries String[] // ["CN", "VN"]
+  htsCodesInScope     String[] // ["8541.40.6025", "8541.40.6015"]
+  scopeLanguage       String   @db.Text
+  effectiveDate       DateTime
+  suspensionAgreement Boolean  @default(false)
+  status              String   @default("ACTIVE") // ACTIVE | REVOKED
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status])
 }
 
 model LandedCostScenario {
@@ -2307,12 +2332,34 @@ model ClassificationDecision {
   effectiveTo          DateTime?
   supersedesDecisionId String?
 
-  case         ClassificationCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  proposal     ClassificationProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
-  approvedNode HtsNode                 @relation(fields: [approvedHtsNodeId], references: [id])
+  case          ClassificationCase            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  proposal      ClassificationProposal?       @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  approvedNode  HtsNode                       @relation(fields: [approvedHtsNodeId], references: [id])
+  changeImpacts ClassificationChangeImpact[]
 
   @@index([caseId])
   @@index([approvedHtsNodeId])
+}
+
+model ClassificationChangeImpact {
+  id                       String                 @id @default(cuid())
+  classificationDecisionId String
+  classificationDecision   ClassificationDecision @relation(fields: [classificationDecisionId], references: [id], onDelete: Cascade)
+  accountId                String
+  account                  Account                @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId               String
+  shipment                 Shipment               @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  lineItemId               String?
+  filingId                 String?
+  filing                   CustomsFiling?         @relation(fields: [filingId], references: [id], onDelete: SetNull)
+  previousHtsCode          String?
+  newHtsCode               String
+  dutyImpact               Decimal                @default(0) @db.Decimal(14, 4)
+  createdAt                DateTime               @default(now())
+
+  @@index([classificationDecisionId])
+  @@index([shipmentId])
+  @@index([accountId])
 }
 
 model Fact {

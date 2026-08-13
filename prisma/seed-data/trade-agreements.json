@@ -1,0 +1,94 @@
+[
+  {
+    "code": "USMCA",
+    "name": "United States-Mexico-Canada Agreement",
+    "description": "Replaced NAFTA on July 1, 2020. Annex 4-B specific rules of origin by HTS chapter including tariff shift and RVC requirements.",
+    "effectiveDate": "2020-07-01T00:00:00.000Z",
+    "rulesByChapter": {
+      "84": {
+        "description": "Nuclear reactors, boilers, machinery and mechanical appliances",
+        "tariffShift": "CHAPTER_CHANGE",
+        "defaultRvcPct": 60,
+        "calculationMethod": "net cost"
+      },
+      "85": {
+        "description": "Electrical machinery and equipment and parts thereof",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 60,
+        "calculationMethod": "transaction value"
+      },
+      "87": {
+        "description": "Vehicles other than railway or tramway rolling-stock, and parts",
+        "tariffShift": "CHAPTER_CHANGE",
+        "defaultRvcPct": 75,
+        "calculationMethod": "net cost"
+      },
+      "39": {
+        "description": "Plastics and articles thereof",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
+      },
+      "73": {
+        "description": "Articles of iron or steel",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
+      },
+      "90": {
+        "description": "Optical, photographic, cinematographic, measuring, checking, precision, medical instruments",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 60,
+        "calculationMethod": "net cost"
+      }
+    }
+  },
+  {
+    "code": "CAFTA-DR",
+    "name": "Dominican Republic-Central America-United States Free Trade Agreement",
+    "description": "Comprehensive trade agreement between US, DR, Costa Rica, El Salvador, Guatemala, Honduras, and Nicaragua.",
+    "effectiveDate": "2006-03-01T00:00:00.000Z",
+    "rulesByChapter": {
+      "61": {
+        "description": "Articles of apparel and clothing accessories, knitted or crocheted",
+        "tariffShift": "YARN_FORWARD",
+        "defaultRvcPct": 50,
+        "calculationMethod": "net cost"
+      },
+      "62": {
+        "description": "Articles of apparel and clothing accessories, not knitted or crocheted",
+        "tariffShift": "YARN_FORWARD",
+        "defaultRvcPct": 50,
+        "calculationMethod": "net cost"
+      }
+    }
+  },
+  {
+    "code": "KORUS",
+    "name": "United States-Korea Free Trade Agreement",
+    "description": "Entered into force March 15, 2012.",
+    "effectiveDate": "2012-03-15T00:00:00.000Z",
+    "rulesByChapter": {
+      "85": {
+        "description": "Electrical machinery and equipment",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 55,
+        "calculationMethod": "net cost"
+      }
+    }
+  },
+  {
+    "code": "GSP",
+    "name": "Generalized System of Preferences",
+    "description": "U.S. trade preference program providing duty-free treatment for eligible products from designated beneficiary countries.",
+    "effectiveDate": "1976-01-01T00:00:00.000Z",
+    "rulesByChapter": {
+      "DEFAULT": {
+        "description": "General 35% direct cost of processing rule",
+        "tariffShift": "SUBSTANTIAL_TRANSFORMATION",
+        "defaultRvcPct": 35,
+        "calculationMethod": "transaction value"
+      }
+    }
+  }
+]

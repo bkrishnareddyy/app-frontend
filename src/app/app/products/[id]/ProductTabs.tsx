@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui";
 import { displayDate, displayText } from "@/lib/honest";
@@ -29,6 +29,152 @@ import {
   ProposeClassificationForm,
   RemoveRowButton,
 } from "./ProductActions";
+
+// ---- Classification History Tab ----
+
+interface ClassificationHistoryEntry {
+  id: string;
+  classificationCode: string;
+  normalizedCode: string;
+  description: string | null;
+  jurisdiction: string;
+  nomenclature: string;
+  status: string;
+  decisionMethod: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  reviewedByUserId: string | null;
+  reviewNote: string | null;
+  supersededById: string | null;
+}
+
+function ClassificationHistoryTab({ productId }: { productId: string }) {
+  const [entries, setEntries] = useState<ClassificationHistoryEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const requested = useRef(false);
+
+  const load = useCallback(async () => {
+    if (requested.current) return;
+    requested.current = true;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/products/${productId}/classifications`);
+      if (!res.ok) throw new Error("Request failed");
+      const data = await res.json();
+      setEntries(Array.isArray(data.classifications) ? data.classifications : []);
+    } catch {
+      setLoadError("Classification history could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const statusColor = (s: string) => {
+    if (s === "APPROVED") return "text-green-700 bg-green-100";
+    if (s === "CANDIDATE") return "text-amber-700 bg-amber-100";
+    return "text-gray-600 bg-gray-100";
+  };
+
+  if (loading) {
+    return <p className="text-sm text-[#6E6E73] py-6 text-center">Loading…</p>;
+  }
+  if (loadError) {
+    return <p role="alert" className="text-sm text-red-700 py-6 text-center">{loadError}</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {entries.length === 0 ? (
+        <div className="rounded-2xl bg-white border border-border p-8 text-center text-sm text-[#6E6E73]">
+          No classification history. Propose or import a code in the Trade &amp; customs tab to start.
+        </div>
+      ) : (
+        <ol className="relative border-l border-border ml-4 space-y-0">
+          {entries.map((entry, idx) => {
+            const isCurrent = !entry.supersededById;
+            return (
+              <li key={entry.id} className="mb-0 pl-6">
+                <span
+                  className={`absolute -left-1.5 mt-5 flex h-3 w-3 rounded-full ${
+                    isCurrent ? "bg-brand" : "bg-border"
+                  }`}
+                />
+                <div
+                  className={`rounded-2xl border p-4 mt-3 ${
+                    isCurrent ? "border-brand/40 bg-white" : "border-border bg-surface-muted/50"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start gap-2 justify-between">
+                    <div>
+                      <span className="font-mono font-bold text-ink">
+                        {entry.classificationCode}
+                      </span>
+                      {entry.description && (
+                        <span className="ml-2 text-sm text-[#6E6E73]">{entry.description}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor(entry.status)}`}
+                      >
+                        {entry.status}
+                      </span>
+                      {entry.decisionMethod === "OVERRIDE" && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-amber-700 bg-amber-100">
+                          Override
+                        </span>
+                      )}
+                      {!isCurrent && idx === 0 && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-gray-500 bg-gray-100">
+                          Superseded
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <dl className="mt-2 text-xs text-[#6E6E73] flex flex-wrap gap-x-4 gap-y-1">
+                    <div>
+                      <dt className="inline font-semibold">Jurisdiction:</dt>{" "}
+                      <dd className="inline">{entry.jurisdiction}/{entry.nomenclature}</dd>
+                    </div>
+                    <div>
+                      <dt className="inline font-semibold">Effective:</dt>{" "}
+                      <dd className="inline">{new Date(entry.effectiveFrom).toLocaleDateString()}</dd>
+                    </div>
+                    {entry.effectiveTo && (
+                      <div>
+                        <dt className="inline font-semibold">Until:</dt>{" "}
+                        <dd className="inline">{new Date(entry.effectiveTo).toLocaleDateString()}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt className="inline font-semibold">Method:</dt>{" "}
+                      <dd className="inline">{entry.decisionMethod}</dd>
+                    </div>
+                  </dl>
+
+                  {entry.reviewNote && (
+                    <p className="mt-2 text-xs text-[#6E6E73] italic">&ldquo;{entry.reviewNote}&rdquo;</p>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <p className="text-xs text-[#6E6E73]">
+        Classification history is append-only. Superseded codes remain visible here.
+      </p>
+    </div>
+  );
+}
+
+// ---- Main ProductTabs ----
 
 const cellClass = "px-3 py-3 align-top";
 const headClass =
@@ -638,6 +784,10 @@ export function ProductTabs({
             </ul>
           </section>
         </div>
+      )}
+
+      {tab === "classification-history" && (
+        <ClassificationHistoryTab productId={productId} />
       )}
 
       {tab === "evidence" && (

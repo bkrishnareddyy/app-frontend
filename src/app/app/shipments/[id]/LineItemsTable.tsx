@@ -7,6 +7,7 @@ import { displayCurrency } from "@/lib/honest";
 
 import { extendedAmount } from "./workspaceTypes";
 import type { HtsSuggestion, ShipmentLineItemRow as LineItem } from "./workspaceTypes";
+import { LineItemDetailTabsModal } from "./LineItemDetailTabsModal";
 
 interface LineItemsTableProps {
   shipmentId: string;
@@ -24,6 +25,7 @@ interface LineItemsTableProps {
 export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineItemsTableProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [selectedDetailItem, setSelectedDetailItem] = useState<LineItem | null>(null);
   
   // Inline edit state
   const [editHts, setEditHts] = useState("");
@@ -244,13 +246,22 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
                           </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => handleStartEdit(item)}
-                          className="p-1 rounded-lg hover:bg-surface-muted text-ink-muted hover:text-ink transition-colors cursor-pointer"
-                          title="Edit HTS & Origin"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-center space-x-1">
+                          <button
+                            onClick={() => handleStartEdit(item)}
+                            className="p-1 rounded-lg hover:bg-surface-muted text-ink-muted hover:text-ink transition-colors cursor-pointer"
+                            title="Edit HTS & Origin"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setSelectedDetailItem(item)}
+                            className="px-2 py-0.5 rounded-md bg-brand/10 text-brand font-semibold text-[10px] hover:bg-brand/20 transition-colors cursor-pointer"
+                            title="Open Advisory & Valuation Tabs"
+                          >
+                            Tabs
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -264,6 +275,14 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
           <p className="font-bold">No Commercial Line Items Extracted</p>
           <p className="text-[11px]">Line items will appear here automatically upon document vision extraction.</p>
         </div>
+      )}
+
+      {selectedDetailItem && (
+        <LineItemDetailTabsModal
+          item={selectedDetailItem}
+          shipmentId={shipmentId}
+          onClose={() => setSelectedDetailItem(null)}
+        />
       )}
     </div>
   );

@@ -932,7 +932,7 @@ export function DocumentReviewPanel({
               activeTab === "KV" ? "bg-white text-brand shadow-2xs" : "text-ink-muted hover:text-ink"
             }`}
           >
-            Neutral Key-Value Pairs ({kvEntries.length})
+            Extracted Facts ({kvEntries.length})
           </button>
           <button
             onClick={() => setActiveTab("JSON")}

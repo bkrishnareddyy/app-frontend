@@ -2,107 +2,117 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-
-/** Agreements a determination can be recorded against, with their real names. */
-const TRADE_AGREEMENTS: Record<string, string> = {
-  USMCA: "United States-Mexico-Canada Agreement",
-  KORUS: "Korea-United States Free Trade Agreement",
-  "CAFTA-DR": "Dominican Republic-Central America-United States Free Trade Agreement",
-  "US-Israel": "United States-Israel Free Trade Area Agreement",
-};
-
-const CALCULATION_METHODS = ["net cost", "transaction value"];
+import { determineOrigin } from "@/lib/origin/originEngine";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
-  const { shipmentLineItemId, tradeAgreementCode, criterion, regionalValueContentPct, calculationMethod, qualifies } = body;
+  const { shipmentLineItemId, tradeAgreementCode, claimedCountry } = body;
 
   if (!shipmentLineItemId) {
     return NextResponse.json({ error: "shipmentLineItemId is required" }, { status: 400 });
   }
 
-  // This endpoint performs no origin analysis, so it cannot decide any of
-  // these. They used to default to a qualifying result: qualifies true,
-  // "Criterion A (Wholly Obtained)", 65% RVC, net cost, status Confirmed —
-  // an unevaluated line item recorded as entitled to FTA preference.
-  if (typeof qualifies !== "boolean") {
-    return NextResponse.json(
-      { error: "qualifies is required and must be a boolean" },
-      { status: 400 }
-    );
-  }
-  if (typeof criterion !== "string" || criterion.trim() === "") {
-    return NextResponse.json({ error: "criterion is required" }, { status: 400 });
-  }
-  if (!CALCULATION_METHODS.includes(calculationMethod)) {
-    return NextResponse.json(
-      { error: `calculationMethod must be one of: ${CALCULATION_METHODS.join(", ")}` },
-      { status: 400 }
-    );
-  }
-
-  let rvc: number | null = null;
-  if (regionalValueContentPct !== undefined && regionalValueContentPct !== null) {
-    if (typeof regionalValueContentPct !== "number" || !Number.isFinite(regionalValueContentPct) || regionalValueContentPct < 0 || regionalValueContentPct > 100) {
-      return NextResponse.json(
-        { error: "regionalValueContentPct must be a number between 0 and 100" },
-        { status: 400 }
-      );
-    }
-    rvc = regionalValueContentPct;
-  }
-
-  const agreementName = TRADE_AGREEMENTS[tradeAgreementCode];
-  if (!agreementName) {
-    return NextResponse.json(
-      { error: `tradeAgreementCode must be one of: ${Object.keys(TRADE_AGREEMENTS).join(", ")}` },
-      { status: 400 }
-    );
-  }
-
   const lineItem = await db.shipmentLineItem.findFirst({
     where: { id: shipmentLineItemId, accountId: ctx.accountId },
-    include: { shipment: true },
+    include: {
+      shipment: true,
+      product: {
+        include: {
+          compositions: true,
+          countryFacts: true,
+        },
+      },
+    },
   });
 
   if (!lineItem) {
     return NextResponse.json({ error: "Shipment line item not found" }, { status: 404 });
   }
 
-  // Was created on demand from the caller's code, naming anything that was
-  // not USMCA "Korea-US Free Trade Agreement (KORUS)".
-  const agreement = await db.tradeAgreement.upsert({
-    where: { code: tradeAgreementCode },
-    update: {},
-    create: { code: tradeAgreementCode, name: agreementName },
+  // Task A-1: Look up trade agreement. Never auto-create inside route handler.
+  let agreementId: string | null = null;
+  if (tradeAgreementCode) {
+    const agreement = await db.tradeAgreement.findUnique({
+      where: { code: tradeAgreementCode },
+    });
+    if (!agreement) {
+      return NextResponse.json(
+        { error: `Trade agreement "${tradeAgreementCode}" not found. Agreements must be pre-seeded.` },
+        { status: 404 }
+      );
+    }
+    agreementId = agreement.id;
+  }
+
+  const targetCountry = claimedCountry || lineItem.countryOfOrigin;
+
+  // Run origin engine
+  const result = determineOrigin({
+    product: {
+      id: lineItem.productId ?? undefined,
+      htsCode: lineItem.htsCode,
+      description: lineItem.description,
+      price: Number(lineItem.totalValue),
+    },
+    materials: lineItem.product?.compositions.map((c) => ({
+      id: c.id,
+      name: c.material,
+      cost: c.percentage ? Number(c.percentage) : null,
+    })) ?? [],
+    claimedCountry: targetCountry,
+    tradeAgreementCode: tradeAgreementCode ?? undefined,
   });
 
-  const originDetermination = await db.originDetermination.create({
-    data: {
-      shipmentLineItemId,
-      tradeAgreementId: agreement.id,
-      qualifies,
-      criterion,
-      regionalValueContentPct: rvc,
-      calculationMethod,
-      // Recording an assertion is not confirming it; confirmation is a
-      // separate review step.
-      status: "Draft",
-    },
-    include: {
-      tradeAgreement: true,
-      shipmentLineItem: true,
-    },
-  });
+  // Task A-4: Save OriginDetermination row
+  let originDetermination = null;
+  if (agreementId) {
+    originDetermination = await db.originDetermination.create({
+      data: {
+        shipmentLineItemId,
+        tradeAgreementId: agreementId,
+        qualifies: result.qualifies,
+        criterion: result.basis,
+        regionalValueContentPct: result.regionalValueContentPct ?? null,
+        calculationMethod: "net cost",
+        status: "Draft",
+      },
+      include: { tradeAgreement: true },
+    });
+  }
+
+  // Task A-5: Low confidence (< 80%) creates ExceptionItem for review
+  if (result.confidence < 80) {
+    await db.exceptionItem.create({
+      data: {
+        accountId: ctx.accountId,
+        shipmentId: lineItem.shipmentId,
+        category: "COMPLIANCE",
+        type: "compliance_flag",
+        severity: "High",
+        status: "Open",
+        description: `Low Confidence Origin Determination (${result.confidence}%) for Line ${lineItem.lineNumber} (${lineItem.description}). Gaps: ${result.gaps.map((g) => g.missing).join("; ") || "Substantial transformation uncertain"}`,
+      },
+    });
+  }
 
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: "advisory.origin_determination",
-    entity: "OriginDetermination",
-    entityId: originDetermination.id,
-    metadata: { shipmentLineItemId, tradeAgreementCode, qualifies, criterion, calculationMethod },
+    action: "advisory.origin.determined",
+    entity: "ShipmentLineItem",
+    entityId: shipmentLineItemId,
+    metadata: {
+      tradeAgreementCode,
+      qualifies: result.qualifies,
+      confidence: result.confidence,
+      basis: result.basis,
+    },
   });
 
-  return NextResponse.json({ originDetermination }, { status: 201 });
-}, { write: true });
+  return NextResponse.json({
+    shipmentLineItemId,
+    tradeAgreementCode,
+    determination: originDetermination,
+    analysis: result,
+  });
+}, { permission: "documents.create", write: true });

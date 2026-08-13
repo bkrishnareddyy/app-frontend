@@ -4,8 +4,25 @@ import { parseAndValidateBody, validatePathParams } from "@/lib/api/validation";
 import { productActor } from "@/modules/product/productActor";
 import { productClassificationInputSchema, productIdParamSchema } from "@/modules/product/productSchemas";
 import { proposeClassification } from "@/modules/product/productService";
+import { db } from "@/lib/db";
 
 type Params = { id: string };
+
+/** E-1: Returns classification history ordered by effectiveDate DESC. */
+export const GET = withAuthenticatedRoute<Params>(async ({ ctx, params, requestId }) => {
+  const path = validatePathParams(params, productIdParamSchema, requestId);
+  if ("response" in path) return path.response;
+
+  const classifications = await db.productClassification.findMany({
+    where: { productId: path.data.id, accountId: ctx.accountId },
+    orderBy: { effectiveFrom: "desc" },
+    include: {
+      supersededBy: { select: { id: true, classificationCode: true, effectiveFrom: true } },
+    },
+  });
+
+  return NextResponse.json({ classifications });
+});
 
 /**
  * Proposes a classification for one jurisdiction.

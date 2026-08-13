@@ -30,6 +30,7 @@ export interface ShipmentLineItemRow {
   countryOfOrigin: string;
   htsCode: string;
   htsConfidence?: number | null;
+  productId?: string | null;
   status?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;

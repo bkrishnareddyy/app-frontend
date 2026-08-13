@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AlertOctagon, CheckCircle2, ChevronDown, ChevronUp, Clock, FileText, HelpCircle, ShieldAlert, User } from "lucide-react";
+import type { ReadinessBreakdown } from "@/lib/shipmentReadiness";
 
 export interface ComplianceEvidence {
   sourceName: string;
@@ -40,9 +41,10 @@ interface PreFilingReadinessProps {
     subtext: string;
     type: "BLOCKED" | "REVIEW_REQUIRED" | "INFO_REQUIRED" | "WARNINGS" | "READY";
   };
+  readinessBreakdown?: ReadinessBreakdown;
 }
 
-export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadinessProps) {
+export function PreFilingReadiness({ categories, overallStatus, readinessBreakdown }: PreFilingReadinessProps) {
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [visibleEvidenceId, setVisibleEvidenceId] = useState<string | null>(null);
@@ -139,6 +141,60 @@ export function PreFilingReadiness({ categories, overallStatus }: PreFilingReadi
           </button>
         </div>
       </div>
+
+      {/* Readiness Score Breakdown — 5-factor scorecard */}
+      {isTableExpanded && readinessBreakdown && (
+        <div className="px-4 pt-4 pb-2 border-b border-border bg-surface-muted">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-ink-muted">
+              Filing Readiness Score
+            </span>
+            <span
+              className={`text-sm font-extrabold tabular-nums ${
+                readinessBreakdown.totalScore >= 80
+                  ? "text-emerald-700"
+                  : readinessBreakdown.totalScore >= 50
+                  ? "text-amber-700"
+                  : "text-rose-700"
+              }`}
+            >
+              {readinessBreakdown.totalScore} / 100
+            </span>
+          </div>
+          <div className="space-y-2">
+            {readinessBreakdown.factors.map((f) => {
+              const pct = f.maxPoints > 0 ? (f.points / f.maxPoints) * 100 : 0;
+              const barColor =
+                pct >= 80
+                  ? "bg-emerald-500"
+                  : pct >= 40
+                  ? "bg-amber-500"
+                  : "bg-rose-500";
+              return (
+                <div key={f.factor}>
+                  <div className="flex items-center justify-between text-[10px] mb-0.5">
+                    <span className="font-semibold text-ink truncate pr-2">{f.factor}</span>
+                    <span className="font-bold text-ink-muted shrink-0">
+                      {f.points}/{f.maxPoints}
+                    </span>
+                  </div>
+                  <div className="relative h-1.5 bg-border rounded-full overflow-hidden">
+                    <div
+                      className={`absolute inset-y-0 left-0 rounded-full transition-all ${barColor}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {f.contributingItems.length > 0 && (
+                    <p className="text-[9px] text-ink-muted mt-0.5 leading-tight">
+                      {f.contributingItems.join(" · ")}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Categories Table */}
       {isTableExpanded && (

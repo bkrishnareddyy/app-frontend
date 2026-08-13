@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody, validatePathParams } from "@/lib/api/validation";
@@ -9,6 +9,9 @@ import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment
 import { ExceptionService, DOCUMENT_FIELD_LABELS } from "@/modules/exceptions/exception.service";
 import { FactAuditService } from "@/modules/audit/factAuditService";
 import { FactService } from "@/modules/shipment/factService";
+import { runReconciliationEngine, type DocumentGroup } from "@/lib/reconciliation/reconciliationEngine";
+import { computeReadinessBreakdown } from "@/lib/shipmentReadiness";
+import { recomputeShipmentDeadlines } from "@/modules/deadlines/deadline.service";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1), documentId: z.string().min(1) });
@@ -116,6 +119,89 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
       entity: "ShipmentDocument",
       entityId: documentId,
       metadata: { shipmentId, fieldKey, value },
+    });
+
+    // F-3: Field correction triggers reconciliation + readiness only — no OCR re-run.
+    after(async () => {
+      try {
+        const fullShipment = await db.shipment.findFirst({
+          where: { id: shipmentId },
+          include: {
+            documents: { include: { extractionFields: true } },
+            lineItems: true,
+            exceptionItems: { where: { status: { not: "Resolved" } } },
+          },
+        });
+        if (!fullShipment) return;
+
+        const documentGroups: DocumentGroup[] = fullShipment.documents
+          .filter((d) => d.extractionFields.length > 0)
+          .map((d) => ({
+            documentId: d.id,
+            docType: d.docType,
+            fields: d.extractionFields.map((f) => ({ fieldName: f.fieldName, value: f.value, confidence: f.confidence })),
+          }));
+
+        const { results, evaluatedRuleIds } = runReconciliationEngine(documentGroups);
+        const severityMap: Record<string, string> = { BLOCKING: "Critical", WARNING: "Warning", INFO: "Info" };
+        const openIssues = await db.reconciliationIssue.findMany({ where: { shipmentId, accountId: ctx.accountId, status: "Open" } });
+        const evaluatedFields = new Set(evaluatedRuleIds);
+
+        for (const result of results) {
+          const existing = openIssues.find((i) => i.field === result.ruleId);
+          const data = {
+            field: result.ruleId,
+            severity: severityMap[result.severity] ?? "Warning",
+            expectedValue: `${result.valueA} (${result.docTypeA})`,
+            actualValue: `${result.valueB} (${result.docTypeB})`,
+            sourceDocuments: [result.docTypeA, result.docTypeB],
+          };
+          if (existing) {
+            await db.reconciliationIssue.update({ where: { id: existing.id }, data });
+          } else {
+            await db.reconciliationIssue.create({ data: { ...data, shipmentId, accountId: ctx.accountId, status: "Open" } });
+          }
+        }
+
+        const resolvedRuleIds = new Set(results.map((r) => r.ruleId));
+        const staleIds = openIssues
+          .filter((i) => evaluatedFields.has(i.field) && !resolvedRuleIds.has(i.field))
+          .map((i) => i.id);
+        if (staleIds.length > 0) {
+          await db.reconciliationIssue.updateMany({ where: { id: { in: staleIds } }, data: { status: "Resolved", resolvedAt: new Date() } });
+        }
+
+        const remaining = await db.reconciliationIssue.findMany({ where: { shipmentId, accountId: ctx.accountId, status: "Open" } });
+        const blockingCount = remaining.filter((i) => i.severity === "Critical").length;
+
+        const allFields = fullShipment.documents.flatMap((d) => d.extractionFields);
+        const avgConf =
+          allFields.length === 0 ? undefined : allFields.reduce((s, f) => s + (f.confidence ?? 0), 0) / allFields.length;
+
+        const { totalScore } = computeReadinessBreakdown({
+          documents: fullShipment.documents.map((d) => ({ docType: d.docType ?? "", status: d.status ?? "" })),
+          lineItems: fullShipment.lineItems.map((li) => ({
+            htsCode: li.htsCode ?? "",
+            countryOfOrigin: li.countryOfOrigin ?? "",
+            quantity: Number(li.quantity),
+            unitPrice: li.unitPrice,
+            status: li.status,
+          })),
+          exceptionItems: fullShipment.exceptionItems.map((e) => ({
+            status: e.status ?? "Open",
+            severity: e.severity ?? "Medium",
+            blocking: e.severity === "Critical" || e.severity === "High",
+          })),
+          avgExtractionConfidence: avgConf,
+          blockingReconciliationIssues: blockingCount,
+        });
+
+        const healthStatus = totalScore >= 80 ? "Healthy" : totalScore >= 50 ? "At Risk" : "Critical";
+        await db.shipment.update({ where: { id: shipmentId }, data: { readinessScore: totalScore, healthStatus } });
+        await recomputeShipmentDeadlines(shipmentId);
+      } catch {
+        // Non-fatal: reconciliation runs on next explicit trigger.
+      }
     });
 
     return NextResponse.json({ success: true, requestId });

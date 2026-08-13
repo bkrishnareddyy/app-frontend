@@ -1,0 +1,57 @@
+[
+  {
+    "caseNumber": "A-570-601",
+    "title": "Tapered Roller Bearings and Parts Thereof, Finished and Unfinished, from the People's Republic of China",
+    "petitioner": "Timken Company",
+    "respondentCountries": ["CN"],
+    "htsCodesInScope": ["8482.20.0000", "8482.20.0020", "8482.20.0030", "8482.20.0040", "8482.91.0020"],
+    "scopeLanguage": "The merchandise covered by the order includes tapered roller bearings and parts thereof, finished and unfinished, from the People's Republic of China, flange, cone and cup, and roller assemblies.",
+    "effectiveDate": "1987-06-15T00:00:00.000Z",
+    "suspensionAgreement": false,
+    "status": "ACTIVE"
+  },
+  {
+    "caseNumber": "A-570-979",
+    "title": "Crystalline Silicon Photovoltaic Cells, Whether or Not Assembled Into Modules, from China",
+    "petitioner": "SolarWorld Industries America Inc.",
+    "respondentCountries": ["CN", "VN", "MY", "TH"],
+    "htsCodesInScope": ["8541.40.6015", "8541.40.6025", "8541.40.6035", "8541.40.6045", "8541.42.0010", "8541.43.0010"],
+    "scopeLanguage": "The merchandise covered by the order is crystalline silicon photovoltaic cells, and modules, laminates, and panels, consisting of crystalline silicon photovoltaic cells, whether or not partially or fully assembled into other products.",
+    "effectiveDate": "2012-12-07T00:00:00.000Z",
+    "suspensionAgreement": false,
+    "status": "ACTIVE"
+  },
+  {
+    "caseNumber": "C-570-980",
+    "title": "Crystalline Silicon Photovoltaic Cells (Countervailing Duty), from China",
+    "petitioner": "SolarWorld Industries America Inc.",
+    "respondentCountries": ["CN"],
+    "htsCodesInScope": ["8541.40.6015", "8541.40.6025", "8541.43.0010"],
+    "scopeLanguage": "Countervailing duty order covering crystalline silicon photovoltaic cells and solar modules produced in or exported from the People's Republic of China.",
+    "effectiveDate": "2012-12-07T00:00:00.000Z",
+    "suspensionAgreement": false,
+    "status": "ACTIVE"
+  },
+  {
+    "caseNumber": "A-570-016",
+    "title": "Certain Passenger Vehicle and Light Truck Tires from the People's Republic of China",
+    "petitioner": "United Steelworkers",
+    "respondentCountries": ["CN"],
+    "htsCodesInScope": ["4011.10.1010", "4011.10.1020", "4011.10.5000", "4011.20.1005", "4011.20.5010"],
+    "scopeLanguage": "Passenger vehicle and light truck tires, new pneumatic, of rubber from China.",
+    "effectiveDate": "2015-08-10T00:00:00.000Z",
+    "suspensionAgreement": false,
+    "status": "ACTIVE"
+  },
+  {
+    "caseNumber": "A-570-079",
+    "title": "Steel Wheels from the People's Republic of China",
+    "petitioner": "Accuride Corporation",
+    "respondentCountries": ["CN"],
+    "htsCodesInScope": ["8708.70.4530", "8708.70.4560", "8708.70.6030", "8708.70.6060"],
+    "scopeLanguage": "Certain steel wheels 18 to 24.5 inches in nominal diameter and accessories from China.",
+    "effectiveDate": "2019-05-24T00:00:00.000Z",
+    "suspensionAgreement": false,
+    "status": "ACTIVE"
+  }
+]

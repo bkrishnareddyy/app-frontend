@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files, Clock, XCircle, GripVertical } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
@@ -29,6 +29,53 @@ interface ShipmentDocumentsSectionProps {
 
 const DETACH_TITLE_ID = "detach-document-title";
 
+// Standardized status display — maps raw DB status strings to a consistent
+// label + colour so the workspace and the docs section always agree (A-1).
+function docStatusChip(status: string, hasFileUrl: boolean) {
+  const s = status.toLowerCase();
+  if (s === "uploading" || s === "processing" || s === "pending") {
+    return {
+      label: "Processing",
+      className: "text-blue-600 bg-blue-50 border-blue-200",
+      icon: <Clock className="w-3 h-3" />,
+    };
+  }
+  if (s === "processing_failed" || s === "failed" || s === "error") {
+    return {
+      label: "Failed",
+      className: "text-red-600 bg-red-50 border-red-200",
+      icon: <XCircle className="w-3 h-3" />,
+    };
+  }
+  if (s === "needs_review" || s === "review required") {
+    return {
+      label: "Needs Review",
+      className: "text-amber-600 bg-amber-50 border-amber-200",
+      icon: <AlertCircle className="w-3 h-3" />,
+    };
+  }
+  if (s === "archived") {
+    return {
+      label: "Archived",
+      className: "text-slate-500 bg-slate-50 border-slate-200",
+      icon: <XCircle className="w-3 h-3" />,
+    };
+  }
+  if (s === "missing" || (!hasFileUrl && s !== "received" && s !== "processed" && s !== "completed" && s !== "ready")) {
+    return {
+      label: "Missing",
+      className: "text-red-600 bg-red-50 border-red-200",
+      icon: <AlertCircle className="w-3 h-3" />,
+    };
+  }
+  // Ready / Received / Processed / Completed → green
+  return {
+    label: "Ready",
+    className: "text-emerald-600 bg-emerald-50 border-emerald-200",
+    icon: <CheckCircle2 className="w-3 h-3" />,
+  };
+}
+
 export function ShipmentDocumentsSection({
   shipmentId,
   documents: initialDocs,
@@ -40,6 +87,7 @@ export function ShipmentDocumentsSection({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [detachingId, setDetachingId] = useState<string | null>(null);
   const [docPendingDetach, setDocPendingDetach] = useState<{ id: string; fileName: string } | null>(null);
+  const dragIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleOpen = () => setIsModalOpen(true);
@@ -88,11 +136,36 @@ export function ShipmentDocumentsSection({
     }
   };
 
+  const handleDragStart = (index: number) => {
+    dragIndexRef.current = index;
+  };
+
+  const handleDrop = async (dropIndex: number) => {
+    const fromIndex = dragIndexRef.current;
+    if (fromIndex === null || fromIndex === dropIndex) return;
+    dragIndexRef.current = null;
+
+    const reordered = [...documents];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(dropIndex, 0, moved);
+    setDocuments(reordered);
+
+    try {
+      await fetch(`/api/shipments/${shipmentId}/documents/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentIds: reordered.map((d) => d.id) }),
+      });
+    } catch {
+      setDocuments(documents);
+    }
+  };
+
   const isDocReceived = (d: DocumentItem) =>
     d.status !== "Missing" &&
     Boolean(d.fileUrl || d.status === "Received" || d.status === "Processed" || d.status === "Review Required" || d.status === "Completed");
 
-  const { receivedCount, totalRequired } = checkRequiredDocumentTypes(
+  const { receivedCount, totalRequired, requiredTypes, missingTypes } = checkRequiredDocumentTypes(
     documents,
     originStatus !== "Not Applicable"
   );
@@ -115,13 +188,17 @@ export function ShipmentDocumentsSection({
         </div>
 
         <div className="space-y-2">
-          {documents.map((doc) => {
+          {documents.map((doc, idx) => {
             const received = isDocReceived(doc);
             const isSelected = activeDocId === doc.id;
-            
+
             return (
               <div
                 key={doc.id}
+                draggable
+                onDragStart={() => handleDragStart(idx)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDrop(idx)}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectDoc(doc.id)}
@@ -138,6 +215,7 @@ export function ShipmentDocumentsSection({
                 }`}
               >
                 <div className="flex items-start space-x-2.5 min-w-0 pr-2">
+                  <GripVertical className="w-3.5 h-3.5 text-ink-muted/40 shrink-0 mt-0.5 cursor-grab active:cursor-grabbing" />
                   {received ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                   ) : (
@@ -184,11 +262,28 @@ export function ShipmentDocumentsSection({
           })}
         </div>
 
-        {/* Missing-required-document actions now live in the unified
-            Exceptions panel at the top of the page, not duplicated here. */}
-        <p className="text-[11px] text-ink-muted px-1">
-          {receivedCount}/{totalRequired} required document types on file
-        </p>
+        {/* Required documents checklist (A-2) */}
+        <div className="pt-1 border-t border-border space-y-1.5">
+          <p className="text-[10px] font-extrabold uppercase text-ink-muted tracking-wider">
+            Required Documents — {receivedCount} of {totalRequired} on file
+          </p>
+          {requiredTypes.map((type) => {
+            const present = !missingTypes.includes(type);
+            return (
+              <div key={type} className="flex items-center space-x-2 text-[11px]">
+                {present ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                )}
+                <span className={present ? "text-ink" : "text-red-600 font-semibold"}>
+                  {type}
+                  {!present && " ✗"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {docPendingDetach && (

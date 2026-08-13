@@ -12,9 +12,13 @@ export const POST = withAuthenticatedRoute<{ caseId: string }>(async ({ ctx, req
   if ("response" in paramsVal) return paramsVal.response;
 
   try {
-    const result = await ClassificationCaseEngine.processCase(ctx.accountId, ctx.userId, paramsVal.data.caseId);
-
-    return NextResponse.json(result);
+    // A-2: returns { runId, status: "QUEUED" } immediately; processing runs in the background
+    const result = await ClassificationCaseEngine.triggerRun(
+      ctx.accountId,
+      ctx.userId,
+      paramsVal.data.caseId
+    );
+    return NextResponse.json(result, { status: 202 });
   } catch (error: unknown) {
     return handleApiError(error);
   }

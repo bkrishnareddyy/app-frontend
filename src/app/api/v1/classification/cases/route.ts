@@ -7,40 +7,54 @@ import { db } from "@/lib/db";
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   try {
     const body = await req.json();
-    const { rawDescription, externalReference, priority, structuredAttributesJson, countryOfOrigin, intendedUse } = body;
+
+    // Accept both new spec shape {description, attributes, productId?} and old shape {rawDescription, ...}
+    const rawDescription: string = body.description ?? body.rawDescription;
+    const attributes: Record<string, string> = body.attributes ?? body.structuredAttributesJson ?? {};
+    const { productId, lineItemId, externalReference, priority, countryOfOrigin, intendedUse } = body;
 
     if (!rawDescription) {
-      return NextResponse.json({ error: "rawDescription is required" }, { status: 400 });
+      return NextResponse.json({ error: "description is required" }, { status: 400 });
     }
 
     const result = await ClassificationCaseEngine.createCase({
       accountId: ctx.accountId,
       userId: ctx.userId,
       rawDescription,
+      productId,
+      lineItemId,
       externalReference,
       priority,
-      structuredAttributesJson,
+      structuredAttributesJson: attributes,
       countryOfOrigin,
       intendedUse,
     });
 
-    return NextResponse.json(result, { status: 201 });
+    const statusCode = result.isExisting ? 200 : 201;
+    return NextResponse.json(result, { status: statusCode });
   } catch (error: unknown) {
     return handleApiError(error);
   }
 }, { write: true });
 
-export const GET = withAuthenticatedRoute(async ({ ctx }) => {
+export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   try {
+    const { searchParams } = new URL(req.url);
+    const productIdsParam = searchParams.getAll("productIds[]");
+    const status = searchParams.get("status") ?? undefined;
+
     const cases = await db.classificationCase.findMany({
-      where: { accountId: ctx.accountId },
+      where: {
+        accountId: ctx.accountId,
+        status: status || undefined,
+      },
       include: {
         subjects: true,
         documents: true,
         runs: { take: 1, orderBy: { startedAt: "desc" } },
       },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 100,
     });
 
     return NextResponse.json({ cases });

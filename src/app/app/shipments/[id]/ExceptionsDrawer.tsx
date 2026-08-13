@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertCircle, AlertTriangle, Info, FileText, CheckCircle2, Pencil } from "lucide-react";
+import { AlertCircle, AlertTriangle, Info, FileText, CheckCircle2, Pencil, Mail, X, Loader2 } from "lucide-react";
 import { ExceptionResolutionModal } from "./ExceptionResolutionModal";
 import { DocumentFieldReviewModal, DocumentFieldSummary } from "./DocumentFieldReviewModal";
 import { DocumentReviewPanel } from "@/components/DocumentReviewPanel";
@@ -15,6 +15,16 @@ import {
   type ResolvableException,
   type ShipmentLineItemRow,
 } from "./workspaceTypes";
+
+export interface ReconciliationIssueRow {
+  id: string;
+  field: string;
+  severity: string;
+  expectedValue: string;
+  actualValue: string;
+  sourceDocuments: string[];
+  status: string;
+}
 
 interface ExceptionsDrawerProps {
   shipmentId: string;
@@ -30,6 +40,8 @@ interface ExceptionsDrawerProps {
   // cards below, so exceptions that all trace back to one document read as
   // one review task instead of a flat, ungrouped list.
   documentFieldSummaries?: DocumentFieldSummary[];
+  // Cross-document reconciliation conflicts — each Open ReconciliationIssue row.
+  reconciliationIssues?: ReconciliationIssueRow[];
 }
 
 export function ExceptionsDrawer({
@@ -38,6 +50,7 @@ export function ExceptionsDrawer({
   lineItems,
   missingDocumentTypes = [],
   documentFieldSummaries = [],
+  reconciliationIssues = [],
 }: ExceptionsDrawerProps) {
   const [panelTab, setPanelTab] = useState<"EXCEPTIONS" | "FIELD_REVIEW">("EXCEPTIONS");
   const [selectedException, setSelectedException] = useState<ResolvableException | null>(null);
@@ -50,6 +63,11 @@ export function ExceptionsDrawer({
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState<string>("");
   const [savingInlineField, setSavingInlineField] = useState<string | null>(null);
+  const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null);
+  const [requestingDocType, setRequestingDocType] = useState<string | null>(null);
+  const [requestEmail, setRequestEmail] = useState("");
+  const [sendingRequest, setSendingRequest] = useState(false);
+  const [requestSentFor, setRequestSentFor] = useState<string | null>(null);
 
   const handleInlineEditSave = async (docId: string, fieldKey: string) => {
     if (!editingValue.trim()) return;
@@ -84,6 +102,41 @@ export function ExceptionsDrawer({
       console.error("Field review approval failed", err);
     } finally {
       setApprovingField(null);
+    }
+  };
+
+  const handleResolveConflict = async (issueId: string, action: "resolve" | "ignore") => {
+    setResolvingConflictId(issueId);
+    try {
+      await fetch(`/api/shipments/${shipmentId}/reconcile/issues/${issueId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      window.location.reload();
+    } catch (err) {
+      console.error("Conflict resolution failed", err);
+    } finally {
+      setResolvingConflictId(null);
+    }
+  };
+
+  const handleSendDocumentRequest = async () => {
+    if (!requestingDocType || !requestEmail.trim()) return;
+    setSendingRequest(true);
+    try {
+      await fetch(`/api/shipments/${shipmentId}/documents/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentType: requestingDocType, recipientEmail: requestEmail.trim() }),
+      });
+      setRequestSentFor(requestingDocType);
+      setRequestingDocType(null);
+      setRequestEmail("");
+    } catch {
+      // Silent — the modal stays open so the user can retry.
+    } finally {
+      setSendingRequest(false);
     }
   };
 
@@ -228,7 +281,28 @@ export function ExceptionsDrawer({
       actionType: "UPLOAD_DIRECT",
     }));
 
-  const allExceptions = [...exceptions, ...missingDocExceptions];
+  // Cross-document reconciliation conflicts from the field-comparison engine.
+  const conflictExceptions: (ExceptionCard & { conflictIssueId: string })[] = reconciliationIssues
+    .filter((issue) => issue.status === "Open")
+    .map((issue) => {
+      const isBlocking = issue.severity === "Critical";
+      return {
+        id: `conflict-${issue.id}`,
+        conflictIssueId: issue.id,
+        category: "CONFLICTS",
+        title: issue.field.replace(/_/g, " → ").replace(/[A-Z]+/g, (m) => m),
+        desc: `${issue.expectedValue} — expected to match — ${issue.actualValue}. Sources: ${issue.sourceDocuments.join(", ")}.`,
+        icon: isBlocking ? (
+          <AlertCircle className="w-4 h-4 text-red-500" />
+        ) : (
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+        ),
+        actionText: "Resolve Conflict →",
+        actionType: "CONFLICT",
+      };
+    });
+
+  const allExceptions = [...exceptions, ...missingDocExceptions, ...conflictExceptions];
   const totalPendingFields = documentFieldSummaries.reduce(
     (acc, doc) => acc + (doc.totalCount - doc.confirmedCount),
     0
@@ -326,12 +400,46 @@ export function ExceptionsDrawer({
                 </div>
                 <p className="text-[11px] text-ink-muted leading-relaxed">{ex.desc}</p>
                 {ex.actionType === "UPLOAD_DIRECT" ? (
-                  <button
-                    onClick={() => window.dispatchEvent(new Event("qubere:open-upload-modal"))}
-                    className="text-xs font-semibold text-brand hover:underline text-left pt-1 block w-full cursor-pointer"
-                  >
-                    {ex.actionText}
-                  </button>
+                  <div className="space-y-1.5 pt-1">
+                    <button
+                      onClick={() => window.dispatchEvent(new Event("qubere:open-upload-modal"))}
+                      className="text-xs font-semibold text-brand hover:underline text-left block w-full cursor-pointer"
+                    >
+                      {ex.actionText}
+                    </button>
+                    {requestSentFor === ex.title.replace(" Missing", "") ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
+                        <CheckCircle2 className="w-3 h-3" /> Request sent
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setRequestingDocType(ex.title.replace(" Missing", ""));
+                          setRequestEmail("");
+                        }}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-ink-muted hover:text-brand cursor-pointer"
+                      >
+                        <Mail className="w-3 h-3" /> Request from counterparty
+                      </button>
+                    )}
+                  </div>
+                ) : ex.actionType === "CONFLICT" && "conflictIssueId" in ex ? (
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => handleResolveConflict((ex as typeof ex & { conflictIssueId: string }).conflictIssueId, "resolve")}
+                      disabled={resolvingConflictId === (ex as typeof ex & { conflictIssueId: string }).conflictIssueId}
+                      className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {resolvingConflictId === (ex as typeof ex & { conflictIssueId: string }).conflictIssueId ? "Resolving…" : "✓ Resolve"}
+                    </button>
+                    <button
+                      onClick={() => handleResolveConflict((ex as typeof ex & { conflictIssueId: string }).conflictIssueId, "ignore")}
+                      disabled={resolvingConflictId === (ex as typeof ex & { conflictIssueId: string }).conflictIssueId}
+                      className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Ignore
+                    </button>
+                  </div>
                 ) : ex.actionType ? (
                   <button
                     onClick={() => {
@@ -538,6 +646,65 @@ export function ExceptionsDrawer({
           </div>
         )}
       </div>
+
+      {/* D-4: Request document email modal */}
+      {requestingDocType && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-border p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-brand/10 flex items-center justify-center">
+                  <Mail className="w-4 h-4 text-brand" />
+                </div>
+                <h3 className="text-sm font-extrabold text-ink">Request Document</h3>
+              </div>
+              <button
+                onClick={() => setRequestingDocType(null)}
+                className="p-1 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-muted transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-3 bg-surface-muted rounded-xl text-xs text-ink">
+              <span className="font-semibold">{requestingDocType}</span> — a secure upload link valid for 7 days will be emailed to the recipient.
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-muted" htmlFor="request-email">
+                Recipient email
+              </label>
+              <input
+                id="request-email"
+                type="email"
+                value={requestEmail}
+                onChange={(e) => setRequestEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSendDocumentRequest(); }}
+                placeholder="counterparty@example.com"
+                className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-white text-ink placeholder-ink-muted/60 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setRequestingDocType(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border text-ink-muted hover:bg-surface-muted transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendDocumentRequest}
+                disabled={!requestEmail.trim() || sendingRequest}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-brand text-white hover:bg-brand/90 disabled:opacity-50 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+              >
+                {sendingRequest ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" />Sending…</>
+                ) : (
+                  <><Mail className="w-3 h-3" />Send Request</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ExceptionResolutionModal
         isOpen={!!selectedException}

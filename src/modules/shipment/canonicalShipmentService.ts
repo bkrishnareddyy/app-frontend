@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { getMissingDocuments } from "@/lib/requiredDocumentTypes";
 
 const canonicalInclude = {
   client: true,
@@ -127,11 +128,21 @@ export class CanonicalShipmentService {
     // 2. Build provenance for key shipment facts
     const facts = this.buildFactProvenance(shipment);
 
+    // 3. Compute which required document types are still missing (D-2).
+    const docs = (shipment.documents ?? []).map((d) => ({
+      docType: d.docType ?? null,
+      fileName: d.fileName,
+      status: d.status,
+      fileUrl: d.fileUrl ?? null,
+    }));
+    const missingDocuments = getMissingDocuments(docs, shipment.entryType ?? undefined, {});
+
     return {
       shipment,
       metrics,
       agentExecutionLogs,
       facts,
+      missingDocuments,
     };
   }
 
