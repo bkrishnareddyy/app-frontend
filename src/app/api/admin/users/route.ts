@@ -63,6 +63,36 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       return buildErrorResponse(400, "INVALID_INPUT", "Invalid role specified", undefined, requestId);
     }
 
+    // A-1: Reject invitations to previously removed members.
+    const existingUser = await db.user.findFirst({
+      where: { email: bodyVal.data.email.trim().toLowerCase() },
+      include: { memberships: { where: { accountId: ctx.accountId } } },
+    });
+    if (existingUser) {
+      const softDeleted = existingUser.memberships.find((m) => m.deletedAt !== null);
+      if (softDeleted) {
+        return buildErrorResponse(
+          409,
+          "MEMBER_PREVIOUSLY_REMOVED",
+          "This user was previously removed from this account. Re-invite will reactivate their membership.",
+          undefined,
+          requestId
+        );
+      }
+      const active = existingUser.memberships.find(
+        (m) => m.deletedAt === null && m.status === "ACTIVE"
+      );
+      if (active) {
+        return buildErrorResponse(
+          409,
+          "ALREADY_A_MEMBER",
+          "This user is already a member of this account.",
+          undefined,
+          requestId
+        );
+      }
+    }
+
     const invitation = await db.invitation.create({
       data: {
         accountId: ctx.accountId,

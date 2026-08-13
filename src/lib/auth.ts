@@ -30,6 +30,7 @@ export interface AccountContext {
     accountName: string;
     accountSlug: string;
     accountType: string;
+    dataMode: string;
     roleNames: string[];
   }>;
   account: {
@@ -279,6 +280,7 @@ async function loadAccountContext(): Promise<AccountContext | null> {
         accountName: m.account.name,
         accountSlug: m.account.slug,
         accountType: m.account.type,
+        dataMode: m.account.dataMode as string,
         roleNames: m.roles.map((mr) => mr.role.name),
       }));
 

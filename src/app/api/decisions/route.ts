@@ -198,14 +198,38 @@ async function handleEditValue(ctx: AccountContext, body: unknown) {
   });
 }
 
-export const GET = withAuthenticatedRoute(async ({ ctx }) => {
+export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get("q")?.trim() ?? "";
+  const htsCode = searchParams.get("htsCode")?.trim() ?? "";
+  const confidenceGte = searchParams.get("confidence[gte]")
+    ? Number(searchParams.get("confidence[gte]"))
+    : undefined;
+
+  const isSearchMode = q !== "" || htsCode !== "" || confidenceGte !== undefined;
+
+  const where = {
+    accountId: ctx.accountId,
+    ...(htsCode && { proposedHtsCode: { contains: htsCode } }),
+    ...(confidenceGte !== undefined && { confidence: { gte: confidenceGte } }),
+    ...(q && {
+      OR: [
+        { decisionSummary: { contains: q, mode: "insensitive" as const } },
+        { proposedDescription: { contains: q, mode: "insensitive" as const } },
+        { proposedHtsCode: { contains: q, mode: "insensitive" as const } },
+        { humanNotes: { contains: q, mode: "insensitive" as const } },
+      ],
+    }),
+  };
+
   const decisions = await db.agentDecision.findMany({
-    where: { accountId: ctx.accountId },
+    where,
     include: {
-      shipment: true,
+      shipment: { select: { id: true, shipmentNumber: true, poReference: true } },
       reviewedByUser: { select: REVIEWER_SELECT },
     },
     orderBy: { createdAt: "desc" },
+    take: isSearchMode ? 50 : 200,
   });
 
   return NextResponse.json({
@@ -213,6 +237,8 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
       ...decision,
       provenance: decisionProvenance(decision),
     })),
+    total: decisions.length,
+    isSearchMode,
   });
 });
 

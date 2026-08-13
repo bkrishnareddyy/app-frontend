@@ -70,6 +70,7 @@ interface SidebarProps {
     accountId: string;
     accountName: string;
     accountType: string;
+    dataMode?: string;
     roleNames: string[];
   }>;
 }
@@ -207,11 +208,12 @@ export function Sidebar({
               currentAccountId={currentAccountId}
               currentAccountName={accountName}
               currentAccountType={accountType}
+              currentDataMode={dataMode}
               currentRoleNames={roleNames}
               memberships={
                 memberships.length > 0
                   ? memberships
-                  : [{ accountId: currentAccountId, accountName, accountType, roleNames }]
+                  : [{ accountId: currentAccountId, accountName, accountType, dataMode, roleNames }]
               }
             />
           </div>

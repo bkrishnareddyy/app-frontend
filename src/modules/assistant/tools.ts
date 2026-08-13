@@ -3,9 +3,22 @@ import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getActiveTeamMembers } from "@/lib/team";
 import { GET as shipmentsGET, POST as shipmentsPOST } from "@/app/api/shipments/route";
+import { GET as shipmentDetailGET } from "@/app/api/shipments/[id]/route";
 import { GET as productsGET } from "@/app/api/products/route";
+import { GET as productDetailGET } from "@/app/api/products/[id]/route";
+import { POST as classificationsPOST } from "@/app/api/products/[id]/classifications/route";
+import { POST as classificationReviewPOST } from "@/app/api/products/[id]/classifications/[classificationId]/route";
 import { GET as partiesGET } from "@/app/api/parties/route";
 import { GET as documentsGET } from "@/app/api/documents/route";
+import { GET as documentExtractionsGET } from "@/app/api/documents/[id]/extractions/route";
+import { GET as decisionsGET, POST as decisionsPOST } from "@/app/api/decisions/route";
+import { GET as exceptionDetailGET, PATCH as exceptionPATCH } from "@/app/api/exceptions/[id]/route";
+import { GET as filingDetailGET } from "@/app/api/filing/[id]/route";
+import { ExceptionService } from "@/modules/exceptions/exception.service";
+import { HtsSearchService } from "@/modules/hts/htsSearchService";
+import { RulingService } from "@/modules/classification/rulingService";
+import { calculateDutyStack, loadHtsCodesMap, type TariffLineInput } from "@/lib/tariff/dutyEngine";
+import { ImpactAnalysisService } from "@/modules/regulatory/impactAnalysisService";
 import { canUseTool } from "@/modules/copilot/copilotAccess";
 import type { CopilotToolAccess } from "@/modules/copilot/copilotToolTypes";
 
@@ -482,6 +495,510 @@ const exportComplianceRecord: AssistantTool = {
   },
 };
 
+// ---- tool: get_shipment ----
+
+const getShipmentParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    shipmentId: {
+      type: Type.STRING,
+      description: "Shipment UUID (not the shipment number). Look it up via list_shipments first if you only have the number.",
+    },
+  },
+  required: ["shipmentId"],
+};
+
+const getShipment: AssistantTool = {
+  declaration: {
+    name: "get_shipment",
+    description: "Full shipment detail: line items, documents, exceptions, and decisions.",
+    parameters: getShipmentParams,
+  },
+  access: { navHref: "/app/shipments" },
+  execute: async (_ctx, rawArgs) => {
+    const shipmentId = String(rawArgs.shipmentId ?? "");
+    const res = await shipmentDetailGET(
+      new Request(`http://internal.local/api/shipments/${shipmentId}`),
+      { params: Promise.resolve({ id: shipmentId }) }
+    );
+    if (!res.ok) return { error: "Shipment not found" };
+    return res.json();
+  },
+};
+
+// ---- tool: list_exceptions ----
+
+const listExceptionsParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    shipmentId: { type: Type.STRING, description: "Restrict to one shipment's exceptions." },
+    status: { type: Type.STRING, description: "Filter by exception status (e.g. Open, Resolved, Waived)." },
+    severity: { type: Type.STRING, description: "Filter by severity." },
+  },
+};
+
+const listExceptions: AssistantTool = {
+  declaration: {
+    name: "list_exceptions",
+    description: "List compliance exceptions, optionally filtered by shipment, status, or severity.",
+    parameters: listExceptionsParams,
+  },
+  access: { navHref: "/app/actions" },
+  execute: async (ctx, rawArgs) => {
+    const shipmentId = rawArgs.shipmentId ? String(rawArgs.shipmentId) : undefined;
+    const status = rawArgs.status ? String(rawArgs.status) : undefined;
+    const severity = rawArgs.severity ? String(rawArgs.severity) : undefined;
+    const result = await ExceptionService.listExceptions(ctx.accountId, ctx.userId, { status, severity });
+    const exceptions = shipmentId
+      ? result.exceptions.filter((e) => e.shipmentId === shipmentId)
+      : result.exceptions;
+    return { count: exceptions.length, exceptions };
+  },
+};
+
+// ---- tool: get_document ----
+
+const getDocumentParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    documentId: { type: Type.STRING, description: "Document UUID. Look it up via search_documents first if you only have a file name." },
+  },
+  required: ["documentId"],
+};
+
+const getDocument: AssistantTool = {
+  declaration: {
+    name: "get_document",
+    description: "Get a document's extracted fields, confidence, and review status.",
+    parameters: getDocumentParams,
+  },
+  access: { navHref: "/app/documents" },
+  execute: async (_ctx, rawArgs) => {
+    const documentId = String(rawArgs.documentId ?? "");
+    const res = await documentExtractionsGET(
+      new Request(`http://internal.local/api/documents/${documentId}/extractions`),
+      { params: Promise.resolve({ id: documentId }) }
+    );
+    if (!res.ok) return { error: "Document not found" };
+    return res.json();
+  },
+};
+
+// ---- tool: list_decisions ----
+
+const listDecisionsParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    shipmentId: { type: Type.STRING, description: "Restrict to one shipment's decisions." },
+    status: { type: Type.STRING, description: "Filter by decision status (e.g. Pending, Approved, Rejected)." },
+  },
+};
+
+const listDecisions: AssistantTool = {
+  declaration: {
+    name: "list_decisions",
+    description: "List agent-proposed decisions awaiting or having received human review, optionally filtered by shipment or status.",
+    parameters: listDecisionsParams,
+  },
+  access: { navHref: "/app/actions" },
+  execute: async (_ctx, rawArgs) => {
+    const shipmentId = rawArgs.shipmentId ? String(rawArgs.shipmentId) : undefined;
+    const status = rawArgs.status ? String(rawArgs.status) : undefined;
+    const res = await decisionsGET(new Request("http://internal.local/api/decisions"));
+    if (!res.ok) return { error: "Failed to fetch decisions" };
+    const data = (await res.json()) as {
+      decisions: { id: string; shipmentId: string; status: string }[];
+      total: number;
+    };
+    const filtered = data.decisions.filter(
+      (d) => (!shipmentId || d.shipmentId === shipmentId) && (!status || d.status === status)
+    );
+    return { count: filtered.length, decisions: filtered };
+  },
+};
+
+// ---- tool: get_product ----
+
+const getProductParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    productId: { type: Type.STRING, description: "Product UUID. Look it up via search_products first if you only have a name or SKU." },
+  },
+  required: ["productId"],
+};
+
+const getProduct: AssistantTool = {
+  declaration: {
+    name: "get_product",
+    description: "Full product detail: classifications, attributes, and identifiers.",
+    parameters: getProductParams,
+  },
+  access: { navHref: "/app/products" },
+  execute: async (_ctx, rawArgs) => {
+    const productId = String(rawArgs.productId ?? "");
+    const res = await productDetailGET(
+      new Request(`http://internal.local/api/products/${productId}`),
+      { params: Promise.resolve({ id: productId }) }
+    );
+    if (!res.ok) return { error: "Product not found" };
+    return res.json();
+  },
+};
+
+// ---- tool: search_hts ----
+
+const searchHtsParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    query: { type: Type.STRING, description: "Search term — matches HTS code or description text." },
+    limit: { type: Type.NUMBER, description: "Max results. Default 20." },
+  },
+};
+
+const searchHts: AssistantTool = {
+  declaration: {
+    name: "search_hts",
+    description: "Search the HTS (Harmonized Tariff Schedule) reference data by code or description.",
+    parameters: searchHtsParams,
+  },
+  execute: async (_ctx, rawArgs) => {
+    const q = rawArgs.query ? String(rawArgs.query) : undefined;
+    const limit = rawArgs.limit ? Number(rawArgs.limit) : 20;
+    return HtsSearchService.search({ q, limit });
+  },
+};
+
+// ---- tool: search_rulings ----
+
+const searchRulingsParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    query: { type: Type.STRING, description: "Search term for CROSS ruling text." },
+    htsCode: { type: Type.STRING, description: "Restrict to rulings citing this HTS code." },
+  },
+};
+
+const searchRulings: AssistantTool = {
+  declaration: {
+    name: "search_rulings",
+    description: "Search CBP CROSS classification rulings by keyword or HTS code.",
+    parameters: searchRulingsParams,
+  },
+  execute: async (_ctx, rawArgs) => {
+    const query = rawArgs.query ? String(rawArgs.query) : undefined;
+    const htsCode = rawArgs.htsCode ? String(rawArgs.htsCode) : undefined;
+    const rulings = await RulingService.searchRulings({ query, htsCode, limit: 10 });
+    return { rulings };
+  },
+};
+
+// ---- tool: get_duty_stack ----
+
+const getDutyStackParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    htsCode: { type: Type.STRING, description: "HTS classification code for the line item." },
+    countryOfOrigin: { type: Type.STRING, description: "ISO country code of origin, e.g. CN, VN." },
+    customsValue: { type: Type.NUMBER, description: "Declared customs value in USD." },
+  },
+  required: ["htsCode", "countryOfOrigin", "customsValue"],
+};
+
+const getDutyStack: AssistantTool = {
+  declaration: {
+    name: "get_duty_stack",
+    description: "Full layered duty calculation (base, Section 301, Section 232, AD/CVD, MPF, HMF) for one HTS code, origin, and value.",
+    parameters: getDutyStackParams,
+  },
+  execute: async (_ctx, rawArgs) => {
+    const htsCode = String(rawArgs.htsCode ?? "");
+    const countryOfOrigin = String(rawArgs.countryOfOrigin ?? "");
+    const customsValue = Number(rawArgs.customsValue ?? 0);
+    const lineItem: TariffLineInput = { htsCode, countryOfOrigin, totalValue: customsValue };
+    const ratesMap = await loadHtsCodesMap([lineItem], countryOfOrigin);
+    const stack = calculateDutyStack(lineItem, ratesMap[htsCode]);
+    return {
+      htsCode,
+      countryOfOrigin,
+      customsValue,
+      base: stack.base.toNumber(),
+      section301: stack.section301.toNumber(),
+      section232: stack.section232.toNumber(),
+      antidumping: stack.antidumping.toNumber(),
+      countervailing: stack.countervailing.toNumber(),
+      total: stack.total.toNumber(),
+      mpf: stack.mpf.toNumber(),
+      hmf: stack.hmf.toNumber(),
+      totalWithFees: stack.totalWithFees.toNumber(),
+    };
+  },
+};
+
+// ---- tool: get_regulatory_updates ----
+
+const getRegulatoryUpdatesParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    from: { type: Type.STRING, description: "ISO date — only updates effective on or after this date." },
+    category: { type: Type.STRING, description: "Filter by category, e.g. Section 301, AD/CVD." },
+  },
+};
+
+const getRegulatoryUpdates: AssistantTool = {
+  declaration: {
+    name: "get_regulatory_updates",
+    description: "Recent trade regulatory updates, optionally filtered by effective date or category.",
+    parameters: getRegulatoryUpdatesParams,
+  },
+  access: { navHref: "/app/regulatory" },
+  execute: async (_ctx, rawArgs) => {
+    const from = rawArgs.from ? new Date(String(rawArgs.from)) : undefined;
+    const category = rawArgs.category ? String(rawArgs.category) : undefined;
+    const updates = await db.regulatoryUpdate.findMany({
+      where: {
+        ...(from && { effectiveDate: { gte: from } }),
+        ...(category && { category }),
+      },
+      orderBy: { effectiveDate: "desc" },
+      take: 20,
+    });
+    return { count: updates.length, updates };
+  },
+};
+
+// ---- tool: get_filing_status ----
+
+const getFilingStatusParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    filingId: { type: Type.STRING, description: "Customs filing UUID." },
+  },
+  required: ["filingId"],
+};
+
+const getFilingStatus: AssistantTool = {
+  declaration: {
+    name: "get_filing_status",
+    description: "Get a customs filing's status, snapshot, and linked shipment/response detail.",
+    parameters: getFilingStatusParams,
+  },
+  access: { navHref: "/app/filing" },
+  execute: async (_ctx, rawArgs) => {
+    const filingId = String(rawArgs.filingId ?? "");
+    const res = await filingDetailGET(
+      new Request(`http://internal.local/api/filing/${filingId}`),
+      { params: Promise.resolve({ id: filingId }) }
+    );
+    if (!res.ok) return { error: "Filing not found" };
+    return res.json();
+  },
+};
+
+// ---- tool: run_impact_analysis ----
+
+const runImpactAnalysis: AssistantTool = {
+  declaration: {
+    name: "run_impact_analysis",
+    description: "Run a portfolio-wide regulatory impact analysis across the account's shipments and products.",
+    parameters: { type: Type.OBJECT, properties: {} },
+  },
+  access: { navHref: "/app/regulatory" },
+  execute: async (ctx) => {
+    return ImpactAnalysisService.analyzePortfolioImpact({ accountId: ctx.accountId });
+  },
+};
+
+// ---- tool: approve_decision ----
+
+const approveDecisionParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    decisionId: { type: Type.STRING, description: "AgentDecision UUID. Look it up via list_decisions first." },
+    humanNotes: { type: Type.STRING, description: "Optional note explaining the approval." },
+  },
+  required: ["decisionId"],
+};
+
+const approveDecision: AssistantTool = {
+  declaration: {
+    name: "approve_decision",
+    description: "Approve a proposed decision, applying its classification/value to the shipment. Only call after the user has seen the proposal and explicitly confirmed.",
+    parameters: approveDecisionParams,
+  },
+  access: { permission: "decisions.approve" },
+  execute: async (_ctx, rawArgs) => {
+    const decisionId = String(rawArgs.decisionId ?? "");
+    const humanNotes = rawArgs.humanNotes ? String(rawArgs.humanNotes) : undefined;
+    const res = await decisionsPOST(
+      new Request("http://internal.local/api/decisions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decisionId, action: "APPROVE", humanNotes }),
+      })
+    );
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error ?? "Failed to approve decision" };
+    return { success: true, decision: data.decision, classificationApplied: data.classificationApplied };
+  },
+};
+
+// ---- tool: reject_decision ----
+
+const rejectDecisionParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    decisionId: { type: Type.STRING, description: "AgentDecision UUID. Look it up via list_decisions first." },
+    humanNotes: { type: Type.STRING, description: "Required — reason the decision is being rejected." },
+  },
+  required: ["decisionId", "humanNotes"],
+};
+
+const rejectDecision: AssistantTool = {
+  declaration: {
+    name: "reject_decision",
+    description: "Reject a proposed decision, flagging the line for re-review. Only call after the user has seen the proposal and explicitly confirmed.",
+    parameters: rejectDecisionParams,
+  },
+  access: { permission: "decisions.approve" },
+  execute: async (_ctx, rawArgs) => {
+    const decisionId = String(rawArgs.decisionId ?? "");
+    const humanNotes = String(rawArgs.humanNotes ?? "");
+    const res = await decisionsPOST(
+      new Request("http://internal.local/api/decisions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decisionId, action: "REJECT", humanNotes }),
+      })
+    );
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error ?? "Failed to reject decision" };
+    return { success: true, decision: data.decision };
+  },
+};
+
+// ---- tool: resolve_exception ----
+
+const resolveExceptionParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    exceptionId: { type: Type.STRING, description: "ExceptionItem UUID. Look it up via list_exceptions first." },
+    reasonCode: { type: Type.STRING, description: "Resolution reason code from the picklist for this exception's category." },
+    note: { type: Type.STRING, description: "Explanation of how the exception was resolved." },
+  },
+  required: ["exceptionId", "reasonCode", "note"],
+};
+
+const resolveException: AssistantTool = {
+  declaration: {
+    name: "resolve_exception",
+    description: "Resolve an open exception with a reason code and note. Only call after the user has explicitly confirmed. Waiving (accepting risk) requires a separate permission — this tool is for normal resolution only.",
+    parameters: resolveExceptionParams,
+  },
+  access: { permission: "exceptions.resolve" },
+  execute: async (_ctx, rawArgs) => {
+    const exceptionId = String(rawArgs.exceptionId ?? "");
+    const reasonCode = String(rawArgs.reasonCode ?? "");
+    const note = String(rawArgs.note ?? "");
+
+    const current = await exceptionDetailGET(
+      new Request(`http://internal.local/api/exceptions/${exceptionId}`),
+      { params: Promise.resolve({ id: exceptionId }) }
+    );
+    if (!current.ok) return { success: false, error: "Exception not found" };
+    const currentData = (await current.json()) as { exception: { version: number } };
+
+    const res = await exceptionPATCH(
+      new Request(`http://internal.local/api/exceptions/${exceptionId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          status: "RESOLVED",
+          resolutionReasonCode: reasonCode,
+          resolutionReason: note,
+          expectedVersion: currentData.exception.version,
+        }),
+      }),
+      { params: Promise.resolve({ id: exceptionId }) }
+    );
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error ?? "Failed to resolve exception" };
+    return { success: true, exception: data.exception };
+  },
+};
+
+// ---- tool: classify_product ----
+
+const classifyProductParams: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    productId: { type: Type.STRING, description: "Product UUID. Look it up via search_products first." },
+    htsCode: { type: Type.STRING, description: "HTS classification code to assign and approve." },
+    overrideReason: { type: Type.STRING, description: "Reason for this classification, especially if it overrides an existing one." },
+  },
+  required: ["productId", "htsCode"],
+};
+
+const classifyProduct: AssistantTool = {
+  declaration: {
+    name: "classify_product",
+    description: "Propose and approve an HTS classification for a product in one step. Only call after the user has explicitly confirmed the code.",
+    parameters: classifyProductParams,
+  },
+  access: { permission: "products.classification.approve" },
+  execute: async (_ctx, rawArgs) => {
+    const productId = String(rawArgs.productId ?? "");
+    const htsCode = String(rawArgs.htsCode ?? "");
+    const overrideReason = rawArgs.overrideReason ? String(rawArgs.overrideReason) : undefined;
+
+    const proposeRes = await classificationsPOST(
+      new Request(`http://internal.local/api/products/${productId}/classifications`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jurisdiction: "US",
+          nomenclature: "HTS",
+          classificationCode: htsCode,
+          decisionMethod: "MANUAL",
+        }),
+      }),
+      { params: Promise.resolve({ id: productId }) }
+    );
+    const proposeData = await proposeRes.json();
+    if (!proposeRes.ok) {
+      return { success: false, step: "propose", error: proposeData.error ?? "Failed to propose classification" };
+    }
+    const classificationId = proposeData.classification.id as string;
+
+    const startReviewRes = await classificationReviewPOST(
+      new Request(`http://internal.local/api/products/${productId}/classifications/${classificationId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "START_REVIEW" }),
+      }),
+      { params: Promise.resolve({ id: productId, classificationId }) }
+    );
+    const startReviewData = await startReviewRes.json();
+    if (!startReviewRes.ok) {
+      return { success: false, step: "start_review", error: startReviewData.error ?? "Failed to start review" };
+    }
+
+    const approveRes = await classificationReviewPOST(
+      new Request(`http://internal.local/api/products/${productId}/classifications/${classificationId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "APPROVE", reviewNote: overrideReason }),
+      }),
+      { params: Promise.resolve({ id: productId, classificationId }) }
+    );
+    const approveData = await approveRes.json();
+    if (!approveRes.ok) {
+      return { success: false, step: "approve", error: approveData.error ?? "Failed to approve classification" };
+    }
+
+    return { success: true, classification: approveData.classification };
+  },
+};
+
 export const ASSISTANT_TOOLS: AssistantTool[] = [
   listShipments,
   getValueAtRisk,
@@ -492,6 +1009,21 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   searchDocuments,
   generateReasonableCareRecord,
   exportComplianceRecord,
+  getShipment,
+  listExceptions,
+  getDocument,
+  listDecisions,
+  getProduct,
+  searchHts,
+  searchRulings,
+  getDutyStack,
+  getRegulatoryUpdates,
+  getFilingStatus,
+  runImpactAnalysis,
+  approveDecision,
+  rejectDecision,
+  resolveException,
+  classifyProduct,
 ];
 
 const TOOLS_BY_NAME = new Map(ASSISTANT_TOOLS.map((t) => [t.declaration.name, t]));

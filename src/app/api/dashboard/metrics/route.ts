@@ -6,16 +6,32 @@ import { db } from "@/lib/db";
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
   const period = searchParams.get("period") || "MONTHLY";
-  
-  // Calculate dynamic up-to-date metrics
-  const live = await computeAnalyticsMetrics(ctx.accountId);
+  const clientId = searchParams.get("clientId") ?? undefined;
 
-  // Fetch cached snapshots if they exist
-  const snapshots = await db.workMetricSnapshot.findMany({
-    where: { accountId: ctx.accountId, period },
-    orderBy: { date: "asc" },
-    take: 6,
-  });
+  // For client-scoped requests, verify the client belongs to this account.
+  if (clientId) {
+    const client = await db.client.findFirst({ where: { id: clientId, accountId: ctx.accountId } });
+    if (!client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+  }
+
+  // Live metrics — scoped by clientId when provided.
+  const live = await computeAnalyticsMetrics(ctx.accountId, clientId);
+
+  // Cached snapshots are account-wide; client-level breakdown uses live metrics only.
+  const snapshots = clientId
+    ? []
+    : await db.workMetricSnapshot.findMany({
+        where: { accountId: ctx.accountId, period },
+        orderBy: { date: "asc" },
+        take: 6,
+      });
+
+  const emptyState =
+    snapshots.length === 0 &&
+    live.filedEntries === 0 &&
+    live.openExceptions === 0;
 
   return NextResponse.json({
     live,
@@ -28,5 +44,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
       openExceptions: s.openExceptions,
       filedEntries: s.filedEntries,
     })),
+    emptyState,
+    clientId: clientId ?? null,
   });
 }, { permission: "documents.read" });

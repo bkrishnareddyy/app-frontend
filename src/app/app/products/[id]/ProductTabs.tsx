@@ -174,6 +174,194 @@ function ClassificationHistoryTab({ productId }: { productId: string }) {
   );
 }
 
+// ---- Aliases Tab ----
+
+interface ProductAliasRow {
+  id: string;
+  aliasName: string;
+  source: string;
+  matchConfidence: number;
+  createdAt: string;
+}
+
+interface CanonicalProductWithAliases {
+  id: string;
+  canonicalName: string;
+  sku: string | null;
+  aliases: ProductAliasRow[];
+}
+
+function AliasesTab({ productId, mayEdit }: { productId: string; mayEdit: boolean }) {
+  const [canonicalProducts, setCanonicalProducts] = useState<CanonicalProductWithAliases[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [newAlias, setNewAlias] = useState<{ canonicalProductId: string; aliasName: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const requested = useRef(false);
+
+  const load = useCallback(async () => {
+    if (requested.current) return;
+    requested.current = true;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/products/${productId}/aliases`);
+      if (!res.ok) throw new Error("Request failed");
+      const data = await res.json();
+      setCanonicalProducts(Array.isArray(data.canonicalProducts) ? data.canonicalProducts : []);
+    } catch {
+      setLoadError("Aliases could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleDelete(aliasId: string) {
+    await fetch(`/api/products/${productId}/aliases/${aliasId}`, { method: "DELETE" });
+    setCanonicalProducts((prev) =>
+      prev.map((cp) => ({ ...cp, aliases: cp.aliases.filter((a) => a.id !== aliasId) }))
+    );
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newAlias || !newAlias.aliasName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/products/${productId}/aliases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonicalProductId: newAlias.canonicalProductId, aliasName: newAlias.aliasName.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message ?? "Could not add alias.");
+        return;
+      }
+      const data = await res.json();
+      setCanonicalProducts((prev) =>
+        prev.map((cp) =>
+          cp.id === newAlias.canonicalProductId
+            ? { ...cp, aliases: [data.alias, ...cp.aliases] }
+            : cp
+        )
+      );
+      setNewAlias(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <p className="text-sm text-[#6E6E73] py-6 text-center">Loading…</p>;
+  if (loadError) return <p role="alert" className="text-sm text-red-700 py-6 text-center">{loadError}</p>;
+
+  if (canonicalProducts.length === 0) {
+    return (
+      <div className="rounded-2xl bg-white border border-border p-8 text-center text-sm text-[#6E6E73]">
+        No canonical product records are linked. Normalize a product description to create one.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {canonicalProducts.map((cp) => (
+        <div key={cp.id} className="rounded-2xl bg-white border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-surface-muted flex items-center gap-3 justify-between">
+            <div>
+              <span className="font-semibold text-ink text-sm">{cp.canonicalName}</span>
+              {cp.sku && (
+                <span className="ml-2 text-xs text-[#6E6E73] font-mono">{cp.sku}</span>
+              )}
+            </div>
+            {mayEdit && (
+              <button
+                type="button"
+                onClick={() => setNewAlias({ canonicalProductId: cp.id, aliasName: "" })}
+                className="text-xs font-semibold text-brand"
+              >
+                + Add alias
+              </button>
+            )}
+          </div>
+
+          {newAlias?.canonicalProductId === cp.id && (
+            <form onSubmit={handleAdd} className="flex gap-2 items-center px-4 py-3 border-b border-border bg-blue-50">
+              <input
+                type="text"
+                value={newAlias.aliasName}
+                onChange={(e) => setNewAlias({ ...newAlias, aliasName: e.target.value })}
+                placeholder="e.g. iPhone 16 Pro Max 256GB Black"
+                className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm"
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={saving || !newAlias.aliasName.trim()}
+                className="text-xs font-semibold text-brand disabled:opacity-40"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewAlias(null)}
+                className="text-xs text-[#6E6E73]"
+              >
+                Cancel
+              </button>
+            </form>
+          )}
+
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className={headClass}>Alias</th>
+                <th className={headClass}>Source</th>
+                <th className={headClass}>Confidence</th>
+                {mayEdit && <th className={headClass} />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {cp.aliases.length === 0 ? (
+                <tr>
+                  <td colSpan={mayEdit ? 4 : 3} className="px-3 py-6 text-center text-sm text-[#6E6E73]">
+                    No aliases. Add one to make this canonical product matchable by alternative names.
+                  </td>
+                </tr>
+              ) : (
+                cp.aliases.map((alias) => (
+                  <tr key={alias.id}>
+                    <td className={`${cellClass} text-ink`}>{alias.aliasName}</td>
+                    <td className={`${cellClass} text-[#6E6E73]`}>{alias.source}</td>
+                    <td className={`${cellClass} text-[#6E6E73]`}>{alias.matchConfidence}%</td>
+                    {mayEdit && (
+                      <td className={`${cellClass} text-right`}>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(alias.id)}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ))}
+      <p className="text-xs text-[#6E6E73]">
+        Aliases are the raw names that normalization resolved to a canonical product. An incoming
+        shipment description that exactly matches an alias is immediately resolved without re-running
+        the pipeline.
+      </p>
+    </div>
+  );
+}
+
 // ---- Main ProductTabs ----
 
 const cellClass = "px-3 py-3 align-top";
@@ -411,6 +599,10 @@ export function ProductTabs({
             it alone never produces an exact match.
           </p>
         </div>
+      )}
+
+      {tab === "aliases" && (
+        <AliasesTab productId={productId} mayEdit={mayEdit} />
       )}
 
       {tab === "attributes" && (

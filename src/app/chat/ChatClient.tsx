@@ -725,15 +725,19 @@ export function ChatClient({ context }: ChatClientProps) {
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
+      const applyFrame = (frame: string) => {
+        const line = frame.split("\n").find((l) => l.startsWith("data:"));
+        if (line) apply(JSON.parse(line.slice(5).trim()));
+      };
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-        for (const line of lines) { if (line.trim()) apply(JSON.parse(line)); }
+        const frames = buf.split("\n\n");
+        buf = frames.pop() ?? "";
+        for (const frame of frames) { if (frame.trim()) applyFrame(frame); }
       }
-      if (buf.trim()) apply(JSON.parse(buf));
+      if (buf.trim()) applyFrame(buf);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       streamingAsstRef.current = { ...streamingAsstRef.current!, text: streamingAsstRef.current!.text || `Something went wrong: ${msg}` };

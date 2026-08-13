@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { createAuditLog } from "@/lib/audit";
 
 export type ShipmentPartyRole =
   | "IMPORTER_OF_RECORD"
@@ -23,6 +24,8 @@ export interface AssignPartyInput {
   source?: "USER" | "DOCUMENT" | "AI" | "SYSTEM" | "EXTERNAL_API";
   confidence?: number;
   isVerified?: boolean;
+  accountId?: string;
+  userId?: string | null;
 }
 
 export class ShipmentPartyService {
@@ -55,7 +58,7 @@ export class ShipmentPartyService {
       });
     }
 
-    return db.shipmentParty.create({
+    const created = await db.shipmentParty.create({
       data: {
         shipmentId: input.shipmentId,
         legalEntityId: input.legalEntityId,
@@ -68,6 +71,87 @@ export class ShipmentPartyService {
         legalEntity: {
           include: { customsProfiles: true },
         },
+      },
+    });
+
+    // When the LegalEntity is linked to a Party master record, check for open
+    // revalidation flags that would make using this party on a shipment risky.
+    if (input.accountId) {
+      await ShipmentPartyService.checkPartyMasterRevalidation(
+        input.shipmentId,
+        input.legalEntityId,
+        input.accountId,
+        input.userId ?? null
+      );
+    }
+
+    return created;
+  }
+
+  /**
+   * If the LegalEntity is linked to a Party master record with open
+   * revalidation flags, create a compliance ExceptionItem on the shipment so
+   * the reviewer knows the party's data is in question.
+   *
+   * Revalidation flags on a party mean its name, address, identifier, or
+   * registration has changed since it was last reviewed. Using such a party on
+   * a new shipment without first resolving those flags creates an unreviewed
+   * compliance exposure.
+   */
+  static async checkPartyMasterRevalidation(
+    shipmentId: string,
+    legalEntityId: string,
+    accountId: string,
+    userId: string | null
+  ): Promise<void> {
+    const legalEntity = await db.legalEntity.findFirst({
+      where: { id: legalEntityId, accountId },
+      select: {
+        id: true,
+        legalName: true,
+        partyId: true,
+      },
+    });
+
+    if (!legalEntity?.partyId) return;
+
+    const openFlags = await db.partyRevalidationFlag.findMany({
+      where: { partyId: legalEntity.partyId, accountId, status: "OPEN" },
+      select: { id: true, flag: true, reason: true },
+    });
+
+    if (openFlags.length === 0) return;
+
+    const flagSummary = openFlags.map((f) => `${f.flag}: ${f.reason}`).join("; ");
+
+    await db.exceptionItem.create({
+      data: {
+        accountId,
+        shipmentId,
+        category: "COMPLIANCE",
+        type: "compliance_flag",
+        severity: "High",
+        description:
+          `Party "${legalEntity.legalName}" has ${openFlags.length} open revalidation flag(s) in the party master: ${flagSummary}. Review and resolve before filing.`,
+        status: "Open",
+        blocking: false,
+        requiredAction: "Resolve the open revalidation flags on this party in the party master before filing.",
+        sourceAgent: "Party Revalidation Check",
+      },
+    });
+
+    await createAuditLog({
+      accountId,
+      userId,
+      action: "party.revalidation.shipment_flag",
+      entity: "ShipmentParty",
+      entityId: shipmentId,
+      metadata: {
+        legalEntityId,
+        partyId: legalEntity.partyId,
+        partyName: legalEntity.legalName,
+        openFlagCount: openFlags.length,
+        flags: openFlags.map((f) => f.flag),
       },
     });
   }

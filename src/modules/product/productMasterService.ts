@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { normalizeClassificationCode } from "@/modules/product/productNormalization";
 
 export interface CreateCanonicalProductInput {
   accountId: string;
@@ -22,9 +23,6 @@ export interface BindClassificationInput {
 }
 
 export class ProductMasterService {
-  /**
-   * Create a new canonical product in Enterprise Product Master.
-   */
   static async createCanonicalProduct(input: CreateCanonicalProductInput) {
     const product = await db.canonicalProduct.create({
       data: {
@@ -44,9 +42,7 @@ export class ProductMasterService {
           })),
         },
       },
-      include: {
-        aliases: true,
-      },
+      include: { aliases: true },
     });
 
     await createAuditLog({
@@ -62,36 +58,86 @@ export class ProductMasterService {
   }
 
   /**
-   * Bind an approved ClassificationDecision to a CanonicalProduct.
+   * Binds an approved ClassificationDecision to a CanonicalProduct.
+   *
+   * Updates the CanonicalProduct with the approved HTS code and duty rate.
+   * If the CanonicalProduct is linked to a Product (productId != null), also
+   * creates or updates a ProductClassification row so the two systems stay in
+   * sync. The classification lands APPROVED with effectiveFrom = now, because
+   * a human already approved it in the classification workflow.
    */
   static async bindClassification(input: BindClassificationInput) {
     const decision = await db.classificationDecision.findUnique({
       where: { id: input.decisionId },
-      include: { approvedNode: { include: { dutyRates: true } } },
+      include: {
+        approvedNode: { include: { dutyRates: true } },
+        case: true,
+      },
     });
 
     if (!decision) {
       throw new Error(`ClassificationDecision '${input.decisionId}' not found.`);
     }
 
-    const product = await db.canonicalProduct.findFirst({
+    const canonicalProduct = await db.canonicalProduct.findFirst({
       where: { id: input.canonicalProductId, accountId: input.accountId },
     });
 
-    if (!product) {
+    if (!canonicalProduct) {
       throw new Error(`CanonicalProduct '${input.canonicalProductId}' not found for account.`);
     }
 
-    const generalRate = decision.approvedNode.dutyRates.find((r) => r.rateColumn === "General")?.rawRateText || null;
+    const generalRate =
+      decision.approvedNode.dutyRates.find((r) => r.rateColumn === "General")?.rawRateText ?? null;
 
-    const updatedProduct = await db.canonicalProduct.update({
-      where: { id: input.canonicalProductId },
-      data: {
-        htsCode: decision.approvedNode.htsNumberDisplay,
-        dutyRate: generalRate,
-        updatedAt: new Date(),
-      },
-      include: { aliases: true },
+    const htsCode = decision.approvedNode.htsNumberDisplay;
+    const effectiveDate = decision.effectiveFrom ?? new Date();
+    const jurisdiction = decision.case.jurisdiction ?? "US";
+
+    const updatedProduct = await db.$transaction(async (tx) => {
+      const cp = await tx.canonicalProduct.update({
+        where: { id: input.canonicalProductId },
+        data: { htsCode, dutyRate: generalRate, updatedAt: new Date() },
+        include: { aliases: true },
+      });
+
+      // If this CanonicalProduct is linked to the new Product master, keep the
+      // ProductClassification in sync so downstream systems read from one source.
+      if (cp.productId !== null) {
+        const normalizedCode = normalizeClassificationCode(htsCode);
+
+        // Supersede any existing approved classification for this jurisdiction
+        await tx.productClassification.updateMany({
+          where: {
+            productId: cp.productId,
+            accountId: input.accountId,
+            jurisdiction,
+            status: "APPROVED",
+          },
+          data: { status: "SUPERSEDED", effectiveTo: effectiveDate },
+        });
+
+        await tx.productClassification.create({
+          data: {
+            accountId: input.accountId,
+            productId: cp.productId,
+            jurisdiction,
+            nomenclature: jurisdiction === "US" ? "HTSUS" : "HS",
+            classificationCode: htsCode,
+            normalizedCode,
+            description: null,
+            status: "APPROVED",
+            decisionSource: "USER",
+            decisionMethod: "RULING_BASED",
+            effectiveFrom: effectiveDate,
+            createdByUserId: input.userId,
+            reviewedByUserId: input.userId,
+            reviewedAt: new Date(),
+          },
+        });
+      }
+
+      return cp;
     });
 
     await createAuditLog({
@@ -99,11 +145,14 @@ export class ProductMasterService {
       userId: input.userId,
       action: "product.canonical.bind_classification",
       entity: "CanonicalProduct",
-      entityId: product.id,
+      entityId: canonicalProduct.id,
       metadata: {
         decisionId: input.decisionId,
-        approvedHtsCode: decision.approvedNode.htsNumberDisplay,
+        approvedHtsCode: htsCode,
         dutyRate: generalRate,
+        effectiveFrom: effectiveDate.toISOString(),
+        jurisdiction,
+        linkedProductId: canonicalProduct.productId,
       },
     });
 

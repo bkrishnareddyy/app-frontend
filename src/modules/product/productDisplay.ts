@@ -280,6 +280,7 @@ export function matchStatusPresentation(status: string): StatusPresentation {
 export const PRODUCT_TABS = [
   { id: "overview", label: "Overview" },
   { id: "identifiers", label: "Identifiers" },
+  { id: "aliases", label: "Aliases" },
   { id: "attributes", label: "Attributes" },
   { id: "composition", label: "Composition" },
   { id: "parties", label: "Parties & manufacturing" },

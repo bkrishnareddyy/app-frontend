@@ -8,19 +8,27 @@ interface AccountSwitcherProps {
   currentAccountId: string;
   currentAccountName: string;
   currentAccountType: string;
+  currentDataMode?: string;
   currentRoleNames: string[];
   memberships: Array<{
     accountId: string;
     accountName: string;
     accountType: string;
+    dataMode?: string;
     roleNames: string[];
   }>;
 }
+
+const DATA_MODE_BADGE: Record<string, { label: string; cls: string }> = {
+  DEMO: { label: "DEMO", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  SANDBOX: { label: "SANDBOX", cls: "bg-purple-50 text-purple-700 border-purple-200" },
+};
 
 export function AccountSwitcher({
   currentAccountId,
   currentAccountName,
   currentAccountType,
+  currentDataMode,
   currentRoleNames,
   memberships,
 }: AccountSwitcherProps) {
@@ -72,11 +80,16 @@ export function AccountSwitcher({
           </div>
           <div className="truncate">
             <p className="text-xs font-bold text-ink truncate">{currentAccountName}</p>
-            <div className="flex items-center space-x-1.5 mt-0.5">
+            <div className="flex items-center space-x-1.5 mt-0.5 flex-wrap gap-y-0.5">
               <span className="text-[11px] text-ink-muted font-mono uppercase">{currentAccountType}</span>
               <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-50 text-brand font-semibold border border-blue-100">
                 {currentRoleNames.join(", ")}
               </span>
+              {currentDataMode && DATA_MODE_BADGE[currentDataMode] && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold border ${DATA_MODE_BADGE[currentDataMode].cls}`}>
+                  {DATA_MODE_BADGE[currentDataMode].label}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -99,13 +112,18 @@ export function AccountSwitcher({
                   isSelected ? "bg-blue-50 text-brand font-bold" : "text-ink hover:bg-slate-50"
                 }`}
               >
-                <div className="truncate flex items-center space-x-2">
+                <div className="truncate flex items-center space-x-2 min-w-0">
                   {m.accountType === "ENTERPRISE" ? (
-                    <Building2 className="w-3.5 h-3.5 text-brand" />
+                    <Building2 className="w-3.5 h-3.5 text-brand shrink-0" />
                   ) : (
-                    <User className="w-3.5 h-3.5 text-purple-600" />
+                    <User className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                   )}
                   <span className="truncate">{m.accountName}</span>
+                  {m.dataMode && DATA_MODE_BADGE[m.dataMode] && (
+                    <span className={`text-[8px] px-1 py-0.5 rounded font-bold border shrink-0 ${DATA_MODE_BADGE[m.dataMode].cls}`}>
+                      {DATA_MODE_BADGE[m.dataMode].label}
+                    </span>
+                  )}
                 </div>
                 {isSelected && <Check className="w-3.5 h-3.5 text-brand shrink-0" />}
               </button>

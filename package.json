@@ -19,6 +19,7 @@
     "seed": "npx tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@clerk/nextjs": "^7.6.5",
     "@google/genai": "^2.16.0",
     "@prisma/client": "^6.19.3",

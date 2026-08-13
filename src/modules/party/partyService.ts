@@ -33,6 +33,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { DomainError } from "@/lib/api/error";
+import { screenPartyName } from "@/lib/screening/dpsScreening";
 import { buildPartyOrderBy, buildPartyWhere, partySkip, type PartyQuery } from "./partyQuery";
 import {
   detectPartyChanges,
@@ -666,6 +667,52 @@ export async function createParty(actor: PartyActor, input: CreatePartyInput): P
     metadata: { internalPartyCode: party.internalPartyCode, partyKind: party.partyKind },
     requestId: actor.requestId ?? null,
   });
+
+  // DPS screening on every new party creation. INDETERMINATE means no list is
+  // loaded; the compliance team must screen manually. BLOCKED/FLAGGED opens an
+  // exception so the party cannot slip through unreviewed.
+  const primaryName = input.names.find((n) => n.isPrimary) ?? input.names[0];
+  if (primaryName) {
+    const screening = await screenPartyName(actor.accountId, primaryName.rawName, input.partyKind ?? "ORGANIZATION");
+
+    if (screening.matchStatus === "BLOCKED" || screening.matchStatus === "FLAGGED") {
+      const severity = screening.matchStatus === "BLOCKED" ? "Critical" : "High";
+      const description =
+        screening.matchStatus === "BLOCKED"
+          ? `Party "${primaryName.rawName}" matched denied-party list entry "${screening.matchedParty}" (score: ${screening.matchScore}/100, source: ${screening.listSource ?? "unknown"}). Do not ship until cleared by compliance.`
+          : `Party "${primaryName.rawName}" is a possible match for denied-party list entry "${screening.matchedParty}" (score: ${screening.matchScore}/100, source: ${screening.listSource ?? "unknown"}). Manual compliance review required.`;
+
+      await db.exceptionItem.create({
+        data: {
+          accountId: actor.accountId,
+          category: "COMPLIANCE",
+          type: "compliance_flag",
+          severity,
+          description,
+          status: "Open",
+          blocking: screening.matchStatus === "BLOCKED",
+          requiredAction: "Perform manual denied-party screening before using this party on a shipment.",
+          sourceAgent: "DPS Screening",
+        },
+      });
+
+      await createAuditLog({
+        accountId: actor.accountId,
+        userId: actor.userId,
+        action: "party.screening.flagged",
+        entity: "Party",
+        entityId: party.id,
+        metadata: {
+          partyName: primaryName.rawName,
+          matchStatus: screening.matchStatus,
+          matchScore: screening.matchScore,
+          matchedParty: screening.matchedParty,
+          screeningLogId: screening.logId,
+        },
+        requestId: actor.requestId ?? null,
+      });
+    }
+  }
 
   const detail = await getParty(actor, party.id);
   if (detail === null) throw new PartyNotFoundError(party.id);

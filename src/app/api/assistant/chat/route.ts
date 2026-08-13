@@ -56,11 +56,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
           history: Array.isArray(body.history) ? body.history : [],
           requestId,
         })) {
-          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unexpected error";
-        controller.enqueue(encoder.encode(JSON.stringify({ type: "error", message }) + "\n"));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message })}\n\n`));
       } finally {
         controller.close();
       }
@@ -69,8 +69,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
   return new Response(stream, {
     headers: {
-      "content-type": "application/x-ndjson",
+      "content-type": "text/event-stream",
       "cache-control": "no-cache",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
       "x-request-id": requestId,
     },
   });

@@ -143,6 +143,9 @@ model Account {
   filingMessages             FilingMessage[]
   agentPolicyConfigs         AgentPolicyConfig[]
 
+  webhooks                 AccountWebhook[]
+  apiKeys                  AccountApiKey[]
+
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
   productAttributes        ProductAttribute[]
@@ -721,6 +724,11 @@ model ShipmentLineItem {
   product            Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
   productMatchStatus ProductMatchStatus?
   productMatchedAt   DateTime?
+
+  /// F-5: Data lineage — set when this line was created/updated by an ERP push.
+  source       String? // e.g. "ERP"
+  sourceSystem String? // e.g. "SAP", "CargoWise"
+  sourceId     String? // external identifier for this record in the source system
 
   origins         OriginDetermination[]
   drawbackMatches DrawbackMatch[]
@@ -3886,4 +3894,67 @@ model DrawbackClaimSequence {
   id        String @id @default(cuid())
   accountId String @unique
   nextVal   Int    @default(1)
+}
+
+// ─── ERP & Broker Integration (F12-F) ─────────────────────────────────────────
+
+/// Outbound webhook endpoint registered by an account. When configured events
+/// fire, a signed payload is POSTed to the registered URL.
+model AccountWebhook {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  url           String
+  secret        String   // HMAC-SHA256 signing secret (stored hashed)
+  events        String[] // e.g. ["shipment.status_changed", "decision.approved"]
+  status        String   @default("ACTIVE") // ACTIVE, PAUSED, DISABLED
+  lastDeliveryAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  deliveryLogs  WebhookDeliveryLog[]
+
+  @@index([accountId])
+  @@index([status])
+}
+
+/// Immutable delivery attempt record for every webhook event fired.
+model WebhookDeliveryLog {
+  id           String   @id @default(cuid())
+  webhookId    String
+  webhook      AccountWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  eventType    String   // e.g. shipment.status_changed
+  eventId      String   // idempotency key — same event, same id across retries
+  payload      Json
+  attempt      Int      @default(1) // 1, 2, 3
+  statusCode   Int?     // HTTP response code from the subscriber
+  responseBody String?  // truncated to 2 KB
+  success      Boolean  @default(false)
+  deliveredAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([webhookId])
+  @@index([eventId])
+  @@index([createdAt])
+}
+
+/// API key issued to an ERP or broker system for inbound data push.
+model AccountApiKey {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label       String
+  keyHash     String   @unique // bcrypt hash of the raw key; raw key shown once at creation
+  keyPrefix   String   // first 8 chars of the raw key, shown in UI for identification
+  scopes      String[] // permission names this key can exercise
+  status      String   @default("ACTIVE") // ACTIVE, REVOKED
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdByUserId String?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([keyHash])
 }

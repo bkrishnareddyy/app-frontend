@@ -55,6 +55,7 @@ const SURFACE_ENV_KEYS: Record<AiSurface, string> = {
   normalization: "NORMALIZATION_MODEL",
   "compliance-audit": "COMPLIANCE_AUDIT_MODEL",
   "document-intake": "DOCUMENT_INTAKE_MODEL",
+  advisory: "ADVISORY_MODEL",
 };
 
 function configured(raw: string | undefined): string | null {
