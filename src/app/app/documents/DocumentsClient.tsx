@@ -18,7 +18,6 @@ import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { documentViewUrl } from "@/lib/documentUrl";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { RawExtractionModal } from "@/components/RawExtractionModal";
-import { CopilotContextRegistrar } from "@/components/copilot/CopilotContextRegistrar";
 
 interface ShipmentDocumentItem {
   id: string;
@@ -708,15 +707,6 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
       {/* Reusable Document Viewer Modal */}
       {previewDoc && (
         <>
-        {/* Documents is a list screen, so the Copilot's document context follows
-            the open viewer: while a document is being looked at, "this document"
-            means that one. Cleared when the modal closes. */}
-        <CopilotContextRegistrar
-          page="DOCUMENT_DETAIL"
-          entityType="DOCUMENT"
-          entityId={previewDoc.id}
-          label={previewDoc.name}
-        />
         <RawExtractionModal
           isOpen={!!previewDoc}
           onClose={() => setPreviewDoc(null)}

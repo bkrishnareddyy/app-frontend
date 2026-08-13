@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import { getAccountContext } from "@/lib/auth";
 import { canWrite } from "@/lib/api/write-access";
 import { Badge } from "@/components/ui";
-import { CopilotContextRegistrar } from "@/components/copilot/CopilotContextRegistrar";
 import { displayDate, displayText } from "@/lib/honest";
 import { holdsPermission, productActor } from "@/modules/product/productActor";
 import { getProduct } from "@/modules/product/productService";
@@ -57,14 +56,6 @@ export default async function ProductDetailPage(props: {
 
   return (
     <div className="space-y-6">
-      {/* Lets "this product" mean this product in the Copilot. The id is a hint
-          the server re-resolves against the account; it grants nothing. */}
-      <CopilotContextRegistrar
-        page="PRODUCT_DETAIL"
-        entityType="PRODUCT"
-        entityId={product.id}
-        label={product.productName}
-      />
       <div>
         <Link href="/app/products" className="text-sm font-semibold text-brand">
           ← Products

@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import { getAccountContext } from "@/lib/auth";
 import { canWrite } from "@/lib/api/write-access";
 import { Badge } from "@/components/ui";
-import { CopilotContextRegistrar } from "@/components/copilot/CopilotContextRegistrar";
 import { displayDate, displayText } from "@/lib/honest";
 import { holdsPermission, partyActor } from "@/modules/party/partyActor";
 import { getParty } from "@/modules/party/partyService";
@@ -61,12 +60,6 @@ export default async function PartyDetailPage(props: {
 
   return (
     <div className="space-y-6">
-      <CopilotContextRegistrar
-        page="PARTY_DETAIL"
-        entityType="PARTY"
-        entityId={party.id}
-        label={partyDisplayName(party)}
-      />
       <div>
         <Link href="/app/parties" className="text-sm font-semibold text-brand">
           ← Parties

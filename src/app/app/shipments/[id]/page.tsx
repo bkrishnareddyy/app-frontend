@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { CanonicalShipmentService } from "@/modules/shipment/canonicalShipmentService";
 import { Badge } from "@/components/ui/Badge";
-import { CopilotContextRegistrar } from "@/components/copilot/CopilotContextRegistrar";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { PipelineProgressTracker } from "./PipelineProgressTracker";
 import { ShipmentTitleEditor } from "./ShipmentTitleEditor";
@@ -1136,12 +1135,6 @@ export default async function ShipmentWorkspacePage(props: {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
-      <CopilotContextRegistrar
-        page="SHIPMENT_DETAIL"
-        entityType="SHIPMENT"
-        entityId={shipment.id}
-        label={shipment.shipmentNumber}
-      />
       <PipelineProgressTracker shipmentId={shipment.id} />
 
       {/* Top Banner & Multi-Dimensional Readiness Header */}

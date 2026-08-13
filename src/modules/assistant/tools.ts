@@ -6,15 +6,25 @@ import { GET as shipmentsGET, POST as shipmentsPOST } from "@/app/api/shipments/
 import { GET as productsGET } from "@/app/api/products/route";
 import { GET as partiesGET } from "@/app/api/parties/route";
 import { GET as documentsGET } from "@/app/api/documents/route";
+import { canUseTool } from "@/modules/copilot/copilotAccess";
+import type { CopilotToolAccess } from "@/modules/copilot/copilotToolTypes";
 
 /**
  * Every tool wraps a real, already-authorized code path — either the
  * exported route handler called in-process (so it resolves the caller's real
  * session/RLS exactly like an HTTP request would) or a direct DB query
  * mirroring one already run elsewhere in the app.
+ *
+ * `access` reuses the Copilot's own gate (`canUseTool`, the same function
+ * that decides whether the sidebar shows a link and whether the routed page
+ * renders): a user who cannot open Parties in Qubere cannot reach party data
+ * by asking the chat assistant either. Omitting `access` means "any
+ * authenticated member of the account," which matches what the roster lookup
+ * already is everywhere else in the app.
  */
 export interface AssistantTool {
   declaration: FunctionDeclaration;
+  access?: CopilotToolAccess;
   execute: (ctx: AccountContext, args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -148,6 +158,7 @@ const listShipments: AssistantTool = {
       "List shipments, optionally filtered by assignment, risk, urgency, client, or assignee. Combine flags for compound questions.",
     parameters: listShipmentsParams,
   },
+  access: { navHref: "/app/shipments" },
   execute: async (ctx, rawArgs) => {
     const args = rawArgs as ListShipmentsArgs;
     const shipments = await fetchAllShipments();
@@ -192,6 +203,7 @@ const getValueAtRisk: AssistantTool = {
       "Total declared value across shipments currently at risk (readiness score below 85) — same figure as the dashboard Value at Risk tile.",
     parameters: { type: Type.OBJECT, properties: {} },
   },
+  access: { navHref: "/app/shipments" },
   execute: async () => {
     const shipments = await fetchAllShipments();
     const atRisk = shipments.filter(isAtRisk);
@@ -255,6 +267,7 @@ const createShipment: AssistantTool = {
       "Create a new shipment. Only call after showing the user exactly what will be submitted and receiving explicit confirmation. Never invent values for fields the user didn't state.",
     parameters: createShipmentParams,
   },
+  access: { navHref: "/app/shipments" },
   execute: async (_ctx, args) => {
     const res = await shipmentsPOST(
       new Request("http://internal.local/api/shipments", {
@@ -288,6 +301,7 @@ const searchProducts: AssistantTool = {
     description: "Search the account's product catalog by name, SKU, description, or HTS code.",
     parameters: searchProductsParams,
   },
+  access: { navHref: "/app/products" },
   execute: async (_ctx, rawArgs) => {
     const q = String(rawArgs.query ?? "");
     const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
@@ -331,6 +345,7 @@ const searchParties: AssistantTool = {
     description: "Search the account's party master (importers, exporters, brokers, carriers, etc.) by name or identifier.",
     parameters: searchPartiesParams,
   },
+  access: { navHref: "/app/parties" },
   execute: async (_ctx, rawArgs) => {
     const q = String(rawArgs.query ?? "");
     const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
@@ -374,6 +389,7 @@ const searchDocuments: AssistantTool = {
     description: "Search trade documents (commercial invoices, packing lists, BOLs, etc.) by file name, type, or linked shipment.",
     parameters: searchDocumentsParams,
   },
+  access: { navHref: "/app/documents" },
   execute: async (_ctx, rawArgs) => {
     const q = String(rawArgs.query ?? "");
     const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
@@ -414,4 +430,14 @@ const TOOLS_BY_NAME = new Map(ASSISTANT_TOOLS.map((t) => [t.declaration.name, t]
 
 export function getToolByName(name: string): AssistantTool | undefined {
   return TOOLS_BY_NAME.get(name);
+}
+
+/**
+ * The subset of the registry this user may see and call. Tools the user
+ * cannot use are never declared to the model in the first place, and the
+ * orchestrator re-checks against this same list before executing a call —
+ * so a model that names a tool it wasn't offered still cannot run it.
+ */
+export function availableAssistantTools(ctx: AccountContext): AssistantTool[] {
+  return ASSISTANT_TOOLS.filter((tool) => canUseTool(ctx, tool.access));
 }
