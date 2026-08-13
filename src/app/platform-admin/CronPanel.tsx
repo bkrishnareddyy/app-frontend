@@ -7,6 +7,7 @@ interface CronJob {
   id: string;
   name: string;
   endpoint: string;
+  method: "GET" | "POST";
   schedule: string;
   lastRun: string;
   status: "idle" | "running" | "success" | "error";
@@ -19,6 +20,7 @@ export function CronPanel() {
       id: "regulatory-ingest",
       name: "Regulatory Notice Ingestion",
       endpoint: "/api/cron/regulatory-ingest",
+      method: "POST",
       schedule: "0 0 * * * (Daily at 00:00 UTC)",
       lastRun: "Never",
       status: "idle",
@@ -27,7 +29,35 @@ export function CronPanel() {
       id: "hts-refresh",
       name: "HTS Schedule Refresh",
       endpoint: "/api/cron/hts-refresh",
+      method: "POST",
       schedule: "0 2 * * * (Daily at 02:00 UTC)",
+      lastRun: "Never",
+      status: "idle",
+    },
+    {
+      id: "deadline-sweep",
+      name: "Compliance Deadline Sweep",
+      endpoint: "/api/cron/deadline-sweep",
+      method: "GET",
+      schedule: "*/15 * * * * (Every 15 minutes)",
+      lastRun: "Never",
+      status: "idle",
+    },
+    {
+      id: "document-processing",
+      name: "Document Processing Pipeline",
+      endpoint: "/api/cron/document-processing",
+      method: "GET",
+      schedule: "Daily Backstop Tick (On-demand/1h)",
+      lastRun: "Never",
+      status: "idle",
+    },
+    {
+      id: "inbound-email-processing",
+      name: "Inbound Email Processing Backstop",
+      endpoint: "/api/cron/inbound-email-processing",
+      method: "GET",
+      schedule: "Daily Backstop Tick (On-demand/1h)",
       lastRun: "Never",
       status: "idle",
     },
@@ -42,7 +72,7 @@ export function CronPanel() {
     if (!job) return;
 
     try {
-      const res = await fetch(job.endpoint, { method: "POST" });
+      const res = await fetch(job.endpoint, { method: job.method });
       const data = await res.json();
 
       if (res.ok) {
@@ -53,13 +83,13 @@ export function CronPanel() {
                   ...j,
                   status: "success",
                   lastRun: new Date().toLocaleTimeString(),
-                  details: `Successfully ingested updates. Result: ${JSON.stringify(data)}`,
+                  details: `Result: ${JSON.stringify(data)}`,
                 }
               : j
           )
         );
       } else {
-        throw new Error(data.message || "Failed to trigger cron execution");
+        throw new Error(data.message || data.error || "Failed to trigger execution");
       }
     } catch (err: any) {
       setJobs((prev) =>
@@ -83,10 +113,10 @@ export function CronPanel() {
           <div>
             <h2 className="text-lg font-bold text-ink flex items-center space-x-2">
               <Clock className="w-5 h-5 text-brand" />
-              <span>Cron Jobs Manager</span>
+              <span>Cron Jobs & Background Worker Pipeline</span>
             </h2>
             <p className="text-xs text-ink-muted mt-1">
-              Monitor, schedule, and manually trigger background operational pipeline cron tasks.
+              Trigger, monitor, and configure system automation tasks, regulatory checks, and document parsers.
             </p>
           </div>
         </div>
@@ -96,8 +126,9 @@ export function CronPanel() {
             <thead>
               <tr className="border-b border-slate-100 text-ink-muted font-bold">
                 <th className="py-3 px-4">Job Name</th>
+                <th className="py-3 px-4">Method</th>
                 <th className="py-3 px-4">Schedule</th>
-                <th className="py-3 px-4">Last Successful Run</th>
+                <th className="py-3 px-4">Last Run Status / Timestamp</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -108,9 +139,23 @@ export function CronPanel() {
                     <div>{job.name}</div>
                     <span className="text-[10px] text-slate-400 font-semibold">{job.endpoint}</span>
                   </td>
+                  <td className="py-3.5 px-4">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      job.method === "POST" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-purple-50 text-purple-700 border border-purple-200"
+                    }`}>
+                      {job.method}
+                    </span>
+                  </td>
                   <td className="py-3.5 px-4 text-ink-muted">{job.schedule}</td>
                   <td className="py-3.5 px-4">
-                    <span className="font-semibold text-slate-700">{job.lastRun}</span>
+                    <div className="space-y-1">
+                      <span className="font-semibold text-slate-700 block">{job.lastRun}</span>
+                      {job.details && (
+                        <p className="text-[10px] text-slate-400 max-w-xs truncate" title={job.details}>
+                          {job.details}
+                        </p>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end space-x-3">
