@@ -60,8 +60,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "dashboard", labelKey: "commandCenter", href: "/app/dashboard", icon: "dashboard" },
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
-      { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },
-      { id: "simulator", labelKey: "tariffSimulator", href: "/app/simulator", icon: "simulator" },
     ],
   },
   {
@@ -70,11 +68,11 @@ export const NAV_SECTIONS: NavSection[] = [
     renderAs: "pills",
     items: [
       { id: "documents", labelKey: "tradeDocs", href: "/app/documents", icon: "documents" },
-      // Readable by everyone; write actions gated individually by products.* permissions.
-      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
-      // Readable by everyone; write actions gated individually by parties.* permissions.
-      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
       { id: "vault", labelKey: "dutyDrawbacks", href: "/app/vault", icon: "vault" },
+      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
+      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
+      { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },
+      { id: "simulator", labelKey: "tariffSimulator", href: "/app/simulator", icon: "simulator" },
     ],
   },
   {
