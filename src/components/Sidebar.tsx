@@ -26,6 +26,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Sparkles,
+  Coins,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   roles: ShieldCheck,
   settings: Settings,
   platform: Shield,
+  vault: Coins,
 };
 
 interface SidebarProps {

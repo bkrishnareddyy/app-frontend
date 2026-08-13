@@ -7,7 +7,7 @@ import {
   Send, Loader2, Sparkles, Plus, Trash2,
   LayoutDashboard, ListChecks, FileText, FileCheck2, Globe,
   Files, Package, Landmark, MessageSquare, ChevronRight,
-  ChevronsLeft, ChevronsRight, Moon, Sun, Paperclip, X,
+  ChevronsLeft, ChevronsRight, Moon, Sun, Paperclip, X, Coins,
 } from "lucide-react";
 import { Badge, Card } from "@/components/ui";
 
@@ -145,6 +145,7 @@ const TOOLING_ITEMS = [
   { label: "Trade Docs", href: "/app/documents", Icon: Files },
   { label: "Products", href: "/app/products", Icon: Package },
   { label: "Parties", href: "/app/parties", Icon: Landmark },
+  { label: "Duty Drawbacks", href: "/app/vault", Icon: Coins },
 ];
 
 // ── Sample prompts ────────────────────────────────────────────────────────────

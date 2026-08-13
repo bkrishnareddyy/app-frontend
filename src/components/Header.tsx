@@ -64,7 +64,6 @@ export function Header({
   const menuActions = [
     { label: "Manage Account", icon: Settings2, onClick: () => setIsManageAccountOpen(true) },
     { label: "Profile & Security", icon: UserCog, onClick: () => openUserProfile() },
-    { label: "Document Vault", icon: Archive, onClick: () => router.push("/app/vault") },
     { label: "AI Agents Roster & Testing", icon: Bot, onClick: () => router.push("/agents") },
   ];
 

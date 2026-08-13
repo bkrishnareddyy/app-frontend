@@ -24,6 +24,7 @@ export const es: TranslationKeys = {
     documentEmail: "Correo de Documentos",
     toolingAndDocs: "Herramientas y Docs",
     tradeDocs: "Docs Comerciales",
+    dutyDrawbacks: "Duty Drawbacks",
     mainOperations: "Operaciones Principales",
     accountAdmin: "Administración de Cuenta",
     platformAdmin: "Administración de Plataforma",

@@ -21,7 +21,8 @@ export type NavIcon =
   | "users"
   | "roles"
   | "settings"
-  | "platform";
+  | "platform"
+  | "vault";
 
 export interface NavItem {
   id: string;
@@ -71,6 +72,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
       // Readable by everyone; write actions gated individually by parties.* permissions.
       { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
+      { id: "vault", labelKey: "dutyDrawbacks", href: "/app/vault", icon: "vault" },
     ],
   },
   {

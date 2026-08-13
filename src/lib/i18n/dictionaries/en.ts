@@ -23,6 +23,7 @@ export const en = {
     mainOperations: "Main Operations",
     toolingAndDocs: "Tooling & Docs",
     tradeDocs: "Docs",
+    dutyDrawbacks: "Duty Drawbacks",
     accountAdmin: "Account Admin",
     platformAdmin: "Platform Admin",
     qubereConsole: "Qubere Console",
