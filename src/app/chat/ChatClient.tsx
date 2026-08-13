@@ -803,7 +803,7 @@ export function ChatClient({ context }: ChatClientProps) {
       form.append("shipmentId", shipmentId);
       const res = await fetch("/api/documents/upload", { method: "POST", body: form });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { await fail(data?.message ?? data?.error ?? `Upload failed (${res.status})`); return; }
+      if (!res.ok) { await fail(data?.message ?? safeErrorMessage(data?.error) ?? `Upload failed (${res.status})`); return; }
 
       const documentId = data.documentId as string;
       const docType = data.docType as string | null;
