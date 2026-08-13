@@ -91,20 +91,23 @@ export function ExceptionSlideOver({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/exceptions/${encodeURIComponent(exceptionId)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) setDetail(data.exception ?? data);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Failed to load exception details.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      fetch(`/api/exceptions/${encodeURIComponent(exceptionId)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!cancelled) setDetail(data.exception ?? data);
+        })
+        .catch(() => {
+          if (!cancelled) setError("Failed to load exception details.");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [exceptionId]);
 
   const submit = async () => {

@@ -13,7 +13,6 @@ import { db } from "@/lib/db";
 import {
   DeadlineStatus,
   DeadlineType,
-  DeadlineClass,
   type ComplianceDeadline,
 } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";

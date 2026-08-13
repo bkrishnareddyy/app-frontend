@@ -99,9 +99,12 @@ export function Sidebar({
   }, []);
 
   useEffect(() => {
-    fetchPendingClassification();
+    const initial = setTimeout(fetchPendingClassification, 0);
     const interval = setInterval(fetchPendingClassification, 60_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
   }, [fetchPendingClassification]);
 
   useEffect(() => {

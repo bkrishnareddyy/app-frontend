@@ -71,10 +71,15 @@ export function AgentExecutionTimeline({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
 
-  // Sync if the server re-renders with fresh props (e.g. router.refresh() after pipeline completes).
-  useEffect(() => {
+  // Sync if the server re-renders with fresh props (e.g. router.refresh() after
+  // pipeline completes). Adjusted directly during render, per React's
+  // documented pattern for deriving state from a changed prop, rather than in
+  // an effect (which would cause an extra render).
+  const [prevInitialInvocations, setPrevInitialInvocations] = useState(initialInvocations);
+  if (initialInvocations !== prevInitialInvocations) {
+    setPrevInitialInvocations(initialInvocations);
     setInvocations(initialInvocations);
-  }, [initialInvocations]);
+  }
 
   useEffect(() => {
     cancelledRef.current = false;

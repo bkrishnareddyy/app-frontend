@@ -399,7 +399,6 @@ ${candidateContext}`;
     // the exact ShipmentLineItem it's about.
     let agentDecisionId: string | null = null;
     for (const result of results) {
-      const lineRequiresReview = result.confidence < 70;
       try {
         const profile = input.productProfiles.find((p) => p.lineNumber === result.lineNumber);
         const pmMatch = matchPartMaster(

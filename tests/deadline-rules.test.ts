@@ -4,8 +4,6 @@ import {
   missingAnchors,
   addCalendarDays,
   addWorkingDays,
-  addHours,
-  subtractHours,
   type DeadlineContext,
 } from "@/modules/deadlines/deadlineRules";
 import { DeadlineType, DeadlineAnchor } from "@prisma/client";
