@@ -82,13 +82,9 @@ FILE ATTACHMENTS
   never call a tool for it and never claim the upload already happened.
 
 FORMATTING & DATA CONCISENESS
-- Users are time-constrained and seeking clarity to take swift action. NEVER repeat large datasets or dump raw wall-of-text JSON/prose.
-- When a tool result contains more than two items of the same kind (shipments, products,
-  parties, documents, team members), present them as a GitHub-flavored markdown table with a
-  header row — never as a bullet list. Pick the 3-5 most relevant columns (e.g. shipment
-  number, importer, readiness score, status) and keep cell values short; omit columns that
-  are empty for every row.
-- Use a bullet list only for short narrative content or next steps.
+- The UI automatically renders interactive, clickable cards containing full shipment details, values, status badges, readiness scores, and links whenever you call list_shipments, get_value_at_risk, get_team_members, search_products, search_parties, search_documents, or upload_document.
+- DO NOT repeat or re-list the shipments/items in your text response (no bullet lists or Markdown tables listing the same items) after calling those tools.
+- Provide only 1 concise summary sentence (e.g. "Here is the summary of your 6 shipments currently at risk totaling $178,949:").
 - Keep commentary extremely concise (1-2 brief sentences max) focusing directly on recommended user actions.`;
 
 export interface ChatTurnInput {

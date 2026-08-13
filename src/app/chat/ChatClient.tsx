@@ -1191,7 +1191,15 @@ function MessageBubble({ message, onQuickReply }: { message: MessageDisplay; onQ
 
 // ── Tool cards ────────────────────────────────────────────────────────────────
 
-type ShipmentRow = { shipmentNumber: string; importerName: string; assignedBroker: string | null; readinessScore: number | null; url: string };
+type ShipmentRow = {
+  shipmentNumber: string;
+  importerName: string;
+  assignedBroker: string | null;
+  readinessScore: number | null;
+  value?: number | null;
+  status?: string | null;
+  url: string;
+};
 
 /** Small, deliberately unobtrusive link at the bottom of a tool card — lets the
  * user jump into the app to verify or act on the data without competing with
@@ -1461,6 +1469,12 @@ function ShipRow({ s }: { s: ShipmentRow }) {
           <div style={{ fontSize: 11, color: th.inkMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.importerName}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {typeof s.value === "number" && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: th.ink, fontVariantNumeric: "tabular-nums" }}>
+              ${s.value.toLocaleString()}
+            </span>
+          )}
+          {s.status && <Badge variant="neutral">{s.status}</Badge>}
           {s.assignedBroker
             ? <span style={{ fontSize: 12, color: th.inkMuted }}>{s.assignedBroker}</span>
             : <Badge variant="warning">Unassigned</Badge>}
