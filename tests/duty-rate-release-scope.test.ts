@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const dbMock = {
   htsRelease: { findFirst: vi.fn() },
   htsNode: { findMany: vi.fn() },
+  section232Rate: { findMany: vi.fn() },
 };
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
@@ -39,6 +40,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   dbMock.htsRelease.findFirst.mockResolvedValue({ id: "rel_published" });
   dbMock.htsNode.findMany.mockResolvedValue([node("Free")]);
+  dbMock.section232Rate.findMany.mockResolvedValue([]);
 });
 
 describe("duty rate release scope", () => {

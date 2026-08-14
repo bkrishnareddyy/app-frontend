@@ -84,7 +84,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       { status: 404 }
     );
   }
-  const dutyRateInput = HtsNodeRepository.toDutyRateInput(node);
+  // No countryOfOrigin field exists on this endpoint's request body yet, so
+  // Section 301/232 applicability is reported as NOT_EVALUATED rather than a
+  // hardcoded, misleading "not applicable" when we genuinely can't tell.
+  const dutyRateInput = await HtsNodeRepository.toDutyRateInput(node, null);
 
   let baseDutyRate: number | null = null;
   if (typeof dutyRateOverride === "number" && Number.isFinite(dutyRateOverride)) {

@@ -68,7 +68,7 @@ export class DrawbackService {
 
         // Check if lot already exists
         const exists = await db.drawbackLot.findFirst({
-          where: { lineItemId: item.id },
+          where: { accountId: filing.accountId, lineItemId: item.id },
         });
 
         if (!exists) {
@@ -231,7 +231,7 @@ export class DrawbackService {
       // Confirm reservations to claimed quantities
       for (const m of input.matches) {
         const lot = await tx.drawbackLot.findFirst({
-          where: { lineItemId: m.shipmentLineItemId },
+          where: { accountId, lineItemId: m.shipmentLineItemId },
         });
         if (lot) {
           const qty = new Decimal(m.matchedQuantity);

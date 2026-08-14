@@ -15,6 +15,21 @@ export type TariffLineInput = Pick<Partial<ShipmentLineItem>, "htsCode"> & {
   tradeAgreementClaim?: string | null;
 };
 
+/**
+ * Whether a trade-remedy measure's applicability has actually been
+ * determined for a given HTS code, as opposed to `false`/`0` -- which a
+ * caller cannot distinguish from "genuinely evaluated and confirmed not
+ * applicable." A measure is only EVALUATED_* once real ingested data (a
+ * DB row) was consulted for this exact code; absence of any such row
+ * means NOT_EVALUATED, not "not applicable."
+ */
+export type TradeMeasureEvaluationStatus =
+  | "EVALUATED_APPLICABLE"
+  | "EVALUATED_NOT_APPLICABLE"
+  | "NOT_EVALUATED"
+  | "DATA_UNAVAILABLE"
+  | "REVIEW_REQUIRED";
+
 export interface DutyRateInput {
   generalDutyRate?: string | null;
   section301Applicable?: boolean | null;
@@ -25,6 +40,12 @@ export interface DutyRateInput {
   section232AdditionalRate?: number | null;
   antidumpingRate?: number | null;
   countervailingRate?: number | null;
+  /** Additive evaluation-status metadata -- optional so existing callers keep working unchanged. */
+  generalStatus?: TradeMeasureEvaluationStatus;
+  section301Status?: TradeMeasureEvaluationStatus;
+  section232Status?: TradeMeasureEvaluationStatus;
+  antidumpingStatus?: TradeMeasureEvaluationStatus;
+  countervailingStatus?: TradeMeasureEvaluationStatus;
 }
 
 export interface DutyStack {
@@ -202,6 +223,48 @@ export function calculateDutyStack(
   };
 }
 
+/**
+ * Section 232 (Steel/Aluminum) applicability, resolved from the real ingested
+ * Section232Rate table -- previously hardcoded to `false`/`0` in both
+ * loadHtsCodesMap and HtsNodeRepository.toDutyRateInput even though this
+ * table and its ingestion already exist, which silently misrepresented
+ * genuinely-ingested Section 232 duty as "not applicable." Absence of any
+ * row for this HTS code means the code has not been evaluated against the
+ * Section 232 program (NOT_EVALUATED), not that the program doesn't apply.
+ */
+export async function resolveSection232ForHtsCode(
+  htsCode: string,
+  countryOfOrigin?: string | null
+): Promise<{ applicable: boolean; additionalRate: number; status: TradeMeasureEvaluationStatus }> {
+  const { db } = await import("@/lib/db");
+  const normalized = htsCode.replace(/[^0-9]/g, "");
+  if (!normalized) return { applicable: false, additionalRate: 0, status: "NOT_EVALUATED" };
+
+  const now = new Date();
+  const rows = await db.section232Rate.findMany({
+    where: { htsNumber: { in: [htsCode, normalized] }, reviewStatus: "APPROVED" },
+  });
+
+  const active = rows.filter(
+    (r) => r.effectiveDate <= now && (r.expirationDate == null || r.expirationDate >= now)
+  );
+  if (active.length === 0) {
+    return { applicable: false, additionalRate: 0, status: "NOT_EVALUATED" };
+  }
+
+  const country = countryOfOrigin?.toUpperCase() || null;
+  const match =
+    (country ? active.find((r) => r.countryOfOrigin?.toUpperCase() === country) : null) ??
+    active.find((r) => !r.countryOfOrigin) ??
+    active[0];
+
+  if (match.isGeneralApprovedExclusion) {
+    return { applicable: false, additionalRate: 0, status: "EVALUATED_NOT_APPLICABLE" };
+  }
+
+  return { applicable: true, additionalRate: match.baseRatePct, status: "EVALUATED_APPLICABLE" };
+}
+
 export async function loadHtsCodesMap(
   lineItems: Array<TariffLineInput>,
   country: string = "US"
@@ -300,16 +363,23 @@ export async function loadHtsCodesMap(
     adRate = resolveMostSpecific(adRates);
     cvdRate = resolveMostSpecific(cvdRates);
 
+    const section232 = await resolveSection232ForHtsCode(code, lineCountry ?? null);
+
     map[code] = {
       generalDutyRate: general?.rawRateText ?? null,
+      generalStatus: node ? (general ? "EVALUATED_APPLICABLE" : "DATA_UNAVAILABLE") : "DATA_UNAVAILABLE",
       section301Applicable: sec301Applicable,
       section301Tranche: sec301Tranche,
       section301AdditionalRate: sec301AdditionalRate,
       section301Exclusion: sec301Exclusion,
-      section232Applicable: false,
-      section232AdditionalRate: 0,
+      section301Status: sec301Rate ? (sec301Applicable ? "EVALUATED_APPLICABLE" : "EVALUATED_NOT_APPLICABLE") : "NOT_EVALUATED",
+      section232Applicable: section232.applicable,
+      section232AdditionalRate: section232.additionalRate,
+      section232Status: section232.status,
       antidumpingRate: adRate,
+      antidumpingStatus: adRate != null ? "EVALUATED_APPLICABLE" : "NOT_EVALUATED",
       countervailingRate: cvdRate,
+      countervailingStatus: cvdRate != null ? "EVALUATED_APPLICABLE" : "NOT_EVALUATED",
     };
   }
   return map;

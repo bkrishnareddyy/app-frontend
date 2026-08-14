@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import type { DutyRateInput } from "@/lib/tariff/dutyEngine";
+import { resolveSection232ForHtsCode, type DutyRateInput } from "@/lib/tariff/dutyEngine";
 
 export interface HtsSearchFilters {
   q?: string;
@@ -82,18 +82,43 @@ export class HtsNodeRepository {
 
   /**
    * Adapts a real HtsNode (with dutyRates loaded) into the shape
-   * dutyEngine.ts needs. Section 301/232 fields are always reported as
-   * inapplicable/zero -- there is no real trade-remedy data ingested
-   * anywhere, so this is an honest "not tracked", not a computed zero.
+   * dutyEngine.ts needs. Section 301 is read from the node's own ingested
+   * dutyRates (same as loadHtsCodesMap); Section 232 is resolved against the
+   * real ingested Section232Rate table. countryOfOrigin is optional -- when
+   * the caller doesn't have it, Section 301/232 applicability is reported as
+   * NOT_EVALUATED rather than a hardcoded, misleading "not applicable."
    */
-  static toDutyRateInput(node: Prisma.HtsNodeGetPayload<{ include: { dutyRates: true } }> | null): DutyRateInput {
+  static async toDutyRateInput(
+    node: Prisma.HtsNodeGetPayload<{ include: { dutyRates: true } }> | null,
+    countryOfOrigin?: string | null
+  ): Promise<DutyRateInput> {
     const general = node?.dutyRates.find((r) => r.rateColumn === "General");
+    const sec301Rate = node?.dutyRates.find(
+      (r) => r.rateType === "SECTION_301" || r.rateColumn === "Section301"
+    );
+
+    const country = countryOfOrigin?.toUpperCase() || null;
+    let section301Applicable = false;
+    let section301AdditionalRate = 0;
+    if (sec301Rate) {
+      section301Applicable = country ? country === "CN" : true;
+      section301AdditionalRate = sec301Rate.adValoremPercent ?? 0;
+    }
+
+    const htsCode = node?.htsNumberDisplay ?? node?.htsNumberNormalized ?? "";
+    const section232 = htsCode
+      ? await resolveSection232ForHtsCode(htsCode, countryOfOrigin)
+      : { applicable: false, additionalRate: 0, status: "NOT_EVALUATED" as const };
+
     return {
       generalDutyRate: general?.rawRateText ?? null,
-      section301Applicable: false,
-      section301AdditionalRate: 0,
-      section232Applicable: false,
-      section232AdditionalRate: 0,
+      generalStatus: node ? (general ? "EVALUATED_APPLICABLE" : "DATA_UNAVAILABLE") : "DATA_UNAVAILABLE",
+      section301Applicable,
+      section301AdditionalRate,
+      section301Status: sec301Rate ? (section301Applicable ? "EVALUATED_APPLICABLE" : "EVALUATED_NOT_APPLICABLE") : "NOT_EVALUATED",
+      section232Applicable: section232.applicable,
+      section232AdditionalRate: section232.additionalRate,
+      section232Status: section232.status,
     };
   }
 
