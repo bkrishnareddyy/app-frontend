@@ -3994,3 +3994,246 @@ model AccountApiKey {
   @@index([accountId])
   @@index([keyHash])
 }
+
+// ---------------------------------------------------------------------------
+// DATASET REFERENCE TABLES
+// Platform-level reference data (no accountId — these are not tenant data).
+// All feeds ingested from free public government sources per data-refresh-policy.md
+// ---------------------------------------------------------------------------
+
+/// Persistent per-dataset ingestion run log.
+/// Replaces the module-level in-memory array in datasetRegistry.ts.
+/// Powers the <Data> tab panel, the daily dispatcher cron, and staleness alerting.
+model DatasetRefreshLog {
+  id          String    @id @default(cuid())
+  datasetId   String    // matches DatasetDefinition.id in datasetRegistry.ts
+  datasetName String
+  triggeredBy String    // "CRON" | "MANUAL"
+  status      String    // "RUNNING" | "SUCCESS" | "FAILED"
+  summary     String?   // brief success message (e.g. "Staged 28,431 nodes")
+  errorMessage String?  // set on FAILED
+  itemsIngested Int?    // rows written/updated, if applicable
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([datasetId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+/// Normalized party records from BIS Consolidated Screening List (10 lists)
+/// and OFAC SDN / Consolidated Non-SDN.
+/// Versioned with publicationStatus for point-in-time screening audit defensibility:
+/// "what was this party's sanction status on the date we screened them?"
+model ScreeningEntity {
+  id                String    @id @default(cuid())
+  entityHash        String    @unique // SHA-256 of (sourceList + name + country) for dedup
+  sourceList        String    // SDN | DPL | ENTITY_LIST | UNVERIFIED | ISN | SSI | FSE | PLC | NS_MBS | CONSOLIDATED_NON_SDN
+  entityType        String    // INDIVIDUAL | ENTITY | VESSEL | AIRCRAFT | DIGITAL_CURRENCY_ADDRESS
+  name              String
+  alternateNames    String[]
+  address           String?
+  city              String?
+  country           String?
+  nationalityCountry String?
+  programCodes      String[]  // e.g. ["IRAN", "SDGT"]
+  remarks           String?   @db.Text
+  publicationStatus String    @default("DRAFT") // DRAFT | PUBLISHED | SUPERSEDED
+  publishedAt       DateTime?
+  supersededAt      DateTime?
+  sourcePublishedAt DateTime? // date from OFAC/CSL source file
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([name])
+  @@index([sourceList])
+  @@index([publicationStatus])
+  @@index([country])
+}
+
+/// CBP ACE 4-digit port codes — reference table for pre-filing validation.
+/// Used by filingValidator.ts to reject invalid port codes on ISF and 7501 entries.
+model AcePortCode {
+  id             String    @id @default(cuid())
+  portCode       String    @unique // 4-digit, e.g. "1001" = NY/NJ
+  portName       String
+  state          String?
+  fieldOfficeCode String?
+  transportModes String[]  // VESSEL | AIR | TRUCK | RAIL
+  isActive       Boolean   @default(true)
+  effectiveDate  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([portCode])
+  @@index([isActive])
+}
+
+/// Section 301 tariff rates — per-HTS tranche membership and duty rate.
+/// Wired into dutyStack.ts as the section301 duty layer.
+/// LLM-extracted rows start as reviewStatus=PENDING; must be approved before affecting calculations.
+model Section301Rate {
+  id             String    @id @default(cuid())
+  htsNumber      String    // 8 or 10-digit HTS code
+  tranche        String    // LIST_1 | LIST_2 | LIST_3 | LIST_4A | LIST_4B
+  dutyRatePct    Float     // 25.0 for Lists 1-3, 7.5 for List 4A, 0.0 for suspended 4B
+  effectiveDate  DateTime
+  expirationDate DateTime?
+  federalRegisterCitation String?
+  reviewStatus   String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
+  approvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([htsNumber, tranche, effectiveDate])
+  @@index([htsNumber])
+  @@index([tranche])
+  @@index([reviewStatus])
+}
+
+/// Section 301 exclusions — HTS codes and product descriptions excluded from Section 301 duties.
+/// LLM-extracted; must be approved before triggering RefundOpportunity auto-creation.
+model Section301Exclusion {
+  id                   String    @id @default(cuid())
+  htsNumber            String    // 10-digit HTS
+  productDescriptionRaw String   @db.Text // exact notice language
+  productDescriptionRegex String? @db.Text // compiled regex rule for matching
+  tranche              String    // LIST_1 | LIST_2 | LIST_3 | LIST_4A
+  effectiveDate        DateTime
+  expirationDate       DateTime?
+  isExpired            Boolean   @default(false)
+  federalRegisterCitation String?
+  reviewStatus         String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
+  approvedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([htsNumber])
+  @@index([isExpired])
+  @@index([reviewStatus])
+}
+
+/// Section 232 (Steel/Aluminum) tariff rates and country TRQs.
+/// Wired into dutyStack.ts as the section232 duty layer.
+model Section232Rate {
+  id             String    @id @default(cuid())
+  htsNumber      String    // 10-digit HTS
+  commodity      String    // STEEL | ALUMINUM
+  baseRatePct    Float     // 25.0 for steel, 10.0 for aluminum
+  countryOfOrigin String?  // null = applies to all; set for TRQ or exclusion-country
+  isGeneralApprovedExclusion Boolean @default(false)
+  trqQuotaKg     Float?    // Tariff-Rate Quota quantity in KG (null if no TRQ)
+  effectiveDate  DateTime
+  expirationDate DateTime?
+  reviewStatus   String    @default("APPROVED") // APPROVED | SUPERSEDED
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([htsNumber])
+  @@index([commodity])
+  @@index([countryOfOrigin])
+}
+
+/// Product-Specific Rules (PSR) for FTA qualification — USMCA Annex 4-B and CAFTA-DR Annex 4.1.
+/// Powers the qualify/route.ts trade agreement determination engine.
+model TradeAgreementRule {
+  id               String   @id @default(cuid())
+  agreementCode    String   // USMCA | CAFTA_DR
+  hsChapter        String?  // 2-digit chapter
+  hsHeading        String?  // 4-digit heading
+  hsSubheading     String?  // 6-digit subheading
+  ruleType         String   // CC | CTH | CTSH | RVC | CC_OR_RVC | SPECIFIC
+  ruleText         String   @db.Text // exact annex language
+  tariffShiftFrom  String?  // HS chapters/headings the shift must be FROM
+  rvcMethod        String?  // TRANSACTION_VALUE | NET_COST
+  rvcPct           Float?   // e.g. 60.0 for 60% RVC
+  exceptions       String?  @db.Text
+  reviewStatus     String   @default("APPROVED") // APPROVED | SUPERSEDED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([agreementCode])
+  @@index([hsChapter])
+  @@index([hsHeading])
+}
+
+/// WTO MFN bound/applied rates and preferential rates by HS-6 subheading + reporter country.
+/// Powers tariff scenario modeling and non-US sourcing shift analysis.
+model WtoTariffRate {
+  id              String   @id @default(cuid())
+  reporterIso2    String   // WTO member reporting country, ISO 3166-1 alpha-2
+  partnerIso2     String?  // null = MFN (applies to all WTO partners)
+  hsCode6         String   // 6-digit HS subheading
+  tariffYear      Int
+  rateType        String   // MFN_BOUND | MFN_APPLIED | PREFERENTIAL
+  adValoremPct    Float?
+  specificRate    String?  // e.g. "EUR 0.05 / kg" when not pure ad valorem
+  isFree          Boolean  @default(false)
+  tradeAgreement  String?  // e.g. "EU-US" for preferential rows
+  createdAt       DateTime @default(now())
+
+  @@unique([reporterIso2, partnerIso2, hsCode6, tariffYear, rateType])
+  @@index([hsCode6])
+  @@index([reporterIso2])
+  @@index([tariffYear])
+}
+
+/// CBP monthly import trade trend statistics — macro benchmarks for risk scoring.
+model CbpImportTrend {
+  id              String   @id @default(cuid())
+  reportingPeriod DateTime // first day of the report month
+  entryCount      Int
+  customsValueUsd Decimal
+  dutyCollectedUsd Decimal
+  topCommodities  Json     // [{htsChapter, description, entryCount, valueUsd}]
+  sourceReportUrl String?
+  createdAt       DateTime @default(now())
+
+  @@unique([reportingPeriod])
+  @@index([reportingPeriod])
+}
+
+/// US Census Schedule B 10-digit export codes with HTS concordance.
+/// Powers AES export pre-checks and duty drawback matching.
+model ScheduleBCode {
+  id               String   @id @default(cuid())
+  scheduleBNumber  String   @unique // 10-digit Schedule B code
+  description      String
+  quantityUnit1    String?  // e.g. "KGS"
+  quantityUnit2    String?
+  hts10Concordance String?  // corresponding 10-digit HTSUS code, if 1:1
+  effectiveYear    Int
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([scheduleBNumber])
+  @@index([hts10Concordance])
+}
+
+/// AD/CVD company-specific cash deposit rates from Commerce ITAD annual reviews.
+/// LLM-extracted; must be approved before flowing into duty stack calculations.
+/// Links to AdcvdOrder by caseNumber.
+model AdCvdCompanyRate {
+  id               String    @id @default(cuid())
+  caseNumber       String    // e.g. A-570-601 — foreign key by convention to AdcvdOrder
+  periodOfReview   String    // e.g. "POR 2024" or "2024-01-01/2024-12-31"
+  manufacturerName String
+  exporterName     String?
+  countryOfOrigin  String
+  depositRatePct   Float?    // individual company rate; null = use allOthersRatePct
+  allOthersRatePct Float?
+  isSeparateRate   Boolean   @default(true)
+  federalRegisterCitation String?
+  effectiveDate    DateTime?
+  reviewStatus     String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
+  approvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([caseNumber])
+  @@index([manufacturerName])
+  @@index([reviewStatus])
+  @@index([countryOfOrigin])
+}
+
