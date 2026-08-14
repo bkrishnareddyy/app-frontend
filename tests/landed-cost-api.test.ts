@@ -8,6 +8,7 @@ const dbMock = {
   landedCostScenario: { findFirst: vi.fn() },
   htsNode: { findFirst: vi.fn() },
   landedCostScenarioLineItem: { create: vi.fn() },
+  section232Rate: { findMany: vi.fn().mockResolvedValue([]) },
 };
 
 const getAccountContext = vi.fn();

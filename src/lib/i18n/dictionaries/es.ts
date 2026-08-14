@@ -17,6 +17,7 @@ export const es: TranslationKeys = {
     complianceMonitoring: "Cumplimiento",
     regulatoryIntel: "Inteligencia Regulatoria",
     tariffSimulator: "Simulador de Tarifas",
+    filingConfiguration: "Configuración de Presentación",
     agents: "Agentes de IA",
     apiDocs: "API",
     accountProfile: "Perfil de Cuenta",
@@ -96,5 +97,152 @@ export const es: TranslationKeys = {
     selectFile: "Seleccionar Archivo",
     uploading: "Subiendo y Procesando con Agente...",
     uploadSubmit: "Subir Archivo y Procesar con Agente",
+  },
+  // Filing Configuration
+  filingConfig: {
+    title: "Configuración de Presentación",
+    subtitle:
+      "Datos de referencia globales que el flujo de presentación aduanera de cada cuenta resuelve. Los cambios aquí surten efecto de inmediato, para todas las cuentas.",
+    addRow: "Agregar Fila",
+    searchPlaceholder: "Buscar...",
+    noRows: "Sin filas.",
+    loading: "Cargando...",
+    actionsColumn: "Acciones",
+    editRow: "Editar fila",
+    deleteRow: "Eliminar fila",
+    deleteConfirmTitle: "¿Eliminar esta fila?",
+    deleteConfirmBody: "Esto afecta de inmediato la resolución de presentaciones para todas las cuentas. No se puede deshacer.",
+    cancel: "Cancelar",
+    delete: "Eliminar",
+    showingRows: "Mostrando {first}-{last} de {total}",
+    pageOf: "Página {page} de {pages}",
+    noFieldsYet: "Aún no hay campos.",
+    addField: "Agregar Campo",
+    removeField: "Eliminar campo",
+    noGridRowsYet: "Aún no hay filas.",
+    addGridRow: "Agregar Fila",
+    removeGridRow: "Eliminar fila",
+    yes: "Sí",
+    no: "No",
+    saveChanges: "Guardar Cambios",
+    createRow: "Crear Fila",
+    editTitlePrefix: "Editar",
+    addTitlePrefix: "Agregar",
+    fieldsConfiguredCount: "{count} campo(s) configurado(s)",
+    wildcardHelp: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.',
+    tables: {
+      procedureMapping: {
+        label: "Asignación de Procedimientos",
+        description: "(entryType, country) → el código de procedimiento del tercero usado para declarar ese tipo de entrada en ese país.",
+        fields: {
+          entryType: { label: "Tipo de Entrada" },
+          country: {
+            label: "País",
+            help: 'ISO 3166-1 alfa-2, o "*". "*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.',
+          },
+          procedureCode: { label: "Código de Procedimiento" },
+        },
+      },
+      authorityConfig: {
+        label: "Configuración de Autoridad",
+        description:
+          "país → el nombre de la autoridad aduanera y la etiqueta del sistema de presentación usados en cada declaración para ese destino. Sin comodín de reserva.",
+        fields: {
+          country: { label: "País", help: "ISO 3166-1 alfa-2. Debe ser único -- sin comodín de reserva para la autoridad." },
+          authorityName: { label: "Nombre de la Autoridad" },
+          filingSystemLabel: { label: "Etiqueta del Sistema de Presentación" },
+        },
+      },
+      messageCatalog: {
+        label: "Catálogo de Mensajes",
+        description:
+          '(action, country, procedure) → nuestro propio messageName interno + queueName. Generalmente comodín de país ("*") -- nuestro vocabulario de mensajes no varía según el destino.',
+        fields: {
+          action: { label: "Acción" },
+          country: { label: "País", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          procedureCode: { label: "Código de Procedimiento", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          messageName: { label: "Nombre del Mensaje" },
+          queueName: { label: "Nombre de la Cola" },
+        },
+      },
+      responseStatusMapping: {
+        label: "Mapeo de Estado de Respuesta",
+        description:
+          "(country, messageName, canonicalStatus) → qué transición de estado de presentación aplicar cuando llega una respuesta. Generalmente comodín de país -- la semántica de respuesta no varía según el destino.",
+        fields: {
+          country: { label: "País", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          messageName: { label: "Nombre del Mensaje", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          canonicalStatus: { label: "Estado Canónico", help: "El valor de estado que trae la respuesta del tercero (p. ej. ACCEPTED, REJECTED, CANCELLED)." },
+          filingTransition: {
+            label: "Transición de Presentación",
+            help: "Debe nombrar una transición real en filingStateMachine.ts. Un nombre no reconocido se registra como advertencia y no hace nada -- no interrumpe el procesamiento de mensajes.",
+          },
+        },
+      },
+      actionRule: {
+        label: "Regla de Acción",
+        description: "(country, procedure, messageName, status) → si la declaración puede editarse/reenviarse actualmente. Sin coincidencia, el valor predeterminado es falso (cierre por defecto).",
+        fields: {
+          country: { label: "País", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          procedureCode: { label: "Código de Procedimiento", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          messageName: { label: "Nombre del Mensaje", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          status: {
+            label: "Estado",
+            help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica. Debe nombrar además un FilingStatus real.',
+          },
+          allowUpdates: { label: "Permitir Actualizaciones" },
+        },
+      },
+      childActionRule: {
+        label: "Regla de Acción Secundaria",
+        description: "(country, procedure, messageName, status, action) → si esta acción adicional (p. ej. CANCEL) se ofrece en este momento. La sola existencia de la fila significa que sí.",
+        fields: {
+          country: { label: "País", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          procedureCode: { label: "Código de Procedimiento", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          messageName: { label: "Nombre del Mensaje", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          status: {
+            label: "Estado",
+            help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica. Debe nombrar además un FilingStatus real.',
+          },
+          action: { label: "Acción", help: "p. ej. CANCEL. Debe existir en el Catálogo de Acciones de Mensaje para tener efecto en el registro de acciones de la interfaz." },
+        },
+      },
+      messageActionCatalog: {
+        label: "Catálogo de Acciones de Mensaje",
+        description: "El vocabulario cerrado de acciones de mensaje válidas (SUBMIT, RESUBMIT, CANCELLATION, ...). code es la clave primaria -- no puede cambiarse después de creada.",
+        fields: {
+          code: { label: "Código", help: "Clave primaria. No se puede editar después de creada -- elimine y vuelva a crear." },
+          label: { label: "Etiqueta" },
+          requiresPriorMessage: { label: "Requiere Mensaje Anterior" },
+        },
+      },
+      actionDataRequirement: {
+        label: "Requisito de Datos de Acción",
+        description:
+          "(country, procedure, messageName, action) → campos adicionales que una acción secundaria necesita además de la propia declaración (p. ej. una referencia de garantía que una cancelación NCTS alemana necesita y una cancelación de consumo de EE. UU. no). Sin coincidencia = no se requieren campos adicionales -- cancelFiling()/amendFiling() siguen siendo implementaciones únicas e independientes del país que solo consultan esta tabla lo que necesita cada contexto.",
+        fields: {
+          country: { label: "País", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          procedureCode: { label: "Código de Procedimiento", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          messageName: { label: "Nombre del Mensaje", help: '"*" coincide con cualquier valor (comodín de reserva) cuando no existe una fila más específica.' },
+          action: { label: "Acción", help: "p. ej. CANCELLATION, AMENDMENT -- un código del Catálogo de Acciones de Mensaje." },
+          fields: {
+            label: "Campos Requeridos",
+            help: 'Cada campo es "prompt" (el operador lo proporciona al invocar la acción) o "shipment.<ruta.con.puntos>" (se resuelve automáticamente, nunca se le pide al operador).',
+            itemFields: {
+              key: { label: "Clave del Campo", help: "La clave bajo la cual se almacena este valor en las extensiones del mensaje." },
+              label: { label: "Etiqueta a Mostrar" },
+              type: { label: "Tipo" },
+              required: { label: "Requerido", help: "Se aplica a todo el campo, siempre -- para una cuadrícula, significa al menos una fila. Nunca se establece por fila de datos." },
+              source: { label: "Origen", help: '"prompt" o "shipment.<ruta.con.puntos>"' },
+              helpText: { label: "Texto de Ayuda (opcional)" },
+              columns: {
+                label: "Columnas de Cuadrícula (solo cuando Tipo = grid)",
+                help: 'Define los propios campos de cada fila. Configure el Tipo de una columna como "grid" para anidar otra lista dentro de ella (p. ej. filas de GoodsItem que contienen cada una una cuadrícula de Packages) -- sin límite de profundidad.',
+              },
+            },
+          },
+        },
+      },
+    },
   },
 };

@@ -30,6 +30,9 @@ const { dbMock } = vi.hoisted(() => {
       section301Exclusion: {
         findFirst: vi.fn(),
       },
+      section232Rate: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       customsFiling: {
         findMany: vi.fn(),
       },

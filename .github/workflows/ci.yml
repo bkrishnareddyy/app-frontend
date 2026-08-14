@@ -13,6 +13,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/qubere_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/qubere_test
       NEXTAUTH_SECRET: ci-secret
       NEXTAUTH_URL: http://localhost:3000
 
