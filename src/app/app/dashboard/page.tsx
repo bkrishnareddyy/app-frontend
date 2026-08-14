@@ -1,9 +1,11 @@
 import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { computeReadinessScore } from "@/lib/shipmentReadiness";
+import { computeReadinessBreakdown, deriveReadinessDimensions } from "@/lib/shipmentReadiness";
 import { checkRequiredDocumentTypes } from "@/lib/requiredDocumentTypes";
 import { extractedCurrency } from "@/modules/documents/extractedCurrency";
 import { triageDecision } from "@/modules/decisions/decisionState";
+import { computeAttentionPriority } from "@/lib/dashboard/attentionPriority";
+import { computeAgentOperations } from "@/lib/dashboard/agentOperationsSummary";
 import { CommandCenterClient } from "./CommandCenterClient";
 import type { TeamMember } from "@/lib/team";
 
@@ -62,14 +64,19 @@ export default async function CommandCenterPage() {
   });
 
   // Fetch decisions for the active tenant account -- only the columns
-  // formattedDecisions reads, not the full row (which includes an
-  // `evidenceItems` JSON blob and several string-array columns per decision).
+  // formattedDecisions and the Agent Operations summary read, not the full
+  // row (which includes an `evidenceItems` JSON blob and several
+  // string-array columns per decision).
   const decisions = await db.agentDecision.findMany({
     where: { accountId },
     select: {
       id: true,
       status: true,
       triageState: true,
+      proposedDescription: true,
+      agentName: true,
+      shipmentId: true,
+      createdAt: true,
       shipment: {
         select: {
           assignedBrokerId: true,
@@ -79,6 +86,81 @@ export default async function CommandCenterPage() {
     orderBy: { createdAt: "desc" },
     take: SHIPMENT_ROW_CAP,
   });
+
+  // Agent Operations table: real per-agent processed/review/blocked counts,
+  // deduped to the latest decision per (shipment, agent) pair -- same rule
+  // page.tsx already applies per-shipment for aiReview below. Capped to the
+  // same SHIPMENT_ROW_CAP-bounded decision list as the rest of this page (see
+  // the comment on SHIPMENT_ROW_CAP above); this is a documented UI-list
+  // limitation, not a tenant-wide undercount claim.
+  const agentOperations = computeAgentOperations(decisions);
+
+  // Classification Signals: tenant-wide (ClassificationCase has no shipment/
+  // client link -- see ClassificationSubject.canonicalProductId, which is
+  // optional -- so this cannot be scoped to the selected client/broker).
+  const classificationCaseCounts = await db.classificationCase.groupBy({
+    by: ["status"],
+    where: { accountId },
+    _count: { _all: true },
+  });
+  const classificationOverrideCount = await db.classificationDecision.count({
+    where: { decisionStatus: "OVERRIDDEN", case: { accountId } },
+  });
+  const caseCountByStatus = new Map(classificationCaseCounts.map((c) => [c.status, c._count._all]));
+  const classificationSignals = {
+    newOrInProgress:
+      (caseCountByStatus.get("DRAFT") ?? 0) +
+      (caseCountByStatus.get("AWAITING_DOCUMENTS") ?? 0) +
+      (caseCountByStatus.get("QUEUED") ?? 0) +
+      (caseCountByStatus.get("PROCESSING") ?? 0),
+    proposed: caseCountByStatus.get("PROPOSED") ?? 0,
+    needsInformation: caseCountByStatus.get("NEEDS_INFORMATION") ?? 0,
+    humanReviewRequired: caseCountByStatus.get("HUMAN_REVIEW_REQUIRED") ?? 0,
+    approved: caseCountByStatus.get("APPROVED") ?? 0,
+    overridden: classificationOverrideCount,
+  };
+
+  // Product Intelligence / Revalidation: real, persisted signals only --
+  // ProductRevalidationFlag + ProductChangeEvent are actually written by
+  // productService.ts's change-detection path, unlike "product match" /
+  // "conflict" states which only exist transiently inside an agent run today
+  // and are never persisted as their own queryable field. Tenant-wide (a
+  // Product can be client-scoped via Product.clientId, but revalidation
+  // flags don't carry clientId directly, so this stays tenant-wide like
+  // Classification Signals above).
+  const openRevalidationFlags = await db.productRevalidationFlag.groupBy({
+    by: ["flag"],
+    where: { accountId, status: "OPEN" },
+    _count: { _all: true },
+  });
+  const revalidationByFlag = new Map(openRevalidationFlags.map((f) => [f.flag, f._count._all]));
+  const productReviewCount = await db.product.count({
+    where: { accountId, deletedAt: null, reviewStatus: "NEEDS_REVIEW" },
+  });
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const significantProductChanges30d = await db.productChangeEvent.count({
+    where: { accountId, significance: "CUSTOMS_SIGNIFICANT", createdAt: { gte: thirtyDaysAgo } },
+  });
+  const productIntelligenceSignals = {
+    classificationRevalidationRequired: revalidationByFlag.get("CLASSIFICATION_REVALIDATION_REQUIRED") ?? 0,
+    originRevalidationRequired: revalidationByFlag.get("ORIGIN_REVALIDATION_REQUIRED") ?? 0,
+    regulatoryRevalidationRequired: revalidationByFlag.get("REGULATORY_REVALIDATION_REQUIRED") ?? 0,
+    valuationReviewRequired: revalidationByFlag.get("VALUATION_REVIEW_REQUIRED") ?? 0,
+    productsNeedingReview: productReviewCount,
+    significantChanges30d: significantProductChanges30d,
+  };
+
+  // Review Queue: compact per-category counts, reusing the sources above
+  // rather than inventing a new work-item model. "Document Intelligence" /
+  // "Origin" / "Valuation" reuse the same Agent Operations needsReview tally.
+  const needsReviewByAgent = new Map(agentOperations.map((a) => [a.agentName, a.needsReview]));
+  const reviewQueue = {
+    classification: classificationSignals.humanReviewRequired,
+    productIntelligence: productIntelligenceSignals.productsNeedingReview,
+    documentIntelligence: needsReviewByAgent.get("Document Intelligence Agent") ?? 0,
+    origin: needsReviewByAgent.get("Origin Agent") ?? 0,
+    valuation: needsReviewByAgent.get("Valuation Agent") ?? 0,
+  };
 
   // Fetch active team members if user is an enterprise admin
   let teamMembers: TeamMember[] = [];
@@ -105,11 +187,33 @@ export default async function CommandCenterPage() {
     orderBy: { effectiveDate: "desc" },
   });
 
+  // Most-urgent open deadline per shipment for countdown chips and attention
+  // priority. Queried before formattedShipments below so the deadline lookup
+  // is available while deriving each shipment's attention priority.
+  const openDeadlines = await db.complianceDeadline.findMany({
+    where: { accountId, status: "OPEN", dueAt: { not: null } },
+    select: { shipmentId: true, type: true, dueAt: true, estimated: true, penaltyEstimate: true,
+              shipment: { select: { shipmentNumber: true } } },
+    orderBy: { dueAt: "asc" },
+  });
+  const urgencyByShipment: Record<string, { deadlineType: string; dueAt: string; estimated: boolean; exposureUsd: number | null }> = {};
+  for (const d of openDeadlines) {
+    const num = d.shipment?.shipmentNumber;
+    if (!num || urgencyByShipment[num]) continue;
+    urgencyByShipment[num] = { deadlineType: d.type, dueAt: d.dueAt!.toISOString(),
+      estimated: d.estimated, exposureUsd: d.penaltyEstimate != null ? Number(d.penaltyEstimate) : null };
+  }
+
+  const now = Date.now();
+
   // Serialize models safely for client component props
   const formattedShipments = shipments.map((s) => {
     // readinessScore is a static column default, never updated as
     // documents/line items/exceptions change -- compute the real figure.
-    const readinessScore = computeReadinessScore(s);
+    const readinessBreakdown = computeReadinessBreakdown(s);
+    const readinessScore = readinessBreakdown.totalScore;
+    const { dimensions: readinessDimensions, blockers: readinessBlockers } =
+      deriveReadinessDimensions(readinessBreakdown);
     // Primary HTS code and entered value were previously a hardcoded literal
     // and (readinessScore * 500) respectively -- neither reflected the
     // shipment's actual line items. Derive both from real data instead.
@@ -157,6 +261,26 @@ export default async function CommandCenterPage() {
     const needsReviewCount = openExceptions.length + needsReviewDecisions;
     const verifiedCount = verifiedDecisions;
 
+    const hasCriticalException = activeExceptions.some((e) => e.severity === "Critical");
+    const isOverdue =
+      !!s.estimatedArrival &&
+      s.estimatedArrival.getTime() < now &&
+      s.status !== "Submitted" &&
+      s.status !== "Completed";
+    const deadlineInfo = urgencyByShipment[s.shipmentNumber];
+    const hoursUntilDeadline = deadlineInfo
+      ? (new Date(deadlineInfo.dueAt).getTime() - now) / (1000 * 60 * 60)
+      : null;
+
+    const { priority, reasons: attentionReasons } = computeAttentionPriority({
+      hasCriticalException,
+      blockedDecisions,
+      needsReviewDecisions,
+      isOverdue,
+      missingDocCount: docCheck.missingTypes.length,
+      hoursUntilDeadline,
+    });
+
     return {
       id: s.id,
       shipmentNumber: s.shipmentNumber,
@@ -169,6 +293,10 @@ export default async function CommandCenterPage() {
       // that figure was being reported in the wrong currency.
       currency: extractedCurrency(s.documents),
       readinessScore,
+      readinessDimensions,
+      readinessBlockers,
+      priority,
+      attentionReasons,
       status: s.status,
       healthStatus: s.healthStatus,
       riskScore: s.riskScore,
@@ -209,21 +337,6 @@ export default async function CommandCenterPage() {
     effectiveDate: ru.effectiveDate.toISOString(),
   }));
 
-  // Most-urgent open deadline per shipment for countdown chips.
-  const openDeadlines = await db.complianceDeadline.findMany({
-    where: { accountId, status: "OPEN", dueAt: { not: null } },
-    select: { shipmentId: true, type: true, dueAt: true, estimated: true, penaltyEstimate: true,
-              shipment: { select: { shipmentNumber: true } } },
-    orderBy: { dueAt: "asc" },
-  });
-  const urgencyByShipment: Record<string, { deadlineType: string; dueAt: string; estimated: boolean; exposureUsd: number | null }> = {};
-  for (const d of openDeadlines) {
-    const num = d.shipment?.shipmentNumber;
-    if (!num || urgencyByShipment[num]) continue;
-    urgencyByShipment[num] = { deadlineType: d.type, dueAt: d.dueAt!.toISOString(),
-      estimated: d.estimated, exposureUsd: d.penaltyEstimate != null ? Number(d.penaltyEstimate) : null };
-  }
-
   return (
     <CommandCenterClient
       accountName={context.accountName}
@@ -233,6 +346,10 @@ export default async function CommandCenterPage() {
       regUpdates={formattedRegUpdates}
       teamMembers={teamMembers}
       clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+      agentOperations={agentOperations}
+      classificationSignals={classificationSignals}
+      productIntelligenceSignals={productIntelligenceSignals}
+      reviewQueue={reviewQueue}
       context={{
         userId: context.userId,
         roleNames: context.roleNames,

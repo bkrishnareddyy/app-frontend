@@ -1,16 +1,18 @@
 import { db } from "../db";
 import { Decimal } from "../tariff/decimal";
 
+export interface ExceptionAgeBuckets {
+  under24h: number;
+  days1to7: number;
+  days7to30: number;
+  over30d: number;
+}
+
 export interface AnalyticsMetrics {
   cyclTimeMedianHours: number;
   firstPassRate: number;
   exceptionAgeAvgHours: number;
-  exceptionAgeBuckets: {
-    under24h: number;
-    days1to7: number;
-    days7to30: number;
-    over30d: number;
-  };
+  exceptionAgeBuckets: ExceptionAgeBuckets;
   touchRate: number;
   dutyPerEntry: number;
   openExceptions: number;
@@ -88,7 +90,7 @@ export async function computeAnalyticsMetrics(
         ) / 10
       : 0;
 
-  const exceptionAgeBuckets = {
+  const exceptionAgeBuckets: ExceptionAgeBuckets = {
     under24h: 0,
     days1to7: 0,
     days7to30: 0,

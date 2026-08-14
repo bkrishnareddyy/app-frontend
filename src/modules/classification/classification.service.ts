@@ -33,11 +33,13 @@ export class ClassificationService {
       level: 10,
       limit: 5,
     });
-    const candidates = candidateNodes.map((c) => ({
-      htsCode10: c.htsNumberDisplay,
-      description: c.description,
-      ...HtsNodeRepository.toDutyRateInput(c),
-    }));
+    const candidates = await Promise.all(
+      candidateNodes.map(async (c) => ({
+        htsCode10: c.htsNumberDisplay,
+        description: c.description,
+        ...(await HtsNodeRepository.toDutyRateInput(c, input.countryOfOrigin)),
+      }))
+    );
 
     // Cite the actual currently-published HTS release instead of a
     // hardcoded "2026 Revision 1" that may not match what's really ingested.
