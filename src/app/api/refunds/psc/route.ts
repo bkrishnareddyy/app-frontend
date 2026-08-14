@@ -22,30 +22,85 @@ const createPscSchema = z.object({
   reason: z.string().optional(),
   correctionType: PscCorrectionTypeEnum.default("CLASSIFICATION_CORRECTION"),
   originalDutyAmount: z.number().nonnegative().optional(),
-  correctedDutyAmount: z.number().nonnegative({ message: "correctedDutyAmount is required and must be a non-negative number" }),
+  correctedDutyAmount: z.number().nonnegative({
+    message: "correctedDutyAmount is required and must be a non-negative number",
+  }),
   correctedHtsCode: z.string().optional(),
+  correctedValue: z.number().nonnegative().optional(),
+  correctedQuantity: z.number().nonnegative().optional(),
+  legalBasis: z.string().optional(),
+  lineItemsAffected: z.array(z.object({
+    lineItemId: z.string(),
+    field: z.string(),
+    originalValue: z.string(),
+    correctedValue: z.string(),
+  })).optional(),
+  notes: z.string().optional(),
 });
 
-export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
+const listQuerySchema = z.object({
+  status: z.string().optional(),
+  correctionType: z.string().optional(),
+  filingId: z.string().optional(),
+});
+
+export const GET = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
+  const url = new URL(req.url);
+  const query = listQuerySchema.safeParse({
+    status: url.searchParams.get("status") ?? undefined,
+    correctionType: url.searchParams.get("correctionType") ?? undefined,
+    filingId: url.searchParams.get("filingId") ?? undefined,
+  });
+
+  const where: Record<string, unknown> = { accountId: ctx.accountId };
+  if (query.success) {
+    if (query.data.status) where.status = query.data.status;
+    if (query.data.correctionType) where.correctionType = query.data.correctionType;
+    if (query.data.filingId) where.originalFilingId = query.data.filingId;
+  }
+
   const pscs = await db.postSummaryCorrection.findMany({
-    where: { accountId: ctx.accountId },
+    where,
     include: {
       originalFiling: {
-        include: { shipment: true },
+        include: {
+          shipment: {
+            include: {
+              complianceDeadlines: {
+                where: { type: "PSC_WINDOW" },
+                take: 1,
+              },
+            },
+          },
+        },
       },
       refundOpportunity: true,
+      Attachments: { orderBy: { uploadedAt: "desc" } },
     },
     orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json({ pscs, requestId });
-});
+}, { permission: "psc.read" });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, createPscSchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
 
-  const { originalFilingId, refundOpportunityId, reason, correctionType, originalDutyAmount, correctedDutyAmount, correctedHtsCode } = bodyVal.data;
+  const {
+    originalFilingId,
+    refundOpportunityId,
+    reason,
+    correctionType,
+    originalDutyAmount,
+    correctedDutyAmount,
+    correctedHtsCode,
+    correctedValue,
+    correctedQuantity,
+    legalBasis,
+    lineItemsAffected,
+    notes,
+  } = bodyVal.data;
 
   if (refundOpportunityId) {
     const opp = await db.refundOpportunity.findFirst({
@@ -56,7 +111,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     }
   }
 
-  // 1. Fetch filing with line items
   const filing = await db.customsFiling.findFirst({
     where: { id: originalFilingId, accountId: ctx.accountId },
     include: { shipment: { include: { lineItems: true } } },
@@ -66,22 +120,28 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     return buildErrorResponse(404, "NOT_FOUND", "Original filing not found", undefined, requestId);
   }
 
-  // 2. Validate PSC eligibility (Task D-2)
   const eligibility = await checkPscEligibility(ctx.accountId, originalFilingId);
   if (!eligibility.eligible) {
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", eligibility.reason, undefined, requestId);
   }
 
-  // 3. Compute original duty using Decimal / filing declaration
-  const origDutyDec = originalDutyAmount !== undefined 
-    ? new Decimal(originalDutyAmount) 
-    : (filing.totalDuties ? new Decimal(filing.totalDuties) : new Decimal(0));
+  const origDutyDec =
+    originalDutyAmount !== undefined
+      ? new Decimal(originalDutyAmount)
+      : filing.totalDuties
+      ? new Decimal(filing.totalDuties)
+      : new Decimal(0);
 
   if (origDutyDec.isZero()) {
-    return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", "PSC calculation requires actual duty paid from accepted filing data.", undefined, requestId);
+    return buildErrorResponse(
+      422,
+      "BUSINESS_RULE_FAILURE",
+      "PSC calculation requires actual duty paid from accepted filing data.",
+      undefined,
+      requestId
+    );
   }
 
-  // Task D-4: Calculate corrected duty via dutyEngine & Decimal math
   let corrDutyDec = new Decimal(correctedDutyAmount);
 
   if (correctedHtsCode && filing.shipment?.lineItems?.[0]) {
@@ -99,8 +159,19 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     corrDutyDec = stack.total;
   }
 
-  // Decimal precision math for refund amount
   const refundAmountDec = roundToCents(Decimal.max(0, origDutyDec.minus(corrDutyDec)));
+  const dutyDeltaDec = roundToCents(corrDutyDec.minus(origDutyDec)); // positive = owe more
+
+  // Estimate interest if duty delta is positive (IRS underpayment rate ≈ 8% annualized as at 2024 Q4)
+  let interestEstimate: Decimal | undefined;
+  if (dutyDeltaDec.gt(0) && filing.submittedAt) {
+    const daysSinceEntry = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(filing.submittedAt).getTime()) / (1000 * 60 * 60 * 24))
+    );
+    const IRS_RATE = 0.08;
+    interestEstimate = roundToCents(dutyDeltaDec.times(IRS_RATE).times(daysSinceEntry / 365));
+  }
 
   const psc = await db.postSummaryCorrection.create({
     data: {
@@ -112,6 +183,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       originalDutyAmount: roundToCents(origDutyDec),
       correctedDutyAmount: roundToCents(corrDutyDec),
       refundAmount: refundAmountDec,
+      dutyDelta: dutyDeltaDec,
+      interestEstimate: interestEstimate ?? null,
+      correctedHtsCode: correctedHtsCode ?? null,
+      correctedValue: correctedValue != null ? new Decimal(correctedValue) : null,
+      correctedQuantity: correctedQuantity != null ? new Decimal(correctedQuantity) : null,
+      legalBasis: legalBasis ?? null,
+      lineItemsAffected: lineItemsAffected ? (lineItemsAffected as any) : undefined,
+      notes: notes ?? null,
       status: "Draft",
       createdByUserId: ctx.userId,
     },
@@ -135,9 +214,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     entity: "PostSummaryCorrection",
     entityId: psc.id,
     source: "UI",
-    metadata: { originalFilingId, refundAmount: refundAmountDec.toNumber(), correctionType },
+    metadata: {
+      originalFilingId,
+      refundAmount: refundAmountDec.toNumber(),
+      dutyDelta: dutyDeltaDec.toNumber(),
+      correctionType,
+    },
   });
 
   return NextResponse.json({ psc, requestId });
-
-}, { permission: "refunds.manage", write: true });
+}, { permission: "psc.create", write: true });

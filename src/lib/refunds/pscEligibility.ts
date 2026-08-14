@@ -43,7 +43,7 @@ export async function checkPscEligibility(accountId: string, filingId: string): 
   // 3. Check PSC_WINDOW ComplianceDeadline expiration (19 CFR 174)
   const pscDeadline = filing.shipment?.complianceDeadlines?.[0];
   if (pscDeadline && pscDeadline.dueAt && pscDeadline.dueAt < new Date()) {
-    return { eligible: false, reason: "PSC filing window has expired (exceeded statutory 300-day limit under 19 CFR 174)." };
+    return { eligible: false, reason: "PSC filing window has expired (exceeded statutory 270-day limit under 19 U.S.C. § 1484a)." };
   }
 
   // 4. PSC cannot be filed for entries already matched in a DrawbackClaim

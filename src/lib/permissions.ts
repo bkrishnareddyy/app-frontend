@@ -20,7 +20,7 @@ export interface PermissionDefinition {
   /** What holding it lets a person do, in the words the admin screen shows. */
   description: string;
   /** Grouping for display only. */
-  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence" | "Products" | "Parties";
+  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence" | "Products" | "Parties" | "Post-Entry";
   /** Roles that receive it when the catalogue is synced. */
   defaultRoles: readonly SystemRole[];
 }
@@ -230,6 +230,44 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     name: "refunds.manage",
     description: "Create and manage duty refund claims.",
     category: "Filing",
+    defaultRoles: ADMIN_ONLY,
+  },
+  // ─── Post-Summary Corrections (PSCs) ────────────────────────────────────
+  {
+    name: "psc.read",
+    description: "View post-summary correction records and their duty deltas.",
+    category: "Post-Entry",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER", "MEMBER", "VIEWER"],
+  },
+  {
+    name: "psc.create",
+    description: "Open a new post-summary correction draft against an entry summary.",
+    category: "Post-Entry",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER", "SPECIALIST", "MEMBER"],
+  },
+  {
+    name: "psc.manage",
+    description: "Edit and submit a post-summary correction to CBP ACE.",
+    category: "Post-Entry",
+    defaultRoles: ADMIN_ONLY,
+  },
+  // ─── Protests ───────────────────────────────────────────────────────────
+  {
+    name: "protest.read",
+    description: "View protest filings and their CBP review status.",
+    category: "Post-Entry",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER", "MEMBER", "VIEWER"],
+  },
+  {
+    name: "protest.create",
+    description: "Open a new protest against a CBP liquidation decision.",
+    category: "Post-Entry",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER", "SPECIALIST", "MEMBER"],
+  },
+  {
+    name: "protest.manage",
+    description: "Edit, file, and track resolution of a CBP protest.",
+    category: "Post-Entry",
     defaultRoles: ADMIN_ONLY,
   },
   // ─── Audits ─────────────────────────────────────────────────────────────

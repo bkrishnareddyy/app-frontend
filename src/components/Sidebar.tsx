@@ -27,6 +27,9 @@ import {
   PanelLeftOpen,
   Sparkles,
   Coins,
+  ReceiptText,
+  Database,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,6 +61,9 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   vault: Coins,
   compliance: Scale,
   simulator: Scale,
+  postEntry: ReceiptText,
+  tradeData: Database,
+  tariffs: BookOpen,
 };
 
 interface SidebarProps {

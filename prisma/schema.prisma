@@ -48,7 +48,9 @@ enum DeadlineType {
   LAST_FREE_DAY   // carrier-set; deadlineClass = COMMERCIAL
   PSC_WINDOW      // reserved — no ACE/ABI feed
   LIQUIDATION     // reserved — no ACE/ABI feed
-  PROTEST         // reserved — no ACE/ABI feed
+  PROTEST_WINDOW  // 180 calendar days from liquidation date
+  CIT_APPEAL_WINDOW // 180 days from CBP denial or deemed-denial
+  DEEMED_DENIAL   // protest filed + 2 years
   CF28_RESPONSE   // reserved — no CBP notice ingestion
   CF29_RESPONSE   // reserved — no CBP notice ingestion
 }
@@ -108,6 +110,7 @@ model Account {
   landedCostScenarios        LandedCostScenario[]
   refundOpportunities        RefundOpportunity[]
   postSummaryCorrections     PostSummaryCorrection[]
+  protests                   Protest[]
   exportShipments            ExportShipment[]
   exportDocuments            ExportDocument[]
   exportLineItems            ExportLineItem[]
@@ -876,6 +879,7 @@ model CustomsFiling {
   exceptionItems         ExceptionItem[]
   refundOpportunities    RefundOpportunity[]
   postSummaryCorrections PostSummaryCorrection[]
+  protestEntries         ProtestEntry[]
   complianceAuditRecords ComplianceAuditRecord[]
   complianceFindings          ComplianceFinding[]
   classificationChangeImpacts ClassificationChangeImpact[]
@@ -1064,20 +1068,170 @@ model PostSummaryCorrection {
   refundOpportunityId String?
   refundOpportunity   RefundOpportunity? @relation(fields: [refundOpportunityId], references: [id], onDelete: SetNull)
   reason              String
-  correctionType      String             @default("classification") // classification | valuation | origin | other
+  correctionType      String             @default("CLASSIFICATION_CORRECTION") // DUTY_RATE_CORRECTION | VALUE_CORRECTION | CLASSIFICATION_CORRECTION | QUANTITY_CORRECTION
   originalDutyAmount  Decimal
   correctedDutyAmount Decimal
   refundAmount        Decimal
-  status              String             @default("Draft") // Draft | Filed | Accepted | Rejected | Refunded
+  dutyDelta           Decimal?           // correctedDutyAmount - originalDutyAmount; positive = owe more, negative = refund
+  interestEstimate    Decimal?           // pre-computed interest if duty delta is positive
+
+  // Correction detail
+  legalBasis          String?            // Broker's stated legal/regulatory basis
+  correctedHtsCode    String?            // For CLASSIFICATION_CORRECTION
+  correctedValue      Decimal?           // For VALUE_CORRECTION
+  correctedQuantity   Decimal?           // For QUANTITY_CORRECTION
+  lineItemsAffected   Json?              // [{lineItemId, field, originalValue, correctedValue}]
+  notes               String?            // Internal broker notes
+
+  // Status: Draft | READY_FOR_REVIEW | SUBMITTED | ACE_ACCEPTED | ACE_REJECTED | WITHDRAWN
+  status              String             @default("Draft")
   cbpResponseCode     String?            @default("PSC_ACK")
+  aceConfirmationNumber String?          // ACE acknowledgment reference
+
   filedAt             DateTime?
+  withdrawnAt         DateTime?
+  withdrawnByUserId   String?
+  reviewedAt          DateTime?
+  reviewedByUserId    String?
+
   createdByUserId     String?
   createdByUser       User?              @relation("PSCCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
+  linkedProtests      Protest[]
+
+  Attachments         PscAttachment[]
+
   @@index([accountId])
   @@index([originalFilingId])
+  @@index([status])
+}
+
+model PscAttachment {
+  id               String               @id @default(cuid())
+  pscId            String
+  psc              PostSummaryCorrection @relation(fields: [pscId], references: [id], onDelete: Cascade)
+  fileName         String
+  fileType         String
+  fileSize         Int
+  storageKey       String
+  label            String?
+  uploadedByUserId String
+  uploadedAt       DateTime             @default(now())
+
+  @@index([pscId])
+}
+
+
+// ─── Protests ───────────────────────────────────────────────────────────────
+
+model Protest {
+  id                       String   @id @default(cuid())
+  accountId                String
+  account                  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Liquidation anchor — protest window starts from liquidationDate
+  liquidationDate          DateTime
+  protestDeadline          DateTime // liquidationDate + 180 days (computed, stored for querying)
+
+  // Legal grounds
+  groundsCode              String   // CLASSIFICATION | VALUATION | ORIGIN | RATE_OF_DUTY | LIQUIDATION_ERRORS | EXCLUSION_ELIGIBILITY | DRAWBACK_DENIAL | OTHER
+  groundsNarrative         String   // Full written legal basis (required, min 100 chars before filing)
+  statuteCitation          String?  // e.g. "19 U.S.C. § 1514(a)(2)"
+  rulingReference          String?  // e.g. "NY N123456"
+
+  // Financial claim
+  claimAmount              Decimal
+  interestClaimed          Boolean  @default(false)
+
+  // Power of Attorney
+  powerOfAttorneyVerified  Boolean  @default(false)
+  poaExpiresAt             DateTime?
+
+  // Further Review of Protest
+  furtherReviewRequested   Boolean  @default(false)
+  frpJustification         String?
+
+  // CBP response
+  protestNumber            String?  // CBP-assigned protest number
+  cbpDecisionDate          DateTime?
+  cbpDecisionNarrative     String?
+
+  // Deemed-denial tracking (protest filed + 2 years)
+  deemedDeniedAt           DateTime?
+
+  // CIT appeal tracking
+  citAppealDeadline        DateTime? // cbpDecisionDate or deemedDeniedAt + 180 days
+  citAppealFiledAt         DateTime?
+  citCaseNumber            String?
+
+  // Link to a related PSC (pre-liquidation attempt, if any)
+  linkedPscId              String?
+  linkedPsc                PostSummaryCorrection? @relation(fields: [linkedPscId], references: [id], onDelete: SetNull)
+
+  // Status: DRAFT | READY_FOR_FILING | FILED | FURTHER_REVIEW_REQUESTED | PENDING_CBP | APPROVED | DENIED | DEEMED_DENIED | APPEALED_CIT | WITHDRAWN
+  status                   String   @default("DRAFT")
+
+  filedAt                  DateTime?
+  withdrawnAt              DateTime?
+  withdrawnByUserId        String?
+
+  createdByUserId          String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  protestEntries           ProtestEntry[]
+  Attachments              ProtestAttachment[]
+  Notes                    ProtestNote[]
+
+  @@index([accountId])
+  @@index([status])
+  @@index([protestDeadline])
+}
+
+model ProtestEntry {
+  id              String        @id @default(cuid())
+  protestId       String
+  protest         Protest       @relation(fields: [protestId], references: [id], onDelete: Cascade)
+  filingId        String
+  filing          CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+
+  // Denormalized for performance
+  entryNumber     String
+  liquidationDate DateTime
+  dutyAssessed    Decimal
+  dutyContested   Decimal       // portion being protested
+
+  @@index([protestId])
+  @@index([filingId])
+}
+
+model ProtestAttachment {
+  id               String   @id @default(cuid())
+  protestId        String
+  protest          Protest  @relation(fields: [protestId], references: [id], onDelete: Cascade)
+  fileName         String
+  fileType         String
+  fileSize         Int
+  storageKey       String
+  label            String?  // e.g. "CBP Form 19", "Classification Ruling"
+  uploadedByUserId String
+  uploadedAt       DateTime @default(now())
+
+  @@index([protestId])
+}
+
+model ProtestNote {
+  id         String   @id @default(cuid())
+  protestId  String
+  protest    Protest  @relation(fields: [protestId], references: [id], onDelete: Cascade)
+  authorId   String
+  body       String
+  isInternal Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([protestId])
 }
 
 model ExportShipment {

@@ -24,7 +24,10 @@ export type NavIcon =
   | "platform"
   | "vault"
   | "compliance"
-  | "simulator";
+  | "simulator"
+  | "postEntry"
+  | "tradeData"
+  | "tariffs";
 
 export interface NavItem {
   id: string;
@@ -62,6 +65,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "shipments", labelKey: "shipments", href: "/app/shipments", icon: "shipments" },
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
       { id: "compliance", labelKey: "complianceMonitoring", href: "/app/compliance", icon: "compliance" },
+      { id: "post-entry", labelKey: "postEntry", href: "/app/post-entry", icon: "postEntry" },
     ],
   },
   {
@@ -70,12 +74,8 @@ export const NAV_SECTIONS: NavSection[] = [
     renderAs: "pills",
     items: [
       { id: "documents", labelKey: "tradeDocs", href: "/app/documents", icon: "documents" },
-      { id: "vault", labelKey: "dutyDrawbacks", href: "/app/vault", icon: "vault" },
-      { id: "reconciliation", labelKey: "reconciliation", href: "/app/reconciliation", icon: "vault" },
-      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
-      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
-      { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },
-      { id: "simulator", labelKey: "tariffSimulator", href: "/app/simulator", icon: "simulator" },
+      { id: "trade-data", labelKey: "tradeData", href: "/app/trade-data", icon: "tradeData" },
+      { id: "tariffs", labelKey: "tariffsAndRegulations", href: "/app/tariffs", icon: "tariffs" },
       { id: "filingConfig", labelKey: "filingConfiguration", href: "/app/filing-config", icon: "settings", platformAdminOnly: true },
     ],
   },
