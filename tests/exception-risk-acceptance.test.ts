@@ -29,7 +29,7 @@ beforeEach(() => {
     permissions: [],
     isPlatformAdmin: false,
   });
-  hasPermission.mockResolvedValue(false);
+  hasPermission.mockImplementation(async (perm: string) => perm === "exceptions.resolve");
   updateException.mockResolvedValue({ id: "exc_1", status: "RESOLVED", version: 2, shipmentId: null });
   createAuditLog.mockResolvedValue({ id: "aud_1" });
 });
@@ -75,7 +75,7 @@ describe("risk acceptance permission", () => {
   });
 
   it("allows the waive once the permission is held", async () => {
-    hasPermission.mockResolvedValue(true);
+    hasPermission.mockImplementation(async (perm: string) => perm === "exceptions.resolve" || perm === "exceptions.waive");
 
     const res = await patch({ status: "WAIVED", resolutionReason: "accepted", expectedVersion: 1 });
 
@@ -88,14 +88,14 @@ describe("risk acceptance permission", () => {
       const res = await patch({ status, resolutionReason: "done", expectedVersion: 1 });
       expect(res.status).toBe(200);
     }
-    expect(hasPermission).not.toHaveBeenCalled();
+    expect(hasPermission).not.toHaveBeenCalledWith(RISK_ACCEPTANCE_PERMISSION);
   });
 
   it("does not gate an update that changes no status", async () => {
     const res = await patch({ shipmentId: "shp_1", expectedVersion: 1 });
 
     expect(res.status).toBe(200);
-    expect(hasPermission).not.toHaveBeenCalled();
+    expect(hasPermission).not.toHaveBeenCalledWith(RISK_ACCEPTANCE_PERMISSION);
   });
 
   it("passes the acting user through, so the audit trail names a person", async () => {

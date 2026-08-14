@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { determineOrigin } from "@/lib/origin/originEngine";
 import { createAuditLog } from "@/lib/audit";
@@ -52,14 +52,6 @@ export async function reevaluateProductLineItems(productId: string, accountId: s
 }
 
 async function handleReevaluation(req: Request, requestId: string) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
   const url = new URL(req.url);
   const productId = url.searchParams.get("productId");
 
@@ -99,10 +91,10 @@ async function handleReevaluation(req: Request, requestId: string) {
   });
 }
 
-export const GET = withPublicRoute(async ({ req, requestId }) => {
+export const GET = withCronRoute(async ({ req, requestId }) => {
   return handleReevaluation(req, requestId);
 });
 
-export const POST = withPublicRoute(async ({ req, requestId }) => {
+export const POST = withCronRoute(async ({ req, requestId }) => {
   return handleReevaluation(req, requestId);
 });

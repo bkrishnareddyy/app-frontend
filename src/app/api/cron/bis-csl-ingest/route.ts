@@ -1,18 +1,10 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { BisCslIngestionService } from "@/modules/screening/bisCslIngestionService";
 
 export const maxDuration = 300;
 
-async function handleIngest(req: Request, requestId: string) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
+export const POST = withCronRoute(async ({ requestId }) => {
   try {
     const result = await BisCslIngestionService.fetchAndIngest(1000);
     return NextResponse.json({
@@ -28,12 +20,4 @@ async function handleIngest(req: Request, requestId: string) {
       { status: 502 }
     );
   }
-}
-
-export const GET = withPublicRoute(async ({ req, requestId }) => {
-  return handleIngest(req, requestId);
-});
-
-export const POST = withPublicRoute(async ({ req, requestId }) => {
-  return handleIngest(req, requestId);
 });

@@ -32,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { activeNavHref, visibleNavigation, type NavIcon } from "@/lib/navigation";
+import { usePolling } from "@/lib/hooks/usePolling";
 
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { dataModeFooterLabel, type DataMode } from "@/lib/dataMode";
@@ -103,14 +104,7 @@ export function Sidebar({
     }
   }, []);
 
-  useEffect(() => {
-    const initial = setTimeout(fetchPendingClassification, 0);
-    const interval = setInterval(fetchPendingClassification, 60_000);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-    };
-  }, [fetchPendingClassification]);
+  usePolling(fetchPendingClassification, 60_000);
 
   useEffect(() => {
     if (!mobileOpen) return;

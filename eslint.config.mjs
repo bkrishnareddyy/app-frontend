@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    ".claude/**",
     // Obsolete one-off codemods and throwaway investigation scripts. These are
     // not application code and are not maintained; they are out of lint scope.
     "fix_decimal*.js",

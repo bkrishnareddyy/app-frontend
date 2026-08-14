@@ -66,11 +66,20 @@ export function VaultClient() {
   }, []);
 
   const loadOpportunities = () => {
-    fetch("/api/refunds/opportunities/scan", { method: "POST" })
+    fetch("/api/refunds/opportunities")
       .then((res) => res.json())
       .then((data) => {
         if (data.opportunities) {
-          setOpportunities(data.opportunities);
+          setOpportunities(
+            data.opportunities.map((o: any) => ({
+              id: o.id,
+              opportunityType: o.opportunityType,
+              estimatedRefundAmount: o.estimatedRefundAmount ? Number(o.estimatedRefundAmount) : 0,
+              confidence: o.confidence,
+              status: o.status,
+              filingEntryNumber: o.filing?.entryNumber ?? "",
+            }))
+          );
         }
       })
       .catch(console.error);

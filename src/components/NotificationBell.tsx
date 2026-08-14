@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Bell } from "lucide-react";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
+import { usePolling } from "@/lib/hooks/usePolling";
 
 interface NotificationItem {
   id: string;
@@ -43,14 +44,7 @@ export function NotificationBell() {
     }
   }, []);
 
-  useEffect(() => {
-    const initial = setTimeout(fetchNotifications, 0);
-    const interval = setInterval(fetchNotifications, POLL_INTERVAL_MS);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-    };
-  }, [fetchNotifications]);
+  usePolling(fetchNotifications, POLL_INTERVAL_MS);
 
   useEffect(() => {
     if (!isOpen) return;

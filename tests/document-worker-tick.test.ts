@@ -209,6 +209,18 @@ vi.mock("@/lib/audit", () => ({
     timeline.push(`audit:${params.action}`);
     return null;
   },
+  AuditAction: {
+    DOCUMENT_QUEUED: "document.processing.queued",
+    DOCUMENT_SUBMITTED: "document.processing.submitted",
+    DOCUMENT_STORED: "document.processing.submitted",
+    DOCUMENT_FAILED: "document.processing.failed",
+    DOCUMENT_PROCESSED: "document.processing.processed",
+    DOCUMENT_OCR_RETRY: "document.processing.ocr_retry",
+    DOCUMENT_NEEDS_REVIEW: "document.processing.needs_review",
+    DOCUMENT_UPLOADED: "document.processing.needs_review",
+    DOCUMENT_CLASSIFIED: "document.processing.classified",
+    DOCUMENT_PARSED: "document.processing.parsed",
+  },
 }));
 vi.mock("@/lib/storage", async () => {
   const actual = await vi.importActual<typeof import("@/lib/storage")>("@/lib/storage");

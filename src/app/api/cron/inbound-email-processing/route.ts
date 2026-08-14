@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { runInboundEmailWorkerTick } from "@/modules/documents/processing/inboundEmailWorker";
 
 /**
@@ -14,24 +14,16 @@ import { runInboundEmailWorkerTick } from "@/modules/documents/processing/inboun
  */
 export const maxDuration = 300;
 
-function unauthorized(req: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
-  return req.headers.get("authorization") !== `Bearer ${cronSecret}`;
-}
-
 async function tick(requestId: string): Promise<Response> {
   const result = await runInboundEmailWorkerTick();
   return NextResponse.json({ status: "OK", requestId, tick: result });
 }
 
-export const GET = withPublicRoute(async ({ req, requestId }) => {
-  if (unauthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = withCronRoute(async ({ requestId }) => {
   return tick(requestId);
 });
 
 /** Same work, for schedulers and operators that prefer an explicit POST. */
-export const POST = withPublicRoute(async ({ req, requestId }) => {
-  if (unauthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const POST = withCronRoute(async ({ requestId }) => {
   return tick(requestId);
 });

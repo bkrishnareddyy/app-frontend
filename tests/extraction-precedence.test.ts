@@ -21,7 +21,7 @@ const assignParty = vi.fn();
 const syncExceptions = vi.fn();
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
-vi.mock("@/lib/audit", () => ({ createAuditLog: vi.fn() }));
+vi.mock("@/lib/audit", () => ({ createAuditLog: vi.fn(), AuditAction: { AGENT_EXECUTION_COMPLETED: "agent.execution_completed" } }));
 vi.mock("@/modules/entity/entityResolutionService", () => ({
   EntityResolutionService: { findOrCreateEntity: vi.fn(async () => ({ id: "ent_1" })) },
 }));

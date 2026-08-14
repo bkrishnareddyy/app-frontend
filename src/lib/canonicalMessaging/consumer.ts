@@ -82,7 +82,7 @@ export class PgCanonicalMessageConsumer implements CanonicalMessageConsumer {
     handler: (message: CanonicalMessage<CanonicalFilingResponseData>) => Promise<void>
   ): Promise<void> {
     void queueName; // routing hint for a real broker adapter; the Postgres adapter claims by direction only.
-    // eslint-disable-next-line no-constant-condition
+     
     while (await this.processOne(handler)) {
       // drain everything currently pending
     }

@@ -48,17 +48,22 @@ export class AgentOrchestrator {
     // Step 3 & 4: HTS + ECCN + Screening per Line Item
     const processedItems = [];
     for (const item of extraction.lineItems) {
-      const hts = await HTSClassificationAgent.classifyProduct(item.description, item.countryOfOrigin);
-      const eccn = await ECCNAgent.evaluateExportControls(item.description, hts.htsCode);
+      const hts = await HTSClassificationAgent.classifyProduct({
+        rawDescription: item.description,
+        countryOfOrigin: item.countryOfOrigin,
+      });
+      const topProposal = hts.proposals[0];
+      const htsCode = topProposal?.htsCode ?? null;
+      const eccn = await ECCNAgent.evaluateExportControls(item.description, htsCode);
 
       processedItems.push({
         description: item.description,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         htsClassification: {
-          htsCode: hts.htsCode,
-          dutyRate: hts.dutyRate,
-          confidenceScore: hts.confidenceScore,
+          htsCode,
+          dutyRate: null,
+          confidenceScore: topProposal?.confidence ?? null,
         },
         eccn: {
           eccnCode: eccn.eccnCode,

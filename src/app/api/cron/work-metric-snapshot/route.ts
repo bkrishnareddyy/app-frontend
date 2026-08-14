@@ -1,20 +1,10 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { executeDailyWorkMetricSnapshot } from "@/lib/inngest/functions/dailyWorkMetricSnapshot";
 
 export const maxDuration = 60;
 
-function unauthorized(req: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
-  return req.headers.get("authorization") !== `Bearer ${cronSecret}`;
-}
-
-export const GET = withPublicRoute(async ({ req }) => {
-  if (unauthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const GET = withCronRoute(async () => {
   const result = await executeDailyWorkMetricSnapshot();
 
   return NextResponse.json({

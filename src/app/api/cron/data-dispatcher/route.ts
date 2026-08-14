@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { DATASET_DEFINITIONS } from "@/lib/data/datasetRegistry";
 
@@ -15,15 +15,10 @@ export const maxDuration = 300;
  *
  * Schedule: 0 2 * * * (daily, 02:00 UTC) — see vercel.json.
  */
-async function handleDispatch(req: Request, requestId: string) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
+async function handleDispatch(requestId: string) {
+  // withCronRoute already required CRON_SECRET to be set and valid before
+  // this handler runs, so it's safe to forward unconditionally here.
+  const cronSecret = process.env.CRON_SECRET as string;
   const now = new Date();
   const dispatched: string[] = [];
   const skipped: string[] = [];
@@ -81,6 +76,18 @@ async function handleDispatch(req: Request, requestId: string) {
       continue;
     }
 
+    // Refuse to start a second run while one is still RUNNING for this
+    // dataset -- not a real distributed lock, but it closes the obvious
+    // double-dispatch case (e.g. an overlapping manual trigger) cheaply,
+    // using the log table that already exists.
+    const alreadyRunning = await db.datasetRefreshLog.findFirst({
+      where: { datasetId: dataset.id, status: "RUNNING" },
+    });
+    if (alreadyRunning) {
+      skipped.push(dataset.id);
+      continue;
+    }
+
     // Create a RUNNING log row before calling the endpoint
     const log = await db.datasetRefreshLog.create({
       data: {
@@ -101,7 +108,7 @@ async function handleDispatch(req: Request, requestId: string) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(cronSecret ? { authorization: `Bearer ${cronSecret}` } : {}),
+          authorization: `Bearer ${cronSecret}`,
         },
       });
 
@@ -146,10 +153,10 @@ async function handleDispatch(req: Request, requestId: string) {
   });
 }
 
-export const GET = withPublicRoute(async ({ req, requestId }) => {
-  return handleDispatch(req, requestId);
+export const GET = withCronRoute(async ({ requestId }) => {
+  return handleDispatch(requestId);
 });
 
-export const POST = withPublicRoute(async ({ req, requestId }) => {
-  return handleDispatch(req, requestId);
+export const POST = withCronRoute(async ({ requestId }) => {
+  return handleDispatch(requestId);
 });

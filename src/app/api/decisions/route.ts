@@ -263,7 +263,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   // Prisma drops an undefined filter, so a missing id would match an arbitrary decision.
   if (typeof decisionId !== "string" || decisionId.trim() === "") {
-    return NextResponse.json({ error: "decisionId is required" });
+    return NextResponse.json({ error: "decisionId is required" }, { status: 400 });
   }
 
   // The base permission is checked before the decision is read, so a caller

@@ -19,7 +19,15 @@ vi.mock("@/lib/auth", () => ({
   getAccountContext: () => ctxMock(),
   hasPermission: vi.fn(async () => true),
 }));
-vi.mock("@/lib/audit", () => ({ createAuditLog: (p: unknown) => auditMock(p) }));
+vi.mock("@/lib/audit", () => ({
+  createAuditLog: (p: unknown) => auditMock(p),
+  AuditAction: {
+    DECISION_APPROVED: "DECISION_APPROVED",
+    DECISION_REJECTED: "DECISION_REJECTED",
+    DECISION_OVERRIDDEN: "DECISION_OVERRIDDEN",
+    CLASSIFICATION_CASE_DECIDED: "CLASSIFICATION_CASE_DECIDED",
+  },
+}));
 vi.mock("@/modules/shipments/shipmentNumber", () => ({
   generateShipmentNumber: async () => "SHP-2026-000002",
 }));
@@ -257,7 +265,7 @@ describe("POST /api/decisions", () => {
     expect(data.status).toBe("Approved");
     expect(data.humanNotes).toBe("Verified voltage specs");
     expect(data.reviewedByUserId).toBe("u_1");
-    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "decision.approve" }));
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "DECISION_APPROVED" }));
   });
 
   it("claims the row on the revision the reviewer read", async () => {

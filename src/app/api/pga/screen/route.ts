@@ -12,7 +12,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // This used to fall back to findFirst() and write PgaRequirement rows against
   // whichever shipment came back, so a request with no id screened an arbitrary one.
   if (typeof shipmentId !== "string" || shipmentId.trim() === "") {
-    return NextResponse.json({ error: "shipmentId is required" });
+    return NextResponse.json({ error: "shipmentId is required" }, { status: 400 });
   }
 
   const targetShipmentId = shipmentId;

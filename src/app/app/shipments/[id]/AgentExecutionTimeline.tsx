@@ -85,6 +85,13 @@ export function AgentExecutionTimeline({
     cancelledRef.current = false;
 
     const poll = async () => {
+      // Skip the network round-trip while the tab is backgrounded; the
+      // visibilitychange listener below catches up as soon as it's visible.
+      if (document.visibilityState !== "visible") {
+        timerRef.current = setTimeout(poll, POLL_INTERVAL_IDLE_MS);
+        return;
+      }
+
       try {
         const res = await fetch(`/api/shipments/${shipmentId}/agent-executions`);
         if (cancelledRef.current) return;
@@ -114,11 +121,19 @@ export function AgentExecutionTimeline({
       });
     };
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      poll();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     // Start immediately so we catch runs that began right as the page loaded.
     poll();
 
     return () => {
       cancelledRef.current = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [shipmentId]);

@@ -20,8 +20,17 @@ const factServiceRecord = vi.fn();
 const reconcileShipment = vi.fn();
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
-vi.mock("@/lib/auth", () => ({ getAccountContext }));
-vi.mock("@/lib/audit", () => ({ createAuditLog }));
+const hasPermission = vi.fn(async () => true);
+vi.mock("@/lib/auth", () => ({ getAccountContext, hasPermission }));
+vi.mock("@/lib/audit", () => ({
+  createAuditLog,
+  AuditAction: {
+    DECISION_APPROVED: "DECISION_APPROVED",
+    DECISION_REJECTED: "DECISION_REJECTED",
+    DECISION_OVERRIDDEN: "DECISION_OVERRIDDEN",
+    CLASSIFICATION_CASE_DECIDED: "CLASSIFICATION_CASE_DECIDED",
+  },
+}));
 vi.mock("@/modules/audit/factAuditService", () => ({ FactAuditService: { logChangeEvent } }));
 vi.mock("@/modules/shipment/factService", () => ({ FactService: { record: factServiceRecord } }));
 vi.mock("@/modules/shipment/reconciliationEngine", () => ({ ReconciliationEngine: { reconcileShipment } }));
@@ -182,7 +191,7 @@ describe("POST /api/decisions — applying an approved classification", () => {
   it("records what was reclassified in the audit log", async () => {
     await approve();
 
-    const call = createAuditLog.mock.calls.find((c) => c[0].action === "decision.approve");
+    const call = createAuditLog.mock.calls.find((c) => c[0].action === "DECISION_APPROVED");
     const metadata = call?.[0].metadata;
     expect(metadata.classificationApplied.proposedHtsCode).toBe("8537.10.2030");
     expect(metadata.classificationApplied.updatedLineItemId).toBe("li_1");

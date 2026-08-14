@@ -20,13 +20,19 @@ const dbMock = {
   htsRelease: {
     findFirst: vi.fn(),
   },
+  filingProcedureMapping: {
+    findMany: vi.fn(),
+  },
+  filingAuthorityConfig: {
+    findUnique: vi.fn(),
+  },
 };
 
 const getAccountContext = vi.fn();
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 vi.mock("@/lib/auth", () => ({ getAccountContext, hasPermission: vi.fn(async () => true) }));
-vi.mock("@/lib/audit", () => ({ createAuditLog: vi.fn() }));
+vi.mock("@/lib/audit", () => ({ createAuditLog: vi.fn(), AuditAction: { FILING_DRAFT_CREATED: "filing_draft.created" } }));
 
 const { POST } = await import("@/app/api/filing/route");
 
@@ -46,6 +52,7 @@ function shipment(overrides: Record<string, unknown> = {}) {
     id: "shp_1",
     accountId: "acc_1",
     shipmentNumber: "SHP-26-004872",
+    destinationCountry: "US",
     entryType: null,
     lineItems: [lineItem()],
     documents: [],
@@ -80,6 +87,11 @@ beforeEach(() => {
   // A published release exists in every case here; the "no published release"
   // path is covered in duty-rate-release-scope.test.ts.
   dbMock.htsRelease.findFirst.mockResolvedValue({ id: "rel_published" });
+  dbMock.filingProcedureMapping.findMany.mockResolvedValue([
+    { id: "fpm_1", entryType: "01", country: "*", procedureCode: "CBP_7501" },
+    { id: "fpm_2", entryType: "21", country: "*", procedureCode: "CBP_7501" },
+  ]);
+  dbMock.filingAuthorityConfig.findUnique.mockResolvedValue({ id: "fac_1", country: "US", authority: "CBP", filingType: "CBP 7501" });
     getAccountContext.mockResolvedValue({
       accountId: "acc_1",
       userId: "user_1",

@@ -12,7 +12,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // This used to fall back to findFirst() and write issue rows against whichever
   // shipment came back, so a request with no id reconciled an arbitrary shipment.
   if (typeof shipmentId !== "string" || shipmentId.trim() === "") {
-    return NextResponse.json({ error: "shipmentId is required" });
+    return NextResponse.json({ error: "shipmentId is required" }, { status: 400 });
   }
 
   const targetShipmentId = shipmentId;

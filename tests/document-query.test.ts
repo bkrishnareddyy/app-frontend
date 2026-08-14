@@ -20,6 +20,9 @@ describe("document query parsing", () => {
       clientId: null,
       shipmentId: null,
       assignedBrokerIds: [],
+      archivedOnly: false,
+      createdFrom: null,
+      createdTo: null,
       sort: "createdAt",
       direction: "desc",
       page: 1,
@@ -90,6 +93,7 @@ describe("document where clause", () => {
       { fileName: { contains: "INV-45", mode: "insensitive" } },
       { docType: { contains: "INV-45", mode: "insensitive" } },
       { shipment: { shipmentNumber: { contains: "INV-45", mode: "insensitive" } } },
+      { shipment: { client: { name: { contains: "INV-45", mode: "insensitive" } } } },
     ]);
   });
 
@@ -97,7 +101,7 @@ describe("document where clause", () => {
     const where = buildDocumentWhere("acct_a", q("search=inv&docType=Commercial Invoice&status=Received"));
     expect(where.docType).toBe("Commercial Invoice");
     expect(where.status).toBe("Received");
-    expect(where.OR).toHaveLength(3);
+    expect(where.OR).toHaveLength(4);
   });
 
   it("filters by the client on the parent shipment", () => {

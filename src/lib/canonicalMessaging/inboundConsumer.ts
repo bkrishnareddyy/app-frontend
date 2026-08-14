@@ -133,7 +133,7 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
 export async function drainInboundQueue(): Promise<number> {
   const consumer = new PgCanonicalMessageConsumer();
   let count = 0;
-  // eslint-disable-next-line no-constant-condition
+   
   while (await consumer.processOne(processInboundMessage)) count++;
   return count;
 }

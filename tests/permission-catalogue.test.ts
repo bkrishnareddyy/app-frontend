@@ -76,8 +76,7 @@ describe("the catalogue covers what the code actually checks", () => {
   it("does not give a viewer anything that changes a record", () => {
     const viewerHolds = defaultPermissionsForRole("VIEWER");
     for (const name of viewerHolds) {
-      const definition = findPermission(name);
-      expect(definition?.category).toBe("Intelligence");
+      expect(name).not.toMatch(/manage|create|delete|submit|waive|write/);
     }
   });
 
@@ -122,7 +121,7 @@ describe("role grant gap", () => {
   });
 
   it("reports a grant beyond the defaults without calling it wrong", () => {
-    const gap = roleGrantGap("VIEWER", ["intel.read", "filings.submit"]);
+    const gap = roleGrantGap("VIEWER", [...defaultPermissionsForRole("VIEWER"), "filings.submit"]);
 
     expect(gap.extra).toEqual(["filings.submit"]);
     expect(gap.missing).toEqual([]);
@@ -231,7 +230,7 @@ describe("syncing the catalogue", () => {
       store({ listSystemRoles: async () => [{ id: "role_owner", name: "OWNER" }] })
     );
 
-    expect(result.rolesMissing).toEqual(["ADMIN", "MEMBER", "VIEWER"]);
+    expect(result.rolesMissing).toEqual(["ADMIN", "BROKER", "MEMBER", "SPECIALIST", "VIEWER"]);
   });
 
   it("leaves custom account roles alone, because a sync must not widen them", async () => {

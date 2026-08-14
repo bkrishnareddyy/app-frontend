@@ -23,8 +23,8 @@ export class BisCslIngestionService {
     const pageSize = 100;
     let offset = 0;
     let totalFetched = 0;
-    let createdCount = 0;
-    let updatedCount = 0;
+    const createdCount = 0;
+    const updatedCount = 0;
 
     const apiKey = process.env.TRADE_GOV_API_KEY || "";
     const baseUrl = "https://api.trade.gov/v1/consolidated_screening_list/search";

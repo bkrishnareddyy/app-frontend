@@ -46,7 +46,11 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const contentDisposition = buildContentDisposition(document.fileName);
 
   if (document.fileUrl.includes("storage.qubere.ai")) {
-    return streamLocalFallbackFile(contentDisposition);
+    console.error("[documents/proxy] placeholder storage.qubere.ai URL has no real file", {
+      accountId: ctx.accountId,
+      documentId,
+    });
+    return new NextResponse("Document storage unavailable", { status: 404 });
   }
 
   if (origin === null) {
@@ -55,7 +59,11 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) {
-    return streamLocalFallbackFile(contentDisposition);
+    console.error("[documents/proxy] BLOB_READ_WRITE_TOKEN not configured", {
+      accountId: ctx.accountId,
+      documentId,
+    });
+    return new NextResponse("Document storage unavailable", { status: 404 });
   }
 
   try {
@@ -69,7 +77,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
         documentId,
         status: upstream.status,
       });
-      return streamLocalFallbackFile(contentDisposition);
+      return new NextResponse("Document not found", { status: 404 });
     }
 
     return new NextResponse(upstream.body, {
@@ -83,7 +91,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     });
   } catch (err) {
     console.error("[documents/proxy] upstream fetch exception", err);
-    return streamLocalFallbackFile(contentDisposition);
+    return new NextResponse("Document not found", { status: 404 });
   }
 });
 
@@ -120,30 +128,6 @@ async function streamLocalFile(fileUrl: string, contentDisposition: string) {
       },
     });
   } catch {
-    return streamLocalFallbackFile(contentDisposition);
+    return new NextResponse("Document not found", { status: 404 });
   }
-}
-
-/** Serves a sample fallback PDF if the requested document storage reference is unreachable on local dev. */
-async function streamLocalFallbackFile(contentDisposition: string) {
-  const uploadsRoot = path.join(process.cwd(), "public", "uploads");
-  try {
-    const files = await fs.readdir(uploadsRoot);
-    const pdf = files.find((f) => f.endsWith(".pdf"));
-    if (pdf) {
-      const contents = await fs.readFile(path.join(uploadsRoot, pdf));
-      return new NextResponse(new Uint8Array(contents), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": contentDisposition,
-          "Cache-Control": "private, no-store",
-          "X-Content-Type-Options": "nosniff",
-        },
-      });
-    }
-  } catch {
-    // fallback directory empty
-  }
-  return new NextResponse("Document storage unavailable on local environment", { status: 404 });
 }

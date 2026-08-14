@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDate, cn } from "@/lib/utils";
-import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Search, Globe2, Rocket, Bot, Code2, Clock, Database } from "lucide-react";
+import { Building2, UserPlus, Shield, CheckCircle2, AlertCircle, Search, Globe2, Rocket, Bot, Code2, Clock, Database, Gavel } from "lucide-react";
 import { HtsAdminPanel, HtsAdminData } from "./HtsAdminPanel";
 import { DeploymentsPanel } from "./DeploymentsPanel";
 import { AgentsAnalyticsPanel } from "./AgentsAnalyticsPanel";
 import { ApiExplorerPanel } from "./ApiExplorerPanel";
 import { CronPanel } from "./CronPanel";
 import { DataAdminPanel } from "./DataAdminPanel";
+import { RateReviewPanel } from "./RateReviewPanel";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, FormField } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
@@ -34,7 +35,9 @@ interface PlatformAdminConsoleProps {
 
 export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProcessing }: PlatformAdminConsoleProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"accounts" | "hts" | "deployments" | "agents" | "api" | "cron" | "data">("accounts");
+  const [activeTab, setActiveTab] = useState<
+    "accounts" | "hts" | "deployments" | "agents" | "api" | "cron" | "data" | "rate-review"
+  >("accounts");
   const [companyName, setCompanyName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -120,6 +123,15 @@ export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProc
           <span>Data</span>
         </button>
         <button
+          onClick={() => setActiveTab("rate-review")}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
+            activeTab === "rate-review" ? "bg-brand text-white" : "bg-white border border-border text-ink-muted hover:text-ink"
+          }`}
+        >
+          <Gavel className="w-3.5 h-3.5" />
+          <span>Rate Review</span>
+        </button>
+        <button
           onClick={() => setActiveTab("hts")}
           className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
             activeTab === "hts" ? "bg-brand text-white" : "bg-white border border-border text-ink-muted hover:text-ink"
@@ -167,6 +179,8 @@ export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProc
       </div>
 
       {activeTab === "data" && <DataAdminPanel />}
+
+      {activeTab === "rate-review" && <RateReviewPanel />}
 
       {activeTab === "hts" && <HtsAdminPanel data={htsAdmin} />}
 

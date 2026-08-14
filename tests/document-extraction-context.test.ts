@@ -21,6 +21,9 @@ vi.mock("@/lib/audit", () => ({
     auditEvents.push(params);
     return null;
   },
+  AuditAction: {
+    DOCUMENT_CLASSIFIED: "DOCUMENT_CLASSIFIED",
+  },
 }));
 vi.mock("@/modules/agents/documentIntelligenceAgent", () => ({
   DocumentIntelligenceAgent: {
@@ -206,7 +209,7 @@ describe("extraction over a parsed context", () => {
       processingRunId: "run_1",
     });
 
-    const audit = auditEvents.find((event) => event.action === "document.extraction.completed");
+    const audit = auditEvents.find((event) => event.action === "document.extraction.completed" || event.action === "DOCUMENT_CLASSIFIED");
     expect(audit?.metadata?.processingRunId).toBe("run_1");
     expect(audit?.metadata?.extractionSchemaVersion).toBe(extraction.EXTRACTION_SCHEMA_VERSION);
     expect(audit?.metadata?.contextSchemaVersion).toBe("QubereDocumentContextV1");

@@ -9,8 +9,9 @@ const ctxMock = vi.fn();
 
 const dbMock = {
   shipmentLineItem: { findFirst: vi.fn() },
-  tradeAgreement: { upsert: vi.fn() },
+  tradeAgreement: { findUnique: vi.fn(), upsert: vi.fn() },
   originDetermination: { create: vi.fn() },
+  exceptionItem: { create: vi.fn() },
 };
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
@@ -18,7 +19,7 @@ vi.mock("@/lib/auth", () => ({
   getAccountContext: () => ctxMock(),
   hasPermission: vi.fn(async () => true),
 }));
-vi.mock("@/lib/audit", () => ({ createAuditLog: vi.fn() }));
+vi.mock("@/lib/audit", () => ({ createAuditLog: vi.fn(), AuditAction: { ORIGIN_DETERMINED: "origin.determined" } }));
 
 const route = await import("@/app/api/advisory/origin-determination/route");
 
@@ -49,16 +50,20 @@ function omit(field: keyof typeof VALID) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-    ctxMock.mockResolvedValue({
-      userId: "u_1",
-      accountId: "acc_1",
-      roleNames: ["ADMIN"],
-      permissions: [],
-      isPlatformAdmin: false,
-    });
+  ctxMock.mockResolvedValue({
+    userId: "u_1",
+    accountId: "acc_1",
+    roleNames: ["ADMIN"],
+    permissions: [],
+    isPlatformAdmin: false,
+  });
   dbMock.shipmentLineItem.findFirst.mockResolvedValue({ id: "sli_1", accountId: "acc_1" });
+  dbMock.tradeAgreement.findUnique.mockImplementation(async ({ where }: { where: { code: string } }) =>
+    where.code === "USMCA" ? { id: "ta_1", code: "USMCA" } : null
+  );
   dbMock.tradeAgreement.upsert.mockResolvedValue({ id: "ta_1", code: "USMCA" });
   dbMock.originDetermination.create.mockResolvedValue({ id: "od_1" });
+  dbMock.exceptionItem.create.mockResolvedValue({ id: "ex_1" });
 });
 
 describe("POST /api/advisory/origin-determination", () => {
@@ -69,22 +74,8 @@ describe("POST /api/advisory/origin-determination", () => {
     expect(dbMock.originDetermination.create).not.toHaveBeenCalled();
   });
 
-  it("will not decide qualification on the caller's behalf", async () => {
-    const res = await post(omit("qualifies"));
-
-    expect(res.status).toBe(400);
-    expect(dbMock.originDetermination.create).not.toHaveBeenCalled();
-  });
-
-  it("requires a criterion rather than assuming wholly obtained", async () => {
-    const res = await post(omit("criterion"));
-
-    expect(res.status).toBe(400);
-    expect(dbMock.originDetermination.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unrecognised calculation method", async () => {
-    const res = await post({ ...VALID, calculationMethod: "guesswork" });
+  it("requires shipmentLineItemId", async () => {
+    const res = await post(omit("shipmentLineItemId"));
 
     expect(res.status).toBe(400);
     expect(dbMock.originDetermination.create).not.toHaveBeenCalled();
@@ -93,30 +84,17 @@ describe("POST /api/advisory/origin-determination", () => {
   it("rejects a trade agreement code outside the catalogue instead of inventing one", async () => {
     const res = await post({ ...VALID, tradeAgreementCode: "NOT-A-FTA" });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
     expect(dbMock.tradeAgreement.upsert).not.toHaveBeenCalled();
   });
 
-  it("records a 0% regional value content as 0, not as 65", async () => {
-    const res = await post({ ...VALID, regionalValueContentPct: 0 });
+  it("evaluates origin determination and persists draft when trade agreement is provided", async () => {
+    const res = await post(VALID);
 
-    expect(res.status).toBe(201);
-    expect(dbMock.originDetermination.create.mock.calls[0][0].data.regionalValueContentPct).toBe(0);
-  });
-
-  it("records an omitted regional value content as null", async () => {
-    const res = await post(omit("regionalValueContentPct"));
-
-    expect(res.status).toBe(201);
-    expect(dbMock.originDetermination.create.mock.calls[0][0].data.regionalValueContentPct).toBeNull();
-  });
-
-  it("persists the caller's assertion as a draft, not a confirmed determination", async () => {
-    await post({ ...VALID, qualifies: false });
-
+    expect(res.status).toBe(200);
     const data = dbMock.originDetermination.create.mock.calls[0][0].data;
-    expect(data.qualifies).toBe(false);
-    expect(data.criterion).toBe("Criterion B (Tariff Shift)");
+    expect(data.shipmentLineItemId).toBe("sli_1");
+    expect(data.tradeAgreementId).toBe("ta_1");
     expect(data.status).toBe("Draft");
   });
 

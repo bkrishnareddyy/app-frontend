@@ -32,7 +32,10 @@ async function run() {
   
   console.log(`Retrieved ${documents.length} notices.`);
 
-  const apiKey = process.env.GEMINI_API_KEY || "AIzaSyAZklicgYxg1bBdCGqw0B_u6yVdw9jbaqA";
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY environment variable is required to run this script.");
+  }
   const aiClient = new GoogleGenAI({ apiKey });
 
   let count = 0;

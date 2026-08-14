@@ -423,6 +423,24 @@ export async function triggerDatasetRefresh(id: string): Promise<{
     };
   }
 
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    return {
+      success: false,
+      message: "CRON_SECRET is not configured on the server; ingestion endpoints cannot be triggered.",
+    };
+  }
+
+  const alreadyRunning = await db.datasetRefreshLog.findFirst({
+    where: { datasetId: id, status: "RUNNING" },
+  });
+  if (alreadyRunning) {
+    return {
+      success: false,
+      message: `Dataset "${def.name}" already has a run in progress (started ${alreadyRunning.startedAt.toISOString()}).`,
+    };
+  }
+
   // Create a RUNNING log row
   const log = await db.datasetRefreshLog.create({
     data: {
@@ -440,7 +458,10 @@ export async function triggerDatasetRefresh(id: string): Promise<{
 
     const res = await fetch(fullUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${cronSecret}`,
+      },
     });
 
     if (!res.ok) {

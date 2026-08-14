@@ -73,7 +73,7 @@ describe("navigation visibility", () => {
   });
 
   it("drops sections that end up empty", () => {
-    expect(visibleNavigation(viewer).map((s) => s.id)).toEqual(["operations"]);
+    expect(visibleNavigation(viewer).map((s) => s.id)).toEqual(["operations", "tooling"]);
   });
 
   it("owner bypass does not extend to platform-admin-only items", () => {

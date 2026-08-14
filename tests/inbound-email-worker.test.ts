@@ -30,7 +30,10 @@ const downloadAttachmentBytesMock = vi.fn();
 const createAuditLogMock = vi.fn();
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
-vi.mock("@/lib/audit", () => ({ createAuditLog: createAuditLogMock }));
+vi.mock("@/lib/audit", () => ({
+  createAuditLog: createAuditLogMock,
+  AuditAction: { DOCUMENT_STORED: "document.stored", INBOUND_EMAIL_ATTACHMENT_QUARANTINED: "inbound_email.attachment_quarantined" },
+}));
 vi.mock("@/lib/storage", () => ({
   storeDocumentFile: storeDocumentFileMock,
   StorageValidationError: class StorageValidationError extends Error {},

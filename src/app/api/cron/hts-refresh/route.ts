@@ -1,20 +1,12 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { HtsUsitcFetcher } from "@/modules/hts/htsUsitcFetcher";
 import { HtsIngestionService } from "@/modules/hts/htsIngestionService";
 
 export const maxDuration = 300;
 
-async function handleRefresh(req: Request, requestId: string) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
+async function handleRefresh(requestId: string) {
   let items: any[] = [];
   let chapterResults: any[] = [];
   try {
@@ -55,49 +47,11 @@ async function handleRefresh(req: Request, requestId: string) {
       items,
     });
 
-    // Write HtsChange rows and create a RegulatoryUpdate of type TARIFF_RATE_CHANGE (Task A-5)
-    // Find previous active release
-    const prevRelease = await db.htsRelease.findFirst({
-      where: { country: "US", publicationStatus: "PUBLISHED" },
-      orderBy: { retrievedAt: "desc" },
-    });
-
-    if (prevRelease) {
-      // Create HtsChange entry
-      await db.htsChange.create({
-        data: {
-          fromReleaseId: prevRelease.id,
-          toReleaseId: release.id,
-          changeType: "RATE_CHANGED",
-          changedFields: {
-            htsNumber: "8541.43.0010",
-            oldRate: "2.8%",
-            newRate: "4.5%",
-          },
-          reviewStatus: "PENDING",
-        },
-      });
-
-      // Create RegulatoryUpdate
-      await db.regulatoryUpdate.create({
-        data: {
-          title: `HTS Schedule Update: Tariff Rate Revision ${dateLabel}`,
-          description: "USITC publishes revised tariff rates for solar cells and electronic assemblies.",
-          jurisdiction: "United States",
-          category: "Tariffs & Duties",
-          impactLevel: "High",
-          effectiveDate: now,
-          documentNumber: `HTS-REV-${dateLabel}`,
-          status: "Action Required",
-          metadata: {
-            type: "TARIFF_RATE_CHANGE",
-            affectedHtsCodes: ["8541.43.0010"],
-            actionRequired: true,
-            effectiveDate: now.toISOString(),
-          },
-        },
-      });
-    }
+    // Real release-to-release diffing (populating HtsChange from an actual
+    // field comparison between the previous PUBLISHED release and this DRAFT)
+    // is not implemented yet. Previously this block wrote a hardcoded,
+    // fabricated HtsChange + RegulatoryUpdate on every refresh regardless of
+    // what USITC actually published -- that was worse than reporting nothing.
 
     return NextResponse.json({
       status: "STAGED",
@@ -105,7 +59,7 @@ async function handleRefresh(req: Request, requestId: string) {
       releaseId: release.id,
       itemCount: items.length,
       failedChapters: failedChapters.length ? failedChapters : undefined,
-      note: "Staged as DRAFT and created regulatory update. Publish via POST /api/v1/admin/hts/releases/[releaseId]/publish after review.",
+      note: "Staged as DRAFT. Publish via POST /api/v1/admin/hts/releases/[releaseId]/publish after review. Change detection against the prior release is not yet implemented.",
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("Duplicate ingestion rejected")) {
@@ -124,10 +78,6 @@ async function handleRefresh(req: Request, requestId: string) {
   }
 }
 
-export const GET = withPublicRoute(async ({ req, requestId }) => {
-  return handleRefresh(req, requestId);
-});
-
-export const POST = withPublicRoute(async ({ req, requestId }) => {
-  return handleRefresh(req, requestId);
+export const POST = withCronRoute(async ({ requestId }) => {
+  return handleRefresh(requestId);
 });

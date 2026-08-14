@@ -258,7 +258,7 @@ export async function assembleReasonableCarePackage(shipmentId: string): Promise
 
   // Calculate Completeness Score
   let filledSections = 0;
-  let totalSections = 6;
+  const totalSections = 6;
   if (classification.length > 0) filledSections++;
   if (valuation.declaredCustomsValue > 0) filledSections++;
   if (origin.determinedCountry !== "Unknown") filledSections++;

@@ -7,14 +7,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // created in as "Open", leaving two vocabularies in one field.
 
 const dbMock = {
-  exceptionItem: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  exceptionItem: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   shipment: { findFirst: vi.fn() },
 };
 
 const createAuditLog = vi.fn();
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
-vi.mock("@/lib/audit", () => ({ createAuditLog }));
+vi.mock("@/lib/audit", () => ({ createAuditLog, AuditAction: { EXCEPTION_RESOLVED: "exception.resolve", EXCEPTION_WAIVED: "exception.waive" } }));
 
 const { ExceptionService } = await import("@/modules/exceptions/exception.service");
 const {

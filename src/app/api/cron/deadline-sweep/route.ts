@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { sweepDeadlines } from "@/modules/deadlines/deadline.service";
 
 /**
@@ -11,24 +11,13 @@ import { sweepDeadlines } from "@/modules/deadlines/deadline.service";
  * - Does NOT recompute dueAt — that's done by recomputeShipmentDeadlines()
  *   which fires from ReconciliationEngine on every shipment-affecting event.
  *
- * Auth: CRON_SECRET bearer token (same pattern as other cron routes).
- * A missing CRON_SECRET allows the route through — dev convenience only;
- * production deployments must set the secret.
+ * Auth: CRON_SECRET bearer token, required. A missing or mismatched secret
+ * is rejected — there is no unauthenticated fallback.
  */
 
 export const maxDuration = 60;
 
-function unauthorized(req: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
-  return req.headers.get("authorization") !== `Bearer ${cronSecret}`;
-}
-
-export const GET = withPublicRoute(async ({ req }) => {
-  if (unauthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const GET = withCronRoute(async () => {
   const result = await sweepDeadlines();
 
   return NextResponse.json({

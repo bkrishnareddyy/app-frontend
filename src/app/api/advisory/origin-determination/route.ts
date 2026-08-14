@@ -9,7 +9,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { shipmentLineItemId, tradeAgreementCode, claimedCountry } = body;
 
   if (!shipmentLineItemId) {
-    return NextResponse.json({ error: "shipmentLineItemId is required" });
+    return NextResponse.json({ error: "shipmentLineItemId is required" }, { status: 400 });
   }
 
   const lineItem = await db.shipmentLineItem.findFirst({

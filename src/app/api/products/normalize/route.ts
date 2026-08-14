@@ -9,7 +9,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { rawDescription, source, partNumber, countryOfOrigin, htsCode } = body;
 
   if (!rawDescription || typeof rawDescription !== "string" || rawDescription.trim().length === 0) {
-    return NextResponse.json({ error: "rawDescription is required" });
+    return NextResponse.json({ error: "rawDescription is required" }, { status: 400 });
   }
 
   const pipeline = runNormalizationPipeline(rawDescription.trim());

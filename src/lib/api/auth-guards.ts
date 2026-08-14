@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { AccountContext, getAccountContext, hasPermission } from "@/lib/auth";
 import { runWithDataMode } from "@/lib/db";
 import { buildErrorResponse, generateRequestId, handleApiError } from "./error";
@@ -158,6 +159,52 @@ export function withPublicRoute<TParams = Record<string, never>>(
 ) {
   return async (req: Request, context?: NextRouteContext<TParams>): Promise<Response> => {
     const requestId = req.headers.get("x-request-id") ?? generateRequestId();
+    try {
+      const params = context ? await context.params : ({} as TParams);
+      return await handler({ req, requestId, params });
+    } catch (error) {
+      return handleApiError(error, requestId);
+    }
+  };
+}
+
+/**
+ * Constant-time bearer-token check against CRON_SECRET. A missing
+ * CRON_SECRET always fails closed — unlike the ad-hoc per-route checks this
+ * replaces, there is no "secret unset, let it through" branch.
+ */
+function verifyCronAuth(req: Request): boolean {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return false;
+
+  const authHeader = req.headers.get("authorization") ?? "";
+  const expected = `Bearer ${cronSecret}`;
+
+  const authBuf = Buffer.from(authHeader);
+  const expectedBuf = Buffer.from(expected);
+  if (authBuf.length !== expectedBuf.length) {
+    // Compare against itself so a length mismatch doesn't short-circuit the
+    // timing profile relative to a matching-length wrong guess.
+    crypto.timingSafeEqual(authBuf, authBuf);
+    return false;
+  }
+  return crypto.timingSafeEqual(authBuf, expectedBuf);
+}
+
+/**
+ * For cron-triggered ingestion routes: requires a valid `Authorization:
+ * Bearer <CRON_SECRET>` header on every request, POST or GET. Replaces the
+ * per-route `if (cronSecret) { check } ` pattern that silently allowed any
+ * caller through whenever CRON_SECRET was unset.
+ */
+export function withCronRoute<TParams = Record<string, never>>(
+  handler: (args: PublicRouteHandlerArgs<TParams>) => Promise<Response>
+) {
+  return async (req: Request, context?: NextRouteContext<TParams>): Promise<Response> => {
+    const requestId = req.headers.get("x-request-id") ?? generateRequestId();
+    if (!verifyCronAuth(req)) {
+      return buildErrorResponse(401, "UNAUTHORIZED", "Missing or invalid cron authorization", undefined, requestId);
+    }
     try {
       const params = context ? await context.params : ({} as TParams);
       return await handler({ req, requestId, params });

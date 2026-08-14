@@ -15,6 +15,7 @@ const dbMock = {
   },
   filingSnapshot: {
     create: vi.fn(),
+    upsert: vi.fn(),
   },
   htsNode: {
     findMany: vi.fn(),
@@ -23,6 +24,21 @@ const dbMock = {
   // engine resolves that release before looking up any node.
   htsRelease: {
     findFirst: vi.fn(),
+  },
+  shipmentParty: {
+    findFirst: vi.fn(),
+  },
+  filingProcedureMapping: {
+    findMany: vi.fn(),
+  },
+  filingMessageCatalog: {
+    findMany: vi.fn(),
+  },
+  filingSchemaVersion: {
+    findFirst: vi.fn(),
+  },
+  filingMessage: {
+    create: vi.fn(),
   },
 };
 
@@ -55,8 +71,9 @@ function filingRecord(lineItems: unknown[]) {
     id: "fil_1",
     accountId: "acc_1",
     entryNumber: "5901-26-004872",
+    entryType: "01",
     filingStatus: "BrokerApproved",
-    shipment: { id: "shp_1", lineItems, documents: [] },
+    shipment: { id: "shp_1", destinationCountry: "US", lineItems, documents: [] },
   };
 }
 
@@ -65,6 +82,20 @@ beforeEach(() => {
   // A published release exists in every case here; the "no published release"
   // path is covered in duty-rate-release-scope.test.ts.
   dbMock.htsRelease.findFirst.mockResolvedValue({ id: "rel_published" });
+  dbMock.shipmentParty.findFirst.mockResolvedValue(null);
+  dbMock.filingProcedureMapping.findMany.mockResolvedValue([
+    { id: "fpm_1", entryType: "01", country: "*", procedureCode: "CBP_7501" },
+  ]);
+  dbMock.filingMessageCatalog.findMany.mockResolvedValue([
+    { id: "fmc_1", action: "*", country: "*", procedureCode: "*", format: "CBP_ACE_ABI_501", engine: "CBP_ABI" },
+  ]);
+  dbMock.filingSchemaVersion.findFirst.mockResolvedValue({
+    id: "v1",
+    schemaType: "FILING_REQUEST_DECLARATION",
+    version: "1.0.0",
+    status: "ACTIVE",
+    schemaJson: { type: "object" },
+  });
   dbMock.customsFiling.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: "fil_1",
     ...data,
@@ -98,7 +129,7 @@ describe("FilingService.transmitFiling: duty completeness", () => {
 
     expect(result.filing.filingStatus).toBe("Transmitted");
     expect(result.filing.submittedAt).toBeInstanceOf(Date);
-    expect(dbMock.customsResponse.create).toHaveBeenCalledOnce();
+    expect(dbMock.filingMessage.create).toHaveBeenCalledOnce();
   });
 
   it("treats a genuine 0% rate as rated rather than unknown", async () => {

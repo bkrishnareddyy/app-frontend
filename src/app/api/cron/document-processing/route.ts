@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { pruneAiUsageWindows } from "@/lib/ai/aiQuota";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { runWorkerTick } from "@/modules/documents/processing/documentProcessingWorker";
 import { runInboundEmailWorkerTick } from "@/modules/documents/processing/inboundEmailWorker";
 import { parserConfigurationReport } from "@/modules/documents/parser/config";
@@ -47,12 +47,6 @@ import { parserConfigurationReport } from "@/modules/documents/parser/config";
 // deployment rather than granting it. Raise this to 300 on Pro if the daily
 // backstop starts running out of time on a large backlog.
 export const maxDuration = 60;
-
-function unauthorized(req: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
-  return req.headers.get("authorization") !== `Bearer ${cronSecret}`;
-}
 
 /**
  * Housekeeping for the AI usage counters, piggybacking on the daily slot for the
@@ -105,13 +99,11 @@ async function tick(requestId: string): Promise<Response> {
   });
 }
 
-export const GET = withPublicRoute(async ({ req, requestId }) => {
-  if (unauthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = withCronRoute(async ({ requestId }) => {
   return tick(requestId);
 });
 
 /** Same work, for schedulers and operators that prefer an explicit POST. */
-export const POST = withPublicRoute(async ({ req, requestId }) => {
-  if (unauthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const POST = withCronRoute(async ({ requestId }) => {
   return tick(requestId);
 });

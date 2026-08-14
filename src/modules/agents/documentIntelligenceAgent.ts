@@ -920,7 +920,7 @@ ${instructions}`;
               const classificationConfidence = normaliseConfidence(documentClassification.confidence);
               const needsHumanReview = classificationConfidence < CLASSIFICATION_CONFIDENCE_THRESHOLD;
 
-              await db.shipmentDocument.update({
+              await db.shipmentDocument.updateMany({
                 where: { id: docToUpdate.id },
                 data: {
                   documentType: mappedType,

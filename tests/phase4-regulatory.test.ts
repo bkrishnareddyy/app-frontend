@@ -43,8 +43,11 @@ describe("Phase 4 Regulatory Intelligence & Ingestion Test Suite", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    process.env.CRON_SECRET = "dev-cron-secret";
     dbMock.customsFiling.findMany.mockResolvedValue([]);
   });
+
+  const cronHeaders = { authorization: "Bearer dev-cron-secret" };
 
   describe("Anti-Hallucination Citation Verification", () => {
     it("rejects non-existent unverified ruling numbers to prevent AI hallucinated citations", async () => {
@@ -83,6 +86,7 @@ describe("Phase 4 Regulatory Intelligence & Ingestion Test Suite", () => {
 
       const request = new Request("http://localhost/api/cron/regulatory-ingest", {
         method: "POST",
+        headers: cronHeaders,
       });
 
       const response = await POST(request);
@@ -127,6 +131,7 @@ describe("Phase 4 Regulatory Intelligence & Ingestion Test Suite", () => {
 
       const request = new Request("http://localhost/api/cron/regulatory-ingest", {
         method: "POST",
+        headers: cronHeaders,
       });
 
       const response = await POST(request);
@@ -145,6 +150,7 @@ describe("Phase 4 Regulatory Intelligence & Ingestion Test Suite", () => {
 
       const request = new Request("http://localhost/api/cron/regulatory-ingest", {
         method: "POST",
+        headers: cronHeaders,
       });
 
       const response = await POST(request);
@@ -185,6 +191,7 @@ describe("Phase 4 Regulatory Intelligence & Ingestion Test Suite", () => {
 
       const request = new Request("http://localhost/api/cron/regulatory-ingest?accountId=acc-abc", {
         method: "POST",
+        headers: cronHeaders,
       });
 
       const response = await POST(request);

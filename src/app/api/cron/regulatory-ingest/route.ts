@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withPublicRoute } from "@/lib/api/auth-guards";
+import { withCronRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { aiModel } from "@/lib/ai/aiModel";
@@ -23,15 +23,7 @@ const extractionSchema: Schema = {
   required: ["type", "affectedHtsCodes", "effectiveDate", "summary", "actionRequired"],
 };
 
-export const POST = withPublicRoute(async ({ req, requestId }) => {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
+export const POST = withCronRoute(async ({ req, requestId }) => {
   // 1. Fetch Federal Register documents for Customs and Border Protection
   const url = "https://www.federalregister.gov/api/v1/documents.json?conditions[agencies][]=u-s-customs-and-border-protection&per_page=20&order=newest";
   
@@ -142,81 +134,66 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
 
     createdUpdates.push(update);
 
-    // Task C-3: Auto-create RefundOpportunity when exclusion is granted via Federal Register cron
-    if (extracted.type === "EXCLUSION_GRANTED" || doc.title.toLowerCase().includes("exclusion")) {
-      const acceptedFilings = await db.customsFiling.findMany({
-        where: { filingStatus: { in: ["Accepted", "Closed"] } },
-        include: { shipment: { include: { lineItems: true } } },
-      });
+    // Federal Register extraction is title/abstract-level only (no legal-text or
+    // product-scope parsing), so it is informational-only: it must never auto-create
+    // a RefundOpportunity. A notice matching "exclusion" affects an unknown, possibly
+    // empty, set of HTS codes and products -- a human must confirm the match against
+    // each filing before any refund claim is created.
 
-      for (const filing of acceptedFilings) {
-        for (const item of filing.shipment.lineItems) {
-          const isChina = item.countryOfOrigin?.toUpperCase() === "CN";
-          if (!isChina || !item.htsCode) continue;
-
-          const oppExists = await db.refundOpportunity.findFirst({
-            where: { accountId: filing.accountId, filingId: filing.id, opportunityType: "SECTION_301_EXCLUSION" },
-          });
-
-          if (!oppExists) {
-            await db.refundOpportunity.create({
-              data: {
-                accountId: filing.accountId,
-                filingId: filing.id,
-                opportunityType: "SECTION_301_EXCLUSION",
-                estimatedRefundAmount: null, // Null until confirmed per spec
-                confidence: 95,
-                basis: {
-                  reason: `Federal Register notice ${docNum} granted Section 301 retroactive exclusion.`,
-                  regulatoryUpdateId: update.id,
-                  lineItemId: item.id,
-                  htsCode: item.htsCode,
-                },
-                status: "Identified",
-              },
-            });
-          }
-        }
-      }
-    }
-
-    // Create notifications for members with regulatory.review permissions
+    // Alert members with regulatory.review permissions that action may be required.
     if (extracted.actionRequired) {
       const { searchParams } = new URL(req.url);
       const accountId = searchParams.get("accountId");
 
-      // Fetch account users via memberships
-      const memberships = await db.accountMembership.findMany({
-        where: {
-          status: "ACTIVE",
-          deletedAt: null,
-          ...(accountId ? { accountId } : {}),
-          roles: {
-            some: {
-              role: {
-                OR: [
-                  { name: { in: ["OWNER", "ADMIN"] } },
-                  {
-                    rolePermissions: {
-                      some: {
-                        permission: {
-                          name: "regulatory.review",
+      if (accountId) {
+        // Scoped call: notify only members of the requested account.
+        const memberships = await db.accountMembership.findMany({
+          where: {
+            status: "ACTIVE",
+            deletedAt: null,
+            accountId,
+            roles: {
+              some: {
+                role: {
+                  OR: [
+                    { name: { in: ["OWNER", "ADMIN"] } },
+                    {
+                      rolePermissions: {
+                        some: {
+                          permission: {
+                            name: "regulatory.review",
+                          },
                         },
                       },
                     },
-                  },
-                ],
+                  ],
+                },
               },
             },
           },
-        },
-      });
+        });
 
-      for (const m of memberships) {
+        for (const m of memberships) {
+          await db.notification.create({
+            data: {
+              accountId: m.accountId,
+              userId: m.userId,
+              message: `Regulatory Action Required: ${update.title}. New CBP regulatory notice published affecting HTS codes: ${extracted.affectedHtsCodes.join(", ")}. Review required.`,
+              type: "regulatory_alert",
+            },
+          });
+        }
+      } else {
+        // Cron path never provides an accountId: previously this fanned out to
+        // every OWNER/ADMIN across every tenant. A single platform-level alert
+        // (same pattern as the dataset-staleness alert) surfaces it without
+        // leaking one account's regulatory activity to every other tenant.
         await db.notification.create({
           data: {
-            accountId: m.accountId,
-            userId: m.userId,
+            // Platform-level notification; no accountId (global platform alert)
+            // @ts-ignore — accountId is nullable for platform notifications
+            accountId: null,
+            userId: "system",
             message: `Regulatory Action Required: ${update.title}. New CBP regulatory notice published affecting HTS codes: ${extracted.affectedHtsCodes.join(", ")}. Review required.`,
             type: "regulatory_alert",
           },

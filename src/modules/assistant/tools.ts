@@ -35,7 +35,7 @@ export function zodToGeminiSchema(zodSchema: z.ZodObject<any>): Schema {
   for (const [key, prop] of Object.entries(shape)) {
     let unwrapped: any = prop;
     let isOptional = false;
-    let desc: string | undefined = (prop as any).description;
+    const desc: string | undefined = (prop as any).description;
 
     while (unwrapped._def?.innerType || unwrapped._def?.schema) {
       if (unwrapped._def?.typeName === "ZodOptional" || unwrapped._def?.typeName === "ZodDefault") {

@@ -72,7 +72,7 @@ export function CronPanel() {
     if (!job) return;
 
     try {
-      const res = await fetch(job.endpoint, { method: job.method });
+      const res = await fetch(`/api/platform-admin/cron/${jobId}/run`, { method: "POST" });
       const data = await res.json();
 
       if (res.ok) {
