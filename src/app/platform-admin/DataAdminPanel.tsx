@@ -39,6 +39,7 @@ function formatDate(isoString: string | null | undefined): string {
 export function DataAdminPanel() {
   const [datasets, setDatasets] = useState<DatasetWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"ALL" | "Public API" | "Structured Document">("ALL");
   const [runningIds, setRunningIds] = useState<Record<string, boolean>>({});
@@ -48,13 +49,20 @@ export function DataAdminPanel() {
   } | null>(null);
 
   const fetchDatasets = async () => {
+    setLoadError(null);
     try {
       const res = await fetch("/api/platform-admin/datasets");
       if (res.ok) {
         const data = await res.json();
         setDatasets(data.datasets || []);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const msg = data?.error?.message || data?.error || `HTTP ${res.status}`;
+        setLoadError(`Failed to load datasets: ${msg}`);
+        console.error("Dataset registry API error:", res.status, data);
       }
-    } catch (err) {
+    } catch (err: any) {
+      setLoadError(`Network error: ${err.message}`);
       console.error("Failed to load dataset registry:", err);
     } finally {
       setLoading(false);
@@ -268,6 +276,28 @@ export function DataAdminPanel() {
           <div className="p-12 text-center text-sm text-ink-muted flex items-center justify-center space-x-2">
             <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
             <span>Loading dataset registry...</span>
+          </div>
+        ) : loadError ? (
+          <div className="p-12 text-center space-y-3">
+            <AlertCircle className="w-8 h-8 text-red-400 mx-auto" />
+            <p className="text-sm font-semibold text-red-700">{loadError}</p>
+            <button
+              onClick={fetchDatasets}
+              className="text-xs text-brand underline hover:no-underline"
+            >
+              Retry
+            </button>
+          </div>
+        ) : filteredDatasets.length === 0 && datasets.length === 0 ? (
+          <div className="p-12 text-center space-y-2">
+            <Database className="w-8 h-8 text-slate-300 mx-auto" />
+            <p className="text-sm text-ink-muted">No datasets found. The registry may still be loading.</p>
+            <button
+              onClick={fetchDatasets}
+              className="text-xs text-brand underline hover:no-underline"
+            >
+              Retry
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
