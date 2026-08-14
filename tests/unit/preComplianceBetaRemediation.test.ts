@@ -25,6 +25,9 @@ vi.mock("@/lib/db", () => ({
     customsFiling: {
       count: vi.fn().mockResolvedValue(0),
     },
+    classificationCase: {
+      count: vi.fn().mockResolvedValue(0),
+    },
   },
 }));
 

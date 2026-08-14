@@ -152,30 +152,31 @@ export class DatasetAlertService {
     }
 
     // 6. Alert: OUTDATED_RELEASE_CONSUMER
-    // Check if active customs filings point to superseded HTS releases
+    // Check if active classification cases point to superseded HTS releases
     const activePublishedHts = await db.htsRelease.findFirst({
       where: { publicationStatus: "PUBLISHED" },
       select: { id: true, editionYear: true, revisionNumber: true },
     });
 
     if (activePublishedHts) {
-      const outdatedFilingsCount = await db.customsFiling.count({
+      const outdatedCasesCount = await db.classificationCase.count({
         where: {
-          htsReleaseId: { not: null, not: activePublishedHts.id },
-          status: { in: ["DRAFT", "IN_PROGRESS", "READY_TO_FILE"] },
+          htsReleaseId: { not: activePublishedHts.id },
+          NOT: { htsReleaseId: null },
+          status: { in: ["DRAFT", "QUEUED", "PROCESSING", "PROPOSED"] },
         },
       });
 
-      if (outdatedFilingsCount > 0) {
+      if (outdatedCasesCount > 0) {
         alerts.push({
           datasetId: "hts-schedule",
           datasetName: "HTSUS Schedule",
           alertType: "OUTDATED_RELEASE_CONSUMER",
           severity: "CRITICAL",
-          message: `${outdatedFilingsCount} active customs filing(s) are using an outdated/superseded HTS release instead of active release (${activePublishedHts.editionYear} Rev ${activePublishedHts.revisionNumber}).`,
+          message: `${outdatedCasesCount} active classification case(s) are using an outdated/superseded HTS release instead of active release (${activePublishedHts.editionYear} Rev ${activePublishedHts.revisionNumber}).`,
           detectedAt: now.toISOString(),
           metadata: {
-            outdatedFilingsCount,
+            outdatedCasesCount,
             activePublishedReleaseId: activePublishedHts.id,
           },
         });
