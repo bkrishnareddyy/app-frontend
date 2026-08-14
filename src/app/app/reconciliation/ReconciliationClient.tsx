@@ -160,6 +160,7 @@ export function ReconciliationClient({ issues: initialIssues }: { issues: IssueP
         <div className="space-y-3">
           {filteredIssues.map((issue) => {
             const pscDeadline = issue.deadlines.find((d) => d.type === "PSC_WINDOW");
+            // eslint-disable-next-line react-hooks/purity
             const isNearLiquidation = pscDeadline && pscDeadline.dueAt && new Date(pscDeadline.dueAt).getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
 
             return (

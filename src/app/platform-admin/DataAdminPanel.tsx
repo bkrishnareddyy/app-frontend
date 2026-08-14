@@ -10,7 +10,6 @@ import {
   Search,
   ExternalLink,
   Cpu,
-  Layers,
   FileCode,
   FileText,
   Clock,

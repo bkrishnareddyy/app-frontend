@@ -70,7 +70,7 @@ export default async function CustomsFilingDashboardPage(props: {
           <AlertCircle className="w-8 h-8 mx-auto text-amber-500" aria-hidden="true" />
           <h1 className="text-xl font-semibold text-ink">No filing procedure configured for this destination</h1>
           <p className="text-sm text-ink-muted">
-            "{shipment.destinationCountry}" has no entry-type-to-procedure mapping yet. Add a
+            &quot;{shipment.destinationCountry}&quot; has no entry-type-to-procedure mapping yet. Add a
             FilingProcedureMapping row for it before filing to this destination.
           </p>
           <Link href="/app/filing" className="inline-block text-sm font-semibold text-brand">

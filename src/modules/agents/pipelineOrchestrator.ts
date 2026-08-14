@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { createAuditLog, AuditAction } from "@/lib/audit";
+import { createAuditLog } from "@/lib/audit";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent, DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
 import { ProductIntelligenceAgent, ProductIntelligenceOutput } from "./productIntelligenceAgent";

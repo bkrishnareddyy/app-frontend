@@ -3,6 +3,7 @@ import { inngest } from "@/lib/inngest/client";
 import { dailyComplianceAuditJob } from "@/lib/inngest/functions/dailyComplianceAudit";
 import { dailyWorkMetricSnapshotJob } from "@/lib/inngest/functions/dailyWorkMetricSnapshot";
 import { ofacSdnIngestJob } from "@/lib/inngest/functions/ofacSdnIngest";
+import { htsRefreshJob } from "@/lib/inngest/functions/htsRefresh";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -10,5 +11,6 @@ export const { GET, POST, PUT } = serve({
     dailyComplianceAuditJob,
     dailyWorkMetricSnapshotJob,
     ofacSdnIngestJob,
+    htsRefreshJob,
   ],
 });

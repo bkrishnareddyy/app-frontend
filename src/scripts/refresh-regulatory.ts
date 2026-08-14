@@ -56,7 +56,7 @@ async function run() {
     console.log(`Extracting metadata for Document ${docNum}...`);
 
     let fullNoticeText = `${doc.title || ""}\n\n${doc.abstract || ""}`;
-    let docDetailUrl = `https://www.federalregister.gov/api/v1/documents/${docNum}.json`;
+    const docDetailUrl = `https://www.federalregister.gov/api/v1/documents/${docNum}.json`;
     try {
       const detailRes = await fetch(docDetailUrl);
       if (detailRes.ok) {

@@ -9,7 +9,8 @@ export class BisCslIngestionService {
    * Source: International Trade Administration (trade.gov)
    */
   static async fetchAndIngest(
-    maxRecords: number = Number.MAX_SAFE_INTEGER
+    maxRecords: number = Number.MAX_SAFE_INTEGER,
+    staged: boolean = true
   ): Promise<{ success: boolean; count: number; supersededCount: number; note: string }> {
     const pageSize = 100;
     let offset = 0;
@@ -20,6 +21,7 @@ export class BisCslIngestionService {
     const apiKey = process.env.TRADE_GOV_API_KEY || "";
     const baseUrl = "https://api.trade.gov/v1/consolidated_screening_list/search";
     const now = new Date();
+    const targetStatus = staged ? "DRAFT" : "PUBLISHED";
 
     while (totalFetched < maxRecords) {
       const url = new URL(baseUrl);
@@ -83,8 +85,8 @@ export class BisCslIngestionService {
               nationalityCountry: item.citizenship || null,
               programCodes: Array.isArray(item.programs) ? item.programs : [],
               remarks: item.remarks || item.federal_register_notice || null,
-              publicationStatus: "PUBLISHED",
-              publishedAt: now,
+              publicationStatus: targetStatus,
+              publishedAt: targetStatus === "PUBLISHED" ? now : undefined,
               supersededAt: null,
               sourcePublishedAt: item.start_date ? new Date(item.start_date) : undefined,
             },
@@ -100,8 +102,8 @@ export class BisCslIngestionService {
               nationalityCountry: item.citizenship || null,
               programCodes: Array.isArray(item.programs) ? item.programs : [],
               remarks: item.remarks || item.federal_register_notice || null,
-              publicationStatus: "PUBLISHED",
-              publishedAt: now,
+              publicationStatus: targetStatus,
+              publishedAt: targetStatus === "PUBLISHED" ? now : null,
               sourcePublishedAt: item.start_date ? new Date(item.start_date) : now,
             },
           })
@@ -144,7 +146,20 @@ export class BisCslIngestionService {
       success: true,
       count: totalFetched,
       supersededCount,
-      note: `Fetched and processed ${totalFetched} authentic screening records from trade.gov CSL REST API. Marked ${supersededCount} removed records as SUPERSEDED.`,
+      note: `Fetched and processed ${totalFetched} authentic screening records (${targetStatus}) from trade.gov CSL REST API. Marked ${supersededCount} removed records as SUPERSEDED.`,
     };
+  }
+
+  /**
+   * Promotes all DRAFT CSL screening entities to PUBLISHED.
+   */
+  static async publishStagedEntities() {
+    return db.screeningEntity.updateMany({
+      where: { publicationStatus: "DRAFT" },
+      data: {
+        publicationStatus: "PUBLISHED",
+        publishedAt: new Date(),
+      },
+    });
   }
 }

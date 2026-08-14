@@ -54,6 +54,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     engineeringEffort: "Low",
     readinessStatus: "LIVE",
     endpoint: "/api/cron/hts-refresh",
+    selfScheduled: true,
   },
   {
     id: "federal-register",

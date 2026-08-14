@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withCronRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { DATASET_DEFINITIONS } from "@/lib/data/datasetRegistry";
+import { DatasetAlertService } from "@/lib/data/datasetAlertService";
 
 export const maxDuration = 300;
 
@@ -58,8 +59,7 @@ async function handleDispatch(requestId: string) {
         await db.notification.create({
           data: {
             // Platform-level notification; no accountId (global platform alert)
-            // @ts-ignore — accountId is nullable for platform notifications
-            accountId: null,
+            accountId: null as any,
             userId: "system",
             message: `Dataset staleness alert: "${dataset.name}" has not refreshed successfully in ${Math.round(hoursSinceLast)}h (threshold: ${dataset.staleThresholdHours}h). Ingestion may be misconfigured or source API unavailable.`,
             type: "dataset_staleness_alert",
@@ -148,12 +148,19 @@ async function handleDispatch(requestId: string) {
     }
   }
 
+  // ── Evaluate 6-point health alerts ──────────────────────────────────
+  const healthAlerts = await DatasetAlertService.evaluateHealthAlerts().catch((err) => {
+    console.error("[data-dispatcher] Health alert evaluation error:", err);
+    return [];
+  });
+
   return NextResponse.json({
     status: "COMPLETE",
     requestId,
     dispatched,
     skipped,
     staleAlerts,
+    healthAlerts,
     liveDatasetCount: DATASET_DEFINITIONS.filter((d) => d.readinessStatus === "LIVE").length,
     notYetImplementedCount: DATASET_DEFINITIONS.filter(
       (d) => d.readinessStatus === "NOT_YET_IMPLEMENTED"

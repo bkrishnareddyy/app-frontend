@@ -99,7 +99,7 @@ export class CbpCrossFetchService {
 
           // Check revocation / modification markers in text or metadata
           const textUpper = textBody.toUpperCase();
-          let modifiedOrRevokedStatus: "EFFECTIVE" | "REVOKED" | "MODIFIED" = "EFFECTIVE";
+          const modifiedOrRevokedStatus: "EFFECTIVE" | "REVOKED" | "MODIFIED" = "EFFECTIVE";
           let revokesRulingNumber: string | undefined;
           let modifiesRulingNumber: string | undefined;
 

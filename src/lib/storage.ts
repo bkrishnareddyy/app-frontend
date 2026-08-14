@@ -218,6 +218,8 @@ export async function readProcessingArtifact(storageRef: string): Promise<Buffer
   return Buffer.from(await response.arrayBuffer());
 }
 
+import { MalwareScanner } from "@/lib/security/malwareScanner";
+
 export async function storeDocumentFile(
   file: File,
   filename: string
@@ -240,6 +242,15 @@ export async function storeDocumentFile(
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+
+  // Security: Malware signature and binary executable header scan
+  const scanResult = MalwareScanner.scan(buffer, filename);
+  if (!scanResult.safe) {
+    throw new StorageValidationError(
+      "MIME_TYPE_NOT_ALLOWED",
+      `Malware security check failed for file "${filename}": ${scanResult.reason}`
+    );
+  }
 
   // QPR-004: Compute SHA-256 checksum for integrity verification and duplicate detection.
   const checksum = createHash("sha256").update(buffer).digest("hex");
@@ -283,19 +294,20 @@ export async function storeDocumentFile(
   }
 
   // Provider 2: Local Filesystem Storage (For local development ONLY)
-  const uploadDir = path.join(process.cwd(), "public", "uploads");
+  // Store originals outside public/ under .qubere/storage/uploads to prevent direct static access
+  const uploadDir = path.join(process.cwd(), ".qubere", "storage", "uploads");
   try {
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     const filePath = path.join(uploadDir, safeFilename);
     fs.writeFileSync(filePath, buffer);
-    const publicUrl = `/uploads/${safeFilename}`;
+    const localRefUrl = `file://${filePath}`;
 
-    console.log(`[Storage] Saved ${filename} locally at ${publicUrl} sha256=${checksum}`);
+    console.log(`[Storage] Saved ${filename} locally at ${localRefUrl} sha256=${checksum}`);
 
     return {
-      url: publicUrl,
+      url: localRefUrl,
       filename,
       size: file.size,
       checksum,

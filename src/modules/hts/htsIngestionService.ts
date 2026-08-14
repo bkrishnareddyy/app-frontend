@@ -213,6 +213,11 @@ export class HtsIngestionService {
    * Performs release-to-release diffing between two releases and persists real HtsChange rows.
    */
   static async generateDiff(fromReleaseId: string, toReleaseId: string) {
+    // Delete existing diffs for this release pair to ensure idempotency and prevent duplicates
+    await db.htsChange.deleteMany({
+      where: { fromReleaseId, toReleaseId },
+    });
+
     const fromNodes = await db.htsNode.findMany({
       where: { releaseId: fromReleaseId },
       include: { dutyRates: true },
@@ -223,8 +228,10 @@ export class HtsIngestionService {
     });
 
     const fromMap = new Map(fromNodes.map((n) => [n.htsNumberNormalized, n]));
+    const toMap = new Map(toNodes.map((n) => [n.htsNumberNormalized, n]));
     const changeRows: Prisma.HtsChangeCreateManyInput[] = [];
 
+    // 1. Detect ADDED, DESCRIPTION_CHANGED, RATE_CHANGED
     for (const toNode of toNodes) {
       if (!toNode.htsNumberNormalized) continue;
       const fromNode = fromMap.get(toNode.htsNumberNormalized);
@@ -283,14 +290,46 @@ export class HtsIngestionService {
       }
     }
 
-    if (changeRows.length > 0) {
-      const BATCH_SIZE = 1000;
-      for (let i = 0; i < changeRows.length; i += BATCH_SIZE) {
-        await db.htsChange.createMany({ data: changeRows.slice(i, i + BATCH_SIZE) });
+    // 2. Detect REMOVED codes (nodes in fromRelease that do not exist in toRelease)
+    for (const fromNode of fromNodes) {
+      if (!fromNode.htsNumberNormalized) continue;
+      if (!toMap.has(fromNode.htsNumberNormalized)) {
+        changeRows.push({
+          fromReleaseId,
+          toReleaseId,
+          oldHtsNodeId: fromNode.id,
+          changeType: "REMOVED",
+          changedFields: {
+            htsNumber: fromNode.htsNumberNormalized,
+            description: fromNode.description,
+          },
+        });
       }
     }
 
-    return changeRows.length;
+    // Deduplicate changeRows in memory before persisting
+    const seen = new Set<string>();
+    const uniqueChangeRows: Prisma.HtsChangeCreateManyInput[] = [];
+
+    for (const row of changeRows) {
+      const key = `${row.fromReleaseId}:${row.toReleaseId}:${row.changeType}:${row.oldHtsNodeId ?? ""}:${row.newHtsNodeId ?? ""}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueChangeRows.push(row);
+      }
+    }
+
+    if (uniqueChangeRows.length > 0) {
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < uniqueChangeRows.length; i += BATCH_SIZE) {
+        await db.htsChange.createMany({
+          data: uniqueChangeRows.slice(i, i + BATCH_SIZE),
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    return uniqueChangeRows.length;
   }
 
   /**

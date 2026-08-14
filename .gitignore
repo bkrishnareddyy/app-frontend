@@ -49,3 +49,8 @@ next-env.d.ts
 
 # local document-processing artifacts (parsed customer document contents)
 /.qubere/
+
+# public uploads directory (preserve .gitkeep only)
+/public/uploads/*
+!/public/uploads/.gitkeep
+

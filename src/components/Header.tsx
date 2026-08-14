@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { Building2, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, Archive, Mail, type LucideIcon } from "lucide-react";
+import { Building2, Bot, Settings2, Building, Users, ShieldCheck, Contact2, Shield, LogOut, UserCog, Mail, type LucideIcon } from "lucide-react";
 import { ManageAccountModal, type ManageAccountPanelItem, type PanelItemId } from "./ManageAccountModal";
 import { HelpMenu } from "./HelpMenu";
 import { NotificationBell } from "./NotificationBell";

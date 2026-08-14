@@ -42,7 +42,7 @@ if (Prisma.dmmf?.datamodel?.models) {
     if (fieldNames.has("dataMode")) {
       modelsWithDataMode.add(model.name);
     }
-    if (fieldNames.has("account") || fieldNames.has("accountId")) {
+    if (fieldNames.has("account")) {
       modelsWithAccountRelation.add(model.name);
     }
   }

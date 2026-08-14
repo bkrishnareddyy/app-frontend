@@ -176,6 +176,22 @@ describe("buildIsolatedQueryArgs Isolation Transformation", () => {
       },
     });
   });
+
+  it("does not inject account relation filter for models lacking an account relation (e.g. DrawbackLot)", () => {
+    const { newArgs, effectiveOperation } = buildIsolatedQueryArgs(
+      "DrawbackLot",
+      "findMany",
+      { where: { accountId: "acc_123" } },
+      "PRODUCTION"
+    );
+
+    expect(effectiveOperation).toBe("findMany");
+    expect(newArgs).toEqual({
+      where: {
+        accountId: "acc_123",
+      },
+    });
+  });
 });
 
 describe("DataMode Prisma Client Integration", () => {

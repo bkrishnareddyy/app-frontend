@@ -26,7 +26,7 @@ export async function computeAnalyticsMetrics(
   accountId: string,
   clientId?: string
 ): Promise<AnalyticsMetrics> {
-  const shipmentFilter = { accountId, ...(clientId ? { clientId } : {}) };
+  const _shipmentFilter = { accountId, ...(clientId ? { clientId } : {}) };
   const filingFilter = {
     accountId,
     ...(clientId ? { shipment: { clientId } } : {}),

@@ -1,5 +1,4 @@
 import { db } from "../db";
-import { Decimal } from "../tariff/decimal";
 
 export interface ClassificationSection {
   lineItemNumber: number;

@@ -63,7 +63,7 @@ export const POST = withCronRoute(async ({ req, requestId }) => {
 
     // Fetch full document detail to acquire full legal notice text if available
     let fullNoticeText = `${doc.title || ""}\n\n${doc.abstract || ""}`;
-    let docDetailUrl = `https://www.federalregister.gov/api/v1/documents/${docNum}.json`;
+    const docDetailUrl = `https://www.federalregister.gov/api/v1/documents/${docNum}.json`;
     try {
       const detailRes = await fetch(docDetailUrl);
       if (detailRes.ok) {

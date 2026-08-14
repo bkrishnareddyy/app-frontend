@@ -13,6 +13,7 @@ export interface IngestRulingInput {
   rulingType: string;
   sourceUrl?: string;
   checksum?: string;
+  publicationStatus?: "DRAFT" | "PUBLISHED";
   modifiedOrRevokedStatus?: "EFFECTIVE" | "REVOKED" | "MODIFIED";
   modifiesRulingNumber?: string;
   revokesRulingNumber?: string;
@@ -25,6 +26,7 @@ export interface IngestRulingInput {
 export class CrossIngestionService {
   /**
    * Ingests an official CBP CROSS ruling into the authoritative database index.
+   * New rulings land in DRAFT status by default for staged publishing review.
    */
   static async ingestRuling(input: IngestRulingInput) {
     if (!input.issuedAt) {
@@ -42,6 +44,7 @@ export class CrossIngestionService {
     const office = input.office ?? null;
     const sourceUrl = input.sourceUrl ?? null;
     const status = input.modifiedOrRevokedStatus || "EFFECTIVE";
+    const publicationStatus = input.publicationStatus || "DRAFT";
 
     // Compute content checksum
     const fullText = input.fragments.map((f) => f.text).join("\n");
@@ -67,7 +70,7 @@ export class CrossIngestionService {
         sourceUrl,
         checksum,
         modifiedOrRevokedStatus: status,
-        publicationStatus: "PUBLISHED",
+        publicationStatus,
         htsReferences: {
           create: input.htsCodes.map((code) => ({
             htsNumberDisplay: code,
@@ -163,5 +166,25 @@ export class CrossIngestionService {
       rulingNumber,
       ruling,
     };
+  }
+
+  /**
+   * Promotes a staged DRAFT ruling to PUBLISHED.
+   */
+  static async publishRuling(rulingId: string) {
+    return db.ruling.update({
+      where: { id: rulingId },
+      data: { publicationStatus: "PUBLISHED" },
+    });
+  }
+
+  /**
+   * Promotes all DRAFT rulings to PUBLISHED during release publishing.
+   */
+  static async publishAllStaged() {
+    return db.ruling.updateMany({
+      where: { publicationStatus: "DRAFT" },
+      data: { publicationStatus: "PUBLISHED" },
+    });
   }
 }

@@ -2131,6 +2131,7 @@ model HtsChange {
   newNode     HtsNode?   @relation("HtsChangeNew", fields: [newHtsNodeId], references: [id])
 
   @@index([fromReleaseId, toReleaseId])
+  @@unique([fromReleaseId, toReleaseId, changeType, oldHtsNodeId, newHtsNodeId])
 }
 
 // ============================================================================

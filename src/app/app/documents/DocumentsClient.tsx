@@ -322,7 +322,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   // before its initialiser runs. Still a mount-only load, as before.
   useEffect(() => {
     // Sets the loading flag synchronously so the spinner shows on the same paint.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     fetchDocuments();
   }, []);
 

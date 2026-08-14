@@ -49,7 +49,7 @@ export function ShipmentTabsPanel({
   };
 
   return (
-    <>
+    <div className="space-y-6">
       <div className="flex items-center space-x-2 pt-2 border-t border-border">
         <button
           type="button"
@@ -83,7 +83,9 @@ export function ShipmentTabsPanel({
         </button>
       </div>
 
-      {activeTab === "filing" ? filingContent : activeTab === "workspace" ? workspaceContent : auditContent}
-    </>
+      <div key={activeTab} className="space-y-6">
+        {activeTab === "filing" ? filingContent : activeTab === "workspace" ? workspaceContent : auditContent}
+      </div>
+    </div>
   );
 }

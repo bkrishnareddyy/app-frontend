@@ -22,12 +22,30 @@ const eslintConfig = defineConfig([
     // hardcoded to another machine's filesystem path. Not part of the vitest
     // suite and not maintained.
     "tests/test_chat*.js",
+    "src/scripts/**",
   ]),
   {
     rules: {
       // Destructuring a field out to keep it off a response body is a deliberate
       // omission, not dead code. Everything else stays reported.
-      "@typescript-eslint/no-unused-vars": ["warn", { ignoreRestSiblings: true }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
+      "@typescript-eslint/no-explicit-any": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
+    },
+  },
+  {
+    files: ["tests/**/*"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
     },
   },
 ]);

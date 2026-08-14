@@ -39,9 +39,9 @@ describe("Dataset Registry — Real Ingestion Wiring & Compliance Safety", () =>
     }
   });
 
-  it("only ofac-sdn is selfScheduled, and only among LIVE datasets", () => {
+  it("only hts-schedule and ofac-sdn are selfScheduled, and only among LIVE datasets", () => {
     const selfScheduled = DATASET_DEFINITIONS.filter((d) => d.selfScheduled);
-    expect(selfScheduled.map((d) => d.id)).toEqual(["ofac-sdn"]);
+    expect(selfScheduled.map((d) => d.id).sort()).toEqual(["hts-schedule", "ofac-sdn"]);
     for (const d of selfScheduled) {
       expect(d.readinessStatus).toBe("LIVE");
       expect(d.endpoint).toBeTruthy();

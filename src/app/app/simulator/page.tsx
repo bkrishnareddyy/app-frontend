@@ -47,10 +47,6 @@ export default function SimulatorPage() {
   const [breakevenVol, setBreakevenVol] = useState<number | null>(null);
   const [isComparing, setIsComparing] = useState(false);
 
-  useEffect(() => {
-    loadScenarios();
-  }, []);
-
   const loadScenarios = async () => {
     try {
       const res = await fetch("/api/simulator/scenarios");
@@ -71,6 +67,10 @@ export default function SimulatorPage() {
       console.error(e);
     }
   };
+
+  useEffect(() => {
+    loadScenarios();
+  }, []);
 
   const createScenario = async () => {
     if (!newScenarioName) return;

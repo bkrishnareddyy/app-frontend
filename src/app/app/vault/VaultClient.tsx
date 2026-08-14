@@ -80,12 +80,6 @@ export function VaultClient() {
   const [total301Entries, setTotal301Entries] = useState(0);
   const [total301DutyPaid, setTotal301DutyPaid] = useState(0);
 
-  useEffect(() => {
-    loadOpportunities();
-    loadDrawbackData();
-    loadSection301Data();
-  }, []);
-
   const loadOpportunities = () => {
     fetch("/api/refunds/opportunities")
       .then((res) => res.json())
@@ -136,6 +130,12 @@ export function VaultClient() {
       })
       .catch(console.error);
   };
+
+  useEffect(() => {
+    loadOpportunities();
+    loadDrawbackData();
+    loadSection301Data();
+  }, []);
 
   const triggerScan = async () => {
     setIsScanning(true);
