@@ -146,6 +146,10 @@ model Account {
   webhooks                 AccountWebhook[]
   apiKeys                  AccountApiKey[]
 
+  workMetricSnapshots      WorkMetricSnapshot[]
+  drawbackLots             DrawbackLot[]
+  drawbackClaimSequence    DrawbackClaimSequence?
+
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
   productAttributes        ProductAttribute[]
@@ -3876,6 +3880,7 @@ model FilingAuthorityConfig {
 model WorkMetricSnapshot {
   id                   String   @id @default(cuid())
   accountId            String
+  account              Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   date                 DateTime
   period               String   // DAILY | WEEKLY | MONTHLY
   cyclTimeMedianHours  Float?
@@ -3908,6 +3913,7 @@ model ControlEvidence {
 model DrawbackLot {
   id                String   @id @default(cuid())
   accountId         String
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   entryNumber       String
   lineItemId        String?
   htsCode           String
@@ -3928,9 +3934,10 @@ model DrawbackLot {
 }
 
 model DrawbackClaimSequence {
-  id        String @id @default(cuid())
-  accountId String @unique
-  nextVal   Int    @default(1)
+  id        String  @id @default(cuid())
+  accountId String  @unique
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nextVal   Int     @default(1)
 }
 
 // ─── ERP & Broker Integration (F12-F) ─────────────────────────────────────────

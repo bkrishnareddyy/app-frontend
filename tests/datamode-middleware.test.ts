@@ -177,21 +177,33 @@ describe("buildIsolatedQueryArgs Isolation Transformation", () => {
     });
   });
 
-  it("does not inject account relation filter for models lacking an account relation (e.g. DrawbackLot)", () => {
-    const { newArgs, effectiveOperation } = buildIsolatedQueryArgs(
-      "DrawbackLot",
-      "findMany",
-      { where: { accountId: "acc_123" } },
-      "PRODUCTION"
-    );
+  // Regression coverage for the Phase 0 isolation-backstop fix: WorkMetricSnapshot,
+  // DrawbackLot, and DrawbackClaimSequence carried a bare accountId with no `account`
+  // relation, so the DMMF-driven scan in db.ts never picked them up and they received
+  // zero automatic DataMode filtering. Each model now declares an `account` relation
+  // (see prisma/migrations/20260814020000_tenant_account_relation_backstop), so they
+  // must be isolated exactly like every other tenant-owned model.
+  it.each(["WorkMetricSnapshot", "DrawbackLot", "DrawbackClaimSequence"])(
+    "injects the account relation dataMode filter for the previously-unprotected model %s",
+    (model) => {
+      const { newArgs, effectiveOperation } = buildIsolatedQueryArgs(
+        model,
+        "findMany",
+        { where: { accountId: "acc_123" } },
+        "PRODUCTION"
+      );
 
-    expect(effectiveOperation).toBe("findMany");
-    expect(newArgs).toEqual({
-      where: {
-        accountId: "acc_123",
-      },
-    });
-  });
+      expect(effectiveOperation).toBe("findMany");
+      expect(newArgs).toEqual({
+        where: {
+          accountId: "acc_123",
+          account: {
+            dataMode: "PRODUCTION",
+          },
+        },
+      });
+    }
+  );
 });
 
 describe("DataMode Prisma Client Integration", () => {
@@ -231,5 +243,33 @@ describe("DataMode Prisma Client Integration", () => {
     });
 
     spy.mockRestore();
+  });
+});
+
+describe("Tenant isolation backstop: schema-level scan for unprotected accountId models", () => {
+  // A model with a bare `accountId` column but neither an `account` relation nor a
+  // `dataMode` field is invisible to buildIsolatedQueryArgs's DMMF scan and gets zero
+  // automatic isolation, tenant or DataMode. This happened silently for
+  // WorkMetricSnapshot, DrawbackLot, and DrawbackClaimSequence (Phase 0 fix). This test
+  // scans prisma/schema.prisma directly so a future model can never reintroduce the same
+  // gap without failing CI, independent of whether `prisma generate` has been re-run.
+  it("has no tenant-owned model with accountId but no account relation and no dataMode field", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+
+    const modelRe = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g;
+    const offenders: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = modelRe.exec(schema))) {
+      const [, name, body] = match;
+      const hasAccountId = /^\s*accountId\s+String/m.test(body);
+      const hasAccountRelation = /^\s*account\s+Account(\?)?\s*(@relation)?/m.test(body);
+      const hasDataMode = /^\s*dataMode\s+DataMode/m.test(body);
+      if (hasAccountId && !hasAccountRelation && !hasDataMode) {
+        offenders.push(name);
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 });
