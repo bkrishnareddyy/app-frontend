@@ -210,6 +210,117 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy
 .feature-bullets li::before { content: '→'; color: var(--blue); flex-shrink: 0; font-weight: 600; }
 .feature-right { display: flex; align-items: center; justify-content: center; background: var(--slate-50); padding: 20px; overflow: hidden; }
 
+/* =============================================
+   RESPONSIVE / MOBILE
+   ============================================= */
+
+/* --- Tablet (≤ 1024px): shrink left panel --- */
+@media (max-width: 1024px) {
+  .feature-layout { grid-template-columns: 320px 1fr; }
+  .feature-left { padding: 40px 32px 32px 48px; }
+  .feature-headline { font-size: 28px; }
+  .feature-desc { font-size: 13px; }
+}
+
+/* --- Small tablet / large phone (≤ 768px): stack vertically --- */
+@media (max-width: 768px) {
+  /* Allow slides to scroll internally */
+  .slide { overflow-y: auto; -webkit-overflow-scrolling: touch; align-items: flex-start; }
+
+  /* Dark/light title slides: center content nicely */
+  .slide-dark, .slide-light { align-items: center; }
+
+  /* Feature slides stack: left panel full width, right below */
+  .feature-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    width: 100%; height: auto; min-height: 100%;
+  }
+  .feature-left {
+    padding: 44px 24px 28px;
+    border-right: none;
+    border-bottom: 1px solid var(--slate-200);
+    justify-content: flex-start;
+  }
+  .feature-right {
+    min-height: 320px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Scale app frames to fit within mobile width */
+  .app-frame {
+    transform: scale(0.48);
+    transform-origin: top center;
+    margin-bottom: calc((1 - 0.48) * -100%);
+  }
+
+  /* Font overrides for inline-styled headings */
+  .feature-headline { font-size: 24px !important; }
+  .slide-dark h1,
+  .slide-light h2,
+  .slide-pale h2 { font-size: clamp(26px, 6vw, 48px) !important; line-height: 1.12 !important; }
+  .slide-dark p,
+  .slide-light p,
+  .slide-pale p { font-size: clamp(13px, 3.5vw, 18px) !important; }
+
+  /* Stat numbers on title/CTA slides */
+  .slide-dark [style*="font-size:34px"],
+  .slide-dark [style*="font-size: 34px"] { font-size: 22px !important; }
+
+  /* Dots nav: compact */
+  .dots-nav { bottom: 12px; padding: 6px 10px; }
+  .dot { width: 5px; height: 5px; }
+  .dot.active { width: 16px; }
+  .slide-counter { font-size: 10px; }
+
+  /* Problem slide 3-column cards → single column */
+  .slide-light > div > div[style*="grid-template-columns:repeat(3"],
+  .slide-pale > div > div[style*="grid-template-columns:repeat(3"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Proof points 3-col */
+  .slide-dark > div > div[style*="grid-template-columns:repeat(3"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  /* Comparison table: scroll */
+  table { font-size: 10px !important; }
+  .slide-light > div > table,
+  .slide-pale > div > table { display: block; overflow-x: auto; }
+
+  /* Demo playbook 2-col grid → 1-col */
+  .slide-light > div > div[style*="grid-template-columns:repeat(2"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* --- Phone (≤ 480px): hide app mockup, pure content --- */
+@media (max-width: 480px) {
+  .feature-right { display: none; }
+  .feature-left { padding: 36px 20px 28px; border-bottom: none; }
+  .feature-headline { font-size: 22px !important; }
+  .feature-desc { font-size: 13px; margin-bottom: 14px; }
+  .feature-bullets li { font-size: 12px; }
+
+  /* Slide padding for non-feature dark/light slides */
+  .slide-dark > div,
+  .slide-light > div,
+  .slide-pale > div { padding-left: 24px !important; padding-right: 24px !important; }
+
+  /* Stat row on title/CTA — stack */
+  .slide-dark > div > div[style*="gap:52px"],
+  .slide-dark > div > div[style*="gap:48px"] {
+    gap: 20px !important; flex-wrap: wrap !important;
+    justify-content: space-around !important;
+  }
+  /* Hide vertical dividers between stats */
+  .slide-dark > div > div > div[style*="width:1px"] { display: none !important; }
+
+  /* Demo playbook step cards */
+  .slide-light > div > div[style*="gap:16px"] > div { padding: 14px 14px !important; }
+}
+
 </style>
 </head>
 <body>
@@ -1457,6 +1568,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy
     sw.style.transform = 'translateY(-' + (cur-1)*100 + 'vh)';
     dots.forEach((d,i) => d.classList.toggle('active', i+1===cur));
     counter.textContent = cur + ' / ' + N;
+    // scroll to top of slide on mobile
+    window.scrollTo(0,0);
   }
 
   dots.forEach((d,i) => d.addEventListener('click', () => go(i+1)));
@@ -1473,7 +1586,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy
   document.addEventListener('touchend', e => {
     if(ts===null) return;
     const dy = ts - e.changedTouches[0].clientY;
-    if(Math.abs(dy)>40) go(dy>0?cur+1:cur-1);
+    if(Math.abs(dy)>50) go(dy>0?cur+1:cur-1);
     ts=null;
   });
 
