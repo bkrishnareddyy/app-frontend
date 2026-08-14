@@ -201,3 +201,35 @@ export function computeReadinessBreakdown(shipment: ReadinessShipmentInput): Rea
 export function computeReadinessScore(shipment: ReadinessShipmentInput): number {
   return computeReadinessBreakdown(shipment).totalScore;
 }
+
+export type ReadinessDimensionStatus = "READY" | "PARTIAL" | "BLOCKED";
+
+export interface ReadinessDimension {
+  factor: string;
+  status: ReadinessDimensionStatus;
+  detail: string;
+}
+
+/**
+ * Reframes the existing five-factor breakdown as named dimensions + a short
+ * blocker list, without changing the underlying score. Origin and Valuation
+ * are deliberately absent: no readiness factor for either exists yet, and
+ * inventing one here would just be a fabricated dimension with no data behind
+ * it.
+ */
+export function deriveReadinessDimensions(breakdown: ReadinessBreakdown): {
+  dimensions: ReadinessDimension[];
+  blockers: string[];
+} {
+  const dimensions = breakdown.factors.map((f) => {
+    const status: ReadinessDimensionStatus =
+      f.points >= f.maxPoints ? "READY" : f.points === 0 ? "BLOCKED" : "PARTIAL";
+    return { factor: f.factor, status, detail: f.contributingItems.join("; ") };
+  });
+
+  const blockers = breakdown.factors
+    .filter((f) => f.points < f.maxPoints)
+    .map((f) => `${f.factor}: ${f.contributingItems.join(", ")}`);
+
+  return { dimensions, blockers };
+}
