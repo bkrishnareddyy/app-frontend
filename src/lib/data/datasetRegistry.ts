@@ -118,8 +118,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 36,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/ofac-sdn-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "usitc-trade-remedy",
@@ -135,8 +134,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 216,
     category: "Public API",
     engineeringEffort: "Medium",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/ad-cvd-orders-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "ace-port-codes",
@@ -152,8 +150,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 2400,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/ace-port-codes-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "cbp-import-statistics",
@@ -169,8 +166,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 800,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/cbp-import-stats-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "usitc-dataweb",
@@ -186,8 +182,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 800,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/usitc-dataweb-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "wto-tariff-facility",
@@ -203,8 +198,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 5000,
     category: "Public API",
     engineeringEffort: "Medium",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/wto-tariff-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "census-schedule-b",
@@ -220,8 +214,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 9500,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/schedule-b-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
 
   // ─── Group B: Free Public Documents — Custom Parsing Required ────────────────
@@ -240,8 +233,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 240,
     category: "Structured Document",
     engineeringEffort: "High",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/section-301-rates-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "section-301-exclusions",
@@ -257,8 +249,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 48,
     category: "Structured Document",
     engineeringEffort: "High",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/section-301-exclusions-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "section-232-rates",
@@ -274,8 +265,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 240,
     category: "Structured Document",
     engineeringEffort: "Medium",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/section-232-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "usmca-rules-origin",
@@ -291,8 +281,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 10000,
     category: "Structured Document",
     engineeringEffort: "Very High",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/usmca-rules-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "cafta-dr-rules-origin",
@@ -309,8 +298,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 10000,
     category: "Structured Document",
     engineeringEffort: "High",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/cafta-dr-rules-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "ad-cvd-company-rates",
@@ -326,8 +314,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 240,
     category: "Structured Document",
     engineeringEffort: "Very High",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/ad-cvd-company-rates-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "pga-requirements",
@@ -343,8 +330,7 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 2400,
     category: "Structured Document",
     engineeringEffort: "Medium",
-    readinessStatus: "LIVE",
-    endpoint: "/api/cron/pga-requirements-ingest",
+    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
 
 ];

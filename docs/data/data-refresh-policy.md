@@ -7,7 +7,7 @@ The Qubere Platform relies on authoritative trade data, tariff schedules, sancti
 To guarantee maximum fidelity, transparency, and operational readiness:
 
 - **No Synthetic Fallbacks in Production**: Operational calculations derive strictly from verified government and multilateral sources.
-- **100% Authentic Ingestion Wiring**: All 18 datasets carry a `readinessStatus` of `LIVE` with dedicated cron ingestion routes (`/api/cron/...`). The Platform Admin `<Data>` tab provides manual execution ("Run Now") and real-time execution status backed by `DatasetRefreshLog`. Un-wired synthetic responses are strictly forbidden.
+- **Honest Readiness Status**: Each dataset carries a `readinessStatus` of `LIVE` (ingestion fully wired and active: `hts-schedule`, `federal-register`) or `NOT_YET_IMPLEMENTED` (planned on engineering roadmap). The Platform Admin `<Data>` tab clearly distinguishes these — "Run Now" is only available for `LIVE` datasets. Un-wired datasets return HTTP 422 and never fake a success response.
 - **Staging & Approval Workflow**: High-impact rate modifications (HTSUS schedule, Section 301/232 annex revisions, AD/CVD company rates, Section 301 exclusions) stage as `PENDING`/`DRAFT` for platform administrator review before affecting production calculations. Same pattern applied to LLM-extracted data.
 - **Point-in-Time Versioning for Screening**: `ScreeningEntity` (OFAC SDN, BIS CSL) uses `DRAFT → PUBLISHED → SUPERSEDED` versioning — enabling "what was this party's sanction status on date X?" queries for audit defensibility.
 - **Zero-Downtime Delta Processing**: Differential updates compute SHA-256 node hashes and audit changes (`HtsChange`) without blocking live calculation engines.

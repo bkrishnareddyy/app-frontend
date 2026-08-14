@@ -416,9 +416,46 @@ npm run dev
 
 Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
+## ⏰ Scheduled Jobs & Data Dispatcher
+
+### Single Daily Dispatcher Cron
+`GET|POST /api/cron/data-dispatcher` runs daily (`0 2 * * *` in `vercel.json`) to fan out across all `LIVE` platform datasets based on `scheduledFrequencyHours` vs `lastSuccessAt` from the `DatasetRefreshLog` database table.
+
+- **Vercel Hobby 2-Cron Limit**: Fits the Hobby plan ceiling by consolidating dataset triggers into a single daily dispatcher.
+- **Staleness Alerts**: Automatically fires `Notification` (`dataset_staleness_alert`) and `AuditLog` events if any dataset exceeds its `staleThresholdHours`.
+
 ---
 
-## ⏰ Scheduled Jobs
+## 📊 Platform Dataset Master Registry (18 Core Datasets)
+
+All 18 platform datasets are strictly audited under a **Zero-Fabrication Policy**. Operational calculations derive strictly from verified government and multilateral sources. Un-wired datasets return HTTP 422 and never fake success.
+
+For detailed dataset architecture, source endpoints, and engineering complexity breakdowns, see **[docs/data/README.md](file:///Users/rachitlohani/Documents/GitHub/app-frontend/docs/data/README.md)** and **[docs/data/data-refresh-policy.md](file:///Users/rachitlohani/Documents/GitHub/app-frontend/docs/data/data-refresh-policy.md)**.
+
+### Dataset Status Summary Matrix
+
+| Dataset (`<data>`) | Current State | Technical Implementation & Complexity Summary |
+| :--- | :--- | :--- |
+| **HTSUS Schedule** | `LIVE` | Automated JSON REST API fetcher (`HtsUsitcFetcher`) fetching 99 chapters from `hts.usitc.gov/reststop/exportList`. Staged as `DRAFT` in `HtsRelease` for admin review. |
+| **Federal Register (CBP Notices)** | `LIVE` | Real REST API fetcher (`federalregister.gov/api/v1/documents.json`) + Gemini AI extraction. Auto-creates `RefundOpportunity` records. |
+| **BIS Consolidated Screening List** | `LIVE` | Real paginated REST API fetcher (`BisCslIngestionService`) querying `api.trade.gov/v1/consolidated_screening_list/search` across 10 agency lists, upserting SHA-256 entity hashes into `ScreeningEntity`. |
+| **CBP CROSS Rulings** | `LIVE` | Real REST API fetcher (`CbpCrossFetchService`) querying `rulings.cbp.gov/api/search`, storing titles, issued dates, HTS classifications, and legal text in `Ruling`. |
+| **OFAC SDN + Non-SDN** | `NOT_YET_IMPLEMENTED` | **Planned**: Treasury OFAC file is a 17,000+ entry XML/CSV file. Requires a durable background Inngest worker with streaming XML parsing to prevent Vercel 60s HTTP timeout. |
+| **USITC Trade Remedy (AD/CVD Orders)** | `NOT_YET_IMPLEMENTED` | **Planned**: AD/CVD orders published across HTML/CSV dumps. Requires Cheerio DOM scraper parsing case numbers and staging into `AdCvdOrder` with a `PENDING` review gate. |
+| **ACE Port Codes** | `NOT_YET_IMPLEMENTED` | **Planned**: Published quarterly as fixed-width/CSV directory files by CBP. Requires fixed-width text parsing and upserting into `AcePortCode`. |
+| **CBP Import Trade Trends** | `NOT_YET_IMPLEMENTED` | **Planned**: Published as monthly multi-tab Excel workbooks. Requires SheetJS binary stream parsing into `CbpImportTrend` time-series tables. |
+| **USITC DataWeb (Import Stats)** | `NOT_YET_IMPLEMENTED` | **Planned**: Requires OAuth token exchange and dynamic query transformers aggregating customs values into landed cost benchmark tables. |
+| **WTO Tariff Download Facility** | `NOT_YET_IMPLEMENTED` | **Planned**: Multi-gigabyte bulk CSV dumps across 160+ WTO members. Requires streaming CSV parsing into `WtoTariffRate`. |
+| **Census Schedule B** | `NOT_YET_IMPLEMENTED` | **Planned**: Annual fixed-width text file (~9,000 export codes). Requires fixed-width column parsing into `ScheduleBCode`. |
+| **Section 301 Rates (Lists 1-4B)** | `NOT_YET_IMPLEMENTED` | **Planned**: 100+ Federal Register PDF/HTML annexes (~7,500 HTS codes). Requires Gemini OCR extraction and staging as `PENDING` for mandatory admin review. |
+| **Section 301 Exclusions** | `NOT_YET_IMPLEMENTED` | **Planned**: Legal prose notices across USTR releases. Requires LLM extraction generating compiled regex rules and effective date windows. |
+| **Section 232 Rates & Exclusions** | `NOT_YET_IMPLEMENTED` | **Planned**: 25% Steel & 10% Aluminum rates, TRQ quotas, and General Approved Exclusions. Requires Commerce BIS scraper tracking quota cap thresholds. |
+| **USMCA Rules of Origin (Annex 4-B)** | `NOT_YET_IMPLEMENTED` | **Planned**: ~2,000 Product-Specific Rules (PSR). Requires building a complex tariff shift parser (CC, CTH, CTSH) and RVC % graph tree in `TradeAgreementRule`. |
+| **CAFTA-DR Rules of Origin** | `NOT_YET_IMPLEMENTED` | **Planned**: Annex 4.1 legal text detailing tariff shift rules for Central America. Requires rule tree parsing matching USMCA graph architecture. |
+| **AD/CVD Company Deposit Rates** | `NOT_YET_IMPLEMENTED` | **Planned**: Annual review notices in Federal Register. Requires LLM tabular extraction of Case Numbers, Exporter Names, and staging as `PENDING` for admin review. |
+| **PGA Requirements by HTS** | `NOT_YET_IMPLEMENTED` | **Planned**: ACE CATAIR Appendix PGA fixed-width text files across 15+ Partner Government Agencies (FDA, EPA, DOT, etc.). Requires fixed-width parsing into `HtsPgaRequirement`. |
+
+---
 
 ### HTS Master Data Nightly Refresh
 `GET /api/cron/hts-refresh` checks USITC for changes to the US Harmonized Tariff Schedule and stages a new release if the content has actually changed.

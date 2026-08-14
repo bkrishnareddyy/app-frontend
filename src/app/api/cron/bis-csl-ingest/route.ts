@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withPublicRoute } from "@/lib/api/auth-guards";
-import { ScreeningIngestionService } from "@/modules/screening/screeningIngestionService";
+import { BisCslIngestionService } from "@/modules/screening/bisCslIngestionService";
 
 export const maxDuration = 300;
 
@@ -14,7 +14,7 @@ async function handleIngest(req: Request, requestId: string) {
   }
 
   try {
-    const result = await ScreeningIngestionService.fetchAndIngestBisCsl();
+    const result = await BisCslIngestionService.fetchAndIngest(1000);
     return NextResponse.json({
       status: "SUCCESS",
       requestId,
@@ -22,10 +22,10 @@ async function handleIngest(req: Request, requestId: string) {
       note: result.note,
     });
   } catch (err: any) {
-    console.error("[bis-csl-ingest] Failed:", err);
+    console.error("[bis-csl-ingest] Execution failed:", err);
     return NextResponse.json(
       { status: "FAILED", requestId, error: err.message || "BIS CSL ingestion failed" },
-      { status: 500 }
+      { status: 502 }
     );
   }
 }
