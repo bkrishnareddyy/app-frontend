@@ -37,7 +37,19 @@
 | **Admin** | `POST /api/admin/users` | Production Foundation | Zod Schema | `users.manage` | Yes (`accountId`) | Yes | N/A | Token Hashed |
 | **Health** | `GET /api/health` | Production Foundation — blocks mock provider in production | None | Public | N/A | N/A | N/A | N/A |
 
+## Partner API (`/api/v1`, API-key authenticated)
+
+> The table above tracks only session-authenticated `/api/*` routes. This is the
+> first `/api/v1/*` entry added here — the other existing `/api/v1/*` routes
+> (intake, HTS, classification-cases, etc.) predate this table and are not yet
+> inventoried; treat their absence as a gap, not a clean bill of health.
+
+| Domain | Endpoint | Status | Validation | Auth Guard | Tenant Isolation | Idempotent | Concurrency | Tests |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Compliance** | `GET /api/v1/compliance/embargo-screening` | Production Foundation — reads persisted Country Embargo Screening evidence only, never reruns | Zod Query | API Key (`embargo.read` scope) | Yes (`accountId` from key) | N/A (No Mutate) | N/A | Included |
+| **Compliance** | `POST /api/v1/compliance/embargo-screening` | Production Foundation — reuses last completed screening unless `forceRescreen`; rescreen requires `embargo.screen` scope | Zod Schema | API Key (`embargo.read` + `embargo.screen` scopes) | Yes (`accountId` from key) | N/A | Yes (pipeline-serialized) | Included |
+
 ---
-*Last updated: 2026-08-06 — Gate 1 corrections applied. QPR-001 POST /api/filing fix confirmed.*
+*Last updated: 2026-08-14 — added Partner API (`/api/v1/compliance/embargo-screening`) section.*
 *Documented by Antigravity AI — Implementation Status Tracker*
 

@@ -6,11 +6,26 @@ import { aiModel } from "@/lib/ai/aiModel";
 import { logAgentError } from "./agentLogger";
 import { screenValue } from "@/lib/screening/embargoMatch";
 import { Prisma } from "@prisma/client";
+import { runCountryEmbargoScreening } from "./compliance/embargo/countryEmbargoScreening";
+import { getAccountEmbargoConfig } from "./compliance/embargo/embargoRepository";
+import type {
+  CountryEmbargoScreeningResult,
+  EmbargoParty,
+  EmbargoLineItem,
+} from "./compliance/embargo/types";
 
 export interface AuditCheckResult {
   ruleId: string;
   ruleName: string;
-  category: "PGA" | "ADD_CVD" | "UFLPA" | "VALUATION" | "HTS_INTEGRITY" | "DATA_MISSING" | "SCREENING_GAP";
+  category:
+    | "PGA"
+    | "ADD_CVD"
+    | "UFLPA"
+    | "VALUATION"
+    | "HTS_INTEGRITY"
+    | "DATA_MISSING"
+    | "SCREENING_GAP"
+    | "COUNTRY_EMBARGO";
   passed: boolean;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   details: string;
@@ -32,12 +47,19 @@ export interface ComplianceLineItemInput {
   description?: string | null;
   sku?: string | null;
   totalValue?: number | null;
+  /** Optional line-level ECCN, if known directly (bypasses classification-string parsing). */
+  eccn?: string | null;
+  /** Optional pipe-delimited classification string, e.g. "HTS|...|CCL|...|SCHB|...". */
+  classification?: string | null;
+  /** Optional line-specific destination party, distinct from the transaction's ship-to. */
+  destinationParty?: EmbargoParty | null;
 }
 
 export interface ComplianceAuditInput {
   accountId: string;
   userId: string;
   shipmentId: string;
+  transactionId?: string;
   documentId?: string | null;
   lineItems: ComplianceLineItemInput[];
   destinationCountry?: string | null;
@@ -50,6 +72,12 @@ export interface ComplianceAuditInput {
   carrier?: string | null;
   transportDocumentNumber?: string | null;
   isHtsBlocked?: boolean;
+  /** Country Embargo Screening -- compliance/ship-from country. Screening is skipped (SCREENING_GAP) if absent. */
+  shipFromCountry?: string | null;
+  /** Country Embargo Screening -- transaction parties, including the SHIP_TO party. */
+  parties?: EmbargoParty[];
+  /** Explicit per-invocation Country Embargo Screening disable, independent of account configuration. */
+  embargoScreening?: boolean;
 }
 
 export interface ComplianceAuditOutput {
@@ -69,6 +97,7 @@ export interface ComplianceAuditOutput {
   agentDecisionId: string | null;
   aiProviderUsed: string;
   debugError?: string;
+  countryEmbargoScreening?: CountryEmbargoScreeningResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +357,92 @@ export class ComplianceAuditAgent {
       }
     }
 
+    // ---- Country Embargo Screening (deterministic; see compliance/embargo/) ----
+    let countryEmbargoScreening: CountryEmbargoScreeningResult | undefined;
+    if (!input.shipFromCountry) {
+      auditResults.push({
+        ruleId: "RULE-SCREENING-GAP-01",
+        ruleName: "Country Embargo Screening Availability",
+        category: "SCREENING_GAP",
+        passed: false,
+        severity: "MEDIUM",
+        details:
+          "Country Embargo Screening did not run: no compliance/ship-from country is available for this shipment. This is not a CLEAR result -- treat destination/origin embargo status as unscreened.",
+      });
+    } else {
+      const accountConfig = await getAccountEmbargoConfig(input.accountId).catch((err) => {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "getAccountEmbargoConfig", err);
+        return {
+          embargoScreeningEnabled: true,
+          privateEmbargoEnabled: false,
+          serverScreeningEnabled: true,
+          genericExportLdEnabled: false,
+          audited: false,
+          emailAlertEnabled: false,
+          generalAuditLogEnabled: false,
+        };
+      });
+
+      const embargoLineItems: EmbargoLineItem[] = lineItems.map((li) => ({
+        lineItemId: String(li.lineNumber),
+        lineNumber: li.lineNumber,
+        classification: li.classification ?? null,
+        eccn: li.eccn ?? null,
+        countryOfOrigin: li.countryOfOrigin ?? null,
+        destinationParty: li.destinationParty ?? null,
+      }));
+
+      countryEmbargoScreening = await runCountryEmbargoScreening({
+        accountId: input.accountId,
+        shipmentId: input.shipmentId,
+        transactionId: input.transactionId,
+        shipFromCountry: input.shipFromCountry,
+        shipToCountry: input.destinationCountry ?? null,
+        parties: input.parties ?? [],
+        lineItems: embargoLineItems,
+        screeningDate: new Date(),
+        accountConfig,
+        embargoScreening: input.embargoScreening,
+      }).catch((err) => {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "runCountryEmbargoScreening", err);
+        return undefined;
+      });
+
+      if (countryEmbargoScreening) {
+        if (countryEmbargoScreening.status === "SKIPPED") {
+          auditResults.push({
+            ruleId: "RULE-SCREENING-GAP-02",
+            ruleName: "Country Embargo Screening Availability",
+            category: "SCREENING_GAP",
+            passed: false,
+            severity: "MEDIUM",
+            details: `Country Embargo Screening was skipped (${countryEmbargoScreening.skippedChecks[0]?.reason ?? "disabled"}). This is not a CLEAR result.`,
+          });
+        }
+        for (const hit of countryEmbargoScreening.hits) {
+          auditResults.push({
+            ruleId: hit.ruleId ? `RULE-COUNTRY-EMBARGO-${hit.ruleId}` : "RULE-COUNTRY-EMBARGO",
+            ruleName: "Country Embargo Screening",
+            category: "COUNTRY_EMBARGO",
+            passed: false,
+            severity: "CRITICAL",
+            details: `${hit.screeningLevel}/${hit.type === "D" ? "destination" : "origin"} screening: compliance country "${hit.complianceCountry}" embargoes "${hit.country}" (matcher: ${hit.matcher}).${hit.lineItemId ? ` Line ${hit.lineItemId}.` : ""}`,
+            lineNumber: hit.lineItemId ? Number(hit.lineItemId) || undefined : undefined,
+          });
+        }
+        if (countryEmbargoScreening.errors.length > 0) {
+          auditResults.push({
+            ruleId: "RULE-SCREENING-GAP-03",
+            ruleName: "Country Embargo Screening Completeness",
+            category: "SCREENING_GAP",
+            passed: false,
+            severity: "MEDIUM",
+            details: `Country Embargo Screening encountered ${countryEmbargoScreening.errors.length} error(s) (e.g. unresolvable country) -- some checks did not complete.`,
+          });
+        }
+      }
+    }
+
     // Optional, best-effort valuation/origin sanity check against benchmark data.
     const uniqueHts = Array.from(new Set(lineItems.map((li) => li.htsCode).filter((h): h is string => Boolean(h) && !isBlockedHtsCode(h))));
     for (const hts of uniqueHts) {
@@ -456,12 +571,22 @@ export class ComplianceAuditAgent {
           ...(requiresReview ? {} : { autoApprovalPolicy: "compliance-deterministic-v1" }),
           confidence,
           decisionSummary,
-          purpose: "CBP pre-filing compliance rules execution (PGA, ADD/CVD, UFLPA)",
-          dataSources: [aiProvider, "Internal ADD/CVD Alert Table", "EmbargoRule Reference Table (OFAC/UFLPA)"],
+          purpose: "CBP pre-filing compliance rules execution (PGA, ADD/CVD, UFLPA, Country Embargo)",
+          dataSources: [
+            aiProvider,
+            "Internal ADD/CVD Alert Table",
+            "EmbargoRule Reference Table (OFAC/UFLPA)",
+            ...(countryEmbargoScreening ? ["Country Embargo Screening (countries / country_by_country_maps)"] : []),
+          ],
           regulations: ["19 CFR § 141.86", "UFLPA (Public Law 117-78)", "19 CFR Part 159 (ADD/CVD)"],
           proposedDescription: `Compliance check for ${lineItems.length} line item(s)`,
           rulesApplied: Array.from(new Set(auditResults.map((r) => r.ruleName))),
-          evidenceItems: { auditResults, flags, embargoRulesLoaded: embargoRules.length } as unknown as Prisma.InputJsonValue,
+          evidenceItems: {
+            auditResults,
+            flags,
+            embargoRulesLoaded: embargoRules.length,
+            countryEmbargoScreening,
+          } as unknown as Prisma.InputJsonValue,
         },
       });
       agentDecisionId = agentDecision.id;
@@ -507,6 +632,7 @@ export class ComplianceAuditAgent {
       agentDecisionId,
       aiProviderUsed: aiProvider,
       debugError,
+      countryEmbargoScreening,
     };
   }
 }

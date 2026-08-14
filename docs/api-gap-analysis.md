@@ -53,6 +53,21 @@ This document serves as Phase 1 of the backend refactoring effort, inventorying 
 | `/api/telemetry` | POST | **Partial** | Logs telemetry events. |
 | `/api/trade-intel/benchmarks` | GET | **Partial** | Industry benchmark queries. |
 
+### 2.1 Partner API (`/api/v1`) — added after this Phase 1 audit
+
+The inventory above is scoped to the 29 session-authenticated `/api/` sub-directories
+audited at Phase 1; it does not cover the separate, API-key-authenticated
+`/api/v1/*` surface (intake, HTS, classification-cases, and — as of this
+addendum — Country Embargo Screening). Recording the one new addition here so
+it isn't silently missing from this document:
+
+| Domain / Path | Methods | Current Maturity | Key Deficiencies / Hardcoded Behaviors |
+| :--- | :--- | :--- | :--- |
+| `/api/v1/compliance/embargo-screening` | GET, POST | **Production Foundation** | Reads/rescreens through the same deterministic engine and shared presentation layer (`screeningQuery.ts`) as the chat assistant's embargo tools — no separate or duplicated logic. Scope-gated (`embargo.read`, `embargo.screen`), tenant-scoped by API key, audit-logged. Known engine limitations (country-group/CCL evidence-only, no CLEAR→PARTIAL auto-downgrade in the engine's own stored status) are the same ones the assistant surface already discloses, not new gaps introduced by this route. |
+
+The rest of `/api/v1/*` remains outside the scope of this audit and should be
+inventoried separately rather than assumed clean by omission.
+
 ---
 
 ## 3. Detailed Gap Analysis

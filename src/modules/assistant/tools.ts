@@ -23,6 +23,15 @@ import { calculateDutyStack, loadHtsCodesMap, parsePublishedDutyRate, type Tarif
 import { ImpactAnalysisService } from "@/modules/regulatory/impactAnalysisService";
 import { canUseTool } from "@/modules/copilot/copilotAccess";
 import type { CopilotToolAccess } from "@/modules/copilot/copilotToolTypes";
+import { holdsPermission } from "@/modules/product/productActor";
+import {
+  resolveOwnedShipmentId as resolveOwnedShipmentIdByAccount,
+  latestEmbargoScreening as latestEmbargoScreeningByAccount,
+  buildScreeningResult,
+  buildScreeningDetails,
+} from "@/modules/agents/compliance/embargo/screeningQuery";
+// Lazy import: pulls in the full agent pipeline, only needed when a rescreen is actually triggered.
+const getPipelineOrchestrator = () => import("@/modules/agents/pipelineOrchestrator");
 
 /**
  * Helper to convert Zod Object Schema into Gemini-compatible Schema object
@@ -567,6 +576,120 @@ const getShipment: AssistantTool = {
   },
 };
 
+// ---- shared: Country Embargo Screening evidence lookup ----
+//
+// Country Embargo Screening (src/modules/agents/compliance/embargo/*) is a
+// deterministic engine, never an LLM. These two tools are a read/explain
+// layer over its persisted evidence -- they never re-derive or guess an
+// embargo determination themselves. The lookup/presentation logic itself
+// lives in screeningQuery.ts, shared with the partner-facing v1 API, so the
+// two surfaces cannot drift apart on status semantics or presentation.
+
+function resolveOwnedShipmentId(ctx: AccountContext, shipmentIdOrNumber: string) {
+  return resolveOwnedShipmentIdByAccount(ctx.accountId, shipmentIdOrNumber);
+}
+
+function latestEmbargoScreening(ctx: AccountContext, shipmentId: string) {
+  return latestEmbargoScreeningByAccount(ctx.accountId, shipmentId);
+}
+
+// ---- tool: screen_shipment_embargo ----
+
+const screenShipmentEmbargoSchema = z.object({
+  shipmentId: z.string().describe("Shipment UUID or shipment number."),
+  forceRescreen: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set true ONLY when the user explicitly asks to run or rescreen embargo screening again. Leave unset/false for explanatory questions -- the last completed screening is reused."
+    ),
+});
+
+const screenShipmentEmbargo: AssistantTool = {
+  schema: screenShipmentEmbargoSchema,
+  declaration: {
+    name: "screen_shipment_embargo",
+    description:
+      "Get the current deterministic Country Embargo Screening result for a shipment: status, hits, skipped checks, errors. Reuses the last completed screening unless forceRescreen is true or the shipment has never been screened. Use for 'is X embargoed', 'run embargo screening', 'rescreen shipment' questions -- not for explaining an existing result (use get_embargo_screening_details instead).",
+    parameters: zodToGeminiSchema(screenShipmentEmbargoSchema),
+  },
+  access: { navHref: "/app/shipments" },
+  execute: async (ctx, rawArgs) => {
+    const parsed = screenShipmentEmbargoSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { shipmentId: rawShipmentId, forceRescreen } = parsed.data;
+
+    const shipment = await resolveOwnedShipmentId(ctx, rawShipmentId);
+    if (!shipment) return { error: "Shipment not found." };
+
+    let evidence = await latestEmbargoScreening(ctx, shipment.id);
+    let rescreened = false;
+    let rescreenDenied = false;
+
+    if (forceRescreen || !evidence) {
+      // Triggering a fresh Compliance Audit Agent run is the same authorized
+      // action as the existing "reconcile" control, so it is gated behind the
+      // same permission -- a user who cannot manually rerun the pipeline in
+      // the app cannot do it by asking the Copilot to either. Read-only
+      // reuse of an existing result above is not gated by this permission.
+      if (holdsPermission(ctx, "shipments.manage")) {
+        const { PipelineOrchestrator } = await getPipelineOrchestrator();
+        await PipelineOrchestrator.processEvent({
+          shipmentId: shipment.id,
+          accountId: ctx.accountId,
+          userId: ctx.userId,
+          triggerEvent: "RECONCILIATION_REQUESTED",
+        });
+        evidence = await latestEmbargoScreening(ctx, shipment.id);
+        rescreened = true;
+      } else if (forceRescreen) {
+        rescreenDenied = true;
+      }
+    }
+
+    return buildScreeningResult(shipment, evidence, { rescreened, rescreenDenied });
+  },
+};
+
+// ---- tool: get_embargo_screening_details ----
+
+const embargoScreeningLevelEnum = z.enum(["TRANSACTION", "PARTY", "LINE"]);
+const embargoDirectionEnum = z.enum(["D", "O"]);
+const embargoCheckResultEnum = z.enum(["HIT", "CLEAR", "SKIPPED", "ERROR"]);
+
+const getEmbargoScreeningDetailsSchema = z.object({
+  shipmentId: z.string().describe("Shipment UUID or shipment number."),
+  lineItemId: z.string().optional().describe("Filter to embargo checks for one line item."),
+  partyId: z.string().optional().describe("Filter to embargo checks for one party."),
+  screeningLevel: embargoScreeningLevelEnum
+    .optional()
+    .describe("Filter to TRANSACTION, PARTY, or LINE level checks."),
+  type: embargoDirectionEnum.optional().describe("Filter to D (destination) or O (origin) checks."),
+  result: embargoCheckResultEnum.optional().describe("Filter to checks with this outcome."),
+});
+
+const getEmbargoScreeningDetails: AssistantTool = {
+  schema: getEmbargoScreeningDetailsSchema,
+  declaration: {
+    name: "get_embargo_screening_details",
+    description:
+      "Investigate an already-completed Country Embargo Screening run for a shipment: why a check hit or cleared, which country/party/line was involved, audit counts (checks performed/passed/failed), skipped checks, and whether parties were screened. Reads persisted evidence only -- never reruns screening. Use for 'why did it fail', 'which checks passed', 'were all parties screened', 'show the audit' questions.",
+    parameters: zodToGeminiSchema(getEmbargoScreeningDetailsSchema),
+  },
+  access: { navHref: "/app/shipments" },
+  execute: async (ctx, rawArgs) => {
+    const parsed = getEmbargoScreeningDetailsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { shipmentId: rawShipmentId, lineItemId, partyId, screeningLevel, type, result } = parsed.data;
+
+    const shipment = await resolveOwnedShipmentId(ctx, rawShipmentId);
+    if (!shipment) return { error: "Shipment not found." };
+
+    const evidence = await latestEmbargoScreening(ctx, shipment.id);
+    return buildScreeningDetails(shipment, evidence, { lineItemId, partyId, screeningLevel, type, result });
+  },
+};
+
 // ---- tool: list_exceptions ----
 
 const listExceptionsSchema = z.object({
@@ -816,7 +939,8 @@ const getFilingStatus: AssistantTool = {
   execute: async (ctx, rawArgs) => {
     const parsed = getFilingStatusSchema.safeParse(rawArgs);
     if (!parsed.success) return { error: parsed.error.message };
-    let { filingId, shipmentId } = parsed.data;
+    const { shipmentId } = parsed.data;
+    let { filingId } = parsed.data;
 
     if (!filingId && shipmentId) {
       const match = await db.customsFiling.findFirst({
@@ -1186,6 +1310,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   generateReasonableCareRecord,
   exportComplianceRecord,
   getShipment,
+  screenShipmentEmbargo,
+  getEmbargoScreeningDetails,
   listExceptions,
   getDocument,
   listDecisions,
