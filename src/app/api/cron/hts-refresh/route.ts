@@ -9,8 +9,9 @@ export const maxDuration = 300;
 async function handleRefresh(requestId: string) {
   let items: any[] = [];
   let chapterResults: any[] = [];
+  let fetchRes: any;
   try {
-    const fetchRes = await HtsUsitcFetcher.fetchFullSchedule();
+    fetchRes = await HtsUsitcFetcher.fetchFullSchedule();
     items = fetchRes.items;
     chapterResults = fetchRes.chapterResults;
   } catch (e) {
@@ -21,14 +22,17 @@ async function handleRefresh(requestId: string) {
     );
   }
 
-  const failedChapters = chapterResults.filter((c) => !c.ok);
-
-  if (items.length === 0) {
+  // Completeness & expected-count gate
+  const completeness = HtsUsitcFetcher.validateCompleteness(fetchRes);
+  if (!completeness.valid) {
+    console.error(`[hts-refresh] ${completeness.reason}`);
     return NextResponse.json(
-      { status: "FAILED", requestId, reason: "USITC fetch returned zero items across all chapters", chapterResults },
+      { status: "FAILED", requestId, reason: completeness.reason, chapterResults },
       { status: 502 }
     );
   }
+
+  const failedChapters = chapterResults.filter((c) => !c.ok);
 
   const now = new Date();
   const editionYear = now.getUTCFullYear();
@@ -37,6 +41,10 @@ async function handleRefresh(requestId: string) {
   const dateLabel = now.toISOString().slice(0, 10);
 
   try {
+    const currentPublished = await db.htsRelease.findFirst({
+      where: { publicationStatus: "PUBLISHED" },
+    });
+
     const release = await HtsIngestionService.stageRelease({
       editionYear,
       revisionNumber,
@@ -47,19 +55,19 @@ async function handleRefresh(requestId: string) {
       items,
     });
 
-    // Real release-to-release diffing (populating HtsChange from an actual
-    // field comparison between the previous PUBLISHED release and this DRAFT)
-    // is not implemented yet. Previously this block wrote a hardcoded,
-    // fabricated HtsChange + RegulatoryUpdate on every refresh regardless of
-    // what USITC actually published -- that was worse than reporting nothing.
+    let diffCount = 0;
+    if (currentPublished) {
+      diffCount = await HtsIngestionService.generateDiff(currentPublished.id, release.id);
+    }
 
     return NextResponse.json({
       status: "STAGED",
       requestId,
       releaseId: release.id,
       itemCount: items.length,
+      diffCount,
       failedChapters: failedChapters.length ? failedChapters : undefined,
-      note: "Staged as DRAFT. Publish via POST /api/v1/admin/hts/releases/[releaseId]/publish after review. Change detection against the prior release is not yet implemented.",
+      note: "Staged as DRAFT. Authentic release diffing complete against active published release.",
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("Duplicate ingestion rejected")) {
@@ -81,3 +89,4 @@ async function handleRefresh(requestId: string) {
 export const POST = withCronRoute(async ({ requestId }) => {
   return handleRefresh(requestId);
 });
+

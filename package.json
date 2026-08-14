@@ -28,6 +28,7 @@
     "ajv-formats": "^3.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "csv-parse": "^7.0.2",
     "decimal.js": "^10.6.0",
     "inngest": "^4.16.0",
     "lucide-react": "^1.28.0",
@@ -36,6 +37,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "resend": "^6.19.0",
+    "saxes": "^6.0.0",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },

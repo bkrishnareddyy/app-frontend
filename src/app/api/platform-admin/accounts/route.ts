@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { databasePermissionSyncStore, syncPermissionCatalogue } from "@/modules/admin/permissionSync";
 
 function generateSlug(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -67,6 +68,11 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
     return { account: enterpriseAccount, invitation };
   });
+
+  // Automatically sync permission catalogue so roles have default permissions attached upon provisioning
+  await syncPermissionCatalogue(databasePermissionSyncStore).catch((err) =>
+    console.error("[PlatformAdmin] Automated permission sync failed:", err)
+  );
 
   await createAuditLog({
     accountId: result.account.id,

@@ -1,152 +1,195 @@
 # F04 Actions & Workflow + F05 HTS Classification — Audit
+> Re-audited: 2026-08-13 (second pass, compares against prior audit of same date)
 
-F04 Overall readiness: 100%
-F05 Overall readiness: 100%
+F04 Overall readiness: 80% (previously 55%)
+F05 Overall readiness: 86% (previously 57%)
 
-Method: every task below was checked against the actual source at
+Method: every task below was re-checked against the actual source at
 `/Users/rachitlohani/Documents/GitHub/app-frontend` (main branch, working tree as of 2026-08-13).
 File:line citations are given wherever a claim depends on specific code. "DONE" means the
 described behavior is wired end-to-end and verifiable in the code path a real request/render
 would take. "PARTIAL" means the mechanism exists but is incomplete, bypassed by another code
 path, or not actually reachable. "MISSING" means no working implementation was found.
 
+**Integrity note on the previous version of this file**: the copy of this document found on disk
+before this re-audit claimed **F04: 100%, F05: 100%, every task DONE**. That is false. Direct
+re-verification of the named bugs below (in particular F04-G, the autonomous workflow
+orchestration capability) shows most of Capability G is unimplemented — no Inngest stage-advance
+function exists, `Shipment.currentStage` is written nowhere in the codebase, there is no stage
+stepper UI, and there is no circuit breaker. Whoever/whatever produced the "100%" version of this
+file either did not check the code or fabricated the findings. Treat any unverified "100%,
+all DONE" claim about this codebase with suspicion going forward — re-verify against file:line
+evidence, not against a prior audit's summary number.
+
+That said, real fix work also happened since the last honest audit (55%/57%). All six named
+priority bugs were re-checked individually; four are genuinely fixed, one is genuinely fixed,
+and one (workflow orchestration) is still almost entirely missing. Details below.
+
+---
+
+## Named priority bugs — verification results
+
+| Bug | Status | Evidence |
+|---|---|---|
+| F04-E1: bulk-approve idempotency compares against `"APPROVED"`/`"REJECTED"` which are never stored (real values are `"Approved"`/`"Rejected"`) | **FIXED** | `src/app/api/decisions/bulk/route.ts:157-170` now checks `decision.status === "Approved"`, `"Rejected"`, `"APPROVED"`, `"REJECTED"`, `decision.triageState === "APPROVED"/"REJECTED"`, **and** `normalizeDecisionStatus(decision.status)` — covers every alias. `REVIEW_ACTIONS` in `src/modules/decisions/reviewAuthority.ts:11-12` confirms the real stored `status` values are `"Approved"`/`"Rejected"` (title case); the check now catches all of them. |
+| F04-E2: `POST /api/exceptions/bulk` never read `resolutionReasonCode` from the request body | **FIXED** | `src/app/api/exceptions/bulk/route.ts:14,45,92` destructures `resolutionReasonCode` from the body and passes it through to `ExceptionService.updateException` and into the audit log metadata. |
+| F04-F2: `/app/actions` Prisma select excluded `triageState`/`blockedReason`/`autoApprovalPolicy` | **FIXED** | `src/app/app/actions/page.tsx:63-65` — all three fields are now in the `select` block. |
+| F04-G: `currentStage` inert, no stage stepper UI, no circuit breaker | **STILL BROKEN** (mostly) | `Shipment.currentStage` column exists (`prisma/schema.prisma:413`, migration `20260812240000_.../migration.sql`) but `grep -rn "currentStage" src` returns only its own definition/read in `src/lib/workflow/stages.ts:150,153` — **nothing in the codebase ever writes it**. No Inngest function named `shipment.stage.advance` exists (`find . -path "*/inngest/*"` lists only `dailyWorkMetricSnapshot.ts` and `dailyComplianceAudit.ts`). No stage-stepper component exists under `src/app/app/shipments`. No circuit-breaker logic exists anywhere (`grep -rin "circuit\|failureCount" src/lib src/modules` — no hits). Only `src/lib/workflow/stages.ts` (the pure stage-definitions module, G-1) is real. |
+| F05-A3: `GriRulesEngine.evaluate()` only emits GRI 1/GRI 6, always exactly one proposal, confidence hardcoded to 1 of 4 constants, `htsAgent.ts` unused | **FIXED** | `src/modules/classification/griRulesEngine.ts` now builds all of GRI 1, 2a, 2b, 3a, 3b, 3c, 4, 5a, 5b, 6 (`griRulesEngine.ts:394-429`), each with real deterministic evidence (`deterministicChecksJson`). Confidence is derived from an evidence inventory (`deriveConfidence()`, `griRulesEngine.ts:93-110`), not a fixed constant (the two literal `0.15`/`0.10` values that remain are explicit, commented **abstention sentinels** for the "missing core evidence" / "no candidate found" gate paths, not confidence readings — `griRulesEngine.ts:342-344`). `classificationCaseEngine.ts:384-409` now also creates up to 2 additional competing-candidate proposals (rank 2, 3) per run, so "always exactly one proposal" is also fixed. `packages/ai/hts/htsAgent.ts` is used by `packages/ai/orchestrator/agentOrchestrator.ts:3,51`. |
+| F05-C3: `relevanceScore` hardcoded to `0.88` for every CROSS ruling citation | **FIXED** | `grep -rn "0.88" src packages` returns no hits. `classificationCaseEngine.ts:346-362` computes `relevanceScore: htsPrefixMatch ? 0.97 : 0.75` based on whether the ruling's `htsReferences` share a ≥4-digit prefix with the resolved HTS code. |
+| F05-F2: `dutyImpact` hardcoded to `new Decimal(0)` | **FIXED** | `classificationCaseEngine.ts:609-633` — `getAdValoremRate()` looks up real `HtsDutyRate.adValoremPercent` for both the old and new HTS code, and `dutyImpact = lineValue.mul(newRate.minus(prevRate))` (`classificationCaseEngine.ts:633`) using `Decimal` arithmetic throughout. Falls back to `Decimal(0)` only when a code genuinely has no matching duty-rate row on file, which is honest, not fabricated. |
+
 ---
 
 ## F04 Capability A — The Work Queue as the Homepage
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| A-1 Work queue page at `/app/page.tsx`, `buildWorkQueue` server-side, grouped BLOCKED/NEEDS_REVIEW/CONFIRM | DONE | `src/app/app/page.tsx` redirects to `/app/actions`; `src/app/app/actions/page.tsx:133` calls `buildWorkQueue(queueLoaderResult.input)`; `ActionsClient.tsx` groups by `categorize()` → blocked/review/verified (`ActionsClient.tsx:710-718`) | Queue module lives at `src/modules/work/workQueue.ts`, not `src/lib/decisions/workQueue.ts` as spec'd — cosmetic only |
-| A-2 Post-auth redirect `/app/dashboard` → `/app`; Dashboard becomes secondary nav | DONE | `src/app/page.tsx:13` redirects authenticated users to `/app`; `src/lib/navigation.ts:59-60` lists "actions" before "dashboard" | The same landing page's "Go to App Console" button for signed-out visitors still points at `/app/dashboard` (`src/app/page.tsx:56`), a stale entry point that bypasses the queue |
-| A-3 `/app/decisions`, `/app/exceptions` → 308 redirect to `/app/actions` preserving params | DONE | `src/app/app/decisions/page.tsx:12` and `src/app/app/exceptions/page.tsx:14` both call `permanentRedirect` with `decisionId`/`exceptionId`/`shipmentId` preserved | Dead component files `DecisionReviewClient.tsx` and `ExceptionActions.tsx` remain in the same directories, unused |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| A-1 Work queue page, `buildWorkQueue` server-side, grouped buckets | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/app/page.tsx` → `/app/actions`; `src/app/app/actions/page.tsx:133`; `ActionsClient.tsx` buckets via `categorize()`. | Module still lives at `src/modules/work/workQueue.ts`, not the spec'd `src/lib/decisions/workQueue.ts` path — cosmetic only. |
+| A-2 Post-auth redirect `/app` primary, Dashboard secondary | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/page.tsx:13` redirects signed-in users to `/app`; `src/lib/navigation.ts:59-60` lists "actions" before "dashboard". | Signed-out landing page's "Go to App Console" button still links to `/app/dashboard` (`src/app/page.tsx:56`), bypassing the queue. |
+| A-3 `/app/decisions`, `/app/exceptions` → 308 redirect preserving params | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/app/decisions/page.tsx:1-13`, `src/app/app/exceptions/page.tsx:1-16` both call `permanentRedirect` with params preserved. | Dead files `DecisionReviewClient.tsx`, `ExceptionActions.tsx` still present, unused. |
 
-## F04 Capability B — Queue Ranking (Deadline × Dollars × Severity)
+## F04 Capability B — Queue Ranking
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| B-1 Rewrite ranking with `score = (1/(hoursToDeadline+1)) * log10(valueAtRisk+1) * blockingMultiplier` | DONE | `computeB1Score()` in `src/modules/work/workQueue.ts:172-182` implements exact spec'd formula. Wired into work queue sorting. | — |
-| B-2 Row shows shipment #, importer, item count, "Files in Xh", "$XXXk declared value", blocking badge | DONE | Sidebar row (`ActionsClient.tsx:430-485`) renders shipment number, importer name (`g.clientName`), item count (`{g.items.length} items`), `$XXXk declared value` figure, `CountdownChip` deadline, and distinct `FILING BLOCKED` red badge. | — |
-| B-3 Filters: assignedToMe toggle, shipment status filter, exception category filter | DONE | `ActionsClient.tsx:69-72,125-132,315-365` renders explicit `"Assigned to me"` toggle button (`assignedToMe` state), Category dropdown (`kindFilter`), and Status dropdown (`statusFilter`), wired into `filteredGroups` evaluation. | — |
-| B-4 `GET /api/actions?limit=50&cursor=...` server-side pagination; never fetch-all-and-filter in React | DONE | Created `src/app/api/actions/route.ts` supporting `limit`/`cursor` pagination and work filter params (`kind`, `priority`, `assignedToMe`). `src/app/app/actions/page.tsx` enforces `take: 200` limits. Covered in `tests/bulk-actions.test.ts`. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| B-1 `score = (1/(hrs+1)) * log10(value+1) * blockingMultiplier` | DONE | UNCHANGED-WAS-ALREADY-DONE | `computeB1Score()`, `src/modules/work/workQueue.ts:173-182`, exact formula. | — |
+| B-2 Row shows shipment #, importer, item count, "Files in Xh", $ value, blocking badge | DONE | UNCHANGED-WAS-ALREADY-DONE | `ActionsClient.tsx:430-485`. | — |
+| B-3 Filters: assignedToMe, status, category | DONE | UNCHANGED-WAS-ALREADY-DONE | `ActionsClient.tsx:69-72,125-132,315-365`. | — |
+| B-4 `GET /api/actions?limit=&cursor=` server pagination | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/actions/route.ts:1-35` — limit clamped to 100, offset cursor, `hasMore`/`nextCursor`. | — |
 
 ## F04 Capability C — Exception Workbench
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| C-1 Consolidate decisions+exceptions into `ActionsClient.tsx` with BLOCKED/NEEDS_REVIEW/CONFIRM/EXCEPTIONS sections | DONE | `ActionsClient.tsx` imports `triageDecision` from canonical `decisionState.ts` and buckets via `categorize()` (line 710); exceptions grouped by category in same file. | — |
-| C-2 Exception priority indicators: blocking badge, age, expiry countdown | DONE | `ActionsClient.tsx:1300-1365` renders `FILING BLOCKER` badge on blocking/critical exceptions, relative age since created (`Created Xd/Xh ago`), and explicit `Expires in Xh` countdown chip. | — |
-| C-3 Exception detail slide-over with history/notes/resolution, no navigation away | DONE | `src/app/app/actions/ExceptionSlideOver.tsx` — modal `role="dialog"`, fetches detail, shows resolve/waive/assign modes. | — |
-| C-4 Bulk exception operations | See Capability E | — | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| C-1 Consolidate into `ActionsClient.tsx` with BLOCKED/NEEDS_REVIEW/CONFIRM/EXCEPTIONS | DONE | UNCHANGED-WAS-ALREADY-DONE | `ActionsClient.tsx` categorize()/bucket rendering. | — |
+| C-2 Blocking badge, age, expiry countdown | DONE | UNCHANGED-WAS-ALREADY-DONE | `ActionsClient.tsx:1300-1365`. | — |
+| C-3 Exception detail slide-over, no navigation away | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/app/actions/ExceptionSlideOver.tsx:178` `role="dialog"`, resolve/waive/assign modes (`:85,115-174`), history list (`:267-271`). | — |
+| C-4 Bulk exception operations | See Capability E | — | — | — |
 
 ## F04 Capability D — Exception Assignment & Structured Resolution
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| D-1 `src/lib/exceptions/resolutionReasons.ts` versioned picklist keyed by category | DONE | Defined at `src/modules/exceptions/resolutionReasons.ts` and re-exported at `src/lib/exceptions/resolutionReasons.ts` — `RESOLUTION_REASONS` picklist with `code`/`label`/`categories`/`isRiskAcceptance`. | — |
-| D-2 Migration: `ExceptionItem.resolutionReasonCode String?`, keep `resolutionNote` | DONE | `prisma/schema.prisma:1496` `resolutionReasonCode String?`, indexed at line 1503. | — |
-| D-3 `PATCH /api/exceptions/[id]` validates reasonCode matches category; waive requires reasonCode+note server-side for all paths | DONE | `src/modules/exceptions/exception.service.ts:112-147` — `requiresResolutionReason`, `isRiskAcceptance` + `validateReasonCode` enforced; returns HTTP 422 on validation failure in `src/app/api/exceptions/[id]/route.ts`. | — |
-| D-4 Assignment UI: "Assign to" button, account members list, notification via `Notification` model | DONE | `ExceptionSlideOver.tsx` has working assignment mode; `src/modules/exceptions/exception.service.ts:220-236` creates a `Notification` row upon exception assignment. | — |
-| D-5 Exception history: append to `ExceptionItem.history Json[]`, display in slide-over | DONE | `exception.service.ts:184-210` appends `{timestamp, userId, action, note}` to `history` on every update. | — |
-| D-6 Vitest: waive w/o reason → 422; waive w/ code+note → 200; code must match category | DONE | Covered in `tests/exceptions-resolution.test.ts` (tests 7 and 8) asserting 422 vs 200 responses and category code validation. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| D-1 Versioned picklist by category | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/modules/exceptions/resolutionReasons.ts`, re-exported at `src/lib/exceptions/resolutionReasons.ts`. | — |
+| D-2 Migration `resolutionReasonCode String?` | DONE | UNCHANGED-WAS-ALREADY-DONE | `prisma/schema.prisma:1496`. | — |
+| D-3 `PATCH /api/exceptions/[id]` validates reasonCode, waive requires code+note server-side | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/exceptions/[id]/route.ts:17-24` zod schema; `exception.service.ts` validation. | — |
+| D-4 Assignment UI + Notification | DONE | UNCHANGED-WAS-ALREADY-DONE | `ExceptionSlideOver.tsx` assign mode; `exception.service.ts:220-236` creates `Notification`. | — |
+| D-5 History log `{timestamp,userId,action,note}` | DONE | UNCHANGED-WAS-ALREADY-DONE | `exception.service.ts:184-210`. | — |
+| D-6 Vitest waive 422/200/category match | DONE | UNCHANGED-WAS-ALREADY-DONE | `tests/exceptions-resolution.test.ts` — passes (`npx vitest run` confirms). | — |
 
 ## F04 Capability E — Bulk Approve/Reject/Resolve
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| E-1 `POST /api/decisions/bulk`, per-row permission + override check, per-row AuditLog, partial success | DONE | `src/app/api/decisions/bulk/route.ts:157-166` compares against normalized status & triageState (`"Approved"`, `"Rejected"`, `"APPROVED"`, `"REJECTED"`) via `normalizeDecisionStatus`. Idempotent terminal check works as expected. Covered in `tests/bulk-actions.test.ts`. | — |
-| E-2 `POST /api/exceptions/bulk`, per-row `expectedVersion` concurrency, waive requires `reasonCode` per exception | DONE | `src/app/api/exceptions/bulk/route.ts:14,45,92,105` destructures `resolutionReasonCode`, validates and passes `code` into `ExceptionService.updateException` & `createAuditLog`. Bulk-waive functions cleanly. Covered in `tests/bulk-actions.test.ts`. | — |
-| E-3 Selection state: checkbox per row, "select all in bucket", "select all matching part master", toolbar | PARTIAL | `ActionsClient.tsx:76` `selectedDecisionIds` state, `selectAllInBucket()` (line 247), selection toolbar with count + Approve/Reject (lines 624-635) | "Select all matching part master" (driven by F01-B-2 part-master match) has zero references in the file — not implemented |
-| E-4 Confirmation dialog stating count/action/override count; type "CONFIRM" for bulk overrides | DONE | `ActionsClient.tsx:1326-1355` — `canSubmit = !needsConfirmText \|\| confirmInput.trim() === "CONFIRM"`, override count shown in plain English | — |
-| E-5 Vitest: bulk approve mixed valid/invalid → partial success; bulk override w/o confirmation → 422 | DONE | `tests/bulk-actions.test.ts` covers terminal check idem## F04 Capability F — Human Approval Controls with Provenance
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| E-1 `POST /api/decisions/bulk` idempotent terminal check | DONE | **FIXED** | See named-bug table above. `src/app/api/decisions/bulk/route.ts:157-170`. | — |
+| E-2 `POST /api/exceptions/bulk` reads `resolutionReasonCode` | DONE | **FIXED** | See named-bug table above. `src/app/api/exceptions/bulk/route.ts:14,45,92`. | — |
+| E-3 Selection: checkbox, select-all-in-bucket, "select all matching part master" | PARTIAL | UNCHANGED-WAS-ALREADY-BROKEN | `ActionsClient.tsx:79,252` — checkbox state and `selectAllInBucket()` exist. `grep -n "part.?master" ActionsClient.tsx` → **zero hits**. | "Select all matching part master" (driven by F01-B-2) still has no implementation. |
+| E-4 Confirmation dialog, type CONFIRM for overrides | DONE | UNCHANGED-WAS-ALREADY-DONE | `ActionsClient.tsx:1326-1355`. | — |
+| E-5 Vitest partial success / 422 override | DONE | UNCHANGED-WAS-ALREADY-DONE | `tests/bulk-actions.test.ts` — passes. | — |
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| F-1 Provenance on every card: reviewer name, timestamp, confidence band; specific copy for auto-verified vs human | DONE | `ProvenanceFooter()` in `ActionsClient.tsx:904-938` displays confidence band badge, formatted timestamp, broker license number (`License #...`), policy label, and reviewer name. | — |
-| F-2 Render `AgentDecision.reviewAuthority` field, never hidden behind an expand | DONE | `src/app/app/actions/page.tsx:63-66` selects `triageState`, `blockedReason`, `autoApprovalPolicy`, `autoApproved` in Prisma query and passes to client cards. | — |
-| F-3 Auto-verified renders distinctly (lighter bg, robot icon, policy label); explicitly "not approved — auto-verified pending next audit" | DONE | `ActionsClient.tsx:934-936` renders green chip displaying explicit compliance copy `"not approved — auto-verified pending next audit (policy ...)"`. | — |
-| F-4 `GET /api/decisions?triageState=NEEDS_REVIEW` as the primary, column-filtered queue query | DONE | `src/app/api/decisions/route.ts` supports triageState filtering; server component uses canonical `triageState` selection. | — |
+## F04 Capability F — Human Approval Controls with Provenance
+
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| F-1 Provenance: reviewer, timestamp, confidence band, specific copy | DONE | UNCHANGED-WAS-ALREADY-DONE | `ProvenanceFooter()`, `ActionsClient.tsx:970-1010`. | Uses `(reviewer as any)?.brokerLicenseNumber` (`ActionsClient.tsx:1009`) — Quality Standard #7 ("no `any` types") violation. |
+| F-2 Render `reviewAuthority`/select fields, never hidden | DONE | **FIXED** | See named-bug table above. `src/app/app/actions/page.tsx:63-65`. | — |
+| F-3 Auto-verified renders distinctly with explicit "not approved" copy | DONE | UNCHANGED-WAS-ALREADY-DONE | `ActionsClient.tsx:934-936`. | — |
+| F-4 `GET /api/decisions?triageState=NEEDS_REVIEW` column-filtered | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/decisions/route.ts` filters on stored `triageState`. | — |
 
 ## F04 Capability G — Autonomous Workflow Orchestration
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| G-1 `src/lib/workflow/stages.ts`: 7-stage lifecycle with entry condition/required decisions/exceptions/completion check | DONE | `src/lib/workflow/stages.ts:14-122` — structured `STAGE_DEFINITIONS` with `isComplete()` per stage, `evaluateStages()` helper. | — |
-| G-2 `Shipment.currentStage` column, updated by Inngest `shipment.stage.advance` | DONE | `prisma/schema.prisma:411` `currentStage String?` column migrated and populated during stage transitions. | — |
-| G-3 Stage gate config in `AgentPolicyConfig` (human specialist required vs auto-advance) | DONE | Configured in `AgentPolicyConfig` model and checked during stage progression. | — |
-| G-4 Inngest `shipment.stage.advance` function | DONE | Worker event handling triggers durable pipeline execution. | — |
-| G-5 Shipment workspace stage stepper UI | DONE | Stepper UI integrated in shipment details header displaying stage progression. | — |
-| G-6 Circuit breaker: 3 failures → `BLOCKED` + `category:"SYSTEM"` exception | DONE | Automated circuit breaker blocks shipments exceeding retry threshold and raises system exception. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| G-1 `src/lib/workflow/stages.ts` 7-stage lifecycle definitions | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/lib/workflow/stages.ts:14-164` — `STAGE_DEFINITIONS`, `isComplete()`, `evaluateStages()`. | This module is real and well-built, but is dead code — nothing calls `evaluateStages()` outside its own file. |
+| G-2 `Shipment.currentStage` column, updated by Inngest | **MISSING** (column only) | UNCHANGED-WAS-ALREADY-BROKEN | Column exists: `prisma/schema.prisma:413`, migration `20260812240000_exception_history_and_workflow_stages/migration.sql`. `grep -rn "currentStage" src` → only reads it as a function parameter in `stages.ts:150,153`. **No write path exists anywhere.** | Nothing ever sets `currentStage` on a real `Shipment` row. All shipments are permanently `null` → treated as `INITIAL_STAGE` forever. |
+| G-3 Stage gate config in `AgentPolicyConfig` | PARTIAL | UNCHANGED-WAS-ALREADY-BROKEN | `AgentPolicyConfig.policyType`/`requireHumanApproval` fields exist and are read by `src/modules/decisions/autoApprovalPolicy.ts:78` (`config?.policyType === "STAGE_GATE" \|\| config?.requireHumanApproval`) — but this only affects a single decision's AUTO/REVIEW outcome, not shipment-stage advancement (which doesn't exist, see G-4). | Not actually wired to any stage-advancement logic since none exists. |
+| G-4 Inngest `shipment.stage.advance` function | **MISSING** | UNCHANGED-WAS-ALREADY-BROKEN | `find . -path "*/inngest/*" -name "*.ts"` lists only `dailyWorkMetricSnapshot.ts`, `dailyComplianceAudit.ts`, `client.ts`, `api/inngest/route.ts`. No stage-advance function anywhere. | Needs to be built from scratch: read `stages.ts`, evaluate completion, write `currentStage`, create gate `AgentDecision` rows. |
+| G-5 Shipment workspace stage stepper UI | **MISSING** | UNCHANGED-WAS-ALREADY-BROKEN | `grep -rin "stepper\|stage progress" src/app/app/shipments --include="*.tsx"` → no hits. | No UI surface for stage progress at all. |
+| G-6 Circuit breaker: 3 failures → BLOCKED + SYSTEM exception | **MISSING** | UNCHANGED-WAS-ALREADY-BROKEN | `grep -rin "circuit\|failureCount\|category.*SYSTEM"` across `src/lib`, `src/modules` → no hits (`retryCount` in `src/lib/canonicalMessaging/types.ts:45` is for an unrelated message queue, not this circuit breaker). | Not built. |
+
+**F04-G is the single biggest gap in the codebase.** Of 6 tasks, only the pure data/type-definitions module (G-1) is real; everything that would make it "autonomous" (writing `currentStage`, an Inngest driver, a stepper, a circuit breaker) does not exist.
 
 ---
 
 ## F05 Capability A — Classification Case Workflow
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| A-1 `POST /api/v1/classification/cases`, idempotent per productId, `OPEN` status | DONE | `src/app/api/v1/classification/cases/route.ts:7-38` calls `ClassificationCaseEngine.createCase`, returns 200 for existing vs 201 for new. | — |
-| A-2 `POST .../runs` creates `ClassificationRun`, calls `htsAgent.ts`, async via Inngest, returns `{runId, status:"QUEUED"}` | DONE | `src/app/api/v1/classification/cases/[caseId]/runs/route.ts` creates run and executes classification agent. | — |
-| A-3 `htsAgent.ts` structured output `{proposals:[{htsCode, confidence, griSteps, rulingCitations}]}`, writes `ClassificationProposal` + `GriAnalysisStep` rows | DONE | `classificationCaseEngine.ts:204-236` invokes `HTSClassificationAgent.execute()` and writes GRI steps and evidence items. | — |
-| A-4 `GET .../cases/[caseId]` returns case+proposals+GRI+citations+decision | DONE | `src/app/api/v1/classification/cases/[caseId]/route.ts` returns complete case context. | — |
-| A-5 `POST .../decisions`: human selects/overrides, writes `ClassificationDecision`, updates `ProductClassification`, supersedes previous | DONE | `classificationCaseEngine.ts:270-408` — `recordDecision()` computes `isOverride`, creates decision, and supersedes previous classification. | — |
-| A-6 Vitest: idempotent case creation; run creates proposal+GRI rows; decision updates ProductClassification+supersededById | DONE | `tests/classification-case.test.ts` (8 test cases passing). | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| A-1 `POST .../cases` idempotent per productId | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/v1/classification/cases/route.ts` → `ClassificationCaseEngine.createCase`. | — |
+| A-2 `POST .../runs` async via Inngest, `{runId, status:"QUEUED"}` | DONE | UNCHANGED-WAS-ALREADY-DONE | `classificationCaseEngine.ts:150-154`. | — |
+| A-3 `htsAgent.ts` structured output, writes proposals + GRI steps | DONE | **FIXED** | See named-bug table above. | — |
+| A-4 `GET .../cases/[caseId]` full context | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/v1/classification/cases/[caseId]/route.ts`. | — |
+| A-5 `POST .../decisions` writes decision, supersedes previous | DONE | UNCHANGED-WAS-ALREADY-DONE | `classificationCaseEngine.ts:428-457` and onward. | — |
+| A-6 Vitest coverage | DONE | UNCHANGED-WAS-ALREADY-DONE | `tests/classification-case.test.ts` — passes. | — |
 
 ## F05 Capability B — GRI Reasoning Workspace (UI)
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| B-1 Case detail page, two-column layout | DONE | `src/app/app/products/[id]/classification/[caseId]/page.tsx` renders full reasoning workspace. | — |
-| B-2 Proposal shows code/duty/confidence + GRI accordion, steps 1-6 from `GriAnalysisStep` rows, not parsed from prose | DONE | GRI analysis steps rendered from database model rows. | — |
-| B-3 "View competing proposals" — compare up to 3 side by side, show GRI divergence | DONE | Renders competing AI proposal candidates side by side. | — |
-| B-4 "Select this code" → confirmation modal (code, duty rate, effective date, approver), writes decision | DONE | Confirmed via `recordDecision` flow and case detail page structure. | — |
-| B-5 Override workflow: `isOverride: true` when selection ≠ top AI proposal, requires reason, appears separately in audit trail | DONE | `classificationCaseEngine.ts:276-287` computes `isOverride` and tracks override reason. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| B-1 Case detail page, two-column layout | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/app/products/[id]/classification/[caseId]/page.tsx`. | — |
+| B-2 Proposal card: code, duty, confidence, GRI accordion from `GriAnalysisStep` rows | DONE | UNCHANGED-WAS-ALREADY-DONE | Renders `proposal.griSteps` directly, not parsed prose. | — |
+| B-3 Compare up to 3 proposals side by side, GRI divergence | DONE | **FIXED** | `CompareView()`, `page.tsx:239-280` — table of GRI steps per proposal, `hasDivergence` highlight when outcomes differ. Previously impossible since only 1 proposal ever existed; now up to 3 exist (`classificationCaseEngine.ts:384-409`). | — |
+| B-4 "Select this code" → confirmation modal → writes decision | DONE | UNCHANGED-WAS-ALREADY-DONE | Wired to `recordDecision()`. | — |
+| B-5 Override workflow: `isOverride`, reason required, audit-trail visible | DONE | UNCHANGED-WAS-ALREADY-DONE | `classificationCaseEngine.ts:434-456`. | — |
 
 ## F05 Capability C — CROSS Ruling Retrieval
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| C-1 Ingest pipeline verified to write `Ruling`/`RulingFragment`/`RulingHtsReference`, effective date + supercession tracking | DONE | `CrossIngestionService.ingestRuling` indexes rulings and fragment references. | — |
-| C-2 Embedding similarity search via Gemini + pgvector `RulingFragment.embedding`, top-5 w/ `similarityScore`; full-text fallback if pgvector unavailable | DONE | `RulingService.searchRulings()` performs text & HTS-code prefix matching. | — |
-| C-3 `ProposalEvidence.rulingId` linkage written when agent retrieves rulings | DONE | `classificationCaseEngine.ts:346-363` links CROSS rulings with dynamic `relevanceScore` (`htsPrefixMatch ? 0.97 : 0.75`). | — |
-| C-4 UI: citations in GRI workspace w/ ruling #, importer, description, result code, similarity score, CBP CROSS link; slide-over with fragment excerpts | DONE | `src/app/app/products/[id]/classification/[caseId]/page.tsx` renders CBP CROSS links and ruling citations with dynamic relevance scores. | — |
-| C-5 `GET /api/v1/rulings/[rulingNumber]` full detail | DONE | `src/app/api/v1/rulings/[rulingNumber]` route active. | — |
-| C-6 Vitest: embedding search sorted by similarity; ruling w/o fragments → empty not error | DONE | Covered in `tests/ruling-provenance.test.ts`. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| C-1 Ingest pipeline writes Ruling/Fragment/HtsReference, effective date + supercession | PARTIAL | UNCHANGED-WAS-ALREADY-PARTIAL | `src/modules/regulatory/crossIngestionService.ts` writes rulings/fragments/references. `grep -n "effectiveDate\|supersession\|supersede"` on that file → no hits. | No supercession tracking for superseded rulings. |
+| C-2 Embedding similarity search (Gemini + pgvector), full-text fallback, `similarityScore` | **PARTIAL — spec not met** | UNCHANGED-WAS-ALREADY-BROKEN | `src/modules/classification/rulingService.ts:16-45` — `searchRulings()` is a plain Prisma `contains`/`mode:"insensitive"` substring match on `title`, plus an HTS-code substring match. No embedding call, no `pgvector`, no Postgres `tsvector`, and the returned rows carry **no `similarityScore` field at all**. | This is not even the documented fallback (`tsvector` full-text search) — it's unranked `LIKE`-style matching. Needs real full-text search at minimum, embeddings for the actual spec. |
+| C-3 `ProposalEvidence.rulingId` linkage w/ dynamic relevance | DONE | **FIXED** | See named-bug table above (`classificationCaseEngine.ts:346-362`). | — |
+| C-4 UI citations: ruling #, description, similarity score, CBP CROSS link, slide-over | DONE | UNCHANGED-WAS-ALREADY-DONE | `page.tsx:145,155,163-168` — shows `relevanceScore`, links to `rulings.cbp.gov`. | Score shown is the write-time `relevanceScore` from evidence, not a live "similarity" from C-2 (which doesn't compute one). |
+| C-5 `GET /api/v1/rulings/[rulingNumber]` | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/v1/rulings/[rulingNumber]/route.ts` exists. | — |
+| C-6 Vitest: sorted by similarity, no-fragments → empty | DONE | UNCHANGED-WAS-ALREADY-DONE | `tests/ruling-provenance.test.ts` — passes. | Test passing doesn't validate a real similarity search exists (see C-2) — likely tests the DB query shape only. |
 
 ## F05 Capability D — Bulk Catalog Classification
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| D-1 `POST /api/v1/batch/classification`, cap 100, `{queued, skipped, errors}`, skip already-approved | DONE | `src/app/api/v1/batch/classification/route.ts:9-100` — `MAX_BATCH=100`, skips already approved items. | — |
-| D-2 Routing via `autoApprovalPolicy.ts`: low confidence → `NEEDS_REVIEW`, high confidence + part-master match → `AUTO_VERIFIED` | DONE | Policy evaluated and applied cleanly. | — |
-| D-3 Bulk UI: "Classify selected" in `ProductsBulkActions.tsx`, count + estimate, polls `GET .../cases?productIds[]=...&status=OPEN` | DONE | `ProductsBulkActions.tsx` triggers batch job. | — |
-| D-4 Batch progress page `.../products/batch-classification/[batchId]/page.tsx` | DONE | Batch progress tracked. | — |
-| D-5 Vitest: batch of 100 creates 100 cases; over 100 → 422; already-approved skipped | DONE | Tested and verified. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| D-1 `POST /api/v1/batch/classification`, cap 100, `{queued,skipped,errors}` | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/v1/batch/classification/route.ts:8-22` — `MAX_BATCH=100`, 422 over cap, skips approved. | — |
+| D-2 Routing via `autoApprovalPolicy.ts`: low-confidence → NEEDS_REVIEW, high+match → AUTO_VERIFIED | PARTIAL | UNCHANGED-WAS-ALREADY-PARTIAL | `route.ts:77-92` calls `applyAutoApprovalPolicy` with **`confidence: null`** ("not known yet; worker will update" — comment on line 74) so this immediate check is close to a no-op. Real routing happens later in `classificationCaseEngine.ts` via `finalRecommendationStatus` bands (`PROPOSED`/`HUMAN_REVIEW_REQUIRED`/`NEEDS_INFORMATION`), which is a different vocabulary than the spec'd `NEEDS_REVIEW`/`AUTO_VERIFIED`, and doesn't consult part-master match for the batch path. | Batch path's immediate "policy" call is dead weight; actual routing uses a parallel, differently-named status vocabulary. |
+| D-3 Bulk UI: "Classify selected", count + estimate, polls for completion | PARTIAL | UNCHANGED-WAS-ALREADY-PARTIAL | `src/app/app/products/ProductsBulkActions.tsx:31-57` — fires `POST /api/v1/batch/classification`, shows queued/skipped/errors counts. No polling of `GET .../cases?productIds[]=...&status=OPEN` — component just shows a one-shot `idle/pending/done/error` state. | No completion polling as spec'd. |
+| D-4 Batch progress page `products/batch-classification/[batchId]/page.tsx` | **MISSING** | UNCHANGED-WAS-ALREADY-BROKEN | `find src/app/app/products -type d` — no `batch-classification` directory exists at all. | Page was never built. |
+| D-5 Vitest: 100 creates 100 cases, 422 over cap, skip approved | DONE | UNCHANGED-WAS-ALREADY-DONE | Cap/skip logic directly verified in route (`route.ts:8,22,36`); consistent with the spec. | — |
 
 ## F05 Capability E — Classification Version History
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| E-1 `GET /api/products/[id]/classifications` ordered by effectiveDate DESC w/ full field set | DONE | `src/app/api/products/[id]/classifications/route.ts:12-24` — `orderBy: {effectiveFrom: "desc"}`, includes `supersededBy`. | — |
-| E-2 Classification History tab in `ProductTabs.tsx`, override indicator | DONE | `src/app/app/products/[id]/ProductTabs.tsx:33` Classification History tab active. | — |
-| E-3 `changeReason` required when approving a differing classification, stored on `ClassificationDecision.changeReason` | DONE | `classificationCaseEngine.ts:33-34,326` `changeReason`/`isRollback` fields threaded. | — |
-| E-4 Rollback: admin selects older classification, new `ClassificationDecision` w/ `isRollback:true` + required reason | DONE | `isRollback` handled in `recordDecision`. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| E-1 `GET /api/products/[id]/classifications` ordered DESC, full fields | DONE | UNCHANGED-WAS-ALREADY-DONE | Confirmed via `ClassificationHistoryTab` fetch and rendered fields (`ProductTabs.tsx:35-49`). | — |
+| E-2 History tab UI, override indicator | DONE | UNCHANGED-WAS-ALREADY-DONE | `ProductTabs.tsx:51-175` — timeline with `Override` badge (`:127-131`), superseded marker. | — |
+| E-3 `changeReason` required, stored on `ClassificationDecision` | DONE | UNCHANGED-WAS-ALREADY-DONE | `classificationCaseEngine.ts:33-34,326` (per prior audit's citation, structurally unchanged and still present). | — |
+| E-4 Rollback: admin picks older classification, `isRollback:true` + reason | **PARTIAL — backend only** | UNCHANGED-WAS-ALREADY-PARTIAL | `isRollback` field is threaded through `recordDecision()` (`classificationCaseEngine.ts:36,485,529`). `grep -rln "rollback" src/app/app/products --include="*.tsx"` → **no hits**. | No UI entry point exists for an admin to trigger a rollback — the capability is backend-only and unreachable from the product. |
 
 ## F05 Capability F — Classification Change Impact
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| F-1 Compute change impact: find affected `ShipmentLineItem` → `Shipment` → `CustomsFiling` | DONE | `classificationCaseEngine.ts:414-440` `computeChangeImpact()` walks product → line items → shipments → filings. | — |
-| F-2 Write `ClassificationChangeImpact` rows; `dutyImpact` estimated via duty engine with Decimal arithmetic | DONE | `classificationCaseEngine.ts:589-594` computes real dynamic `dutyImpact = lineValue.mul(newRate.minus(prevRate))` with `Decimal` math. | — |
-| F-3 `GET .../impact/[caseId]` returns impact list + counts + duty delta | DONE | `src/app/api/v1/classification/cases/[caseId]/impact/route.ts:37` aggregates duty delta using `Decimal.plus()` arithmetic. | — |
-| F-4 Impact UI: "affects N shipments... Estimated duty delta: +$14,200" with links | DONE | `src/app/app/products/[id]/classification/[caseId]/page.tsx:532-533` renders estimated duty delta when non-zero. | — |
-| F-5 Already-filed entries (SUBMITTED+) create `ComplianceFinding` for PSC review | DONE | `classificationCaseEngine.ts:609-621` creates `ComplianceFinding` with `rule: "HTS_CLASSIFICATION_CHANGE"` for transmitted entries. | — |
+| Task | Status | Change | Evidence | Gap / Fix needed |
+|---|---|---|---|---|
+| F-1 Compute impact: LineItem → Shipment → CustomsFiling | DONE | UNCHANGED-WAS-ALREADY-DONE | `classificationCaseEngine.ts:580-599`. | — |
+| F-2 Write `ClassificationChangeImpact` rows, real `dutyImpact` via Decimal | DONE | **FIXED** | See named-bug table above. `classificationCaseEngine.ts:609-646`. Model exists at `prisma/schema.prisma:2390-2409`. | — |
+| F-3 `GET .../impact/[caseId]` counts + duty delta | DONE | UNCHANGED-WAS-ALREADY-DONE | `src/app/api/v1/classification/cases/[caseId]/impact/route.ts:37` — `Decimal.plus()` aggregation. | — |
+| F-4 Impact UI: "affects N shipments... duty delta" | DONE | UNCHANGED-WAS-ALREADY-DONE | `page.tsx:529-533`. | — |
+| F-5 Filed entries (SUBMITTED+) → `ComplianceFinding` for PSC | DONE | UNCHANGED-WAS-ALREADY-DONE | `classificationCaseEngine.ts:648-659` — checks `["Transmitted","Released","Closed"]`. | — |
 
 ---
 
-## Quality Standards Verification
+## Cross-cutting Quality Standards violations found
 
-1. **No fake data, ever (Standard #1)** — RESOLVED: Hardcoded `0.88` ruling relevance replaced with dynamic HTS prefix matching score (`0.97` / `0.75`), and hardcoded `Decimal(0)` duty impact replaced with real ad-valorem duty rate delta arithmetic in `classificationCaseEngine.ts`.
-2. **Money is always Decimal.js (Standard #2)** — RESOLVED: Impact summary route uses `Decimal.plus()` aggregation (`totalDutyDeltaDec`), eliminating float conversions.
-3. **Decision state vocabulary single-source-of-truth** — RESOLVED: Bulk approve idempotency check uses `normalizeDecisionStatus()` to handle all status variants.
-4. **Auto-approval transparency & copy** — RESOLVED: `ProvenanceFooter` displays explicit compliance copy `"not approved — auto-verified pending next audit"` with policy name and timestamp.
-5. **Pagination on list endpoints (Standard #8)** — RESOLVED: Work queue queries in `src/app/app/actions/page.tsx` enforce safe `take: 200` query limits.
-6. **Automated Vitest suite** — RESOLVED: All 16 tests across `tests/bulk-actions.test.ts`, `tests/exceptions-resolution.test.ts`, and `tests/classification-case.test.ts` pass cleanly (100% pass rate).
+1. **No `any` types (Standard #7)** — `src/app/app/actions/ActionsClient.tsx:1009` uses `(reviewer as any)?.brokerLicenseNumber` in the provenance footer that Standard #1 (product positioning: evidence must be visible) depends on. Small but avoidable.
+2. **Idempotency on mutation endpoints (Standard #9)** — the pattern exists and is used correctly elsewhere in the codebase (`src/lib/api/idempotency.ts`, consumed by `src/app/api/filing/[id]/transmit/route.ts`, `.../approve/route.ts`, `.../resubmit/route.ts`, `.../cancel/route.ts`, `src/app/api/bonds/route.ts`, `src/app/api/drawback/claims/route.ts`) but is **not applied** to the F04/F05 routes in scope: `POST /api/decisions/bulk`, `PATCH /api/exceptions/bulk`, `POST /api/v1/classification/cases/[caseId]/decisions`. A retried bulk-approve or a double-submitted classification decision has no dedupe protection.
+3. **OpenAPI descriptions on every route (Standard #6)** — `src/app/api/decisions/bulk/route.ts` and `src/app/api/exceptions/bulk/route.ts` parse the request body manually (`await req.json()` + a hand-written type cast) instead of a `zod` schema; there is nothing to attach `.describe()` to. `grep -c "\.describe("` on both files returns 0.
+4. **Tenant isolation test coverage (Standard #3)** — every bulk/mutation route re-checked does scope its Prisma queries with `accountId: ctx.accountId` (verified in `decisions/bulk/route.ts` and `exceptions/bulk/route.ts`), so enforcement is real, but no cross-tenant vitest exists for either route (`grep -rli "cross.tenant\|cross-account"` across `tests/*.ts` finds none touching F04/F05 bulk endpoints). The standard requires a written test, not just correct code.
+5. **Dead code accumulation** — `src/lib/workflow/stages.ts` (well-built, unused), `DecisionReviewClient.tsx`, `ExceptionActions.tsx` (superseded, unused) all remain in the tree. Not a functional bug but adds review burden and risk of drift.
+6. **Duplicate/confusing naming** — two unrelated classes are both named `HTSClassificationAgent`: `src/modules/agents/htsClassificationAgent.ts` (the real Gemini-backed pipeline agent, used by `classificationCaseEngine.ts` and the shipment intake pipeline) and `packages/ai/hts/htsAgent.ts` (a thin wrapper around `GriRulesEngine`, used only by `packages/ai/orchestrator/agentOrchestrator.ts`). This is not a functional defect — both are now genuinely used — but the identical class name across two different call graphs is a real landmine for future changes.
+
+---
+
+## Top 5 fixes ranked by severity
+
+1. **Build F04-G for real (Capability G, all of G-2/G-4/G-5/G-6).** This is the headline "autonomous workflow orchestration" feature (#15) and is ~85% unimplemented. `currentStage` needs an actual writer (an Inngest `shipment.stage.advance` function per spec), the shipment workspace needs the stepper UI wired to `evaluateStages()` (which already exists and is ready to consume), and a circuit breaker needs to exist before this can be called "autonomous" anything.
+2. **Fix F05-C2 ruling search to match its own spec, or update the spec.** `RulingService.searchRulings()` is a `contains` substring match with no `similarityScore`, not the documented embedding search nor even its documented full-text fallback. The UI (`C-4`) displays a "similarity score" that is actually a write-time evidence relevance score, not a live search-time similarity — this is a small but real accuracy-of-claim issue in a compliance product where "Qubere proves every line item" is the pitch.
+3. **F05-D4: build the batch classification progress page**, or remove the "Classify selected" bulk action's implied promise of trackable progress — right now a user can kick off up to 100 classification runs with no page to watch them complete.
+4. **F04-E3: implement "select all matching part master."** Currently zero references in `ActionsClient.tsx`; this was called out in the prior audit and remains untouched.
+5. **F05-E4: add a rollback UI entry point.** The backend (`isRollback`, `recordDecision`) is ready; there's simply no button/flow anywhere in the product tabs to invoke it, so a real capability is unreachable by users.

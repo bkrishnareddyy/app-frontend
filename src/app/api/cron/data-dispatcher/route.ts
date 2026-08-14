@@ -71,6 +71,15 @@ async function handleDispatch(requestId: string) {
     }
 
     // ── Dispatch if due ────────────────────────────────────────────────────
+    // Self-scheduled datasets (e.g. ofac-sdn) run on their own Inngest-native
+    // cron trigger — dispatching them here too would double-run them daily.
+    // Staleness alerting above still applies: if Inngest's own cron silently
+    // stops firing, this dispatcher is what notices.
+    if (dataset.selfScheduled) {
+      skipped.push(dataset.id);
+      continue;
+    }
+
     if (hoursSinceLast < dataset.scheduledFrequencyHours) {
       skipped.push(dataset.id);
       continue;

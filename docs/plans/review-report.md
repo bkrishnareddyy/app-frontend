@@ -1,8 +1,8 @@
 # Qubere Implementation Review — Grade Report
-> Generated: 2026-08-13
+> Generated: 2026-08-13. **Superseded 2026-08-13 (later same day)** — after a round of fixes, this baseline was re-audited. Overall moved from ~62% to ~77%. For current status, see [review/OPEN-ITEMS.md](review/OPEN-ITEMS.md) (everything still open, by severity) and [review/DONE-ITEMS.md](review/DONE-ITEMS.md) (everything confirmed fixed this round). This document is kept as the historical baseline — the per-feature audit files it links to (`review/F0X-audit.md`) have been overwritten in place with the current-state findings, so those links now point at up-to-date detail even though the summary below reflects the original baseline.
 > Method: 7 independent adversarial audits ran in parallel against the actual codebase (not against commit messages or self-reported status), one per feature-file group. Every finding below has a file:line citation in the linked audit doc. "DONE" required proof the behavior is reachable from a real request; "PARTIAL" and "MISSING" are called out explicitly rather than rounded up.
 
-## Overall Grade: ~62%
+## Overall Grade: ~62% (baseline — see note above for current ~77%)
 
 The core engineering is real in most places — Decimal money math, tenant isolation, structured extraction with bbox provenance, server-enforced filing gates, and the product/party master are genuinely well built. But there is a **repeating pattern across at least 8 files**: a hardcoded placeholder (duty rate, relevance score, download URL, CBP number) was put in as a stand-in during development and never replaced with the real computation — and it's the same class of bug the original plan explicitly told every agent to avoid ("No fake data, ever"). That pattern, not raw missing-feature count, is the main thing dragging the grade down and the main thing worth fixing first, because fixing the root cause once (real HTS-rate lookup) closes gaps in 4 different features at once.
 

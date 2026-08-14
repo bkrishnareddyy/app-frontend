@@ -53,11 +53,45 @@ async function fetchChapter(chapter: string): Promise<{ items: HtsRawItem[]; res
   }
 }
 
+// USITC known reserved / empty chapters in standard HTS (e.g., chapter 77 is reserved for future international use)
+export const RESERVED_CHAPTERS = new Set(["77"]);
+export const MIN_EXPECTED_SCHEDULE_ITEMS = 1000;
+
 export class HtsUsitcFetcher {
+  /**
+   * Validates whether a fetched schedule passes the completeness gate.
+   * Throws an Error if non-reserved chapters failed or item count is below the minimum threshold.
+   */
+  static validateCompleteness(
+    result: FullScheduleFetchResult,
+    minItems: number = MIN_EXPECTED_SCHEDULE_ITEMS
+  ): { valid: boolean; reason?: string } {
+    const failedUnreserved = result.chapterResults.filter(
+      (c) => !c.ok && !RESERVED_CHAPTERS.has(c.chapter)
+    );
+
+    if (failedUnreserved.length > 0) {
+      const failedList = failedUnreserved.map((c) => `Ch ${c.chapter} (${c.error})`).join(", ");
+      return {
+        valid: false,
+        reason: `Completeness gate failed: Non-reserved chapters failed to fetch: [${failedList}]`,
+      };
+    }
+
+    if (result.items.length < minItems) {
+      return {
+        valid: false,
+        reason: `Completeness gate failed: Total schedule items (${result.items.length}) is below required minimum threshold (${minItems}).`,
+      };
+    }
+
+    return { valid: true };
+  }
+
   /**
    * Fetches the full current US HTS schedule from USITC, chapter by
    * chapter (01-99). A chapter that fails or is reserved contributes zero
-   * items and is recorded in chapterResults rather than aborting the run.
+   * items and is recorded in chapterResults.
    */
   static async fetchFullSchedule(): Promise<FullScheduleFetchResult> {
     const items: HtsRawItem[] = [];
@@ -66,10 +100,21 @@ export class HtsUsitcFetcher {
     for (let n = 1; n <= 99; n++) {
       const chapter = String(n).padStart(2, "0");
       const { items: chapterItems, result } = await fetchChapter(chapter);
-      chapterResults.push(result);
-      items.push(...chapterItems);
+
+      // If chapter fetch returned OK, validate item structure
+      if (result.ok && chapterItems.length > 0) {
+        const validItems = chapterItems.filter(
+          (item) => item && (item.htsno || item.description)
+        );
+        chapterResults.push({ ...result, itemCount: validItems.length });
+        items.push(...validItems);
+      } else {
+        chapterResults.push(result);
+        items.push(...chapterItems);
+      }
     }
 
     return { items, chapterResults };
   }
 }
+

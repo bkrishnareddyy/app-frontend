@@ -94,27 +94,13 @@ export function VaultClient() {
       })
       .catch(console.error);
 
-    // Fetch mock/available lots for layout representation
-    setLots([
-      {
-        id: "lot_1",
-        entryNumber: "ENT-2026-000001",
-        htsCode: "8541.43.0010",
-        quantity: 1000,
-        availableQty: 1000,
-        dutyPaidPerUnit: 2.50,
-        exportDeadline: "2031-08-13",
-      },
-      {
-        id: "lot_2",
-        entryNumber: "ENT-2026-000002",
-        htsCode: "8471.30.0100",
-        quantity: 500,
-        availableQty: 250,
-        dutyPaidPerUnit: 4.80,
-        exportDeadline: "2031-09-01",
-      }
-    ]);
+    // Fetch available lots from backend
+    fetch("/api/drawback/lots")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.lots) setLots(data.lots);
+      })
+      .catch(console.error);
   };
 
   const loadSection301Data = () => {

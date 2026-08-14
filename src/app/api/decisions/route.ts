@@ -418,13 +418,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     include: { reviewedByUser: { select: REVIEWER_SELECT } },
   });
 
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || (body.data as any)?.source === "CHAT") ? "CHAT" : "UI";
+
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
     action: action === "APPROVE" ? (overridesClassification ? AuditAction.DECISION_OVERRIDDEN : AuditAction.DECISION_APPROVED) : AuditAction.DECISION_REJECTED,
     entity: "AgentDecision",
     entityId: decisionId,
-    source: "UI",
+    source: auditSource,
     metadata: {
       newStatus,
       humanNotes: rationale,

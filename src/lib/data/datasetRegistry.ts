@@ -22,6 +22,13 @@ export interface DatasetDefinition {
   engineeringEffort: "Low" | "Medium" | "High" | "Very High";
   readinessStatus: ReadinessStatus;
   endpoint?: string; // only set for LIVE datasets with a real route
+  // true only for datasets that schedule their own recurring runs via an
+  // Inngest-native cron trigger (heavy/long-running ingestion that can't
+  // run synchronously inside this dataset's `endpoint`). The dispatcher
+  // must never auto-trigger these itself -- `endpoint` exists on them only
+  // so admins can enqueue a manual "Run Now", which the endpoint fulfills
+  // by sending an Inngest event rather than doing the work inline.
+  selfScheduled?: boolean;
   // Runtime state loaded from DatasetRefreshLog — not hardcoded
   lastRun?: string | null;
   lastRunStatus?: "success" | "error" | "running" | null;
@@ -67,6 +74,25 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     endpoint: "/api/cron/regulatory-ingest",
   },
 
+  {
+    id: "ofac-sdn",
+    name: "OFAC SDN + Consolidated Non-SDN",
+    powers: "Specially Designated Nationals (SDN) screening, sanctions enforcement, blocking checks",
+    source: "ofac.treasury.gov (Streaming XML: sdn.xml + consolidated.xml)",
+    sourceUrl: "https://www.treasury.gov/ofac/downloads/sdn.xml",
+    cost: "Free",
+    refreshMethod:
+      "Streaming SAX (saxes) XML parser (OfacSdnIngestionService) reads Treasury's sdn.xml and consolidated.xml directly, extracting name, AKAs, addresses, and program codes per entry. Circuit breaker: parsed count must match the feed's own Record_Count header or nothing is written. Delisted entities are marked SUPERSEDED rather than deleted, preserving point-in-time screening history. Runs as a durable Inngest background function (own native cron trigger) to avoid Vercel function timeout on the ~29MB SDN file.",
+    frequency: "Daily (05:00 UTC)",
+    scheduledFrequencyHours: 24,
+    staleThresholdHours: 36,
+    category: "Public API",
+    engineeringEffort: "Low",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/ofac-sdn-ingest",
+    selfScheduled: true,
+  },
+
   // ─── NOT_YET_IMPLEMENTED — ingestion pipelines planned, not yet wired ────────
   // Do NOT add fake details, entity counts, or success indicators below.
 
@@ -103,22 +129,6 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     engineeringEffort: "Low",
     readinessStatus: "LIVE",
     endpoint: "/api/cron/bis-csl-ingest",
-  },
-  {
-    id: "ofac-sdn",
-    name: "OFAC SDN + Consolidated Non-SDN",
-    powers: "Specially Designated Nationals (SDN) screening, sanctions enforcement, blocking checks",
-    source: "ofac.treasury.gov (Bulk XML + daily delta)",
-    sourceUrl: "https://ofac.treasury.gov/ofac-data-download-files",
-    cost: "Free",
-    refreshMethod:
-      "Streaming XML parser parsing sdn.xml & consolidated.xml + daily delta feeds. Runs as Inngest background function to avoid Vercel function timeout. DRAFT → PUBLISHED versioning for point-in-time screening audit trail.",
-    frequency: "Daily (05:00 UTC)",
-    scheduledFrequencyHours: 24,
-    staleThresholdHours: 36,
-    category: "Public API",
-    engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
   },
   {
     id: "usitc-trade-remedy",
@@ -439,6 +449,32 @@ export async function triggerDatasetRefresh(id: string): Promise<{
       success: false,
       message: `Dataset "${def.name}" already has a run in progress (started ${alreadyRunning.startedAt.toISOString()}).`,
     };
+  }
+
+  // Self-scheduled datasets (e.g. ofac-sdn) run as durable Inngest
+  // background functions that own their own DatasetRefreshLog lifecycle.
+  // Their endpoint only enqueues the job and returns immediately, so this
+  // function must not create/close a RUNNING row around that call — doing
+  // so would mark the row SUCCESS the instant the enqueue HTTP call
+  // returns, long before the actual ingestion (which can take minutes)
+  // has even started.
+  if (def.selfScheduled) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const fullUrl = def.endpoint!.startsWith("http") ? def.endpoint! : `${baseUrl}${def.endpoint}`;
+      const res = await fetch(fullUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", authorization: `Bearer ${cronSecret}` },
+      });
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const errorMsg = responseData.note || responseData.error || `Endpoint returned HTTP ${res.status}`;
+        return { success: false, message: errorMsg };
+      }
+      return { success: true, message: responseData.note || "Ingestion enqueued." };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Failed to enqueue dataset refresh" };
+    }
   }
 
   // Create a RUNNING log row

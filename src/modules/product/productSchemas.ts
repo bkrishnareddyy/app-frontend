@@ -192,6 +192,7 @@ export const productClassificationInputSchema = z
   });
 
 export const createProductSchema = z.object({
+  clientId: optionalText(64),
   productName: requiredString(300),
   internalSku: optionalText(100),
   commercialDescription: optionalText(4000),
@@ -278,6 +279,7 @@ export const productMatchRequestSchema = z.object({
 
 export const productListQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
+  clientId: z.string().trim().max(100).optional(),
   status: productStatusSchema.optional(),
   jurisdiction: z.string().trim().max(16).optional(),
   reviewStatus: z.enum(["UNREVIEWED", "IN_REVIEW", "APPROVED", "REJECTED", "NEEDS_REVIEW"]).optional(),

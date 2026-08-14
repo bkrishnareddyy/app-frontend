@@ -5,6 +5,12 @@ export interface AnalyticsMetrics {
   cyclTimeMedianHours: number;
   firstPassRate: number;
   exceptionAgeAvgHours: number;
+  exceptionAgeBuckets: {
+    under24h: number;
+    days1to7: number;
+    days7to30: number;
+    over30d: number;
+  };
   touchRate: number;
   dutyPerEntry: number;
   openExceptions: number;
@@ -61,7 +67,7 @@ export async function computeAnalyticsMetrics(
   const firstPassRate =
     totalSubmitted > 0 ? Math.round((acceptedFirstPass / totalSubmitted) * 100) : 100;
 
-  // 3. Exception Age Average
+  // 3. Exception Age Average & Buckets
   const openExceptionsList = await db.exceptionItem.findMany({
     where: {
       accountId,
@@ -81,6 +87,25 @@ export async function computeAnalyticsMetrics(
           (exceptionAges.reduce((sum, age) => sum + age, 0) / exceptionAges.length) * 10
         ) / 10
       : 0;
+
+  const exceptionAgeBuckets = {
+    under24h: 0,
+    days1to7: 0,
+    days7to30: 0,
+    over30d: 0,
+  };
+
+  for (const ageHours of exceptionAges) {
+    if (ageHours < 24) {
+      exceptionAgeBuckets.under24h++;
+    } else if (ageHours < 24 * 7) {
+      exceptionAgeBuckets.days1to7++;
+    } else if (ageHours < 24 * 30) {
+      exceptionAgeBuckets.days7to30++;
+    } else {
+      exceptionAgeBuckets.over30d++;
+    }
+  }
 
   // 4. Touch Rate (account-wide; per-client breakdown not meaningful here)
   const fields = await db.extractionField.findMany({
@@ -113,6 +138,7 @@ export async function computeAnalyticsMetrics(
     cyclTimeMedianHours: Math.round(cyclTimeMedianHours * 10) / 10,
     firstPassRate,
     exceptionAgeAvgHours,
+    exceptionAgeBuckets,
     touchRate,
     dutyPerEntry: Math.round(dutyPerEntry * 100) / 100,
     openExceptions,

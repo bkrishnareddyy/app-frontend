@@ -252,8 +252,13 @@ export async function loadHtsCodesMap(
 
     if (sec301Rate) {
       sec301Applicable = lineCountry ? lineCountry === "CN" : true;
-      sec301Tranche = sec301Rate.trancheId ?? "List3";
-      sec301AdditionalRate = sec301Rate.adValoremPercent ?? (sec301Rate.rawRateText ? parseFloat(sec301Rate.rawRateText) : 25);
+      sec301Tranche = sec301Rate.trancheId ?? null;
+      let parsedRate = sec301Rate.adValoremPercent ?? null;
+      if (parsedRate === null && sec301Rate.rawRateText) {
+        const p = parsePublishedDutyRate(sec301Rate.rawRateText);
+        parsedRate = p !== null ? p * 100 : (isNaN(parseFloat(sec301Rate.rawRateText)) ? null : parseFloat(sec301Rate.rawRateText));
+      }
+      sec301AdditionalRate = parsedRate;
       sec301Exclusion = sec301Rate.exclusion;
     }
 

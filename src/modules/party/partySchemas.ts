@@ -168,6 +168,7 @@ export const partySiteInputSchema = z.object({
 });
 
 export const createPartySchema = z.object({
+  clientId: optionalText(64),
   partyKind: partyKindSchema.optional(),
   internalPartyCode: optionalText(100),
   names: z.array(partyNameInputSchema).min(1).max(50),
@@ -252,6 +253,7 @@ export const partyMatchRequestSchema = z.object({
 
 export const partyListQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
+  clientId: z.string().trim().max(100).optional(),
   status: partyStatusSchema.optional(),
   reviewStatus: partyReviewStatusSchema.optional(),
   roleType: partyRoleTypeSchema.optional(),

@@ -898,24 +898,27 @@ export function CommandCenterClient({
           <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">Exception Age Distribution (D-4)</span>
           <div className="grid grid-cols-4 gap-3">
             {[
-              { label: "0-24h", value: 12, color: "bg-emerald-500" },
-              { label: "1-7d", value: 5, color: "bg-amber-500" },
-              { label: "7-30d", value: 2, color: "bg-orange-500" },
-              { label: "30+d", value: 0, color: "bg-red-500" },
-            ].map((bucket) => (
-              <div key={bucket.label} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="font-semibold text-slate-700">{bucket.label}</span>
-                  <span className="font-extrabold text-slate-900">{bucket.value}</span>
+              { label: "0-24h", value: liveMetrics?.exceptionAgeBuckets?.under24h ?? 0, color: "bg-emerald-500" },
+              { label: "1-7d", value: liveMetrics?.exceptionAgeBuckets?.days1to7 ?? 0, color: "bg-amber-500" },
+              { label: "7-30d", value: liveMetrics?.exceptionAgeBuckets?.days7to30 ?? 0, color: "bg-orange-500" },
+              { label: "30+d", value: liveMetrics?.exceptionAgeBuckets?.over30d ?? 0, color: "bg-red-500" },
+            ].map((bucket, _, arr) => {
+              const maxVal = Math.max(1, ...arr.map((b) => b.value));
+              return (
+                <div key={bucket.label} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="font-semibold text-slate-700">{bucket.label}</span>
+                    <span className="font-extrabold text-slate-900">{bucket.value}</span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${bucket.color} transition-all`}
+                      style={{ width: `${Math.min(100, (bucket.value / maxVal) * 100)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${bucket.color} transition-all`}
-                    style={{ width: `${Math.min(100, (bucket.value / 15) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

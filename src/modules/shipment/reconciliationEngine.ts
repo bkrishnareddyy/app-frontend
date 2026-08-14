@@ -3,6 +3,8 @@ import { ShipmentEventBus } from "@/modules/events/shipmentEventBus";
 import { isPlaceholderValue, lineItemFactField } from "./lineItemReconciler";
 import { recomputeShipmentDeadlines } from "@/modules/deadlines/deadline.service";
 
+import { runReconciliationEngine, type DocumentGroup } from "@/lib/reconciliation/reconciliationEngine";
+
 interface ComplianceAuditFinding {
   ruleId: string;
   category: "PGA" | "ADD_CVD" | "UFLPA" | "VALUATION" | "HTS_INTEGRITY" | "DATA_MISSING" | "SCREENING_GAP";
@@ -53,7 +55,7 @@ export class ReconciliationEngine {
     const shipment = await db.shipment.findUnique({
       where: { id: shipmentId },
       include: {
-        documents: { include: { parseVersions: true } },
+        documents: { include: { parseVersions: true, extractionFields: true } },
         exceptionItems: { where: { status: { not: "Resolved" } } },
         shipmentParties: { include: { legalEntity: true } },
         importerOfRecord: true,
@@ -66,9 +68,107 @@ export class ReconciliationEngine {
     }
 
     const affectedAgentsSet = new Set<string>();
-    const conflictsDetected = 0;
     let exceptionsGenerated = 0;
     let exceptionsResolved = 0;
+
+    // Cross-document field reconciliation
+    const documentGroups: DocumentGroup[] = shipment.documents
+      .filter((d) => d.extractionFields && d.extractionFields.length > 0)
+      .map((d) => ({
+        documentId: d.id,
+        docType: d.docType,
+        fields: d.extractionFields.map((f) => ({
+          fieldName: f.fieldName,
+          value: f.value,
+          confidence: f.confidence,
+        })),
+      }));
+
+    const { results, evaluatedRuleIds } = runReconciliationEngine(documentGroups);
+    const conflictsDetected = results.length;
+
+    const severityMap: Record<string, string> = {
+      BLOCKING: "Critical",
+      WARNING: "Warning",
+      INFO: "Info",
+    };
+
+    const openIssues = await db.reconciliationIssue.findMany({
+      where: { shipmentId: shipment.id, accountId: shipment.accountId, status: "Open" },
+    });
+
+    const evaluatedFields = new Set(evaluatedRuleIds);
+    const CONFLICT_CODE_PREFIX = "CONFLICT:";
+
+    for (const result of results) {
+      const existing = openIssues.find((i) => i.field === result.ruleId);
+      const severity = severityMap[result.severity] ?? "Warning";
+      const data = {
+        field: result.ruleId,
+        severity,
+        expectedValue: `${result.valueA} (${result.docTypeA})`,
+        actualValue: `${result.valueB} (${result.docTypeB})`,
+        sourceDocuments: [result.docTypeA, result.docTypeB],
+      };
+
+      if (existing) {
+        await db.reconciliationIssue.update({ where: { id: existing.id }, data });
+      } else {
+        await db.reconciliationIssue.create({
+          data: { ...data, shipmentId: shipment.id, accountId: shipment.accountId, status: "Open" },
+        });
+      }
+
+      const exCode = `${CONFLICT_CODE_PREFIX}${result.ruleId}`;
+      const exSeverity = result.severity === "BLOCKING" ? "High" : result.severity === "WARNING" ? "Medium" : "Low";
+      const exDescription = `Value conflict on "${result.ruleId}": ${result.docTypeA} reports "${result.valueA}" but ${result.docTypeB} reports "${result.valueB}".`;
+      const existingEx = await db.exceptionItem.findFirst({
+        where: { shipmentId: shipment.id, accountId: shipment.accountId, code: exCode, status: { not: "Resolved" } },
+        select: { id: true },
+      });
+      if (!existingEx) {
+        await db.exceptionItem.create({
+          data: {
+            shipmentId: shipment.id,
+            accountId: shipment.accountId,
+            code: exCode,
+            category: "CONFLICT",
+            type: "data_mismatch",
+            severity: exSeverity,
+            blocking: result.severity === "BLOCKING",
+            description: exDescription,
+            requiredAction: "Review both source documents and accept the correct value, or flag both as wrong.",
+            sourceAgent: "Reconciliation Engine",
+          },
+        });
+        exceptionsGenerated++;
+        affectedAgentsSet.add("RECONCILIATION_ENGINE");
+      } else {
+        await db.exceptionItem.update({
+          where: { id: existingEx.id },
+          data: { severity: exSeverity, description: exDescription, blocking: result.severity === "BLOCKING" },
+        });
+      }
+    }
+
+    const resolvedRuleIds = new Set(results.map((r) => r.ruleId));
+    const staleIssues = openIssues.filter(
+      (i) => evaluatedFields.has(i.field) && !resolvedRuleIds.has(i.field)
+    );
+    const staleIds = staleIssues.map((i) => i.id);
+
+    if (staleIds.length > 0) {
+      await db.reconciliationIssue.updateMany({
+        where: { id: { in: staleIds } },
+        data: { status: "Resolved", resolvedAt: new Date() },
+      });
+      const staleCodes = staleIssues.map((i) => `${CONFLICT_CODE_PREFIX}${i.field}`);
+      await db.exceptionItem.updateMany({
+        where: { shipmentId: shipment.id, accountId: shipment.accountId, code: { in: staleCodes }, status: { not: "Resolved" } },
+        data: { status: "Resolved", resolvedAt: new Date(), resolvedBy: triggerSource, resolvedByName: "Reconciliation Engine" },
+      });
+      exceptionsResolved += staleIssues.length;
+    }
 
     const activeExceptions = shipment.exceptionItems || [];
 

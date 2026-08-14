@@ -43,6 +43,12 @@ interface ShipmentDocumentItem {
   clientName: string;
   unattached?: boolean;
   source?: string;
+  shipmentCandidates?: Array<{
+    id: string;
+    confidenceScore: number;
+    matchReasons: string[];
+    shipment: { id: string; shipmentNumber: string; portOfEntry?: string | null };
+  }>;
 }
 
 /**
@@ -69,6 +75,12 @@ interface ApiDocument {
   confidence?: number | null;
   /** UPLOAD or EMAIL -- how this document row was created. */
   source?: string | null;
+  shipmentCandidates?: Array<{
+    id: string;
+    confidenceScore: number;
+    matchReasons: string[];
+    shipment: { id: string; shipmentNumber: string; portOfEntry?: string | null };
+  }>;
 }
 
 interface ApiShipment {
@@ -250,6 +262,7 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
               clientName: "No Client",
               unattached: true,
               source: d.source ?? "UPLOAD",
+              shipmentCandidates: d.shipmentCandidates,
             });
           });
         }
@@ -703,9 +716,40 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
 
                     <td className="py-3.5 px-5 font-mono text-[11px]">
                       {doc.unattached ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
-                          Unattached
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans w-fit">
+                            Unattached
+                          </span>
+                          {doc.shipmentCandidates && doc.shipmentCandidates.length > 0 && (
+                            <div className="flex flex-col gap-1 mt-1 font-sans">
+                              <span className="text-[10px] text-ink-muted font-medium">Suggested matches:</span>
+                              {doc.shipmentCandidates.map((cand) => (
+                                <div key={cand.id} className="flex items-center gap-1.5 text-[11px]">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const res = await fetch(`/api/documents/${doc.id}/attach`, {
+                                        method: "POST",
+                                        headers: { "content-type": "application/json" },
+                                        body: JSON.stringify({ shipmentId: cand.shipment.id }),
+                                      });
+                                      if (res.ok) {
+                                        alert(`Attached to shipment ${cand.shipment.shipmentNumber}`);
+                                        window.location.reload();
+                                      } else {
+                                        alert("Failed to attach document.");
+                                      }
+                                    }}
+                                    className="text-brand font-semibold hover:underline bg-brand/5 px-1.5 py-0.5 rounded border border-brand/20 text-[10px] transition-colors hover:bg-brand/10"
+                                    title={cand.matchReasons?.join(", ")}
+                                  >
+                                    Attach to #{cand.shipment.shipmentNumber} ({Math.round(cand.confidenceScore > 1 ? cand.confidenceScore : cand.confidenceScore * 100)}%)
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <Link href={`/app/shipments/${doc.shipmentId}`} className="text-brand hover:underline">
                           {doc.shipmentRef}

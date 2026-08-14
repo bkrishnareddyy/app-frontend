@@ -28,9 +28,12 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     policies: policies.map((p) => ({
       id: p.id,
       agentName: p.agentName,
+      policyType: p.policyType,
       autoThreshold: p.autoThreshold,
       confirmThreshold: p.confirmThreshold,
       requirePartMasterMatch: p.requirePartMasterMatch,
+      requireHumanApproval: p.requireHumanApproval,
+      minimumReviewerRole: p.minimumReviewerRole,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     })),
@@ -49,9 +52,12 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
 
 const upsertPolicySchema = z.object({
   agentName: z.string().min(1).max(100),
+  policyType: z.enum(["THRESHOLD", "STAGE_GATE"]).optional(),
   autoThreshold: z.number().int().min(0).max(100).optional(),
   confirmThreshold: z.number().int().min(0).max(100).optional(),
   requirePartMasterMatch: z.boolean().optional(),
+  requireHumanApproval: z.boolean().optional(),
+  minimumReviewerRole: z.string().nullable().optional(),
 }).refine(
   (d) => {
     if (d.autoThreshold !== undefined && d.confirmThreshold !== undefined) {
@@ -65,18 +71,21 @@ const upsertPolicySchema = z.object({
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, upsertPolicySchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
-  const { agentName, autoThreshold, confirmThreshold, requirePartMasterMatch } = bodyVal.data;
+  const { agentName, policyType, autoThreshold, confirmThreshold, requirePartMasterMatch, requireHumanApproval, minimumReviewerRole } = bodyVal.data;
 
   const existing = await db.agentPolicyConfig.findFirst({
     where: { accountId: ctx.accountId, agentName },
-});
+  });
 
   const data: Parameters<typeof db.agentPolicyConfig.create>[0]["data"] = {
     accountId: ctx.accountId,
     agentName,
+    ...(policyType !== undefined && { policyType }),
     ...(autoThreshold !== undefined && { autoThreshold }),
     ...(confirmThreshold !== undefined && { confirmThreshold }),
     ...(requirePartMasterMatch !== undefined && { requirePartMasterMatch }),
+    ...(requireHumanApproval !== undefined && { requireHumanApproval }),
+    ...(minimumReviewerRole !== undefined && { minimumReviewerRole }),
   };
 
   let policy;
@@ -98,9 +107,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     source: "UI",
     metadata: {
       agentName,
+      policyType: policy.policyType,
       autoThreshold: policy.autoThreshold,
       confirmThreshold: policy.confirmThreshold,
       requirePartMasterMatch: policy.requirePartMasterMatch,
+      requireHumanApproval: policy.requireHumanApproval,
+      minimumReviewerRole: policy.minimumReviewerRole,
       previousAutoThreshold: existing?.autoThreshold,
       previousConfirmThreshold: existing?.confirmThreshold,
     },
@@ -112,9 +124,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     policy: {
       id: policy.id,
       agentName: policy.agentName,
+      policyType: policy.policyType,
       autoThreshold: policy.autoThreshold,
       confirmThreshold: policy.confirmThreshold,
       requirePartMasterMatch: policy.requirePartMasterMatch,
+      requireHumanApproval: policy.requireHumanApproval,
+      minimumReviewerRole: policy.minimumReviewerRole,
       updatedAt: policy.updatedAt.toISOString(),
     },
     requestId,

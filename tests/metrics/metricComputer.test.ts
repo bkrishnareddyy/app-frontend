@@ -36,6 +36,7 @@ describe("computeAnalyticsMetrics", () => {
       cyclTimeMedianHours: 0,
       firstPassRate: 100,
       exceptionAgeAvgHours: 0,
+      exceptionAgeBuckets: { under24h: 0, days1to7: 0, days7to30: 0, over30d: 0 },
       touchRate: 0,
       dutyPerEntry: 0,
       openExceptions: 0,

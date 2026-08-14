@@ -55,12 +55,27 @@ async function run() {
 
     console.log(`Extracting metadata for Document ${docNum}...`);
 
+    let fullNoticeText = `${doc.title || ""}\n\n${doc.abstract || ""}`;
+    let docDetailUrl = `https://www.federalregister.gov/api/v1/documents/${docNum}.json`;
+    try {
+      const detailRes = await fetch(docDetailUrl);
+      if (detailRes.ok) {
+        const detailData = await detailRes.json();
+        if (detailData.body_html || detailData.abstract) {
+          fullNoticeText = `${detailData.title || doc.title}\n\n${detailData.abstract || ""}\n\n${detailData.body_html || detailData.description || ""}`;
+        }
+      }
+    } catch (fetchErr) {
+      console.warn(`Could not fetch detailed text for doc ${docNum}:`, fetchErr);
+    }
+
     let extracted: any = {
       type: "POLICY",
       affectedHtsCodes: [],
       effectiveDate: new Date().toISOString(),
       summary: doc.abstract || doc.title,
       actionRequired: false,
+      fullNoticeText: fullNoticeText.slice(0, 10000),
     };
 
     try {
@@ -68,6 +83,7 @@ async function run() {
 Title: "${doc.title}"
 Abstract: "${doc.abstract || ""}"
 Publication Date: "${doc.publication_date}"
+Full Content Snippet: "${fullNoticeText.slice(0, 4000)}"
 
 Extract matching type, affected HTS codes, effective date, short summary, and if action is required.`;
 
@@ -81,7 +97,7 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
         },
       });
 
-      extracted = JSON.parse(aiResponse.text || "{}");
+      extracted = { ...JSON.parse(aiResponse.text || "{}"), fullNoticeText: fullNoticeText.slice(0, 10000) };
     } catch (err) {
       console.warn("AI extraction failed, using default values:", err);
     }
@@ -95,7 +111,7 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
         impactLevel: extracted.actionRequired ? "High" : "Medium",
         effectiveDate: new Date(extracted.effectiveDate || doc.publication_date),
         documentNumber: docNum,
-        publishedText: doc.pdf_url,
+        publishedText: doc.pdf_url || docDetailUrl,
         status: extracted.actionRequired ? "Action Required" : "Informational",
         metadata: extracted,
       },

@@ -585,6 +585,7 @@ export async function createParty(actor: PartyActor, input: CreatePartyInput): P
     const created = await tx.party.create({
       data: {
         accountId: actor.accountId,
+        clientId: input.clientId ?? null,
         internalPartyCode,
         partyKind: input.partyKind ?? "ORGANIZATION",
         status: "DRAFT",

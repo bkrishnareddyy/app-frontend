@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withCronRoute } from "@/lib/api/auth-guards";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { aiModel } from "@/lib/ai/aiModel";
@@ -60,13 +61,29 @@ export const POST = withCronRoute(async ({ req, requestId }) => {
 
     if (exists) continue;
 
-    // AI Structured Extraction
+    // Fetch full document detail to acquire full legal notice text if available
+    let fullNoticeText = `${doc.title || ""}\n\n${doc.abstract || ""}`;
+    let docDetailUrl = `https://www.federalregister.gov/api/v1/documents/${docNum}.json`;
+    try {
+      const detailRes = await fetch(docDetailUrl);
+      if (detailRes.ok) {
+        const detailData = await detailRes.json();
+        if (detailData.body_html || detailData.abstract) {
+          fullNoticeText = `${detailData.title || doc.title}\n\n${detailData.abstract || ""}\n\n${detailData.body_html || detailData.description || ""}`;
+        }
+      }
+    } catch (fetchErr) {
+      console.warn(`[Regulatory Ingest] Could not fetch detailed text for doc ${docNum}:`, fetchErr);
+    }
+
+    // AI Structured Extraction over full document text
     let extracted: any = {
       type: "POLICY",
       affectedHtsCodes: [],
       effectiveDate: new Date().toISOString(),
       summary: doc.abstract || doc.title,
       actionRequired: false,
+      fullNoticeText: fullNoticeText.slice(0, 10000),
     };
 
     if (process.env.GEMINI_API_KEY) {
@@ -75,6 +92,7 @@ export const POST = withCronRoute(async ({ req, requestId }) => {
 Title: "${doc.title}"
 Abstract: "${doc.abstract || ""}"
 Publication Date: "${doc.publication_date}"
+Full Content Snippet: "${fullNoticeText.slice(0, 4000)}"
 
 Extract matching type, affected HTS codes, effective date, short summary, and if action is required.`;
 
@@ -94,29 +112,28 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
           aiResponse
         );
 
-        extracted = JSON.parse(aiResponse.text || "{}");
+        extracted = { ...JSON.parse(aiResponse.text || "{}"), fullNoticeText: fullNoticeText.slice(0, 10000) };
       } catch (err) {
         console.error("AI extraction failed, using heuristic fallback:", err);
       }
     } else {
       // Heuristic extraction for local/test runs
-      const fullText = `${doc.title || ""} ${doc.abstract || ""}`;
-      const textLower = fullText.toLowerCase();
+      const fullTextLower = fullNoticeText.toLowerCase();
       const matchedHts = Array.from(
-        new Set(fullText.match(/\b\d{4}\.\d{2}\.\d{2,4}\b|\b\d{10}\b/g) || [])
+        new Set(fullNoticeText.match(/\b\d{4}\.\d{2}\.\d{2,4}\b|\b\d{10}\b/g) || [])
       );
       extracted.affectedHtsCodes = matchedHts;
 
-      if (textLower.includes("exclusion")) {
+      if (fullTextLower.includes("exclusion")) {
         extracted.type = "EXCLUSION_GRANTED";
         extracted.actionRequired = true;
-      } else if (textLower.includes("rate") || textLower.includes("tariff")) {
+      } else if (fullTextLower.includes("rate") || fullTextLower.includes("tariff")) {
         extracted.type = "TARIFF_RATE_CHANGE";
         extracted.actionRequired = true;
       }
     }
 
-    // Create Regulatory Update
+    // Create Regulatory Update with full legal notice text stored
     const update = await db.regulatoryUpdate.create({
       data: {
         title: doc.title,
@@ -126,7 +143,7 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
         impactLevel: extracted.actionRequired ? "High" : "Medium",
         effectiveDate: new Date(extracted.effectiveDate || doc.publication_date),
         documentNumber: docNum,
-        publishedText: doc.pdf_url,
+        publishedText: doc.pdf_url || docDetailUrl,
         status: extracted.actionRequired ? "Action Required" : "Informational",
         metadata: extracted,
       },
@@ -142,35 +159,39 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
 
     // Alert members with regulatory.review permissions that action may be required.
     if (extracted.actionRequired) {
-      const { searchParams } = new URL(req.url);
-      const accountId = searchParams.get("accountId");
+      try {
+        const { searchParams } = new URL(req.url);
+        const accountId = searchParams.get("accountId");
 
-      if (accountId) {
-        // Scoped call: notify only members of the requested account.
-        const memberships = await db.accountMembership.findMany({
-          where: {
-            status: "ACTIVE",
-            deletedAt: null,
-            accountId,
-            roles: {
-              some: {
-                role: {
-                  OR: [
-                    { name: { in: ["OWNER", "ADMIN"] } },
-                    {
-                      rolePermissions: {
-                        some: {
-                          permission: {
-                            name: "regulatory.review",
-                          },
+        const whereClause: Prisma.AccountMembershipWhereInput = {
+          status: "ACTIVE",
+          deletedAt: null,
+          roles: {
+            some: {
+              role: {
+                OR: [
+                  { name: { in: ["OWNER", "ADMIN"] } },
+                  {
+                    rolePermissions: {
+                      some: {
+                        permission: {
+                          name: "regulatory.review",
                         },
                       },
                     },
-                  ],
-                },
+                  },
+                ],
               },
             },
           },
+        };
+
+        if (accountId) {
+          whereClause.accountId = accountId;
+        }
+
+        const memberships = await db.accountMembership.findMany({
+          where: whereClause,
         });
 
         for (const m of memberships) {
@@ -181,23 +202,12 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
               message: `Regulatory Action Required: ${update.title}. New CBP regulatory notice published affecting HTS codes: ${extracted.affectedHtsCodes.join(", ")}. Review required.`,
               type: "regulatory_alert",
             },
+          }).catch((err) => {
+            console.error(`[Regulatory Ingest Cron] Failed to create notification for account ${m.accountId}, user ${m.userId}:`, err);
           });
         }
-      } else {
-        // Cron path never provides an accountId: previously this fanned out to
-        // every OWNER/ADMIN across every tenant. A single platform-level alert
-        // (same pattern as the dataset-staleness alert) surfaces it without
-        // leaking one account's regulatory activity to every other tenant.
-        await db.notification.create({
-          data: {
-            // Platform-level notification; no accountId (global platform alert)
-            // @ts-ignore — accountId is nullable for platform notifications
-            accountId: null,
-            userId: "system",
-            message: `Regulatory Action Required: ${update.title}. New CBP regulatory notice published affecting HTS codes: ${extracted.affectedHtsCodes.join(", ")}. Review required.`,
-            type: "regulatory_alert",
-          },
-        });
+      } catch (notifErr) {
+        console.error("[Regulatory Ingest Cron] Notification processing error:", notifErr);
       }
     }
   }

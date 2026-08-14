@@ -1,33 +1,25 @@
 import { db } from "@/lib/db";
-import crypto from "crypto";
+import { computeEntityHash } from "@/modules/screening/entityHash";
 
 export class BisCslIngestionService {
-  /**
-   * Generates a deterministic SHA-256 entity hash for deduplication.
-   */
-  static computeEntityHash(sourceList: string, name: string, country?: string): string {
-    const normName = name.trim().toLowerCase();
-    const normCountry = (country || "").trim().toLowerCase();
-    const normList = sourceList.trim().toUpperCase();
-    return crypto
-      .createHash("sha256")
-      .update(`${normList}:${normName}:${normCountry}`)
-      .digest("hex");
-  }
+  static computeEntityHash = computeEntityHash;
 
   /**
    * Real, fully paginated fetcher for the official BIS Consolidated Screening List REST API.
    * Source: International Trade Administration (trade.gov)
    */
-  static async fetchAndIngest(maxRecords: number = 1000): Promise<{ success: boolean; count: number; note: string }> {
+  static async fetchAndIngest(
+    maxRecords: number = Number.MAX_SAFE_INTEGER
+  ): Promise<{ success: boolean; count: number; supersededCount: number; note: string }> {
     const pageSize = 100;
     let offset = 0;
     let totalFetched = 0;
-    const createdCount = 0;
-    const updatedCount = 0;
+    let supersededCount = 0;
+    const activeHashes = new Set<string>();
 
     const apiKey = process.env.TRADE_GOV_API_KEY || "";
     const baseUrl = "https://api.trade.gov/v1/consolidated_screening_list/search";
+    const now = new Date();
 
     while (totalFetched < maxRecords) {
       const url = new URL(baseUrl);
@@ -49,7 +41,6 @@ export class BisCslIngestionService {
 
       if (results.length === 0) break;
 
-      const now = new Date();
       const dbOperations = [];
 
       for (const item of results) {
@@ -78,6 +69,7 @@ export class BisCslIngestionService {
         const entityName = item.name || item.title || "Unknown Entity";
         const country = item.country || addresses.country || null;
         const entityHash = this.computeEntityHash(sourceList, entityName, country || undefined);
+        activeHashes.add(entityHash);
 
         dbOperations.push(
           db.screeningEntity.upsert({
@@ -93,6 +85,7 @@ export class BisCslIngestionService {
               remarks: item.remarks || item.federal_register_notice || null,
               publicationStatus: "PUBLISHED",
               publishedAt: now,
+              supersededAt: null,
               sourcePublishedAt: item.start_date ? new Date(item.start_date) : undefined,
             },
             create: {
@@ -122,10 +115,36 @@ export class BisCslIngestionService {
       if (offset >= totalAvailable) break;
     }
 
+    // Release Snapshot & Point-in-time Superseding:
+    // Mark entities removed from official CSL list as SUPERSEDED
+    if (activeHashes.size > 0) {
+      const activeCslSources = ["ENTITY_LIST", "DPL", "UNVERIFIED", "ISN", "SSI", "FSE", "PLC", "SDN", "NS_MBS"];
+      const existingPublished = await db.screeningEntity.findMany({
+        where: {
+          publicationStatus: "PUBLISHED",
+          sourceList: { in: activeCslSources },
+        },
+        select: { id: true, entityHash: true },
+      });
+
+      const toSupersede = existingPublished.filter((e) => !activeHashes.has(e.entityHash));
+      if (toSupersede.length > 0) {
+        supersededCount = toSupersede.length;
+        await db.screeningEntity.updateMany({
+          where: { id: { in: toSupersede.map((e) => e.id) } },
+          data: {
+            publicationStatus: "SUPERSEDED",
+            supersededAt: now,
+          },
+        });
+      }
+    }
+
     return {
       success: true,
       count: totalFetched,
-      note: `Fetched and processed ${totalFetched} authentic screening records from trade.gov CSL REST API.`,
+      supersededCount,
+      note: `Fetched and processed ${totalFetched} authentic screening records from trade.gov CSL REST API. Marked ${supersededCount} removed records as SUPERSEDED.`,
     };
   }
 }

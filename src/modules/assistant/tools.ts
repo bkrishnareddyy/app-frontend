@@ -19,7 +19,7 @@ const getFilingRoute = () => import("@/app/api/filing/[id]/route");
 import { ExceptionService } from "@/modules/exceptions/exception.service";
 import { HtsSearchService } from "@/modules/hts/htsSearchService";
 import { RulingService } from "@/modules/classification/rulingService";
-import { calculateDutyStack, loadHtsCodesMap, type TariffLineInput } from "@/lib/tariff/dutyEngine";
+import { calculateDutyStack, loadHtsCodesMap, parsePublishedDutyRate, type TariffLineInput } from "@/lib/tariff/dutyEngine";
 import { ImpactAnalysisService } from "@/modules/regulatory/impactAnalysisService";
 import { canUseTool } from "@/modules/copilot/copilotAccess";
 import type { CopilotToolAccess } from "@/modules/copilot/copilotToolTypes";
@@ -1104,7 +1104,8 @@ const getDutyExposureRisks: AssistantTool = {
     const risks = lineItems.map((li) => {
       const value = Number(li.totalValue ?? 0);
       const hts = li.htsCode ? htsMap[li.htsCode] : null;
-      const rate = hts ? Number(hts.generalDutyRate ?? 0.05) : 0.05;
+      const parsedRate = hts?.generalDutyRate ? parsePublishedDutyRate(hts.generalDutyRate) : null;
+      const rate = parsedRate !== null ? parsedRate : 0.05;
       const estimatedDuty = value * rate;
       return {
         lineItemId: li.id,

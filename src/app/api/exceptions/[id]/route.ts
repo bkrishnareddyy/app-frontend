@@ -21,6 +21,7 @@ const updateSchema = z.object({
   shipmentId: z.string().min(1).nullable().optional(),
   resolutionReason: z.string().optional(),
   resolutionReasonCode: z.string().optional(),
+  source: z.string().optional(),
   expectedVersion: z.number().int({ message: "expectedVersion integer is required for concurrency control" }),
 });
 
@@ -55,13 +56,15 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       name: resolverName,
     });
 
+    const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || bodyVal.data.source === "CHAT") ? "CHAT" : "UI";
+
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
       action: "exception.update",
       entity: "ExceptionItem",
       entityId: id,
-      source: "UI",
+      source: auditSource,
       metadata: {
         newStatus: updated.status,
         version: updated.version,

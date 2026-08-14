@@ -17,12 +17,18 @@ describe("Dataset Registry — Real Ingestion Wiring & Compliance Safety", () =>
     expect(structuredDocs.length).toBe(7);
   });
 
-  it("has exactly 4 LIVE datasets with genuine REST API fetchers (hts-schedule, federal-register, bis-csl, cbp-cross-rulings) and 14 NOT_YET_IMPLEMENTED", () => {
+  it("has exactly 5 LIVE datasets with genuine fetchers (hts-schedule, federal-register, bis-csl, cbp-cross-rulings, ofac-sdn) and 13 NOT_YET_IMPLEMENTED", () => {
     const live = DATASET_DEFINITIONS.filter((d) => d.readinessStatus === "LIVE");
     const notYet = DATASET_DEFINITIONS.filter((d) => d.readinessStatus === "NOT_YET_IMPLEMENTED");
-    expect(live.length).toBe(4);
-    expect(live.map((d) => d.id).sort()).toEqual(["bis-csl", "cbp-cross-rulings", "federal-register", "hts-schedule"]);
-    expect(notYet.length).toBe(14);
+    expect(live.length).toBe(5);
+    expect(live.map((d) => d.id).sort()).toEqual([
+      "bis-csl",
+      "cbp-cross-rulings",
+      "federal-register",
+      "hts-schedule",
+      "ofac-sdn",
+    ]);
+    expect(notYet.length).toBe(13);
   });
 
   it("all LIVE datasets have a valid cron endpoint configured", () => {
@@ -30,6 +36,15 @@ describe("Dataset Registry — Real Ingestion Wiring & Compliance Safety", () =>
     for (const d of live) {
       expect(d.endpoint).toBeTruthy();
       expect(d.endpoint).toMatch(/^\/api\/cron\//);
+    }
+  });
+
+  it("only ofac-sdn is selfScheduled, and only among LIVE datasets", () => {
+    const selfScheduled = DATASET_DEFINITIONS.filter((d) => d.selfScheduled);
+    expect(selfScheduled.map((d) => d.id)).toEqual(["ofac-sdn"]);
+    for (const d of selfScheduled) {
+      expect(d.readinessStatus).toBe("LIVE");
+      expect(d.endpoint).toBeTruthy();
     }
   });
 
@@ -87,6 +102,12 @@ describe("Dataset Registry — Real Ingestion Wiring & Compliance Safety", () =>
     expect(cross?.readinessStatus).toBe("LIVE");
     expect(cross?.endpoint).toBe("/api/cron/cbp-cross-rulings-ingest");
 
+    const ofac = getDatasetById("ofac-sdn");
+    expect(ofac).toBeDefined();
+    expect(ofac?.readinessStatus).toBe("LIVE");
+    expect(ofac?.endpoint).toBe("/api/cron/ofac-sdn-ingest");
+    expect(ofac?.selfScheduled).toBe(true);
+
     const sec301 = getDatasetById("section-301-rates");
     expect(sec301).toBeDefined();
     expect(sec301?.readinessStatus).toBe("NOT_YET_IMPLEMENTED");
@@ -96,7 +117,7 @@ describe("Dataset Registry — Real Ingestion Wiring & Compliance Safety", () =>
 
 describe("Dataset Registry — triggerDatasetRefresh safety & zero-fabrication guarantees", () => {
   it("returns NOT_IMPLEMENTED error for un-wired datasets without any side effects", async () => {
-    const result = await triggerDatasetRefresh("ofac-sdn");
+    const result = await triggerDatasetRefresh("usitc-trade-remedy");
     expect(result.success).toBe(false);
     expect(result.message).toContain("not yet implemented");
     expect(result.logId).toBeUndefined();

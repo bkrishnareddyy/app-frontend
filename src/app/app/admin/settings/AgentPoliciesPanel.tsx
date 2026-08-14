@@ -6,9 +6,12 @@ import { Bot, ChevronDown, ChevronRight, History, Save } from "lucide-react";
 interface AgentPolicy {
   id: string;
   agentName: string;
+  policyType?: string;
   autoThreshold: number;
   confirmThreshold: number;
   requirePartMasterMatch: boolean;
+  requireHumanApproval?: boolean;
+  minimumReviewerRole?: string | null;
   updatedAt: string;
 }
 
@@ -46,9 +49,12 @@ export function AgentPoliciesPanel({ initialPolicies, history }: AgentPoliciesPa
     const policy = policies[agentKey];
     const draft = drafts[agentKey] ?? {};
     return {
+      policyType: draft.policyType ?? policy?.policyType ?? "THRESHOLD",
       autoThreshold: draft.autoThreshold ?? policy?.autoThreshold ?? 85,
       confirmThreshold: draft.confirmThreshold ?? policy?.confirmThreshold ?? 60,
       requirePartMasterMatch: draft.requirePartMasterMatch ?? policy?.requirePartMasterMatch ?? false,
+      requireHumanApproval: draft.requireHumanApproval ?? policy?.requireHumanApproval ?? false,
+      minimumReviewerRole: draft.minimumReviewerRole ?? policy?.minimumReviewerRole ?? "SPECIALIST",
     };
   };
 
@@ -212,6 +218,47 @@ export function AgentPoliciesPanel({ initialPolicies, history }: AgentPoliciesPa
                   </p>
                 </div>
               </label>
+
+              {/* Stage-Gate Policy Controls (F11-F12) */}
+              <div className="pt-3 border-t border-border/60 grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-ink block mb-1">Policy Type</label>
+                  <select
+                    value={draft.policyType}
+                    onChange={(e) => updateDraft(key, "policyType", e.target.value)}
+                    className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-border bg-white text-ink font-medium"
+                  >
+                    <option value="THRESHOLD">Confidence Threshold</option>
+                    <option value="STAGE_GATE">Stage-Gate Policy</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-ink block mb-1">Min Reviewer Role</label>
+                  <select
+                    value={draft.minimumReviewerRole || "SPECIALIST"}
+                    onChange={(e) => updateDraft(key, "minimumReviewerRole", e.target.value)}
+                    className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-border bg-white text-ink font-medium"
+                  >
+                    <option value="SPECIALIST">Specialist</option>
+                    <option value="BROKER">Licensed Broker</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="OWNER">Owner</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center pt-5">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={draft.requireHumanApproval}
+                      onChange={(e) => updateDraft(key, "requireHumanApproval", e.target.checked)}
+                      className="w-4 h-4 rounded border-border text-brand focus:ring-brand cursor-pointer"
+                    />
+                    <span className="text-xs font-semibold text-ink">Force Human Gate</span>
+                  </label>
+                </div>
+              </div>
             </div>
           );
         })}

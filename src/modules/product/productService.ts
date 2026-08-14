@@ -439,6 +439,7 @@ export async function createProduct(
     const created = await tx.product.create({
       data: {
         accountId: actor.accountId,
+        clientId: input.clientId ?? null,
         productName: input.productName,
         internalSku,
         commercialDescription: input.commercialDescription ?? null,

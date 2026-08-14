@@ -1436,12 +1436,17 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px" }}
                     onClick={async () => {
-                      await fetch("/api/decisions", {
+                      const res = await fetch("/api/decisions", {
                         method: "POST",
                         headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
                         body: JSON.stringify({ decisionId: d.id, action: "APPROVE", source: "CHAT" }),
                       });
-                      alert("Decision approved successfully.");
+                      if (res.ok) {
+                        alert("Decision approved successfully.");
+                      } else {
+                        const data = await res.json().catch(() => ({}));
+                        alert(`Failed to approve decision: ${data.error || res.statusText}`);
+                      }
                     }}>
                     Approve
                   </Button>
@@ -1449,12 +1454,17 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                     onClick={async () => {
                       const reason = prompt("Enter rejection reason:");
                       if (reason) {
-                        await fetch("/api/decisions", {
+                        const res = await fetch("/api/decisions", {
                           method: "POST",
                           headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
                           body: JSON.stringify({ decisionId: d.id, action: "REJECT", humanNotes: reason, source: "CHAT" }),
                         });
-                        alert("Decision rejected.");
+                        if (res.ok) {
+                          alert("Decision rejected.");
+                        } else {
+                          const data = await res.json().catch(() => ({}));
+                          alert(`Failed to reject decision: ${data.error || res.statusText}`);
+                        }
                       }
                     }}>
                     Reject
@@ -1488,12 +1498,23 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                   <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px" }}
                     onClick={async () => {
                       const note = prompt("Enter resolution note:") || "Resolved via chat action";
-                      await fetch(`/api/exceptions/${ex.id}`, {
+                      const res = await fetch(`/api/exceptions/${ex.id}`, {
                         method: "PATCH",
                         headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
-                        body: JSON.stringify({ status: "RESOLVED", resolutionReasonCode: "DOCUMENTATION_VERIFIED", resolutionReason: note, source: "CHAT" }),
+                        body: JSON.stringify({
+                          status: "RESOLVED",
+                          resolutionReasonCode: "DOCUMENTATION_VERIFIED",
+                          resolutionReason: note,
+                          source: "CHAT",
+                          expectedVersion: ex.version ?? 1,
+                        }),
                       });
-                      alert("Exception resolved.");
+                      if (res.ok) {
+                        alert("Exception resolved.");
+                      } else {
+                        const data = await res.json().catch(() => ({}));
+                        alert(`Failed to resolve exception: ${data.error || res.statusText}`);
+                      }
                     }}>
                     Resolve Exception
                   </Button>

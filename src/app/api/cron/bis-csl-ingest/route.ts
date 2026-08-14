@@ -6,11 +6,12 @@ export const maxDuration = 300;
 
 export const POST = withCronRoute(async ({ requestId }) => {
   try {
-    const result = await BisCslIngestionService.fetchAndIngest(1000);
+    const result = await BisCslIngestionService.fetchAndIngest();
     return NextResponse.json({
       status: "SUCCESS",
       requestId,
       count: result.count,
+      supersededCount: result.supersededCount,
       note: result.note,
     });
   } catch (err: any) {

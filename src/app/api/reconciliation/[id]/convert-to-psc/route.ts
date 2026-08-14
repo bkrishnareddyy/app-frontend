@@ -50,7 +50,11 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const correctionType = typeMap[issue.field] || "DUTY_RATE_CORRECTION";
 
   const origDutyDec = filing.totalDuties ? new Decimal(filing.totalDuties) : new Decimal(0);
-  const corrDutyDec = origDutyDec.times(0.9); // Default estimated 10% duty adjustment on correction
+  // Initial corrected duty defaults to original duty (0 estimated delta) pending explicit recalculation
+  let corrDutyDec = origDutyDec;
+  if (issue.actualValue && !isNaN(Number(issue.actualValue))) {
+    corrDutyDec = new Decimal(Number(issue.actualValue));
+  }
   const refundAmountDec = roundToCents(Decimal.max(0, origDutyDec.minus(corrDutyDec)));
 
   // 4. Create PostSummaryCorrection record

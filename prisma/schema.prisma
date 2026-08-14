@@ -4013,6 +4013,8 @@ model DatasetRefreshLog {
   summary     String?   // brief success message (e.g. "Staged 28,431 nodes")
   errorMessage String?  // set on FAILED
   itemsIngested Int?    // rows written/updated, if applicable
+  sourceReportedTotal Int? // authoritative total the source itself reported (e.g. OFAC XML's Record_Count) for completeness checks
+  sourcePublishDate DateTime? // publish/version date the source reported for this run's data
   startedAt   DateTime  @default(now())
   completedAt DateTime?
 
