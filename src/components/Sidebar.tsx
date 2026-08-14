@@ -162,10 +162,13 @@ export function Sidebar({
         )}
       >
         <div className="h-16 px-4 flex items-center justify-between border-b border-border">
-          <Link
-            href="/app/dashboard"
+          <a
+            href="/deck/index.html"
+            target="_blank"
+            rel="noopener noreferrer"
             onClick={() => setMobileOpen(false)}
             className="flex items-center space-x-3 group min-w-0"
+            title="Open Qubere pitch deck"
           >
             <div className="w-9 h-9 shrink-0 rounded-xl bg-brand flex items-center justify-center text-white shadow-md shadow-brand/20 group-hover:scale-105 transition-transform">
               <ShieldCheck className="w-5 h-5" />
@@ -175,7 +178,7 @@ export function Sidebar({
                 Qubere
               </span>
             )}
-          </Link>
+          </a>
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
