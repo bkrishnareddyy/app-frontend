@@ -121,9 +121,6 @@ async function logReview(
     entity: type,
     entityId: id,
     source: "UI",
-    // createAuditLog's `beforeJson`/`afterJson` params are declared but never
-    // written to a column (see src/lib/audit.ts) — `metadata` is the field
-    // that's actually persisted, so the before/after snapshot goes there.
     metadata: { from: beforeStatus, to: afterStatus, reviewNote },
     requestId: actor.requestId ?? null,
     // Approving is what unlocks this rate for real duty-stack use, so a
