@@ -5,10 +5,17 @@
 The Qubere Platform relies on authoritative trade data, tariff schedules, sanctions lists, regulatory notices, and rules of origin to power classification, landed cost calculations, trade agreement qualification, screening, and audit defense.
 
 To guarantee maximum fidelity, transparency, and operational readiness:
+
 - **No Synthetic Fallbacks in Production**: Operational calculations derive strictly from verified government and multilateral sources.
-- **Staging & Approval Workflow**: High-impact rate modifications (e.g. HTSUS schedule releases or Section 301 annex revisions) stage as `DRAFT` releases (`HtsRelease`) for platform administrator review before publishing.
+- **Honest Readiness Status**: Each dataset carries a `readinessStatus` of `LIVE` (ingestion fully wired and active) or `NOT_YET_IMPLEMENTED` (planned, on engineering roadmap, schema tables created). The Platform Admin `<Data>` tab clearly distinguishes these — "Run Now" is only available for `LIVE` datasets. Un-wired datasets never return a fake success response.
+- **Staging & Approval Workflow**: High-impact rate modifications (HTSUS schedule, Section 301/232 annex revisions, AD/CVD company rates, Section 301 exclusions) stage as `PENDING`/`DRAFT` for platform administrator review before affecting production calculations. Same pattern applied to LLM-extracted data.
+- **Point-in-Time Versioning for Screening**: `ScreeningEntity` (OFAC SDN, BIS CSL) uses `DRAFT → PUBLISHED → SUPERSEDED` versioning — enabling "what was this party's sanction status on date X?" queries for audit defensibility.
 - **Zero-Downtime Delta Processing**: Differential updates compute SHA-256 node hashes and audit changes (`HtsChange`) without blocking live calculation engines.
 - **Circuit Breaker Protection**: Ingestion pipelines automatically reject empty payloads (0-item yields) to prevent database truncation or corruption.
+- **Single Dispatcher Cron**: Vercel Hobby plan supports 2 cron entries. One entry (`/api/cron/data-dispatcher` at `0 2 * * *`) fans out to all `LIVE` datasets based on `scheduledFrequencyHours` vs `lastSuccessAt` from the `DatasetRefreshLog` table.
+- **Staleness Alerting**: The dispatcher checks `staleThresholdHours` for every dataset on each run. Any dataset exceeding its threshold triggers a `Notification` (`dataset_staleness_alert`) and an `AuditLog` event.
+- **Heavy Parses via Inngest**: XML streaming (OFAC), PDF/OCR extraction (Section 301), and LLM batch extraction (AD/CVD company rates) run as durable Inngest background functions with retry semantics — not synchronously in POST handlers at risk of Vercel timeout.
+- **Persistent Run Log**: `DatasetRefreshLog` DB table is the source of truth for last-run timestamps and status displayed in the `<Data>` tab. There is no in-memory state.
 
 ---
 
