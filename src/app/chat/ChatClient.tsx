@@ -9,7 +9,7 @@ import {
   Files, Package, Landmark, MessageSquare, ChevronRight,
   ChevronsLeft, ChevronsRight, Moon, Sun, Paperclip, X, Coins,
 } from "lucide-react";
-import { Badge, Card } from "@/components/ui";
+import { Badge, Card, Button } from "@/components/ui";
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
@@ -1434,7 +1434,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
               <p style={{ fontSize: 12, color: th.inkMuted, marginTop: 4 }}>{d.decisionSummary || d.proposedDescription || "HTS Classification proposal"}</p>
               {(!d.status || d.status === "PROPOSED" || d.status === "PENDING") && (
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <Button size="sm" variant="outline" style={{ fontSize: 11, padding: "2px 10px" }}
+                  <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px" }}
                     onClick={async () => {
                       await fetch("/api/decisions", {
                         method: "POST",
@@ -1445,7 +1445,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                     }}>
                     Approve
                   </Button>
-                  <Button size="sm" variant="outline" style={{ fontSize: 11, padding: "2px 10px", color: "#dc2626" }}
+                  <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px", color: "#dc2626" }}
                     onClick={async () => {
                       const reason = prompt("Enter rejection reason:");
                       if (reason) {
@@ -1485,7 +1485,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
               <p style={{ fontSize: 11, color: th.inkMuted, marginTop: 4 }}>{ex.shipmentNumber ? `Shipment: ${ex.shipmentNumber}` : ex.category}</p>
               {ex.status !== "RESOLVED" && ex.status !== "WAIVED" && (
                 <div style={{ marginTop: 8 }}>
-                  <Button size="sm" variant="outline" style={{ fontSize: 11, padding: "2px 10px" }}
+                  <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px" }}
                     onClick={async () => {
                       const note = prompt("Enter resolution note:") || "Resolved via chat action";
                       await fetch(`/api/exceptions/${ex.id}`, {
@@ -1589,7 +1589,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
     return (
       <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
         <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: th.inkMuted, marginBottom: 4 }}>Classification Rationale (GRI Analysis)</p>
-        <p style={{ fontSize: 14, fontWeight: 700, color: th.ink, marginBottom: 8 }}>HTS Code: {r?.approvedHtsCode ?? r?.htsCode ?? "Assigned"}</p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: th.ink, marginBottom: 8 }}>HTS Code: {String(r?.approvedHtsCode ?? r?.htsCode ?? "Assigned")}</p>
         {griSteps.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <p style={{ fontSize: 11, fontWeight: 600, color: th.inkMuted }}>GRI Steps:</p>

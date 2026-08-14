@@ -166,34 +166,6 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
         }
       }
 
-      // 3. CLASSIFICATION_REVIEW: Check if line item has pending classification review / alternative recommendation
-      const classificationDecision = await db.classificationDecision.findFirst({
-        where: { shipmentId: filing.shipment.id, htsCode: item.htsCode },
-      });
-      if (classificationDecision && classificationDecision.reviewStatus === "NeedsReview") {
-        const exists = await db.refundOpportunity.findFirst({
-          where: { accountId, filingId: filing.id, opportunityType: "CLASSIFICATION_REVIEW" },
-        });
-        if (!exists) {
-          const opp = await db.refundOpportunity.create({
-            data: {
-              accountId,
-              filingId: filing.id,
-              opportunityType: "CLASSIFICATION_REVIEW",
-              estimatedRefundAmount: null, // Null until confirmed
-              confidence: 80,
-              basis: {
-                reason: "Classification review decision recommends re-evaluating HTS classification.",
-                lineItemId: item.id,
-                htsCode: item.htsCode,
-              },
-              status: "Identified",
-            },
-          });
-          opportunitiesCreated.push(opp);
-        }
-      }
-
       // 4. FIRST_SALE: Check if item transaction value indicates multi-tier purchase
       const hasFirstSalePotential = item.description.toLowerCase().includes("factory") || item.description.toLowerCase().includes("middleman");
       if (hasFirstSalePotential) {

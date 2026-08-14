@@ -165,8 +165,8 @@ export async function* runAssistantTurn(
 
   if (useAnthropic) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const anthropicTools: Anthropic.Tool[] = tools.map((t) => ({
-      name: t.declaration.name,
+    const anthropicTools: Anthropic.Tool[] = tools.filter((t) => t.declaration.name != null).map((t) => ({
+      name: t.declaration.name!,
       description: t.declaration.description ?? "",
       input_schema: {
         type: "object" as const,

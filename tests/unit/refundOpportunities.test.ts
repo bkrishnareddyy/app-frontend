@@ -64,7 +64,7 @@ describe("Capability A — Refund Opportunity Detection & Status Transitions", (
       exclusion: true,
     } as any);
     vi.mocked(db.refundOpportunity.findFirst).mockResolvedValue(null);
-    vi.mocked(db.refundOpportunity.create).mockImplementation(async (args: any) => ({
+    (vi.mocked(db.refundOpportunity.create) as any).mockImplementation(async (args: any) => ({
       id: "opp_301",
       ...args.data,
     }));

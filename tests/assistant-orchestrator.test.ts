@@ -11,13 +11,13 @@ import { runAssistantTurn } from "@/modules/assistant/orchestrator";
 import type { AccountContext } from "@/lib/auth";
 
 describe("Assistant Orchestrator Unit Tests", () => {
-  const mockCtx: AccountContext = {
+  const mockCtx = {
     accountId: "acc-test-123",
     userId: "usr-test-456",
-    roles: ["ADMIN"],
+    roleIds: ["ADMIN"],
     roleNames: ["ADMIN"],
     permissions: ["ai.use", "shipments.read"],
-  };
+  } as unknown as AccountContext;
 
   const origAnthropicKey = process.env.ANTHROPIC_API_KEY;
   const origGeminiKey = process.env.GEMINI_API_KEY;

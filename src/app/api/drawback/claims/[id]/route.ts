@@ -59,7 +59,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
         accountId: ctx.accountId,
         userId: ctx.userId,
         userPermissions: ctx.permissions || [],
-        isBroker: ctx.roles?.includes("broker") || ctx.roles?.includes("admin"),
+        isBroker: ctx.roleIds?.includes("broker") || ctx.roleIds?.includes("admin"),
       });
     } catch (err: any) {
       if (err instanceof DrawbackClaimWorkflowError) {

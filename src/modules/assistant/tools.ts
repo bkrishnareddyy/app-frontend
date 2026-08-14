@@ -46,7 +46,7 @@ export function zodToGeminiSchema(zodSchema: z.ZodObject<any>): Schema {
       }
     }
 
-    if (!isOptional && prop._def?.typeName !== "ZodOptional" && prop._def?.typeName !== "ZodDefault") {
+    if (!isOptional && (prop as any)._def?.typeName !== "ZodOptional" && (prop as any)._def?.typeName !== "ZodDefault") {
       required.push(key);
     }
 
@@ -586,7 +586,7 @@ const listExceptions: AssistantTool = {
     if (!parsed.success) return { error: parsed.error.message };
     const { shipmentId } = parsed.data;
 
-    const items = await ExceptionService.listExceptions(ctx, {
+    const { exceptions: items } = await ExceptionService.listExceptions(ctx.accountId, ctx.userId, {
       ...(shipmentId && { shipmentId }),
       status: "OPEN",
     });
@@ -595,7 +595,7 @@ const listExceptions: AssistantTool = {
       exceptions: items.map((e) => ({
         id: e.id,
         category: e.category,
-        title: e.title,
+        title: e.description,
         severity: e.severity,
         status: e.status,
         shipmentNumber: e.shipment?.shipmentNumber ?? null,
@@ -764,10 +764,10 @@ const getDutyStack: AssistantTool = {
     const line: TariffLineInput = {
       htsCode,
       countryOfOrigin: countryOfOrigin ?? "CN",
-      enteredValue: enteredValueUsd ?? 10000,
+      totalValue: enteredValueUsd ?? 10000,
     };
-    const htsMap = await loadHtsCodesMap();
-    return calculateDutyStack([line], htsMap);
+    const htsMap = await loadHtsCodesMap([line]);
+    return calculateDutyStack(line, htsMap[htsCode ?? ""] ?? null);
   },
 };
 
@@ -1100,17 +1100,17 @@ const getDutyExposureRisks: AssistantTool = {
       take: 200,
     });
 
-    const htsMap = await loadHtsCodesMap();
+    const htsMap = await loadHtsCodesMap(lineItems);
     const risks = lineItems.map((li) => {
-      const value = Number(li.enteredValue ?? li.totalValue ?? 0);
-      const hts = li.htsCode ? htsMap.get(li.htsCode) : null;
+      const value = Number(li.totalValue ?? 0);
+      const hts = li.htsCode ? htsMap[li.htsCode] : null;
       const rate = hts ? Number(hts.generalDutyRate ?? 0.05) : 0.05;
       const estimatedDuty = value * rate;
       return {
         lineItemId: li.id,
         shipmentNumber: li.shipment?.shipmentNumber ?? "Unknown",
         importerName: li.shipment?.importerName ?? "Unknown",
-        description: li.invoiceDescription || li.description || "Unclassified line item",
+        description: li.description || "Unclassified line item",
         htsCode: li.htsCode ?? "UNCLASSIFIED",
         enteredValue: value,
         dutyRate: rate,

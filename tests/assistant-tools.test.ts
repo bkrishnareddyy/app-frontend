@@ -3,10 +3,10 @@ import { availableAssistantTools, getToolByName, ASSISTANT_TOOLS } from "@/modul
 import type { AccountContext } from "@/lib/auth";
 
 describe("Assistant Tool Registry & Permission Unit Tests", () => {
-  const fullCtx: AccountContext = {
+  const fullCtx = {
     accountId: "acc-123",
     userId: "usr-123",
-    roles: ["ADMIN"],
+    roleIds: ["ADMIN"],
     roleNames: ["ADMIN"],
     permissions: [
       "shipments.read",
@@ -21,15 +21,15 @@ describe("Assistant Tool Registry & Permission Unit Tests", () => {
       "analytics.read",
       "filing.validate",
     ],
-  };
+  } as unknown as AccountContext;
 
-  const restrictedCtx: AccountContext = {
+  const restrictedCtx = {
     accountId: "acc-123",
     userId: "usr-restricted",
-    roles: ["VIEWER"],
+    roleIds: ["VIEWER"],
     roleNames: ["VIEWER"],
     permissions: ["shipments.read"],
-  };
+  } as unknown as AccountContext;
 
   it("exports all 27 assistant tools with valid Zod schemas and declarations", () => {
     expect(ASSISTANT_TOOLS.length).toBeGreaterThanOrEqual(27);
