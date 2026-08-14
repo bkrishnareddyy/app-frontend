@@ -816,7 +816,7 @@ const getFilingStatus: AssistantTool = {
   execute: async (ctx, rawArgs) => {
     const parsed = getFilingStatusSchema.safeParse(rawArgs);
     if (!parsed.success) return { error: parsed.error.message };
-    const { filingId, shipmentId } = parsed.data;
+    let { filingId, shipmentId } = parsed.data;
 
     if (!filingId && shipmentId) {
       const match = await db.customsFiling.findFirst({
