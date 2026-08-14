@@ -3860,6 +3860,35 @@ model FilingChildActionRule {
   @@unique([country, procedureCode, messageName, status, action])
 }
 
+/// Which extra data a given (country, procedure, messageName, action) needs
+/// beyond the declaration itself -- e.g. a German NCTS transit cancellation
+/// needing a guarantee reference the US consumption cancellation doesn't.
+/// One row per context, not one row per field: `fields` is the whole
+/// requirement list as JSON, so resolution stays a single most-specific-match
+/// lookup identical to every other table here, rather than needing to gather
+/// a group of rows at the same specificity level.
+///
+/// No match -> treat as zero extra fields required. Unlike the allow/deny
+/// tables above, this is a safe default, not a fail-closed security decision:
+/// the action still works correctly with only the base declaration data.
+///
+/// Each entry in `fields` is `{ key, label, type, required, source, helpText? }`.
+/// `source` is either "prompt" (the operator supplies it when they invoke the
+/// action) or "shipment.<dotted.path>" (resolved automatically from data
+/// already in hand -- never asked of the operator). This is what lets
+/// cancelFiling()/amendFiling() stay single, country-agnostic implementations:
+/// they ask this table what a context needs, they never branch on country.
+model FilingActionDataRequirement {
+  id            String @id @default(cuid())
+  country       String // ISO code, or "*" wildcard
+  procedureCode String // or "*"
+  messageName   String // or "*"
+  action        String // a FilingMessageActionCatalog code, e.g. "CANCELLATION" | "AMENDMENT"
+  fields        Json   // Array<{ key, label, type, required, source, helpText? }>
+
+  @@unique([country, procedureCode, messageName, action])
+}
+
 /// (destinationCountry) -> the authority name and filing-system label to stamp
 /// on a new CustomsFiling. No wildcard fallback -- unlike the lookup tables
 /// above, "which authority is this filing with" has no sensible generic

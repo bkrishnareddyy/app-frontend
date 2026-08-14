@@ -59,6 +59,13 @@ describe("navigation visibility", () => {
     }
   });
 
+  it("shows Filing Configuration only to platform admins", () => {
+    expect(hrefsFor(platform)).toContain("/app/filing-config");
+    for (const access of [viewer, member, admin, owner]) {
+      expect(hrefsFor(access)).not.toContain("/app/filing-config");
+    }
+  });
+
   it("gives every member the operational pages", () => {
     const hrefs = hrefsFor(viewer);
     expect(hrefs).toContain("/app/shipments");

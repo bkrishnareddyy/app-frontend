@@ -5,6 +5,7 @@ import { buildCanonicalDeclaration } from "@/lib/canonicalMessaging/declarationB
 import { resolveMessageContext } from "@/lib/canonicalMessaging/resolveMessageContext";
 import { PgCanonicalMessagePublisher } from "@/lib/canonicalMessaging/publisher";
 import { getActiveSchemaVersion } from "@/lib/canonicalMessaging/schemaValidator";
+import { buildActionExtensions } from "@/lib/canonicalMessaging/actionDataRequirements";
 import type { CanonicalCustomsDeclaration, CanonicalFilingRequestData, CanonicalMessage, FilingMessageAction } from "@/lib/canonicalMessaging/types";
 import { randomUUID } from "crypto";
 
@@ -86,7 +87,12 @@ export class FilingService {
    * Which statuses offer this action at all is FilingChildActionRule's job
    * (see resolveChildActions()), not this method's.
    */
-  static async cancelFiling(accountId: string, userId: string, filingId: string) {
+  static async cancelFiling(
+    accountId: string,
+    userId: string,
+    filingId: string,
+    promptedValues: Record<string, unknown> = {}
+  ) {
     const filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId },
       include: { shipment: true },
@@ -117,7 +123,28 @@ export class FilingService {
       "CANCELLATION"
     );
 
-    const message = await FilingService.buildMessage(accountId, filingId, filing.authority, context, declaration, priorMessage.messageId);
+    // Whatever this (country, procedure, action) needs beyond the reused
+    // declaration -- e.g. a German NCTS guarantee reference. Never a branch
+    // on country here: FilingActionDataRequirement decides what's needed,
+    // this method only asks for it. Attached to the declaration's own
+    // extensions bucket, not invented as a new envelope concept.
+    const extensions = await buildActionExtensions(
+      { country: context.country, procedureCode: context.procedure, messageName: context.messageName },
+      "CANCELLATION",
+      { filing, shipment: filing.shipment, declaration },
+      promptedValues
+    );
+    const declarationWithExtensions: CanonicalCustomsDeclaration =
+      Object.keys(extensions).length > 0 ? { ...declaration, extensions: { ...declaration.extensions, ...extensions } } : declaration;
+
+    const message = await FilingService.buildMessage(
+      accountId,
+      filingId,
+      filing.authority,
+      context,
+      declarationWithExtensions,
+      priorMessage.messageId
+    );
     await new PgCanonicalMessagePublisher().publish(context.queueName, message);
 
     const updatedFiling = await db.customsFiling.update({

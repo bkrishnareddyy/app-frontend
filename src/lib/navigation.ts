@@ -76,6 +76,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
       { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },
       { id: "simulator", labelKey: "tariffSimulator", href: "/app/simulator", icon: "simulator" },
+      { id: "filingConfig", labelKey: "filingConfiguration", href: "/app/filing-config", icon: "settings", platformAdminOnly: true },
     ],
   },
   {

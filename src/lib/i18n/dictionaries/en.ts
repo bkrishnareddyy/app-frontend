@@ -15,6 +15,7 @@ export const en = {
     complianceMonitoring: "Compliance",
     regulatoryIntel: "Regulatory Intel",
     tariffSimulator: "Tariff Simulator",
+    filingConfiguration: "Filing Configuration",
     agents: "AI Agents",
     apiDocs: "API",
     accountProfile: "Account Profile",
@@ -90,6 +91,157 @@ export const en = {
     selectFile: "Select File",
     uploading: "Uploading & Processing with Agent...",
     uploadSubmit: "Upload File & Process with Agent",
+  },
+  // Filing Configuration -- covers only static, developer-authored UI text.
+  // Admin-entered field labels/help (the values typed into the "Required
+  // Fields" accordion) and canonical-schema field labels are deliberately
+  // out of scope -- see docs/plans/review notes on why those need a
+  // different mechanism, not a static dictionary.
+  filingConfig: {
+    title: "Filing Configuration",
+    subtitle:
+      "Global reference data every tenant's customs filing workflow resolves against. Changes here take effect immediately, for every account.",
+    addRow: "Add Row",
+    searchPlaceholder: "Search...",
+    noRows: "No rows.",
+    loading: "Loading...",
+    actionsColumn: "Actions",
+    editRow: "Edit row",
+    deleteRow: "Delete row",
+    deleteConfirmTitle: "Delete this row?",
+    deleteConfirmBody: "This immediately affects filing resolution for every tenant. This cannot be undone.",
+    cancel: "Cancel",
+    delete: "Delete",
+    showingRows: "Showing {first}-{last} of {total}",
+    pageOf: "Page {page} of {pages}",
+    noFieldsYet: "No fields yet.",
+    addField: "Add Field",
+    removeField: "Remove field",
+    noGridRowsYet: "No rows yet.",
+    addGridRow: "Add Row",
+    removeGridRow: "Remove row",
+    yes: "Yes",
+    no: "No",
+    saveChanges: "Save Changes",
+    createRow: "Create Row",
+    editTitlePrefix: "Edit",
+    addTitlePrefix: "Add",
+    fieldsConfiguredCount: "{count} field(s) configured",
+    wildcardHelp: '"*" matches any value (wildcard fallback) when no more specific row exists.',
+    tables: {
+      procedureMapping: {
+        label: "Procedure Mapping",
+        description: "(entryType, country) → the third-party procedure code used to file that entry type in that country.",
+        fields: {
+          entryType: { label: "Entry Type" },
+          country: {
+            label: "Country",
+            help: 'ISO 3166-1 alpha-2, or "*". "*" matches any value (wildcard fallback) when no more specific row exists.',
+          },
+          procedureCode: { label: "Procedure Code" },
+        },
+      },
+      authorityConfig: {
+        label: "Authority Config",
+        description:
+          "country → the filing authority name and filing-system label used on every filing for that destination. No wildcard fallback.",
+        fields: {
+          country: { label: "Country", help: "ISO 3166-1 alpha-2. Must be unique -- no wildcard fallback for authority." },
+          authorityName: { label: "Authority Name" },
+          filingSystemLabel: { label: "Filing System Label" },
+        },
+      },
+      messageCatalog: {
+        label: "Message Catalog",
+        description:
+          '(action, country, procedure) → our own internal messageName + queueName. Usually wildcard country ("*") -- our message vocabulary doesn\'t vary by destination.',
+        fields: {
+          action: { label: "Action" },
+          country: { label: "Country", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          procedureCode: { label: "Procedure Code", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          messageName: { label: "Message Name" },
+          queueName: { label: "Queue Name" },
+        },
+      },
+      responseStatusMapping: {
+        label: "Response Status Mapping",
+        description:
+          "(country, messageName, canonicalStatus) → which filing-status transition to apply when a response arrives. Usually wildcard country -- response semantics don't vary by destination.",
+        fields: {
+          country: { label: "Country", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          messageName: { label: "Message Name", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          canonicalStatus: { label: "Canonical Status", help: "The status value the third-party response carries (e.g. ACCEPTED, REJECTED, CANCELLED)." },
+          filingTransition: {
+            label: "Filing Transition",
+            help: "Must name a real transition in filingStateMachine.ts. An unrecognized name is logged as a warning and does nothing -- it does not crash message processing.",
+          },
+        },
+      },
+      actionRule: {
+        label: "Action Rule",
+        description: "(country, procedure, messageName, status) → whether the declaration can currently be edited/resubmitted. No match defaults to false (fail closed).",
+        fields: {
+          country: { label: "Country", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          procedureCode: { label: "Procedure Code", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          messageName: { label: "Message Name", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          status: {
+            label: "Status",
+            help: '"*" matches any value (wildcard fallback) when no more specific row exists. Must otherwise name a real FilingStatus.',
+          },
+          allowUpdates: { label: "Allow Updates" },
+        },
+      },
+      childActionRule: {
+        label: "Child Action Rule",
+        description: "(country, procedure, messageName, status, action) → whether this extra action (e.g. CANCEL) is offered right now. A row's mere existence means yes.",
+        fields: {
+          country: { label: "Country", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          procedureCode: { label: "Procedure Code", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          messageName: { label: "Message Name", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          status: {
+            label: "Status",
+            help: '"*" matches any value (wildcard fallback) when no more specific row exists. Must otherwise name a real FilingStatus.',
+          },
+          action: { label: "Action", help: "e.g. CANCEL. Must have an entry in Message Action Catalog to mean anything in the UI's action registry." },
+        },
+      },
+      messageActionCatalog: {
+        label: "Message Action Catalog",
+        description: "The closed vocabulary of valid message actions (SUBMIT, RESUBMIT, CANCELLATION, ...). code is the primary key -- it cannot be changed after creation.",
+        fields: {
+          code: { label: "Code", help: "Primary key. Cannot be edited after creation -- delete and recreate instead." },
+          label: { label: "Label" },
+          requiresPriorMessage: { label: "Requires Prior Message" },
+        },
+      },
+      actionDataRequirement: {
+        label: "Action Data Requirement",
+        description:
+          "(country, procedure, messageName, action) → extra fields a child action needs beyond the declaration itself (e.g. a guarantee reference a German NCTS cancellation needs that a US consumption cancellation doesn't). No match = no extra fields required -- cancelFiling()/amendFiling() stay single, country-agnostic implementations that just ask this table what a context needs.",
+        fields: {
+          country: { label: "Country", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          procedureCode: { label: "Procedure Code", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          messageName: { label: "Message Name", help: '"*" matches any value (wildcard fallback) when no more specific row exists.' },
+          action: { label: "Action", help: "e.g. CANCELLATION, AMENDMENT -- a FilingMessageActionCatalog code." },
+          fields: {
+            label: "Required Fields",
+            help: 'Each field is either "prompt" (the operator supplies it when invoking the action) or "shipment.<dotted.path>" (resolved automatically, never asked of the operator).',
+            itemFields: {
+              key: { label: "Field Key", help: "The key this value is stored under in the message's extensions." },
+              label: { label: "Display Label" },
+              type: { label: "Type" },
+              required: { label: "Required", help: "Applies to the whole field, always -- for a grid, means at least one row. Never set per data row." },
+              source: { label: "Source", help: '"prompt" or "shipment.<dotted.path>"' },
+              helpText: { label: "Help Text (optional)" },
+              columns: {
+                label: "Grid Columns (only used when Type = grid)",
+                help: 'Defines each row\'s own fields. Set a column\'s own Type to "grid" to nest another list inside it (e.g. GoodsItem rows each containing a Packages grid) -- no depth limit.',
+              },
+            },
+          },
+        },
+      },
+    },
   },
 };
 
