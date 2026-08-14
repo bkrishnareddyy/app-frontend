@@ -1,13 +1,15 @@
--- Enable Row Level Security on audit_logs table
-ALTER TABLE "audit_logs" ENABLE ROW LEVEL SECURITY;
+-- Enable Row Level Security on AuditLog table
+-- Note: Prisma maps model AuditLog → table "AuditLog" (PascalCase, no snake_case mapping)
+ALTER TABLE "AuditLog" ENABLE ROW LEVEL SECURITY;
 
 -- Create policy to allow SELECT and INSERT for all authenticated database roles
-CREATE POLICY "Allow select and insert on audit_logs" ON "audit_logs"
+CREATE POLICY "Allow select and insert on AuditLog"
+    ON "AuditLog"
     FOR ALL
     USING (true)
     WITH CHECK (true);
 
--- Explicitly deny UPDATE and DELETE queries on audit_logs table to enforce append-only legal compliance
+-- Prevent UPDATE and DELETE to enforce append-only legal compliance
 CREATE OR REPLACE FUNCTION prevent_audit_log_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -15,8 +17,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_prevent_audit_log_mutation ON "audit_logs";
+DROP TRIGGER IF EXISTS trg_prevent_audit_log_mutation ON "AuditLog";
 
 CREATE TRIGGER trg_prevent_audit_log_mutation
-BEFORE UPDATE OR DELETE ON "audit_logs"
+BEFORE UPDATE OR DELETE ON "AuditLog"
 FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation();

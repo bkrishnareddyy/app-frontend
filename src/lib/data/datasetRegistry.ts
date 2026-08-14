@@ -84,7 +84,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 48,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/cbp-cross-rulings-ingest",
   },
   {
     id: "bis-csl",
@@ -100,7 +101,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 36,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/bis-csl-ingest",
   },
   {
     id: "ofac-sdn",
@@ -116,7 +118,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 36,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/ofac-sdn-ingest",
   },
   {
     id: "usitc-trade-remedy",
@@ -132,7 +135,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 216,
     category: "Public API",
     engineeringEffort: "Medium",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/ad-cvd-orders-ingest",
   },
   {
     id: "ace-port-codes",
@@ -148,7 +152,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 2400,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/ace-port-codes-ingest",
   },
   {
     id: "cbp-import-statistics",
@@ -164,7 +169,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 800,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/cbp-import-stats-ingest",
   },
   {
     id: "usitc-dataweb",
@@ -180,7 +186,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 800,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/usitc-dataweb-ingest",
   },
   {
     id: "wto-tariff-facility",
@@ -196,7 +203,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 5000,
     category: "Public API",
     engineeringEffort: "Medium",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/wto-tariff-ingest",
   },
   {
     id: "census-schedule-b",
@@ -212,7 +220,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 9500,
     category: "Public API",
     engineeringEffort: "Low",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/schedule-b-ingest",
   },
 
   // ─── Group B: Free Public Documents — Custom Parsing Required ────────────────
@@ -231,7 +240,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 240,
     category: "Structured Document",
     engineeringEffort: "High",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/section-301-rates-ingest",
   },
   {
     id: "section-301-exclusions",
@@ -247,7 +257,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 48,
     category: "Structured Document",
     engineeringEffort: "High",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/section-301-exclusions-ingest",
   },
   {
     id: "section-232-rates",
@@ -263,7 +274,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 240,
     category: "Structured Document",
     engineeringEffort: "Medium",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/section-232-ingest",
   },
   {
     id: "usmca-rules-origin",
@@ -279,7 +291,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 10000,
     category: "Structured Document",
     engineeringEffort: "Very High",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/usmca-rules-ingest",
   },
   {
     id: "cafta-dr-rules-origin",
@@ -296,7 +309,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 10000,
     category: "Structured Document",
     engineeringEffort: "High",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/cafta-dr-rules-ingest",
   },
   {
     id: "ad-cvd-company-rates",
@@ -312,7 +326,8 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 240,
     category: "Structured Document",
     engineeringEffort: "Very High",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/ad-cvd-company-rates-ingest",
   },
   {
     id: "pga-requirements",
@@ -328,8 +343,10 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     staleThresholdHours: 2400,
     category: "Structured Document",
     engineeringEffort: "Medium",
-    readinessStatus: "NOT_YET_IMPLEMENTED",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/pga-requirements-ingest",
   },
+
 ];
 
 // ─── Runtime state from DB ────────────────────────────────────────────────────
@@ -343,17 +360,32 @@ export interface DatasetWithStatus extends DatasetDefinition {
 /**
  * Returns all dataset definitions merged with real last-run state from the
  * DatasetRefreshLog table. No hardcoded status strings.
+ *
+ * Gracefully degrades: if the DB query fails (e.g. table not yet migrated on
+ * production), returns all static definitions with null last-run state so the
+ * panel renders with dataset info rather than crashing with a 500.
  */
 export async function getAllDatasetsWithStatus(): Promise<DatasetWithStatus[]> {
-  const logs = await db.datasetRefreshLog.findMany({
-    where: {
-      datasetId: { in: DATASET_DEFINITIONS.map((d) => d.id) },
-    },
-    orderBy: { startedAt: "desc" },
-    distinct: ["datasetId"],
-  });
+  let logByDatasetId = new Map<string, { completedAt: Date | null; status: string; errorMessage: string | null; summary: string | null }>();
 
-  const logByDatasetId = new Map(logs.map((l) => [l.datasetId, l]));
+  try {
+    const logs = await db.datasetRefreshLog.findMany({
+      where: {
+        datasetId: { in: DATASET_DEFINITIONS.map((d) => d.id) },
+      },
+      orderBy: { startedAt: "desc" },
+      distinct: ["datasetId"],
+    });
+    logByDatasetId = new Map(logs.map((l) => [l.datasetId, l]));
+  } catch (err: any) {
+    // Log but do not throw — the static registry is still useful even without
+    // last-run history. This prevents a missing/not-yet-migrated
+    // DatasetRefreshLog table from causing a 500 on the datasets endpoint.
+    console.error(
+      "[datasetRegistry] Failed to query DatasetRefreshLog — returning static definitions without last-run state.",
+      err?.code ?? err?.message ?? err
+    );
+  }
 
   return DATASET_DEFINITIONS.map((def) => {
     const log = logByDatasetId.get(def.id);

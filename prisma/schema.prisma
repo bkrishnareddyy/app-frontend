@@ -4234,6 +4234,23 @@ model AdCvdCompanyRate {
   @@index([caseNumber])
   @@index([manufacturerName])
   @@index([reviewStatus])
-  @@index([countryOfOrigin])
+}
+
+/// Partner Government Agency (PGA) reference requirements by HTSUS 10-digit code.
+/// Flags required forms/data for FDA, EPA, DOT, USDA, TTB, FCC, etc.
+model HtsPgaRequirement {
+  id              String   @id @default(cuid())
+  htsNumber       String   // 10-digit HTS code
+  agencyCode      String   // FDA | EPA | DOT | USDA | TTB | FCC | CPSC
+  programCode     String?  // e.g. "DEV" for FDA Devices, "TSCA" for EPA Chemical
+  isMandatory     Boolean  @default(true)
+  formCodes       String[] // e.g. ["FDA_2877", "EPA_3540_1"]
+  guidanceText    String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([htsNumber, agencyCode])
+  @@index([htsNumber])
+  @@index([agencyCode])
 }
 
