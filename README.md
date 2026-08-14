@@ -95,8 +95,9 @@ A conversational layer over the data the console already shows, reached at
 `/chat`. It is not a database agent: the model never sees SQL, an internal API,
 or the page's DOM. It may call a registry of tools (`src/modules/assistant/tools.ts`
 — shipments, value-at-risk, shipment creation, products, parties, documents,
-team members), each reading through the same services and permission checks the
-screens use, in a single streaming tool-calling loop
+team members, compliance/Country Embargo Screening), each reading through the
+same services and permission checks the screens use, in a single streaming
+tool-calling loop
 (`src/modules/assistant/orchestrator.ts`) — everything the model produces is
 streamed straight to the client, so there is no hidden reasoning stage to guard.
 
@@ -175,6 +176,49 @@ The assistant cannot approve a classification, determine origin, edit the
 Product or Party Master, submit a filing, or close an exception. Every workflow
 remains fully usable without it, and when no model is configured
 (`GEMINI_API_KEY` unset) the route says so rather than answering from nothing.
+
+### 11. Country Embargo Screening — Deterministic Engine, Copilot & Partner API
+
+Country Embargo Screening (`src/modules/agents/compliance/embargo/`) is a
+deterministic, rule-table-driven engine — never an LLM — that evaluates a
+shipment's transaction, party, and line-level country pairs against
+`country_by_country_maps`, country-group, and CCL/ECCN reference data. It runs
+as part of the Compliance Audit Agent pipeline and persists its full result
+(`status`, `hits`, `checks`, `skippedChecks`, `errors`) to
+`AgentDecision.evidenceItems.countryEmbargoScreening`. Two known engine gaps
+are deliberately surfaced rather than hidden: country-group/CCL data is
+evidence-only (it never drives a HIT/CLEAR determination on its own), and a
+CLEAR run that had to skip a check (e.g. a party with no country on file) is
+presented as `PARTIAL`, not `CLEAR`, even though the engine's own stored
+status doesn't make that distinction.
+
+Every consumer of this evidence — the chat assistant's `screen_shipment_embargo`
+/ `get_embargo_screening_details` tools and the partner API below — reads and
+presents it through one shared module,
+`src/modules/agents/compliance/embargo/screeningQuery.ts`, so they cannot drift
+apart on status presentation, on keeping audit-line counts (checks
+performed/passed/failed) distinct from finding counts (deduplicated hits), or
+on tenant scoping.
+
+- **Chat assistant.** `screen_shipment_embargo` reuses the last completed
+  screening unless the caller explicitly asks to rescreen (or none has ever
+  run), gating an actual rescreen behind the `shipments.manage` permission and
+  reporting `rescreenDenied: true` rather than silently reusing stale evidence
+  when that permission is missing. `get_embargo_screening_details` is pure
+  read — it never triggers a rescreen — and can filter by line item, party,
+  screening level (`TRANSACTION`/`PARTY`/`LINE`), or direction (`D`/`O`).
+- **Partner API.** `GET /api/v1/compliance/embargo-screening` and
+  `POST /api/v1/compliance/embargo-screening` expose the same read/rescreen
+  behavior to external systems, authenticated via API key (`Bearer` or
+  `X-Api-Key` header, same as the other `/api/v1/*` routes) rather than a
+  session. Reading requires the `embargo.read` scope; triggering a fresh run
+  additionally requires `embargo.screen`. Both actions are recorded to the
+  audit log tagged `source: "API"`.
+
+A rescreen, from either surface, is triggered the same way a manual
+reconciliation is — `PipelineOrchestrator.processEvent({ triggerEvent:
+"RECONCILIATION_REQUESTED" })` — there is no separate rerun mechanism to keep
+in sync with the pipeline.
 
 ---
 

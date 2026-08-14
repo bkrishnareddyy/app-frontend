@@ -283,6 +283,18 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     category: "Compliance",
     defaultRoles: ALL_BUT_VIEWER,
   },
+  {
+    name: "embargo.read",
+    description: "View Country Embargo Screening results for shipments.",
+    category: "Compliance",
+    defaultRoles: ["OWNER", "ADMIN", "MEMBER", "VIEWER"],
+  },
+  {
+    name: "embargo.screen",
+    description: "Trigger a new Country Embargo Screening run for a shipment.",
+    category: "Compliance",
+    defaultRoles: ALL_BUT_VIEWER,
+  },
   // ─── Regulatory ─────────────────────────────────────────────────────────
   {
     name: "regulatory.read",

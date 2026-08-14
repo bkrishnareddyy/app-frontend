@@ -56,12 +56,12 @@ enum DeadlineType {
 }
 
 enum DeadlineAnchor {
-  LADING       // vessel on-board date / ETD
-  ARRIVAL      // actual or estimated arrival at first US port
-  RELEASE      // CBP release / 7501 stamped date
-  ENTRY        // entry acceptance date
-  LIQUIDATION  // liquidation date
-  CBP_NOTICE   // date CBP notice was issued (CF28/CF29)
+  LADING // vessel on-board date / ETD
+  ARRIVAL // actual or estimated arrival at first US port
+  RELEASE // CBP release / 7501 stamped date
+  ENTRY // entry acceptance date
+  LIQUIDATION // liquidation date
+  CBP_NOTICE // date CBP notice was issued (CF28/CF29)
   CARRIER_TERMS // carrier-published free-time rule (Last Free Day)
 }
 
@@ -74,8 +74,8 @@ enum DeadlineStatus {
 }
 
 enum DeadlineClass {
-  REGULATORY  // statutory — CBP rules, CFR citations apply
-  COMMERCIAL  // carrier / port terms (e.g. Last Free Day)
+  REGULATORY // statutory — CBP rules, CFR citations apply
+  COMMERCIAL // carrier / port terms (e.g. Last Free Day)
 }
 
 model Account {
@@ -143,15 +143,15 @@ model Account {
   aiUsageWindows             AiUsageWindow[]
   controlEvidence            ControlEvidence[]
   assistantChatSessions      AssistantChatSession[]
-  filingMessages             FilingMessage[]
+  filingMessages              FilingMessage[]
   agentPolicyConfigs         AgentPolicyConfig[]
 
-  webhooks                 AccountWebhook[]
-  apiKeys                  AccountApiKey[]
+  webhooks AccountWebhook[]
+  apiKeys  AccountApiKey[]
 
-  workMetricSnapshots      WorkMetricSnapshot[]
-  drawbackLots             DrawbackLot[]
-  drawbackClaimSequence    DrawbackClaimSequence?
+  workMetricSnapshots   WorkMetricSnapshot[]
+  drawbackLots          DrawbackLot[]
+  drawbackClaimSequence DrawbackClaimSequence?
 
   products                 Product[]
   productIdentifiers       ProductIdentifier[]
@@ -164,18 +164,22 @@ model Account {
   productChangeEvents      ProductChangeEvent[]
   productRevalidationFlags ProductRevalidationFlag[]
 
-  parties                 Party[]
-  partyNames              PartyName[]
-  partyIdentifiers        PartyIdentifier[]
-  partyRegistrations      PartyRegistration[]
-  partyAddresses          PartyAddress[]
-  partyContacts           PartyContact[]
-  partyRoles              PartyRole[]
-  partySites              PartySite[]
-  partyRelationships      PartyRelationship[]
-  partyEvidence           PartyEvidence[]
-  partyChangeEvents       PartyChangeEvent[]
-  partyRevalidationFlags  PartyRevalidationFlag[]
+  parties                Party[]
+  partyNames             PartyName[]
+  partyIdentifiers       PartyIdentifier[]
+  partyRegistrations     PartyRegistration[]
+  partyAddresses         PartyAddress[]
+  partyContacts          PartyContact[]
+  partyRoles             PartyRole[]
+  partySites             PartySite[]
+  partyRelationships     PartyRelationship[]
+  partyEvidence          PartyEvidence[]
+  partyChangeEvents      PartyChangeEvent[]
+  partyRevalidationFlags PartyRevalidationFlag[]
+
+  embargoConfig       AccountEmbargoConfig?
+  embargoUsageHeaders EmbargoUsageHeader[]
+  embargoUsageLines   EmbargoUsageLine[]
 
   @@index([type])
   @@index([slug])
@@ -413,7 +417,7 @@ model Shipment {
   estimatedArrival   DateTime?
   ladingDate         DateTime? // On-board / ETD — ISF anchor; set from BL extraction or broker override
   arrivalDate        DateTime? // Actual arrival at first US port; falls back to estimatedArrival
-  transportMode      String?   // Ocean | Air | Truck | Rail — ISF applies to Ocean only
+  transportMode      String? // Ocean | Air | Truck | Rail — ISF applies to Ocean only
   filingDeadline     DateTime? // Derived cache: min(dueAt) over OPEN blocking ComplianceDeadlines
   status             String            @default("Draft") // Draft, In Progress, Ready to File, On Hold, Submitted, Completed
   // Workflow lifecycle stage. Values: DOCUMENT_INTAKE | CLASSIFICATION | VALUATION | ORIGIN | COMPLIANCE | FILING_PREP | READY_TO_FILE
@@ -427,30 +431,30 @@ model Shipment {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  scenarioId       String?
-  scenario         LandedCostScenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  scenarioId String?
+  scenario   LandedCostScenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
 
   masterShipmentId String?
   masterShipment   Shipment?  @relation("MasterHouseRelation", fields: [masterShipmentId], references: [id], onDelete: SetNull)
   houseShipments   Shipment[] @relation("MasterHouseRelation")
 
-  documents               ShipmentDocument[]
-  lineItems               ShipmentLineItem[]
-  agentDecisions          AgentDecision[]
-  customsFilings          CustomsFiling[]
-  exceptionItems          ExceptionItem[]
-  regulatoryUpdateImpacts      RegulatoryUpdateImpact[]
-  classificationChangeImpacts  ClassificationChangeImpact[]
-  reconciliationIssues         ReconciliationIssue[]
-  pipelineJobs                 PipelineJob[]
-  facts                        Fact[]
-  shipmentParties         ShipmentParty[]
-  changeEvents            ShipmentChangeEvent[]
-  eventLogs               ShipmentEventLog[]
-  agentExecutionRecords   AgentExecutionRecord[]
-  fieldApprovals          FieldApproval[]
-  documentCandidates      DocumentShipmentCandidate[]
-  complianceDeadlines     ComplianceDeadline[]
+  documents                   ShipmentDocument[]
+  lineItems                   ShipmentLineItem[]
+  agentDecisions              AgentDecision[]
+  customsFilings              CustomsFiling[]
+  exceptionItems              ExceptionItem[]
+  regulatoryUpdateImpacts     RegulatoryUpdateImpact[]
+  classificationChangeImpacts ClassificationChangeImpact[]
+  reconciliationIssues        ReconciliationIssue[]
+  pipelineJobs                PipelineJob[]
+  facts                       Fact[]
+  shipmentParties             ShipmentParty[]
+  changeEvents                ShipmentChangeEvent[]
+  eventLogs                   ShipmentEventLog[]
+  agentExecutionRecords       AgentExecutionRecord[]
+  fieldApprovals              FieldApproval[]
+  documentCandidates          DocumentShipmentCandidate[]
+  complianceDeadlines         ComplianceDeadline[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -474,35 +478,35 @@ model Shipment {
 // ~60 read sites continue to work without changes.
 // ---------------------------------------------------------------------------
 model ComplianceDeadline {
-  id         String @id @default(cuid())
-  accountId  String
-  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   // Exactly one of shipmentId / filingId is set.
   shipmentId String?
-  shipment   Shipment?      @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  shipment   Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
 
   type          DeadlineType
-  deadlineClass DeadlineClass @default(REGULATORY)
+  deadlineClass DeadlineClass  @default(REGULATORY)
   status        DeadlineStatus @default(OPEN)
 
   // Anchor — the date the rule clock starts from.
   anchorEvent DeadlineAnchor
-  anchorAt    DateTime?   // null → anchor unknown, deadline uncomputable
-  estimated   Boolean     @default(false) // true when anchorAt comes from ETA/ETD, not a confirmed date
+  anchorAt    DateTime? // null → anchor unknown, deadline uncomputable
+  estimated   Boolean        @default(false) // true when anchorAt comes from ETA/ETD, not a confirmed date
 
   // Computed deadline — never manually editable (except LAST_FREE_DAY which is COMMERCIAL).
-  dueAt    DateTime?   // null when anchor is unknown
-  ruleId   String      // matches DeadlineRule.id in deadlineRules.ts
-  ruleCitation String  // e.g. "19 CFR 24.25(a)"
+  dueAt        DateTime? // null when anchor is unknown
+  ruleId       String // matches DeadlineRule.id in deadlineRules.ts
+  ruleCitation String // e.g. "19 CFR 24.25(a)"
 
   // Penalty estimate in USD, provided by the rule.
-  penaltyEstimate Decimal?  @db.Decimal(14, 2)
-  penaltyBasis    String?   // e.g. "up to $5,000 per violation"
+  penaltyEstimate Decimal? @db.Decimal(14, 2)
+  penaltyBasis    String? // e.g. "up to $5,000 per violation"
 
   // Satisfaction
-  satisfiedAt   DateTime?
-  satisfiedBy   String?   // userId or "SYSTEM"
+  satisfiedAt DateTime?
+  satisfiedBy String? // userId or "SYSTEM"
 
   // Waiver
   waivedReason String?
@@ -518,38 +522,38 @@ model ComplianceDeadline {
 }
 
 model ShipmentDocument {
-  id            String    @id @default(cuid())
+  id                     String        @id @default(cuid())
   // Nullable: a document can be detached from its shipment (keeping the
   // row and extractedJson intact) and later reattached to a different
   // shipment without redoing AI vision extraction.
-  shipmentId    String?
-  shipment      Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
-  accountId     String
-  account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  docType       String // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin
+  shipmentId             String?
+  shipment               Shipment?     @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  accountId              String
+  account                Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  docType                String // Commercial Invoice, Packing List, Bill of Lading, Arrival Notice, Insurance Certificate, Certificate of Origin
   /// Structured enum equivalent of docType, written by the classification
   /// pipeline. Null until classification runs. Distinct from docType so the
   /// 169+ callers of the legacy string field are unaffected.
-  documentType            DocumentType? // set by classifier; null = not yet classified
+  documentType           DocumentType? // set by classifier; null = not yet classified
   /// Model confidence for the documentType assignment (0.0–1.0). Values < 0.7
   /// route to human review and cause status = "NEEDS_CLASSIFICATION".
-  documentTypeConfidence  Float?
-  fileName      String // e.g. INV-45678.pdf
-  pageCount     Int? // null until the document has been parsed
-  fileUrl       String?
-  checksum      String? // SHA-256 hash for duplicate detection
-  version       String    @default("1.0")
-  confidence    Int? // extraction confidence, null until extraction runs
-  status        String    @default("Received") // Received, Missing, Review Required, NEEDS_CLASSIFICATION
-  required      Boolean   @default(true)
+  documentTypeConfidence Float?
+  fileName               String // e.g. INV-45678.pdf
+  pageCount              Int? // null until the document has been parsed
+  fileUrl                String?
+  checksum               String? // SHA-256 hash for duplicate detection
+  version                String        @default("1.0")
+  confidence             Int? // extraction confidence, null until extraction runs
+  status                 String        @default("Received") // Received, Missing, Review Required, NEEDS_CLASSIFICATION
+  required               Boolean       @default(true)
   /// Display order within the shipment's document list. Lower = earlier.
   /// Null until the broker reorders; documents without an explicit order
   /// are sorted by createdAt (the existing default).
-  displayOrder  Int?
-  extractedJson String?   @db.Text
-  rawContent    String?   @db.Text
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  displayOrder           Int?
+  extractedJson          String?       @db.Text
+  rawContent             String?       @db.Text
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
   /// Byte size and detected media type of the immutable original, recorded at
   /// upload. `checksum` above is its SHA-256.
@@ -822,24 +826,24 @@ model AgentDecision {
 /// uses its built-in defaults. Storing overrides here (not in env vars) lets
 /// a compliance officer change thresholds without a deployment.
 model AgentPolicyConfig {
-  id                    String   @id @default(cuid())
-  accountId             String
-  account               Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  agentName             String
+  id                     String   @id @default(cuid())
+  accountId              String
+  account                Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  agentName              String
   /// Policy type (e.g. THRESHOLD or STAGE_GATE)
-  policyType            String   @default("THRESHOLD")
+  policyType             String   @default("THRESHOLD")
   /// Minimum confidence for AUTO outcome (default 85).
-  autoThreshold         Int      @default(85)
+  autoThreshold          Int      @default(85)
   /// Minimum confidence for CONFIRM outcome (default 60).
-  confirmThreshold      Int      @default(60)
+  confirmThreshold       Int      @default(60)
   /// When true, a missing part-master match forces REVIEW regardless of confidence.
-  requirePartMasterMatch Boolean @default(false)
+  requirePartMasterMatch Boolean  @default(false)
   /// Force human review at stage gate regardless of score
-  requireHumanApproval  Boolean  @default(false)
+  requireHumanApproval   Boolean  @default(false)
   /// Minimum reviewer role required to approve
-  minimumReviewerRole   String?  @default("SPECIALIST")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  minimumReviewerRole    String?  @default("SPECIALIST")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@unique([accountId, agentName])
   @@index([accountId])
@@ -886,7 +890,7 @@ model CustomsFiling {
   valuationAssistsRecord      ValuationAssistsRecord?
   auditTimelines              AuditTimeline[]
   snapshot                    FilingSnapshot?
-  filingMessages         FilingMessage[]
+  filingMessages              FilingMessage[]
 
   @@unique([accountId, entryNumber])
   @@index([shipmentId])
@@ -1632,40 +1636,40 @@ model ShipmentChangeEvent {
 }
 
 model ExceptionItem {
-  id               String            @id @default(cuid())
-  accountId        String
-  account          Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  shipmentId       String?
-  shipment         Shipment?         @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
-  filingId         String?
-  filing           CustomsFiling?    @relation(fields: [filingId], references: [id], onDelete: SetNull)
+  id                   String            @id @default(cuid())
+  accountId            String
+  account              Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId           String?
+  shipment             Shipment?         @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  filingId             String?
+  filing               CustomsFiling?    @relation(fields: [filingId], references: [id], onDelete: SetNull)
   // Set when this exception is about one specific field on one specific
   // uploaded document (e.g. "Exporter Name missing on Invoice.pdf"), so the
   // Exceptions panel can group by source document instead of showing a flat
   // list. Null for shipment-level exceptions (e.g. missing Importer of Record).
-  documentId       String?
-  document         ShipmentDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  fieldKey         String? // "exporterName" | "importerName" | "originCountry", set together with documentId
-  code             String?
-  category         String? // MISSING_DATA | CONFLICT | VALIDATION | COMPLIANCE | DOCUMENT | CLASSIFICATION | VALUATION | FILING
-  type             String // missing_document | data_mismatch | broker_hold | compliance_flag
-  severity         String            @default("Medium") // High | Medium | Low | Critical
-  description      String
-  status           String            @default("Open") // Open | InProgress | Resolved
-  blocking         Boolean           @default(false)
-  requiredAction   String?
-  sourceAgent      String?
-  version          Int               @default(1)
-  assignedToUserId String?
-  assignedToUser   User?             @relation("ExceptionAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  createdAt        DateTime          @default(now())
-  resolvedAt       DateTime?
-  resolvedBy       String?
+  documentId           String?
+  document             ShipmentDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  fieldKey             String? // "exporterName" | "importerName" | "originCountry", set together with documentId
+  code                 String?
+  category             String? // MISSING_DATA | CONFLICT | VALIDATION | COMPLIANCE | DOCUMENT | CLASSIFICATION | VALUATION | FILING
+  type                 String // missing_document | data_mismatch | broker_hold | compliance_flag
+  severity             String            @default("Medium") // High | Medium | Low | Critical
+  description          String
+  status               String            @default("Open") // Open | InProgress | Resolved
+  blocking             Boolean           @default(false)
+  requiredAction       String?
+  sourceAgent          String?
+  version              Int               @default(1)
+  assignedToUserId     String?
+  assignedToUser       User?             @relation("ExceptionAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdAt            DateTime          @default(now())
+  resolvedAt           DateTime?
+  resolvedBy           String?
   // Human-readable snapshot of who resolved this, taken at resolve time --
   // resolvedBy stores the userId (or "SYSTEM" for auto-resolves), this is
   // what's actually safe to render directly in the UI without a join.
-  resolvedByName      String?
-  resolutionNote      String?
+  resolvedByName       String?
+  resolutionNote       String?
   // Picklist code from resolutionReasons.ts — stored alongside the free-text
   // note so reason analytics are query-able. Null for pre-migration rows and for
   // cancellations (which do not require a stated reason).
@@ -1775,22 +1779,22 @@ model RegulatoryUpdateImpact {
 }
 
 model ExtractionField {
-  id         String           @id @default(cuid())
-  documentId String
-  document   ShipmentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  fieldName  String // e.g. invoiceNumber, invoiceDate, totalValue, htsCandidate
-  value      String
-  confidence Int? // null until the extractor reports one
-  pageNumber Int?
-  bbox       Json? // { x: 120, y: 340, width: 200, height: 24 } — PDF points
-  source     String           @default("OCR_AI_AGENT") // OCR_AI_AGENT | HUMAN_CORRECTION | PARSER
+  id                 String           @id @default(cuid())
+  documentId         String
+  document           ShipmentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fieldName          String // e.g. invoiceNumber, invoiceDate, totalValue, htsCandidate
+  value              String
+  confidence         Int? // null until the extractor reports one
+  pageNumber         Int?
+  bbox               Json? // { x: 120, y: 340, width: 200, height: 24 } — PDF points
+  source             String           @default("OCR_AI_AGENT") // OCR_AI_AGENT | HUMAN_CORRECTION | PARSER
   /// Set when source = HUMAN_CORRECTION. The value before the correction.
   correctedFromValue String?
   /// userId of the reviewer who made the correction.
   correctedByUserId  String?
   /// Wall-clock time of the correction.
   correctedAt        DateTime?
-  createdAt  DateTime         @default(now())
+  createdAt          DateTime         @default(now())
 
   @@index([documentId])
   @@index([fieldName])
@@ -1798,25 +1802,25 @@ model ExtractionField {
 }
 
 model ReconciliationIssue {
-  id              String    @id @default(cuid())
-  shipmentId      String
-  shipment        Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  accountId       String
-  account         Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  severity        String    @default("Warning") // Info | Warning | Critical
-  field           String // quantity | weight | country | totalValue | container
-  expectedValue   String
-  actualValue     String
-  sourceDocuments String[] // e.g. ["Commercial Invoice", "Packing List"]
-  status          String    @default("Open") // Open | Resolved | Ignored
-  issueType       String    @default("DOCUMENT_CONFLICT") // DOCUMENT_CONFLICT | ENTRY_DISCREPANCY | PSC_CANDIDATE
+  id                 String    @id @default(cuid())
+  shipmentId         String
+  shipment           Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  accountId          String
+  account            Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  severity           String    @default("Warning") // Info | Warning | Critical
+  field              String // quantity | weight | country | totalValue | container
+  expectedValue      String
+  actualValue        String
+  sourceDocuments    String[] // e.g. ["Commercial Invoice", "Packing List"]
+  status             String    @default("Open") // Open | Resolved | Ignored
+  issueType          String    @default("DOCUMENT_CONFLICT") // DOCUMENT_CONFLICT | ENTRY_DISCREPANCY | PSC_CANDIDATE
   // C-2: Resolution detail — which value was accepted and by whom
-  resolution      String?   // ACCEPTED_A | ACCEPTED_B | BOTH_WRONG | ACKNOWLEDGED
-  note            String?   // free-text resolution note entered by the reviewer
+  resolution         String? // ACCEPTED_A | ACCEPTED_B | BOTH_WRONG | ACKNOWLEDGED
+  note               String? // free-text resolution note entered by the reviewer
   resolvedByUserId   String?
   resolvedByUserName String?
-  createdAt       DateTime  @default(now())
-  resolvedAt      DateTime?
+  createdAt          DateTime  @default(now())
+  resolvedAt         DateTime?
 
   @@index([shipmentId])
   @@index([accountId])
@@ -2021,6 +2025,217 @@ model TradeBenchmark {
   lastUpdated      DateTime @default(now())
 
   @@index([htsCode10])
+}
+
+// =====================================================================
+// Country Embargo Screening reference data.
+//
+// Table/column names below are preserved exactly as extracted from the
+// authoritative source DDL (CountryEmbargoScreening_Tables.sql,
+// ece_create_table.sql) via `@@map`/`@map` so the extracted .sql data
+// files can be loaded without any identifier transformation. Only the
+// columns actually consumed by embargo screening are modeled -- the
+// source DDL itself notes columns like currency/phone-prefix/transit-mode
+// flags are irrelevant to screening (see comment on `commerce_control_list`
+// in the source DDL: "Trimmed to the columns relevant to embargo").
+// See src/modules/agents/compliance/embargo/ for the screening engine.
+// =====================================================================
+
+/// countries -- country master. cyIndEmbargoed/cyIndBoycotted are country-level
+/// flags; cyIndGlds gates the generic-LD embargo path; cyIndLds/cyIndDps gate
+/// license/party screening eligibility.
+model Country {
+  cySeq          Int       @id @map("cy_seq")
+  cyId           String    @map("cy_id")
+  cyName         String?   @map("cy_name")
+  cyShortName    String?   @map("cy_shrt_name")
+  cyIndEmbargoed String?   @map("cy_ind_embargoed")
+  cyIndBoycotted String?   @map("cy_ind_boycotted")
+  cyIndDps       String?   @map("cy_ind_dps")
+  cyIndLds       String?   @map("cy_ind_lds")
+  cyIndEms       String?   @map("cy_ind_ems")
+  cyIndGlds      String?   @map("CY_IND_GLDS")
+  cyDtCrt        DateTime? @map("cy_dt_crt")
+  cyDtUpd        DateTime? @map("cy_dt_upd")
+
+  @@index([cyId])
+  @@index([cyName])
+  @@map("countries")
+}
+
+/// country_groups -- country group definitions (e.g. E1/EU-style groups) used
+/// for group-based embargo fallback.
+model CountryGroup {
+  cygSeq       Int     @id @map("cyg_seq")
+  cygId        String  @map("cyg_id")
+  cygShortName String  @map("cyg_shrt_name")
+  cygDesc      String? @map("cyg_desc")
+  cygIndHts    String? @map("cyg_ind_hts")
+
+  @@index([cygId])
+  @@map("country_groups")
+}
+
+/// country_group_maps -- country -> country_group membership, effective-dated.
+/// NOTE: keyed on the country's business code (COUNTRY_ID, e.g. "AD") and the
+/// group's business code (GROUP_ID, e.g. "5505") -- not the cygrm_cy_seq /
+/// cygrm_cyg_seq surrogate keys the original DDL implied. The real extracted
+/// data (EMB-Check/sql/country_group_maps.sql) inserts COUNTRY_ID/GROUP_ID
+/// text columns, so the schema follows the actual data over the DDL script.
+model CountryGroupMap {
+  cygrmSeq          Int       @id @map("cygrm_seq")
+  countryId         String    @map("COUNTRY_ID")
+  groupId           String    @map("GROUP_ID")
+  cygrmEffectiveDt  DateTime? @map("CYGRM_EFFECTIVE_DT")
+  cygrmExpirationDt DateTime? @map("CYGRM_EXPIRATION_DT")
+
+  @@index([countryId, groupId])
+  @@index([cygrmEffectiveDt, cygrmExpirationDt])
+  @@map("country_group_maps")
+}
+
+/// compliance_country_groups -- scopes cy_ccg_maps rows below.
+model ComplianceCountryGroup {
+  ccgSeq  Int     @id @map("ccg_seq")
+  ccgId   String? @map("ccg_id")
+  ccgDesc String? @map("ccg_desc")
+
+  @@index([ccgId])
+  @@map("compliance_country_groups")
+}
+
+/// cy_ccg_maps -- country -> compliance-country-group mapping, used to scope
+/// embargo rules to a group of compliance (ship-from) countries.
+/// NOTE: keyed on the country's business code (COUNTRY_ID) and the compliance
+/// group's business code (COMPLIANCE_GROUP_ID, e.g. "B", "D3") -- see the
+/// CountryGroupMap note above; same DDL-vs-real-data discrepancy applies here.
+model CyCcgMap {
+  cygmSeq           Int    @id @map("cygm_seq")
+  countryId         String @map("COUNTRY_ID")
+  complianceGroupId String @map("COMPLIANCE_GROUP_ID")
+
+  @@index([countryId, complianceGroupId])
+  @@map("cy_ccg_maps")
+}
+
+/// country_by_country_maps -- THE core embargo relationship table: which
+/// compliance (ship-from) country embargoes which destination/origin country,
+/// plus sanction-type evidence indicators.
+///
+/// NOTE: keyed on the countries' business codes (COMPLIANCE_COUNTRY /
+/// EMBARGOED_COUNTRY, e.g. "US" / "CU") -- not the cycy_from_cy_seq /
+/// cycy_to_cy_seq surrogate keys the original DDL implied. The real extracted
+/// data (EMB-Check/sql/country_by_country_maps.sql) inserts these text
+/// columns, so the schema follows the actual data over the DDL script.
+model CountryByCountryMap {
+  cycySeq                 Int     @id @map("cycy_seq")
+  complianceCountry       String  @map("COMPLIANCE_COUNTRY")
+  complianceCountryName   String? @map("COMPLIANCE_COUNTRY_NAME")
+  embargoedCountry        String  @map("EMBARGOED_COUNTRY")
+  embargoedCountryName    String? @map("EMBARGOED_COUNTRY_NAME")
+  cycyIndEmbargoed        String? @map("CYCY_IND_EMBARGOED")
+  cycyIndNationalSanction String? @map("CYCY_IND_NATIONAL_SANCTION")
+  cycyIndEuSanction       String? @map("CYCY_IND_EU_SANCTION")
+  cycyIndUnSanction       String? @map("CYCY_IND_UN_SANCTION")
+
+  @@index([complianceCountry, embargoedCountry])
+  @@map("country_by_country_maps")
+}
+
+/// commerce_control_list -- ECCN/CCL master, only the columns needed for the
+/// product/classification-level embargo evidence used by screening.
+///
+/// NOTE: keyed on the country's business code (CCL_COUNTRY) -- not the
+/// ccl_cy_seq surrogate key the original DDL implied; see notes above.
+model CommerceControlList {
+  cclSeq        Int     @id @map("ccl_seq")
+  cclId         String  @map("ccl_id")
+  cclDesc       String  @map("ccl_desc")
+  cclCountry    String? @map("CCL_COUNTRY")
+  cclIndUn      String? @map("ccl_ind_un")
+  cclIndOfacCtl String? @map("ccl_ind_ofac_ctl")
+  cclLicensable String? @map("ccl_licensable")
+
+  @@index([cclId, cclCountry])
+  @@map("commerce_control_list")
+}
+
+// =====================================================================
+// Country Embargo Screening -- tenant-scoped account configuration.
+//
+// Maps the source "subscriber" screening/audit configuration
+// (SbsIndEmbargoScreening, SbsIndPrivateEmbargo, SbsIndServerScreening,
+// GenericExportLDEnabled, SbsIndEmailAlert, GenAuditLog) onto Qubere's
+// Account tenant boundary. One row per Account -- no Subscriber entity.
+// =====================================================================
+model AccountEmbargoConfig {
+  id        String  @id @default(cuid())
+  accountId String  @unique
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  embargoScreeningEnabled Boolean @default(true)
+  privateEmbargoEnabled   Boolean @default(false)
+  serverScreeningEnabled  Boolean @default(true)
+  genericExportLdEnabled  Boolean @default(false)
+
+  audited                Boolean @default(false)
+  emailAlertEnabled      Boolean @default(false)
+  generalAuditLogEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =====================================================================
+// Country Embargo Screening audit -- Qubere-native equivalent of the
+// source SERVICE_USAGE / SERVICE_USAGE_LINES header+detail audit pattern.
+// One header per screening invocation; one detail line per completed
+// check (screeningLevel x type), written only when detailed audit is
+// enabled for the account. See src/modules/agents/compliance/embargo/embargoAudit.ts.
+// =====================================================================
+model EmbargoUsageHeader {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId    String
+  transactionId String?
+  screeningType String   @default("COUNTRY_EMBARGO")
+  correlationId String?
+  screenedAt    DateTime @default(now())
+
+  lines EmbargoUsageLine[]
+
+  @@index([accountId, shipmentId])
+  @@index([screenedAt])
+}
+
+model EmbargoUsageLine {
+  id            String             @id @default(cuid())
+  headerId      String
+  header        EmbargoUsageHeader @relation(fields: [headerId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId    String
+  transactionId String?
+  partyId       String?
+  lineItemId    String?
+  userDefined   String?
+
+  exceptionType     String   @default("EM")
+  screeningLevel    String // TRANSACTION | PARTY | LINE
+  type              String // D | O
+  complianceCountry String
+  screenedCountry   String
+  eccn              String?
+  militaryEndUse    Boolean?
+  matcher           String // PRIVATE | US | GENERIC | STANDARD
+  ruleId            String?
+  result            String // P | F
+  screenedAt        DateTime @default(now())
+  evidence          Json?
+
+  @@index([headerId])
+  @@index([accountId, shipmentId])
 }
 
 model AgentExecutionLog {
@@ -2288,8 +2503,8 @@ model HtsChange {
   oldNode     HtsNode?   @relation("HtsChangeOld", fields: [oldHtsNodeId], references: [id])
   newNode     HtsNode?   @relation("HtsChangeNew", fields: [newHtsNodeId], references: [id])
 
-  @@index([fromReleaseId, toReleaseId])
   @@unique([fromReleaseId, toReleaseId, changeType, oldHtsNodeId, newHtsNodeId])
+  @@index([fromReleaseId, toReleaseId])
 }
 
 // ============================================================================
@@ -2537,9 +2752,9 @@ model ClassificationDecision {
   effectiveTo          DateTime?
   supersedesDecisionId String?
 
-  case          ClassificationCase            @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  proposal      ClassificationProposal?       @relation(fields: [proposalId], references: [id], onDelete: SetNull)
-  approvedNode  HtsNode                       @relation(fields: [approvedHtsNodeId], references: [id])
+  case          ClassificationCase           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  proposal      ClassificationProposal?      @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  approvedNode  HtsNode                      @relation(fields: [approvedHtsNodeId], references: [id])
   changeImpacts ClassificationChangeImpact[]
 
   @@index([caseId])
@@ -2586,12 +2801,12 @@ model Fact {
 }
 
 model FilingSnapshot {
-  id           String        @id @default(cuid())
-  filingId     String        @unique
-  filing       CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
-  snapshotData Json // Immutable JSON representation of all shipment, parties, and line item facts
+  id             String        @id @default(cuid())
+  filingId       String        @unique
+  filing         CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+  snapshotData   Json // Immutable JSON representation of all shipment, parties, and line item facts
   hasSection301  Boolean       @default(false)
-  section301List  String?
+  section301List String?
   createdAt      DateTime      @default(now())
 
   @@index([filingId])
@@ -3147,7 +3362,7 @@ model ProductChangeEvent {
   newValue String?
 
   significance ProductChangeSignificance @default(NON_MATERIAL)
-  impactFlags  ProductImpactFlag[] @default([])
+  impactFlags  ProductImpactFlag[]       @default([])
 
   changeReason    String?
   changedByUserId String?
@@ -3920,14 +4135,14 @@ model FilingMessage {
 /// for the same reason: a schema this consequential needs the same auditable
 /// promotion path as tariff master data, not ad hoc live edits.
 model FilingSchemaVersion {
-  id                  String    @id @default(cuid())
+  id                  String   @id @default(cuid())
   schemaType          String // ENVELOPE_HEADER | FILING_REQUEST_DECLARATION | FILING_RESPONSE_DATA
   version             String // semver, e.g. "1.0.0"
   schemaJson          Json
-  status              String    @default("DRAFT") // DRAFT, ACTIVE, DEPRECATED, RETIRED
-  effectiveFrom        DateTime  @default(now())
-  supersedesVersionId  String?
-  createdAt            DateTime  @default(now())
+  status              String   @default("DRAFT") // DRAFT, ACTIVE, DEPRECATED, RETIRED
+  effectiveFrom       DateTime @default(now())
+  supersedesVersionId String?
+  createdAt           DateTime @default(now())
 
   @@unique([schemaType, version])
   @@index([schemaType, status])
@@ -4065,7 +4280,7 @@ model WorkMetricSnapshot {
   accountId            String
   account              Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   date                 DateTime
-  period               String   // DAILY | WEEKLY | MONTHLY
+  period               String // DAILY | WEEKLY | MONTHLY
   cyclTimeMedianHours  Float?
   firstPassRate        Float?
   exceptionAgeAvgHours Float?
@@ -4085,7 +4300,7 @@ model ControlEvidence {
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  category    String   // e.g. training, vendor_certification, procedures
+  category    String // e.g. training, vendor_certification, procedures
   version     String
   metadata    Json?
   createdAt   DateTime @default(now())
@@ -4102,8 +4317,8 @@ model DrawbackLot {
   htsCode           String
   quantity          Decimal  @db.Decimal(18, 6)
   availableQty      Decimal  @db.Decimal(18, 6)
-  reservedQty       Decimal  @db.Decimal(18, 6) @default(0)
-  claimedQty        Decimal  @db.Decimal(18, 6) @default(0)
+  reservedQty       Decimal  @default(0) @db.Decimal(18, 6)
+  claimedQty        Decimal  @default(0) @db.Decimal(18, 6)
   unitPurchasePrice Decimal  @db.Decimal(18, 6)
   dutyPaidPerUnit   Decimal  @db.Decimal(18, 6)
   importDate        DateTime
@@ -4128,18 +4343,18 @@ model DrawbackClaimSequence {
 /// Outbound webhook endpoint registered by an account. When configured events
 /// fire, a signed payload is POSTed to the registered URL.
 model AccountWebhook {
-  id            String   @id @default(cuid())
-  accountId     String
-  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  url           String
-  secret        String   // HMAC-SHA256 signing secret (stored hashed)
-  events        String[] // e.g. ["shipment.status_changed", "decision.approved"]
-  status        String   @default("ACTIVE") // ACTIVE, PAUSED, DISABLED
+  id             String    @id @default(cuid())
+  accountId      String
+  account        Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  url            String
+  secret         String // HMAC-SHA256 signing secret (stored hashed)
+  events         String[] // e.g. ["shipment.status_changed", "decision.approved"]
+  status         String    @default("ACTIVE") // ACTIVE, PAUSED, DISABLED
   lastDeliveryAt DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  deliveryLogs  WebhookDeliveryLog[]
+  deliveryLogs WebhookDeliveryLog[]
 
   @@index([accountId])
   @@index([status])
@@ -4147,18 +4362,18 @@ model AccountWebhook {
 
 /// Immutable delivery attempt record for every webhook event fired.
 model WebhookDeliveryLog {
-  id           String   @id @default(cuid())
+  id           String         @id @default(cuid())
   webhookId    String
   webhook      AccountWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-  eventType    String   // e.g. shipment.status_changed
-  eventId      String   // idempotency key — same event, same id across retries
+  eventType    String // e.g. shipment.status_changed
+  eventId      String // idempotency key — same event, same id across retries
   payload      Json
-  attempt      Int      @default(1) // 1, 2, 3
-  statusCode   Int?     // HTTP response code from the subscriber
-  responseBody String?  // truncated to 2 KB
-  success      Boolean  @default(false)
+  attempt      Int            @default(1) // 1, 2, 3
+  statusCode   Int? // HTTP response code from the subscriber
+  responseBody String? // truncated to 2 KB
+  success      Boolean        @default(false)
   deliveredAt  DateTime?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime       @default(now())
 
   @@index([webhookId])
   @@index([eventId])
@@ -4167,20 +4382,20 @@ model WebhookDeliveryLog {
 
 /// API key issued to an ERP or broker system for inbound data push.
 model AccountApiKey {
-  id          String   @id @default(cuid())
-  accountId   String
-  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  label       String
-  keyHash     String   @unique // bcrypt hash of the raw key; raw key shown once at creation
-  keyPrefix   String   // first 8 chars of the raw key, shown in UI for identification
-  scopes      String[] // permission names this key can exercise
-  status      String   @default("ACTIVE") // ACTIVE, REVOKED
-  lastUsedAt  DateTime?
-  expiresAt   DateTime?
+  id              String    @id @default(cuid())
+  accountId       String
+  account         Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label           String
+  keyHash         String    @unique // bcrypt hash of the raw key; raw key shown once at creation
+  keyPrefix       String // first 8 chars of the raw key, shown in UI for identification
+  scopes          String[] // permission names this key can exercise
+  status          String    @default("ACTIVE") // ACTIVE, REVOKED
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
   createdByUserId String?
-  revokedAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([accountId])
   @@index([keyHash])
@@ -4196,18 +4411,18 @@ model AccountApiKey {
 /// Replaces the module-level in-memory array in datasetRegistry.ts.
 /// Powers the <Data> tab panel, the daily dispatcher cron, and staleness alerting.
 model DatasetRefreshLog {
-  id          String    @id @default(cuid())
-  datasetId   String    // matches DatasetDefinition.id in datasetRegistry.ts
-  datasetName String
-  triggeredBy String    // "CRON" | "MANUAL"
-  status      String    // "RUNNING" | "SUCCESS" | "FAILED"
-  summary     String?   // brief success message (e.g. "Staged 28,431 nodes")
-  errorMessage String?  // set on FAILED
-  itemsIngested Int?    // rows written/updated, if applicable
+  id                  String    @id @default(cuid())
+  datasetId           String // matches DatasetDefinition.id in datasetRegistry.ts
+  datasetName         String
+  triggeredBy         String // "CRON" | "MANUAL"
+  status              String // "RUNNING" | "SUCCESS" | "FAILED"
+  summary             String? // brief success message (e.g. "Staged 28,431 nodes")
+  errorMessage        String? // set on FAILED
+  itemsIngested       Int? // rows written/updated, if applicable
   sourceReportedTotal Int? // authoritative total the source itself reported (e.g. OFAC XML's Record_Count) for completeness checks
-  sourcePublishDate DateTime? // publish/version date the source reported for this run's data
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
+  sourcePublishDate   DateTime? // publish/version date the source reported for this run's data
+  startedAt           DateTime  @default(now())
+  completedAt         DateTime?
 
   @@index([datasetId])
   @@index([status])
@@ -4219,24 +4434,24 @@ model DatasetRefreshLog {
 /// Versioned with publicationStatus for point-in-time screening audit defensibility:
 /// "what was this party's sanction status on the date we screened them?"
 model ScreeningEntity {
-  id                String    @id @default(cuid())
-  entityHash        String    @unique // SHA-256 of (sourceList + name + country) for dedup
-  sourceList        String    // SDN | DPL | ENTITY_LIST | UNVERIFIED | ISN | SSI | FSE | PLC | NS_MBS | CONSOLIDATED_NON_SDN
-  entityType        String    // INDIVIDUAL | ENTITY | VESSEL | AIRCRAFT | DIGITAL_CURRENCY_ADDRESS
-  name              String
-  alternateNames    String[]
-  address           String?
-  city              String?
-  country           String?
+  id                 String    @id @default(cuid())
+  entityHash         String    @unique // SHA-256 of (sourceList + name + country) for dedup
+  sourceList         String // SDN | DPL | ENTITY_LIST | UNVERIFIED | ISN | SSI | FSE | PLC | NS_MBS | CONSOLIDATED_NON_SDN
+  entityType         String // INDIVIDUAL | ENTITY | VESSEL | AIRCRAFT | DIGITAL_CURRENCY_ADDRESS
+  name               String
+  alternateNames     String[]
+  address            String?
+  city               String?
+  country            String?
   nationalityCountry String?
-  programCodes      String[]  // e.g. ["IRAN", "SDGT"]
-  remarks           String?   @db.Text
-  publicationStatus String    @default("DRAFT") // DRAFT | PUBLISHED | SUPERSEDED
-  publishedAt       DateTime?
-  supersededAt      DateTime?
-  sourcePublishedAt DateTime? // date from OFAC/CSL source file
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  programCodes       String[] // e.g. ["IRAN", "SDGT"]
+  remarks            String?   @db.Text
+  publicationStatus  String    @default("DRAFT") // DRAFT | PUBLISHED | SUPERSEDED
+  publishedAt        DateTime?
+  supersededAt       DateTime?
+  sourcePublishedAt  DateTime? // date from OFAC/CSL source file
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([name])
   @@index([sourceList])
@@ -4247,16 +4462,16 @@ model ScreeningEntity {
 /// CBP ACE 4-digit port codes — reference table for pre-filing validation.
 /// Used by filingValidator.ts to reject invalid port codes on ISF and 7501 entries.
 model AcePortCode {
-  id             String    @id @default(cuid())
-  portCode       String    @unique // 4-digit, e.g. "1001" = NY/NJ
-  portName       String
-  state          String?
+  id              String    @id @default(cuid())
+  portCode        String    @unique // 4-digit, e.g. "1001" = NY/NJ
+  portName        String
+  state           String?
   fieldOfficeCode String?
-  transportModes String[]  // VESSEL | AIR | TRUCK | RAIL
-  isActive       Boolean   @default(true)
-  effectiveDate  DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  transportModes  String[] // VESSEL | AIR | TRUCK | RAIL
+  isActive        Boolean   @default(true)
+  effectiveDate   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([portCode])
   @@index([isActive])
@@ -4266,17 +4481,17 @@ model AcePortCode {
 /// Wired into dutyStack.ts as the section301 duty layer.
 /// LLM-extracted rows start as reviewStatus=PENDING; must be approved before affecting calculations.
 model Section301Rate {
-  id             String    @id @default(cuid())
-  htsNumber      String    // 8 or 10-digit HTS code
-  tranche        String    // LIST_1 | LIST_2 | LIST_3 | LIST_4A | LIST_4B
-  dutyRatePct    Float     // 25.0 for Lists 1-3, 7.5 for List 4A, 0.0 for suspended 4B
-  effectiveDate  DateTime
-  expirationDate DateTime?
+  id                      String    @id @default(cuid())
+  htsNumber               String // 8 or 10-digit HTS code
+  tranche                 String // LIST_1 | LIST_2 | LIST_3 | LIST_4A | LIST_4B
+  dutyRatePct             Float // 25.0 for Lists 1-3, 7.5 for List 4A, 0.0 for suspended 4B
+  effectiveDate           DateTime
+  expirationDate          DateTime?
   federalRegisterCitation String?
-  reviewStatus   String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
-  approvedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  reviewStatus            String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
+  approvedAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@unique([htsNumber, tranche, effectiveDate])
   @@index([htsNumber])
@@ -4287,19 +4502,19 @@ model Section301Rate {
 /// Section 301 exclusions — HTS codes and product descriptions excluded from Section 301 duties.
 /// LLM-extracted; must be approved before triggering RefundOpportunity auto-creation.
 model Section301Exclusion {
-  id                   String    @id @default(cuid())
-  htsNumber            String    // 10-digit HTS
-  productDescriptionRaw String   @db.Text // exact notice language
-  productDescriptionRegex String? @db.Text // compiled regex rule for matching
-  tranche              String    // LIST_1 | LIST_2 | LIST_3 | LIST_4A
-  effectiveDate        DateTime
-  expirationDate       DateTime?
-  isExpired            Boolean   @default(false)
+  id                      String    @id @default(cuid())
+  htsNumber               String // 10-digit HTS
+  productDescriptionRaw   String    @db.Text // exact notice language
+  productDescriptionRegex String?   @db.Text // compiled regex rule for matching
+  tranche                 String // LIST_1 | LIST_2 | LIST_3 | LIST_4A
+  effectiveDate           DateTime
+  expirationDate          DateTime?
+  isExpired               Boolean   @default(false)
   federalRegisterCitation String?
-  reviewStatus         String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
-  approvedAt           DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  reviewStatus            String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
+  approvedAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@index([htsNumber])
   @@index([isExpired])
@@ -4309,18 +4524,18 @@ model Section301Exclusion {
 /// Section 232 (Steel/Aluminum) tariff rates and country TRQs.
 /// Wired into dutyStack.ts as the section232 duty layer.
 model Section232Rate {
-  id             String    @id @default(cuid())
-  htsNumber      String    // 10-digit HTS
-  commodity      String    // STEEL | ALUMINUM
-  baseRatePct    Float     // 25.0 for steel, 10.0 for aluminum
-  countryOfOrigin String?  // null = applies to all; set for TRQ or exclusion-country
-  isGeneralApprovedExclusion Boolean @default(false)
-  trqQuotaKg     Float?    // Tariff-Rate Quota quantity in KG (null if no TRQ)
-  effectiveDate  DateTime
-  expirationDate DateTime?
-  reviewStatus   String    @default("APPROVED") // APPROVED | SUPERSEDED
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                         String    @id @default(cuid())
+  htsNumber                  String // 10-digit HTS
+  commodity                  String // STEEL | ALUMINUM
+  baseRatePct                Float // 25.0 for steel, 10.0 for aluminum
+  countryOfOrigin            String? // null = applies to all; set for TRQ or exclusion-country
+  isGeneralApprovedExclusion Boolean   @default(false)
+  trqQuotaKg                 Float? // Tariff-Rate Quota quantity in KG (null if no TRQ)
+  effectiveDate              DateTime
+  expirationDate             DateTime?
+  reviewStatus               String    @default("APPROVED") // APPROVED | SUPERSEDED
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
   @@index([htsNumber])
   @@index([commodity])
@@ -4330,20 +4545,20 @@ model Section232Rate {
 /// Product-Specific Rules (PSR) for FTA qualification — USMCA Annex 4-B and CAFTA-DR Annex 4.1.
 /// Powers the qualify/route.ts trade agreement determination engine.
 model TradeAgreementRule {
-  id               String   @id @default(cuid())
-  agreementCode    String   // USMCA | CAFTA_DR
-  hsChapter        String?  // 2-digit chapter
-  hsHeading        String?  // 4-digit heading
-  hsSubheading     String?  // 6-digit subheading
-  ruleType         String   // CC | CTH | CTSH | RVC | CC_OR_RVC | SPECIFIC
-  ruleText         String   @db.Text // exact annex language
-  tariffShiftFrom  String?  // HS chapters/headings the shift must be FROM
-  rvcMethod        String?  // TRANSACTION_VALUE | NET_COST
-  rvcPct           Float?   // e.g. 60.0 for 60% RVC
-  exceptions       String?  @db.Text
-  reviewStatus     String   @default("APPROVED") // APPROVED | SUPERSEDED
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(cuid())
+  agreementCode   String // USMCA | CAFTA_DR
+  hsChapter       String? // 2-digit chapter
+  hsHeading       String? // 4-digit heading
+  hsSubheading    String? // 6-digit subheading
+  ruleType        String // CC | CTH | CTSH | RVC | CC_OR_RVC | SPECIFIC
+  ruleText        String   @db.Text // exact annex language
+  tariffShiftFrom String? // HS chapters/headings the shift must be FROM
+  rvcMethod       String? // TRANSACTION_VALUE | NET_COST
+  rvcPct          Float? // e.g. 60.0 for 60% RVC
+  exceptions      String?  @db.Text
+  reviewStatus    String   @default("APPROVED") // APPROVED | SUPERSEDED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([agreementCode])
   @@index([hsChapter])
@@ -4353,17 +4568,17 @@ model TradeAgreementRule {
 /// WTO MFN bound/applied rates and preferential rates by HS-6 subheading + reporter country.
 /// Powers tariff scenario modeling and non-US sourcing shift analysis.
 model WtoTariffRate {
-  id              String   @id @default(cuid())
-  reporterIso2    String   // WTO member reporting country, ISO 3166-1 alpha-2
-  partnerIso2     String?  // null = MFN (applies to all WTO partners)
-  hsCode6         String   // 6-digit HS subheading
-  tariffYear      Int
-  rateType        String   // MFN_BOUND | MFN_APPLIED | PREFERENTIAL
-  adValoremPct    Float?
-  specificRate    String?  // e.g. "EUR 0.05 / kg" when not pure ad valorem
-  isFree          Boolean  @default(false)
-  tradeAgreement  String?  // e.g. "EU-US" for preferential rows
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  reporterIso2   String // WTO member reporting country, ISO 3166-1 alpha-2
+  partnerIso2    String? // null = MFN (applies to all WTO partners)
+  hsCode6        String // 6-digit HS subheading
+  tariffYear     Int
+  rateType       String // MFN_BOUND | MFN_APPLIED | PREFERENTIAL
+  adValoremPct   Float?
+  specificRate   String? // e.g. "EUR 0.05 / kg" when not pure ad valorem
+  isFree         Boolean  @default(false)
+  tradeAgreement String? // e.g. "EU-US" for preferential rows
+  createdAt      DateTime @default(now())
 
   @@unique([reporterIso2, partnerIso2, hsCode6, tariffYear, rateType])
   @@index([hsCode6])
@@ -4373,14 +4588,14 @@ model WtoTariffRate {
 
 /// CBP monthly import trade trend statistics — macro benchmarks for risk scoring.
 model CbpImportTrend {
-  id              String   @id @default(cuid())
-  reportingPeriod DateTime // first day of the report month
-  entryCount      Int
-  customsValueUsd Decimal
+  id               String   @id @default(cuid())
+  reportingPeriod  DateTime // first day of the report month
+  entryCount       Int
+  customsValueUsd  Decimal
   dutyCollectedUsd Decimal
-  topCommodities  Json     // [{htsChapter, description, entryCount, valueUsd}]
-  sourceReportUrl String?
-  createdAt       DateTime @default(now())
+  topCommodities   Json // [{htsChapter, description, entryCount, valueUsd}]
+  sourceReportUrl  String?
+  createdAt        DateTime @default(now())
 
   @@unique([reportingPeriod])
   @@index([reportingPeriod])
@@ -4392,9 +4607,9 @@ model ScheduleBCode {
   id               String   @id @default(cuid())
   scheduleBNumber  String   @unique // 10-digit Schedule B code
   description      String
-  quantityUnit1    String?  // e.g. "KGS"
+  quantityUnit1    String? // e.g. "KGS"
   quantityUnit2    String?
-  hts10Concordance String?  // corresponding 10-digit HTSUS code, if 1:1
+  hts10Concordance String? // corresponding 10-digit HTSUS code, if 1:1
   effectiveYear    Int
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
@@ -4408,21 +4623,21 @@ model ScheduleBCode {
 /// LLM-extracted; must be approved before flowing into duty stack calculations.
 /// Links to AdcvdOrder by caseNumber.
 model AdCvdCompanyRate {
-  id               String    @id @default(cuid())
-  caseNumber       String    // e.g. A-570-601 — foreign key by convention to AdcvdOrder
-  periodOfReview   String    // e.g. "POR 2024" or "2024-01-01/2024-12-31"
-  manufacturerName String
-  exporterName     String?
-  countryOfOrigin  String
-  depositRatePct   Float?    // individual company rate; null = use allOthersRatePct
-  allOthersRatePct Float?
-  isSeparateRate   Boolean   @default(true)
+  id                      String    @id @default(cuid())
+  caseNumber              String // e.g. A-570-601 — foreign key by convention to AdcvdOrder
+  periodOfReview          String // e.g. "POR 2024" or "2024-01-01/2024-12-31"
+  manufacturerName        String
+  exporterName            String?
+  countryOfOrigin         String
+  depositRatePct          Float? // individual company rate; null = use allOthersRatePct
+  allOthersRatePct        Float?
+  isSeparateRate          Boolean   @default(true)
   federalRegisterCitation String?
-  effectiveDate    DateTime?
-  reviewStatus     String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
-  approvedAt       DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  effectiveDate           DateTime?
+  reviewStatus            String    @default("PENDING") // PENDING | APPROVED | SUPERSEDED
+  approvedAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@index([caseNumber])
   @@index([manufacturerName])
@@ -4432,18 +4647,17 @@ model AdCvdCompanyRate {
 /// Partner Government Agency (PGA) reference requirements by HTSUS 10-digit code.
 /// Flags required forms/data for FDA, EPA, DOT, USDA, TTB, FCC, etc.
 model HtsPgaRequirement {
-  id              String   @id @default(cuid())
-  htsNumber       String   // 10-digit HTS code
-  agencyCode      String   // FDA | EPA | DOT | USDA | TTB | FCC | CPSC
-  programCode     String?  // e.g. "DEV" for FDA Devices, "TSCA" for EPA Chemical
-  isMandatory     Boolean  @default(true)
-  formCodes       String[] // e.g. ["FDA_2877", "EPA_3540_1"]
-  guidanceText    String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(cuid())
+  htsNumber    String // 10-digit HTS code
+  agencyCode   String // FDA | EPA | DOT | USDA | TTB | FCC | CPSC
+  programCode  String? // e.g. "DEV" for FDA Devices, "TSCA" for EPA Chemical
+  isMandatory  Boolean  @default(true)
+  formCodes    String[] // e.g. ["FDA_2877", "EPA_3540_1"]
+  guidanceText String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([htsNumber, agencyCode])
   @@index([htsNumber])
   @@index([agencyCode])
 }
-

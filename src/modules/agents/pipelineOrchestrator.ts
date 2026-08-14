@@ -559,8 +559,10 @@ export class PipelineOrchestrator {
             description: li.description,
             sku: li.partNumber,
             totalValue: li.totalValue,
+            eccn: li.eccnCode,
           })),
           destinationCountry: factValue(context, "destinationCountry"),
+          shipFromCountry: context.countryOfExport,
           importerName: factValue(context, "importerName"),
           incoterm: factValue(context, "incoterm"),
           exporterName: factValue(context, "exporterName"),
@@ -570,6 +572,7 @@ export class PipelineOrchestrator {
           carrier: strOrNull(logistics?.carrier),
           transportDocumentNumber: strOrNull(logistics?.transportDocumentNumber),
           isHtsBlocked,
+          parties: context.parties,
         };
         const output: ComplianceAuditOutput = await ComplianceAuditAgent.execute(agentInput);
         scratch.isComplianceBlocked = output.status === "BLOCKED_DEPENDENCY";

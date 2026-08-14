@@ -1,5 +1,18 @@
 import { db } from "@/lib/db";
 import { FactService } from "@/modules/shipment/factService";
+import type { EmbargoParty } from "@/modules/agents/compliance/embargo/types";
+
+/**
+ * ShipmentPartyRole values treated as the transaction's SHIP_TO party for
+ * Country Embargo Screening (CountryEmbargoScreening_Prompt.md section 15).
+ * Qubere's ShipmentPartyRole vocabulary (shipmentPartyService.ts) has no
+ * literal "SHIP_TO" value and no existing codebase convention maps one --
+ * DELIVERY_TO is the closest literal match, with CONSIGNEE/ULTIMATE_CONSIGNEE
+ * as the closest customs-semantic fallbacks. This is a data-mapping
+ * assumption to bridge naming, not an invented business rule; it does not
+ * decide any embargo outcome by itself.
+ */
+const SHIP_TO_ROLES = new Set(["DELIVERY_TO", "ULTIMATE_CONSIGNEE", "CONSIGNEE"]);
 
 export interface ShipmentFactContext {
   value: string;
@@ -46,9 +59,21 @@ export interface ShipmentDocumentSummary {
 export interface ShipmentAgentContext {
   shipmentId: string;
   accountId: string;
+  /** Shipment.countryOfExport -- the Country Embargo Screening compliance/ship-from country. */
+  countryOfExport: string | null;
   facts: Record<string, ShipmentFactContext>;
   lineItems: ShipmentLineItemSummary[];
   documents: ShipmentDocumentSummary[];
+  /**
+   * Transaction parties for Country Embargo Screening, sourced from
+   * ShipmentParty -> LegalEntity (the party/country linkage actually used
+   * elsewhere in the codebase) and, where LegalEntity.partyId backfills to
+   * the Global Party Master, cross-referenced against Party/PartyAddress.
+   * militaryEndUse is always undefined: no such field exists anywhere in the
+   * schema (CountryEmbargoScreening_Prompt.md section 18 -- "do not fabricate
+   * it"). See SHIP_TO_ROLES for the isShipTo mapping assumption.
+   */
+  parties: EmbargoParty[];
 }
 
 function parseTradeMetadata(extractedJson: string | null): Record<string, unknown> | null {
@@ -62,11 +87,21 @@ function parseTradeMetadata(extractedJson: string | null): Record<string, unknow
 }
 
 export async function buildAgentContext(shipmentId: string): Promise<ShipmentAgentContext> {
-  const [shipment, factsByField, lineItems, documents] = await Promise.all([
-    db.shipment.findUnique({ where: { id: shipmentId }, select: { accountId: true } }),
+  const [shipment, factsByField, lineItems, documents, shipmentParties] = await Promise.all([
+    db.shipment.findUnique({ where: { id: shipmentId }, select: { accountId: true, countryOfExport: true } }),
     FactService.latestByField(shipmentId),
     db.shipmentLineItem.findMany({ where: { shipmentId }, orderBy: { lineNumber: "asc" } }),
     db.shipmentDocument.findMany({ where: { shipmentId }, orderBy: { createdAt: "desc" } }),
+    db.shipmentParty.findMany({
+      where: { shipmentId },
+      include: {
+        legalEntity: {
+          include: {
+            party: { include: { addresses: true } },
+          },
+        },
+      },
+    }),
   ]);
 
   if (!shipment) {
@@ -84,10 +119,28 @@ export async function buildAgentContext(shipmentId: string): Promise<ShipmentAge
     };
   }
 
+  const parties: EmbargoParty[] = shipmentParties.map((sp) => {
+    const legalEntity = sp.legalEntity;
+    const primaryAddress =
+      legalEntity.party?.addresses.find((a) => a.isPrimary) ?? legalEntity.party?.addresses[0] ?? null;
+    return {
+      partyId: legalEntity.id,
+      partyType: sp.role,
+      country: legalEntity.country ?? primaryAddress?.country ?? null,
+      userDefined: legalEntity.legalName,
+      // No military-end-use field exists in the schema (Party, PartyAddress,
+      // or LegalEntity) -- left undefined rather than fabricated.
+      militaryEndUse: undefined,
+      isShipTo: SHIP_TO_ROLES.has(sp.role.toUpperCase()),
+    };
+  });
+
   return {
     shipmentId,
     accountId: shipment.accountId,
+    countryOfExport: shipment.countryOfExport,
     facts,
+    parties,
     lineItems: lineItems.map((li) => ({
       lineNumber: li.lineNumber,
       description: li.description,
