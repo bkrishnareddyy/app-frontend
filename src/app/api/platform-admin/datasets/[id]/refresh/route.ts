@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { refreshDataset, getDatasetById } from "@/lib/data/datasetRegistry";
+import { getDatasetById, triggerDatasetRefresh } from "@/lib/data/datasetRegistry";
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, params, requestId }) => {
   if (!ctx.isPlatformAdmin) {
@@ -18,20 +18,32 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, params,
     );
   }
 
-  const existing = getDatasetById(id);
-  if (!existing) {
+  const def = getDatasetById(id);
+  if (!def) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: `Dataset "${id}" not found`, requestId } },
       { status: 404 }
     );
   }
 
+  // Refuse with a clear 422 for un-wired datasets — never fake success
+  if (def.readinessStatus === "NOT_YET_IMPLEMENTED") {
+    return NextResponse.json(
+      {
+        status: "NOT_YET_IMPLEMENTED",
+        message: `Dataset "${def.name}" ingestion pipeline is not yet implemented. No data was fetched or written. This dataset is on the engineering roadmap.`,
+        requestId,
+      },
+      { status: 422 }
+    );
+  }
+
   try {
-    const result = await refreshDataset(id);
+    const result = await triggerDatasetRefresh(id);
     return NextResponse.json({
       status: result.success ? "SUCCESS" : "FAILED",
-      dataset: result.dataset,
       message: result.message,
+      logId: result.logId,
       requestId,
     });
   } catch (err: any) {
