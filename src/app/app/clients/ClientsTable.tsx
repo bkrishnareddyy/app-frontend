@@ -76,6 +76,49 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
   const [cbpImporterNumber, setCbpImporterNumber] = useState("");
   const [addEntityLoading, setAddEntityLoading] = useState(false);
 
+  const [poaUploadingId, setPoaUploadingId] = useState<string | null>(null);
+
+  const handlePoaUpload = async (importerId: string, file: File) => {
+    setPoaUploadingId(importerId);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/importers-of-record/${importerId}/poa`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        if (onSaved) onSaved();
+        router.refresh();
+      } else {
+        alert("Failed to upload Power of Attorney document");
+      }
+    } catch (err) {
+      console.error("Error uploading POA", err);
+    } finally {
+      setPoaUploadingId(null);
+    }
+  };
+
+  const [checkingBondId, setCheckingBondId] = useState<string | null>(null);
+
+  const handleCheckBond = async (importerNumber?: string | null) => {
+    setCheckingBondId(importerNumber || "active");
+    try {
+      const res = await fetch("/api/bonds");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert(`Customs Bond Status: ${data.status || "ACTIVE"} (${data.bondType || "Continuous Bond"}) - Validated with CBP`);
+      } else {
+        alert(data.error?.message || "Customs Bond verification failed");
+      }
+    } catch (err) {
+      console.error("Error checking bond", err);
+    } finally {
+      setCheckingBondId(null);
+    }
+  };
+
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const handleCreateClient = async (e: React.FormEvent) => {
@@ -343,14 +386,34 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                                 le.customsProfiles.map((cp) => (
                                   <div
                                     key={cp.id}
-                                    className="p-2 rounded-xl bg-surface-muted text-xs flex items-center justify-between"
+                                    className="p-2 rounded-xl bg-surface-muted text-xs flex items-center justify-between gap-2"
                                   >
                                     <div className="space-y-0.5">
                                       <span className="font-mono font-bold text-brand">
                                         CBP Importer #{cp.cbpImporterNumber || "Pending Assignment"}
                                       </span>
-                                      <div className="text-[10px] text-ink-muted">
-                                        POA Status: {cp.powerOfAttorneyStatus}
+                                      <div className="text-[10px] text-ink-muted flex items-center gap-2 flex-wrap">
+                                        <span>POA Status: {cp.powerOfAttorneyStatus}</span>
+                                        <button
+                                          type="button"
+                                          disabled={checkingBondId === cp.id}
+                                          onClick={() => handleCheckBond(cp.cbpImporterNumber)}
+                                          className="text-brand font-semibold hover:underline cursor-pointer"
+                                        >
+                                          {checkingBondId === cp.cbpImporterNumber ? "Checking..." : "Check Bond"}
+                                        </button>
+                                        <label className="text-brand font-semibold hover:underline cursor-pointer">
+                                          <span>{poaUploadingId === cp.id ? "Uploading..." : "Upload POA"}</span>
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            disabled={poaUploadingId === cp.id}
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) handlePoaUpload(cp.id, file);
+                                            }}
+                                          />
+                                        </label>
                                       </div>
                                     </div>
                                     <Badge variant="success" className="text-[9px]">

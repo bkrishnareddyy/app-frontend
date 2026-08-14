@@ -358,6 +358,39 @@ export function FilingDetailClient({
     }
   }
 
+  async function handleGenerateAuditRoom() {
+    setBusy("auditRoom");
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`/api/audit/room/${filing.id}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorFromResponse(data, "Audit room package generation failed."));
+      setSuccess("Focused Assessment Audit Package generated.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleCancel() {
+    setBusy("cancel");
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`/api/filing/${filing.id}/cancel`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorFromResponse(data, "Filing cancellation failed."));
+      setSuccess("Filing transmission cancelled successfully.");
+      router.refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleSaveAndResubmit() {
     setBusy("resubmit");
     setError(null);
@@ -471,6 +504,16 @@ export function FilingDetailClient({
               Save & Resubmit
             </Button>
           )}
+          {filing.filingStatus !== "CANCELLED" && (
+            <Button variant="danger" onClick={handleCancel} loading={busy === "cancel"} disabled={busy !== null}>
+              <XCircle className="w-3.5 h-3.5" />
+              Cancel Filing
+            </Button>
+          )}
+          <Button variant="secondary" onClick={handleGenerateAuditRoom} loading={busy === "auditRoom"} disabled={busy !== null}>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            Audit Room Binder
+          </Button>
           {childActions.map((action) => {
             const def = CHILD_ACTION_REGISTRY[action];
             if (!def) return null;

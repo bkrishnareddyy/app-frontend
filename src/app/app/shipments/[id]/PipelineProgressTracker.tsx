@@ -69,6 +69,23 @@ export function PipelineProgressTracker({ shipmentId }: { shipmentId: string }) 
     };
   }, [shipmentId, hasRefreshed, router]);
 
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      const res = await fetch(`/api/shipments/${shipmentId}/pipeline-retry`, { method: "POST" });
+      if (res.ok) {
+        setStatus((prev) => (prev ? { ...prev, status: "PROCESSING" } : null));
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("Failed to retry pipeline", err);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   if (!status || status.status === "COMPLETED") return null;
 
   if (status.status === "FAILED") {
@@ -81,6 +98,15 @@ export function PipelineProgressTracker({ shipmentId }: { shipmentId: string }) 
             <p className="text-xs opacity-80">{status.errorMessage || "An error occurred during AI processing."}</p>
           </div>
         </div>
+        <button
+          type="button"
+          disabled={retrying}
+          onClick={handleRetry}
+          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${retrying ? "animate-spin" : ""}`} />
+          <span>{retrying ? "Retrying..." : "Retry Pipeline"}</span>
+        </button>
       </div>
     );
   }

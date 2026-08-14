@@ -1,11 +1,49 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShieldCheck, TriangleAlert, Users } from "lucide-react";
+import { ShieldCheck, TriangleAlert, Users, RefreshCw } from "lucide-react";
 import { PanelHeading } from "@/components/PanelHeading";
 import type { FormattedRole, RolesPermissionsData } from "@/lib/admin/rolesData";
 
 interface RolesPermissionsPanelProps extends RolesPermissionsData {
   accountName: string;
   compact?: boolean;
+}
+
+export function SyncPermissionsButton() {
+  const router = useRouter();
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/admin/permissions/sync", { method: "POST" });
+      if (res.ok) {
+        router.refresh();
+      } else {
+        alert("Failed to sync permission catalogue");
+      }
+    } catch (err) {
+      console.error("Error syncing permissions", err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={syncing}
+      onClick={handleSync}
+      className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-border bg-white hover:bg-surface-muted text-ink text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+      title="Sync system permission catalogue and grant default role permissions"
+    >
+      <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin text-brand" : ""}`} />
+      <span>{syncing ? "Syncing..." : "Sync Permissions"}</span>
+    </button>
+  );
 }
 
 function RoleCard({ role }: { role: FormattedRole }) {
@@ -71,20 +109,23 @@ export function RolesPermissionsPanel({
           compact
         />
       ) : (
-        <div>
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-brand text-xs font-semibold mb-3">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Roles & Permissions</span>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-brand text-xs font-semibold mb-3">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Roles & Permissions</span>
+            </div>
+            <h1 className="text-3xl font-extrabold text-ink tracking-tight">Role Definitions</h1>
+            <p className="text-ink-muted text-sm mt-1">
+              What each role in {accountName} is allowed to do. Grants are read-only here —
+              assign roles to people from{" "}
+              <Link href="/app/admin/users" className="font-semibold text-brand">
+                User Management
+              </Link>
+              .
+            </p>
           </div>
-          <h1 className="text-3xl font-extrabold text-ink tracking-tight">Role Definitions</h1>
-          <p className="text-ink-muted text-sm mt-1">
-            What each role in {accountName} is allowed to do. Grants are read-only here —
-            assign roles to people from{" "}
-            <Link href="/app/admin/users" className="font-semibold text-brand">
-              User Management
-            </Link>
-            .
-          </p>
+          <SyncPermissionsButton />
         </div>
       )}
 

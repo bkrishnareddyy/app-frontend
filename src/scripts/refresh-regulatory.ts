@@ -60,7 +60,7 @@ async function run() {
     try {
       const detailRes = await fetch(docDetailUrl);
       if (detailRes.ok) {
-        const detailData = await detailRes.json();
+        const detailData = (await detailRes.json()) as any;
         if (detailData.body_html || detailData.abstract) {
           fullNoticeText = `${detailData.title || doc.title}\n\n${detailData.abstract || ""}\n\n${detailData.body_html || detailData.description || ""}`;
         }

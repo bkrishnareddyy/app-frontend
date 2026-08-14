@@ -157,6 +157,48 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
   const [classifyingDocId, setClassifyingDocId] = useState<string | null>(null);
   /** In-flight classification overrides so the UI optimistically updates. */
   const [typeOverrides, setTypeOverrides] = useState<Record<string, string>>({});
+  const [reprocessingDocId, setReprocessingDocId] = useState<string | null>(null);
+  const [attachingDocId, setAttachingDocId] = useState<string | null>(null);
+
+  const attachDocumentToShipment = async (docId: string, shipmentId: string) => {
+    try {
+      const res = await fetch(`/api/documents/${docId}/attach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shipmentId }),
+      });
+      if (res.ok) {
+        setAttachingDocId(null);
+        await fetchDocuments();
+      } else {
+        alert("Failed to attach document.");
+      }
+    } catch (err) {
+      console.error("Error attaching document", err);
+    }
+  };
+
+  const handleReprocess = async (docId: string, fromStep: string = "full") => {
+    setReprocessingDocId(docId);
+    try {
+      const res = await fetch(`/api/documents/${docId}/reprocess`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromStep }),
+      });
+      if (res.ok) {
+        await fetchDocuments();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error?.message || "Failed to reprocess document");
+      }
+    } catch (err) {
+      console.error("Error reprocessing document", err);
+    } finally {
+      setReprocessingDocId(null);
+    }
+  };
+
   const { t } = useLanguage();
 
   // Selected team member IDs. Default is [] (All Documents)
@@ -613,12 +655,13 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                 <th className="py-3 px-5">Client</th>
                 {isEnterpriseAdmin && <th className="py-3 px-5">Owner</th>}
                 <th className="py-3 px-5">{t.documents.colDate}</th>
+                <th className="py-3 px-5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={isEnterpriseAdmin ? 8 : 7} className="py-12 text-center text-ink-muted">
+                  <td colSpan={isEnterpriseAdmin ? 9 : 8} className="py-12 text-center text-ink-muted">
                     <FileText className="w-8 h-8 mx-auto text-ink-muted/40 mb-2" />
                     <p className="font-semibold text-xs text-ink">No Trade Documents Uploaded Yet</p>
                     <p className="text-[11px] text-ink-muted mt-1">
@@ -698,55 +741,50 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                         if (!effectiveType) {
                           return <span className="text-[11px] text-ink-muted">—</span>;
                         }
-                        const pct = doc.documentTypeConfidence != null
-                          ? Math.round(doc.documentTypeConfidence * 100)
-                          : null;
                         return (
-                          <span className="inline-flex items-center gap-1">
+                          <div className="flex items-center gap-1.5">
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                               {DOCUMENT_TYPE_LABELS[effectiveType] ?? effectiveType}
                             </span>
-                            {pct != null && (
-                              <span className="text-[10px] text-ink-muted font-medium">{pct}%</span>
+                            {doc.documentTypeConfidence != null && (
+                              <span className="text-[10px] font-mono text-ink-muted">
+                                {Math.round(doc.documentTypeConfidence * 100)}%
+                              </span>
                             )}
-                          </span>
+                          </div>
                         );
                       })()}
                     </td>
 
                     <td className="py-3.5 px-5 font-mono text-[11px]">
                       {doc.unattached ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 font-sans w-fit">
-                            Unattached
-                          </span>
-                          {doc.shipmentCandidates && doc.shipmentCandidates.length > 0 && (
-                            <div className="flex flex-col gap-1 mt-1 font-sans">
-                              <span className="text-[10px] text-ink-muted font-medium">Suggested matches:</span>
-                              {doc.shipmentCandidates.map((cand) => (
-                                <div key={cand.id} className="flex items-center gap-1.5 text-[11px]">
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const res = await fetch(`/api/documents/${doc.id}/attach`, {
-                                        method: "POST",
-                                        headers: { "content-type": "application/json" },
-                                        body: JSON.stringify({ shipmentId: cand.shipment.id }),
-                                      });
-                                      if (res.ok) {
-                                        alert(`Attached to shipment ${cand.shipment.shipmentNumber}`);
-                                        window.location.reload();
-                                      } else {
-                                        alert("Failed to attach document.");
-                                      }
-                                    }}
-                                    className="text-brand font-semibold hover:underline bg-brand/5 px-1.5 py-0.5 rounded border border-brand/20 text-[10px] transition-colors hover:bg-brand/10"
-                                    title={cand.matchReasons?.join(", ")}
-                                  >
-                                    Attach to #{cand.shipment.shipmentNumber} ({Math.round(cand.confidenceScore > 1 ? cand.confidenceScore : cand.confidenceScore * 100)}%)
-                                  </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setAttachingDocId(attachingDocId === doc.id ? null : doc.id)}
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+                          >
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>Unattached — Select Shipment</span>
+                          </button>
+                          {attachingDocId === doc.id && (
+                            <div className="absolute left-0 top-full mt-1.5 w-72 bg-white rounded-2xl border border-border shadow-xl z-20 p-2 text-xs">
+                              <p className="font-bold text-ink mb-1 text-[11px] px-2 pt-1">Attach to shipment</p>
+                              {shipments.length === 0 ? (
+                                <p className="text-ink-muted text-[11px] px-2 py-2">No active shipments found</p>
+                              ) : (
+                                <div className="max-h-48 overflow-y-auto space-y-1">
+                                  {shipments.map((s) => (
+                                    <button
+                                      key={s.id}
+                                      onClick={() => attachDocumentToShipment(doc.id, s.id)}
+                                      className="w-full text-left px-2 py-1.5 hover:bg-surface-muted rounded-xl transition-colors text-ink text-[11px] font-medium cursor-pointer"
+                                    >
+                                      {s.shipmentNumber || s.id}
+                                    </button>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                           )}
                         </div>
@@ -793,6 +831,19 @@ export function DocumentsClient({ context, teamMembers }: DocumentsClientProps) 
                     )}
 
                     <td className="py-3.5 px-5 text-ink-muted">{doc.uploadedAt}</td>
+
+                    <td className="py-3.5 px-5 text-right">
+                      <button
+                        type="button"
+                        disabled={reprocessingDocId === doc.id}
+                        onClick={() => handleReprocess(doc.id)}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg border border-border bg-white hover:bg-surface-muted text-ink text-[11px] font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                        title="Reprocess document extraction pipeline"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${reprocessingDocId === doc.id ? "animate-spin text-brand" : ""}`} />
+                        <span>{reprocessingDocId === doc.id ? "Processing..." : "Reprocess"}</span>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}

@@ -218,6 +218,59 @@ export function ApiKeyPanel({ initialKeys }: ApiKeyPanelProps) {
           ))
         )}
       </div>
+
+      {/* Outbound Webhook Signing Secret */}
+      <WebhookSecretSection />
+    </div>
+  );
+}
+
+function WebhookSecretSection() {
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/admin/settings/webhooks", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setWebhookSecret(data.secret || data.signingSecret || JSON.stringify(data));
+      } else {
+        alert(data.error?.message || "Failed to generate webhook secret");
+      }
+    } catch (err) {
+      console.error("Error generating webhook secret", err);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Outbound Webhook Security</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Generate an HMAC signing secret to verify signature headers on outbound webhook events.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={generating}
+          onClick={handleGenerate}
+          className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          <Key className="w-3.5 h-3.5" />
+          <span>{generating ? "Generating..." : "Generate Webhook Secret"}</span>
+        </button>
+      </div>
+      {webhookSecret && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+          <p className="text-[11px] font-bold text-amber-900">New Webhook Signing Secret (Copy now — shown once):</p>
+          <code className="block font-mono text-xs text-amber-950 select-all break-all">{webhookSecret}</code>
+        </div>
+      )}
     </div>
   );
 }

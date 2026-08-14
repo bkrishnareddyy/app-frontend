@@ -43,6 +43,30 @@ export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProc
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+
+  const handleDeactivateAccount = async (accountId: string, accountName: string) => {
+    if (!confirm(`Are you sure you want to deactivate account "${accountName}" (${accountId})?`)) {
+      return;
+    }
+    setDeactivatingId(accountId);
+    try {
+      const res = await fetch(`/api/platform-admin/accounts/${accountId}/deactivate`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setMessage({ type: "success", text: `Account "${accountName}" has been deactivated.` });
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setMessage({ type: "error", text: data.error || "Failed to deactivate account" });
+      }
+    } catch (err) {
+      console.error("Error deactivating account", err);
+    } finally {
+      setDeactivatingId(null);
+    }
+  };
 
   const handleCreateEnterpriseAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,6 +301,7 @@ export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProc
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Members</th>
                 <th className="px-6 py-4">Created Date</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -299,7 +324,10 @@ export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProc
                     </Badge>
                   </td>
                   <td className="px-6 py-4">
-                    <Badge variant="success" className="font-medium normal-case text-xs">
+                    <Badge
+                      variant={acc.status === "INACTIVE" || acc.status === "DEACTIVATED" ? "danger" : "success"}
+                      className="font-medium normal-case text-xs"
+                    >
                       {acc.status}
                     </Badge>
                   </td>
@@ -308,6 +336,18 @@ export function PlatformAdminConsole({ accounts, htsAdmin, aiUsage, documentProc
                   </td>
                   <td className="px-6 py-4 text-xs text-ink-muted">
                     {formatDate(acc.createdAt)}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    {acc.status !== "INACTIVE" && acc.status !== "DEACTIVATED" && (
+                      <button
+                        type="button"
+                        disabled={deactivatingId === acc.id}
+                        onClick={() => handleDeactivateAccount(acc.id, acc.name)}
+                        className="px-2.5 py-1 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {deactivatingId === acc.id ? "Deactivating..." : "Deactivate"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

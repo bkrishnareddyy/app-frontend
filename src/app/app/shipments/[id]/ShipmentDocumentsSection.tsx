@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files, Clock, XCircle, GripVertical } from "lucide-react";
+import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files, Clock, XCircle, GripVertical, FileText } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
@@ -177,14 +177,26 @@ export function ShipmentDocumentsSection({
           <h3 className="text-xs font-bold uppercase tracking-wider text-ink min-w-0 break-words">
             DOCUMENTS ({documents.length} uploaded)
           </h3>
-          <Button
-            size="sm"
-            onClick={() => setIsModalOpen(true)}
-            className="rounded-xl py-1.5 gap-1 shrink-0 whitespace-nowrap"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Document</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <a
+              href={`/api/audit/package/${shipmentId}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl border border-border bg-white hover:bg-surface-muted text-ink text-xs font-semibold transition-colors"
+              title="Download compiled reasonable care audit PDF package"
+            >
+              <FileText className="w-3.5 h-3.5 text-brand" />
+              <span>Audit PDF</span>
+            </a>
+            <Button
+              size="sm"
+              onClick={() => setIsModalOpen(true)}
+              className="px-3 py-1 h-auto text-xs flex items-center space-x-1 shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Upload Document</span>
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-2">

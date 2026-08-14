@@ -14,7 +14,7 @@ import {
   revalidationPresentation,
   reviewStatusPresentation,
 } from "@/modules/product/productDisplay";
-import { RevalidationActions } from "./ProductActions";
+import { EnrichProductAction, RevalidationActions } from "./ProductActions";
 import { ProductTabs } from "./ProductTabs";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +68,7 @@ export default async function ProductDetailPage(props: {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <EnrichProductAction productId={product.id} />
             <Badge variant={review.tone}>{review.label}</Badge>
             <Badge variant={status.tone}>{status.label}</Badge>
           </div>

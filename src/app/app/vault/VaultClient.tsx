@@ -48,6 +48,27 @@ export function VaultClient() {
   const [opportunities, setOpportunities] = useState<RefundOpportunity[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState("");
+  const [updatingPscId, setUpdatingPscId] = useState<string | null>(null);
+
+  const handleUpdatePscStatus = async (id: string, newStatus: string) => {
+    setUpdatingPscId(id);
+    try {
+      const res = await fetch(`/api/refunds/psc/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus, notes: "PSC status updated via Vault UI" }),
+      });
+      if (res.ok) {
+        loadOpportunities();
+      } else {
+        alert("Failed to update Post-Summary Correction status");
+      }
+    } catch (err) {
+      console.error("Error updating PSC status", err);
+    } finally {
+      setUpdatingPscId(null);
+    }
+  };
 
   // Drawback state
   const [lots, setLots] = useState<DrawbackLot[]>([]);
@@ -264,11 +285,21 @@ export function VaultClient() {
                       <p className="text-xs font-bold text-slate-800">Filing Ref: {opp.filingEntryNumber || "Retroactive Review"}</p>
                       <p className="text-[10px] text-slate-500">Confidence Match: {opp.confidence}%</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-1">
                       <p className="text-base font-extrabold text-emerald-700">+{displayCurrency(opp.estimatedRefundAmount, "USD")}</p>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {opp.status}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {opp.status}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={updatingPscId === opp.id}
+                          onClick={() => handleUpdatePscStatus(opp.id, opp.status === "FILED" ? "CLAIMED" : "FILED")}
+                          className="text-[10px] font-bold text-brand hover:underline cursor-pointer disabled:opacity-50"
+                        >
+                          {updatingPscId === opp.id ? "Updating..." : opp.status === "FILED" ? "Mark Claimed" : "File PSC"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

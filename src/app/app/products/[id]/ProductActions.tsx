@@ -627,3 +627,22 @@ export function RevalidationActions({
     </div>
   );
 }
+
+export function EnrichProductAction({ productId }: { productId: string }) {
+  const { busy, error, run } = useAction();
+  const base = `/api/products/${productId}/enrich`;
+
+  return (
+    <div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => run(base, "POST", {})}
+        className={primaryClass}
+      >
+        {busy ? "Enriching..." : "Enrich with AI"}
+      </button>
+      <ErrorNote message={error} />
+    </div>
+  );
+}

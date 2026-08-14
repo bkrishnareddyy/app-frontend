@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp, Download, ShieldCheck } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -71,8 +71,28 @@ function resultBadge(result: string): BadgeProps["variant"] {
 }
 
 function FindingCard({ finding, onRunAudit, busy }: { finding: FindingProps; onRunAudit?: () => void; busy?: boolean }) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
   const isResolved = finding.status === "Resolved";
+
+  const handleResolve = async () => {
+    setActionBusy(true);
+    try {
+      const res = await fetch(`/api/findings/${finding.id}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: "Resolved via compliance UI" }),
+      });
+      if (res.ok) {
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("Error resolving finding", err);
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   return (
     <div className={`rounded-xl border p-4 space-y-2 text-xs ${isResolved ? "opacity-60" : ""} ${SEVERITY_STYLES[finding.severity]}`}>
@@ -123,6 +143,19 @@ function FindingCard({ finding, onRunAudit, busy }: { finding: FindingProps; onR
             {finding.assignedToName && <span>Assigned to {finding.assignedToName}</span>}
             {finding.confidence !== null && <span>Confidence {finding.confidence}%</span>}
           </div>
+          {!isResolved && (
+            <div className="flex items-center gap-2 pt-2 border-t border-current/10">
+              <button
+                type="button"
+                disabled={actionBusy}
+                onClick={handleResolve}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                <span>{actionBusy ? "Saving..." : "Mark Resolved"}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -331,30 +364,16 @@ export function ComplianceFindingsClient({ findings, recentAudits }: ComplianceF
         <Card className="space-y-3">
           <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center gap-2">
             <Clock className="w-3.5 h-3.5 text-brand" />
-            Recent Audit Runs
+            <span>Recent Audits</span>
           </h3>
-          <div className="space-y-2">
-            {recentAudits.map((audit) => (
-              <div
-                key={audit.id}
-                className="flex items-center justify-between py-2 border-b border-border text-xs last:border-0"
-              >
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={resultBadge(audit.overallResult)}>{audit.overallResult}</Badge>
-                    {audit.entryNumber && (
-                      <span className="text-ink-muted">Entry {audit.entryNumber}</span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-ink-muted">
-                    {audit.runByAgentName ?? "System"} &middot; {displayDate(audit.runAt)}
-                  </p>
+          <div className="space-y-2 text-xs">
+            {recentAudits.map((a) => (
+              <div key={a.id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <Badge variant={resultBadge(a.overallResult)}>{a.overallResult}</Badge>
+                  <span className="font-medium text-ink">{a.auditType}</span>
                 </div>
-                {audit.riskScore !== null && (
-                  <span className={`text-sm font-extrabold ${audit.riskScore > 50 ? "text-red-600" : audit.riskScore > 20 ? "text-amber-600" : "text-emerald-600"}`}>
-                    {audit.riskScore}%
-                  </span>
-                )}
+                <span className="text-ink-muted">{displayDate(a.runAt)}</span>
               </div>
             ))}
           </div>
