@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
-import { Decimal } from "@/lib/tariff/decimal";
+import { Decimal, roundToCents } from "@/lib/tariff/decimal";
 import { calculateDutyStack, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 
 export interface InventoryAllocationMatchInput {

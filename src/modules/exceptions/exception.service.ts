@@ -50,7 +50,12 @@ export const DOCUMENT_FIELD_LABELS: Record<string, string> = {
 export const VALID_EXCEPTION_STATES: readonly string[] = EXCEPTION_STATES;
 
 export class ExceptionService {
-  static async listExceptions(accountId: string, userId: string, query: ExceptionListQuery) {
+  static async listExceptions(
+    accountId: string,
+    userId: string,
+    query: ExceptionListQuery,
+    pagination?: { limit: number; cursor?: string }
+  ) {
     const where: import("@prisma/client").Prisma.ExceptionItemWhereInput = { accountId };
 
     if (query.status && query.status !== "all") {
@@ -64,20 +69,31 @@ export class ExceptionService {
     if (query.assignedToMe) {
       where.assignedToUserId = userId;
     }
+    if (pagination?.cursor) {
+      where.id = { lt: pagination.cursor };
+    }
 
-    const exceptions = await db.exceptionItem.findMany({
-      where,
-      omit: { resolutionReasonCode: true },
-      include: {
-        shipment: true,
-        filing: true,
-        assignedToUser: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const limit = pagination?.limit ?? 50;
+    const [exceptions, total] = await Promise.all([
+      db.exceptionItem.findMany({
+        where,
+        omit: { resolutionReasonCode: true },
+        include: {
+          shipment: true,
+          filing: true,
+          assignedToUser: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      }),
+      db.exceptionItem.count({ where: { accountId } }),
+    ]);
+
+    const nextCursor = exceptions.length === limit ? (exceptions[exceptions.length - 1]?.id ?? null) : null;
 
     return {
       exceptions,
+      pagination: { nextCursor, hasMore: nextCursor !== null, total },
       metadata: {
         providerName: "InternalExceptionEngine",
         datasetVersion: "2026.1",

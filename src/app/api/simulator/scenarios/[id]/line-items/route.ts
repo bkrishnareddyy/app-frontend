@@ -3,7 +3,8 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams, parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
-import { calculateMPF, calculateHMF, parsePublishedDutyRate } from "@/lib/tariff/dutyEngine";
+import { calculateMPFDecimal, calculateHMFDecimal, parsePublishedDutyRate } from "@/lib/tariff/dutyEngine";
+import { Decimal, roundToCents } from "@/lib/tariff/decimal";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });

@@ -121,7 +121,7 @@ export function withAuthenticatedRoute<TParams = Record<string, never>>(
   options?: { permission?: PermissionRequirement; write?: boolean }
 ) {
   return async (req: Request, context?: NextRouteContext<TParams>): Promise<Response> => {
-    const requestId = generateRequestId();
+    const requestId = req.headers.get("x-request-id") ?? generateRequestId();
     const { ctx, errorResponse } = options?.write
       ? await authorizeWrite(options?.permission)
       : await authorizeRequest(options?.permission);
@@ -157,7 +157,7 @@ export function withPublicRoute<TParams = Record<string, never>>(
   handler: (args: PublicRouteHandlerArgs<TParams>) => Promise<Response>
 ) {
   return async (req: Request, context?: NextRouteContext<TParams>): Promise<Response> => {
-    const requestId = generateRequestId();
+    const requestId = req.headers.get("x-request-id") ?? generateRequestId();
     try {
       const params = context ? await context.params : ({} as TParams);
       return await handler({ req, requestId, params });

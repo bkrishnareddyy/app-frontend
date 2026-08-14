@@ -5,6 +5,7 @@ import { parseAndValidateBody } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
 import { DrawbackService } from "@/modules/drawback/drawback.service";
+import { parsePagination } from "@/lib/api/pagination";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
@@ -21,20 +22,35 @@ const createClaimSchema = z.object({
   ).min(1, "Claim requires at least one accepted inventory match allocation"),
 });
 
-export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
-  const claims = await db.drawbackClaim.findMany({
-    where: { accountId: ctx.accountId },
-    include: {
-      matches: {
-        include: {
-          shipmentLineItem: true,
-          exportLineItem: true,
+export const GET = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
+  const { searchParams } = new URL(req.url);
+  const { limit, cursor } = parsePagination(searchParams);
+
+  const where: import("@prisma/client").Prisma.DrawbackClaimWhereInput = { accountId: ctx.accountId };
+  if (cursor) {
+    where.id = { lt: cursor };
+  }
+
+  const [claims, total] = await Promise.all([
+    db.drawbackClaim.findMany({
+      where,
+      include: {
+        matches: {
+          include: {
+            shipmentLineItem: true,
+            exportLineItem: true,
+          },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  return NextResponse.json({ drawbackClaims: claims, requestId });
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    }),
+    db.drawbackClaim.count({ where: { accountId: ctx.accountId } }),
+  ]);
+
+  const nextCursor = claims.length === limit ? (claims[claims.length - 1]?.id ?? null) : null;
+
+  return NextResponse.json({ drawbackClaims: claims, pagination: { nextCursor, hasMore: nextCursor !== null, total }, requestId });
 });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {

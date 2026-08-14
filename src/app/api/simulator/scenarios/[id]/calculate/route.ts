@@ -36,7 +36,8 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const lineCalculations = [];
   let totalCustomsValueDec = new Decimal(0);
   let totalDutyDec = new Decimal(0);
-  let totalFeesDec = new Decimal(0);
+  let totalMpfDec = new Decimal(0);
+  let totalHmfDec = new Decimal(0);
   let totalLandedCostDec = new Decimal(0);
 
   for (const item of scenario.lineItems) {
@@ -52,7 +53,8 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
 
     totalCustomsValueDec = totalCustomsValueDec.plus(breakdown.customsValue);
     totalDutyDec = totalDutyDec.plus(breakdown.baseDuty.plus(breakdown.section301).plus(breakdown.section232));
-    totalFeesDec = totalFeesDec.plus(breakdown.mpf.plus(breakdown.hmf));
+    totalMpfDec = totalMpfDec.plus(breakdown.mpf);
+    totalHmfDec = totalHmfDec.plus(breakdown.hmf);
     totalLandedCostDec = totalLandedCostDec.plus(breakdown.total);
 
     // Update database row with computed values
@@ -94,11 +96,10 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
 
   const roundedCustomsValue = roundToCents(totalCustomsValueDec);
   const roundedDuty = roundToCents(totalDutyDec);
-  const roundedFees = roundToCents(totalFeesDec);
+  const roundedMpf = roundToCents(totalMpfDec);
+  const roundedHmf = roundToCents(totalHmfDec);
+  const roundedFees = roundToCents(totalMpfDec.plus(totalHmfDec));
   const roundedLandedCost = roundToCents(totalLandedCostDec);
-
-  const mpfSplit = roundToCents(roundedFees.times(0.7)).toNumber();
-  const hmfSplit = roundToCents(roundedFees.times(0.3)).toNumber();
 
   return NextResponse.json({
     calculation: {
@@ -109,7 +110,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       totalCustomsValue: roundedCustomsValue.toNumber(),
       totalDuty: roundedDuty.toNumber(),
       totalFees: roundedFees.toNumber(),
-      feeBreakdown: { mpfAmount: mpfSplit, hmfAmount: hmfSplit }, // illustrative split
+      feeBreakdown: { mpfAmount: roundedMpf.toNumber(), hmfAmount: roundedHmf.toNumber() },
       totalLandedCost: roundedLandedCost.toNumber(),
       unratedLineCount: 0,
       effectiveLandedMultiplier: roundedCustomsValue.gt(0) ? roundedLandedCost.dividedBy(roundedCustomsValue).toFixed(4) : null,
