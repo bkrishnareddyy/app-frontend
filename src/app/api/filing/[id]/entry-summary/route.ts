@@ -3,12 +3,13 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { buildForm7501, type FilingHeaderInput, type LineItemInput } from "@/lib/filing/form7501";
+import { generateForm7501PdfBuffer } from "@/lib/filing/form7501Pdf";
 import { loadHtsCodesMap, parsePublishedDutyRate } from "@/lib/tariff/dutyEngine";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
 
-export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestId, params }) => {
+export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
@@ -104,6 +105,19 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   };
 
   const form7501 = buildForm7501(filingHeaderInput, lineItemInputs, htsReleaseId);
+
+  const { searchParams } = new URL(req.url);
+  const format = searchParams.get("format");
+  if (format === "pdf") {
+    const pdfBuffer = generateForm7501PdfBuffer(form7501);
+    return new Response(new Uint8Array(pdfBuffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="7501-${filing.entryNumber}.pdf"`,
+      },
+    });
+  }
 
   return NextResponse.json({
     form7501,

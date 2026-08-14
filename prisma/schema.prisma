@@ -420,6 +420,9 @@ model Shipment {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
+  scenarioId       String?
+  scenario         LandedCostScenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+
   masterShipmentId String?
   masterShipment   Shipment?  @relation("MasterHouseRelation", fields: [masterShipmentId], references: [id], onDelete: SetNull)
   houseShipments   Shipment[] @relation("MasterHouseRelation")
@@ -668,6 +671,8 @@ model DocumentShipmentCandidate {
   matchedValue          String // the literal token found in text, normalized
   matchedSource         String // EMAIL_SUBJECT, PARSED_DOCUMENT_TEXT
   autoSelected          Boolean          @default(false)
+  // E-1: 0.0–1.0 signal for UI ranking; exact-identifier matches write 1.0
+  confidenceScore       Float            @default(1.0)
   algorithmVersion      String           @default("v1-exact-identifier")
   createdAt             DateTime         @default(now())
 
@@ -973,44 +978,49 @@ model AdcvdOrder {
 }
 
 model LandedCostScenario {
-  id              String   @id @default(cuid())
-  accountId       String
-  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name            String // e.g. Foxconn Sourcing Shift: China vs Vietnam
-  originCountry   String   @default("China")
-  destinationPort String   @default("Port of Long Beach (2709)")
-  incoterm        String   @default("CIF")
-  currency        String   @default("USD")
-  createdByUserId String?
-  createdByUser   User?    @relation("ScenarioCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  status          String   @default("Draft") // Draft | Saved
-  htsReleaseId    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  accountId           String
+  account             Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name                String // e.g. Foxconn Sourcing Shift: China vs Vietnam
+  originCountry       String   @default("China")
+  destinationPort     String   @default("Port of Long Beach (2709)")
+  incoterm            String   @default("CIF")
+  currency            String   @default("USD")
+  manufacturer        String?
+  tradeAgreementClaim String?
+  createdByUserId     String?
+  createdByUser       User?    @relation("ScenarioCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  status              String   @default("Draft") // Draft | Saved | Approved
+  htsReleaseId        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   lineItems LandedCostScenarioLineItem[]
+  shipments Shipment[]
 
   @@index([accountId])
 }
 
 model LandedCostScenarioLineItem {
-  id                 String             @id @default(cuid())
-  scenarioId         String
-  scenario           LandedCostScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  description        String
-  htsCodeId          String
-  htsCode            HtsNode            @relation(fields: [htsCodeId], references: [id])
-  unitValue          Decimal
-  quantity           Int
-  freightCost        Decimal            @default(0.0)
-  insuranceCost      Decimal            @default(0.0)
-  dutyRateOverride   Decimal?
-  computedDuty       Decimal            @default(0.0)
-  computedFees       Decimal            @default(0.0)
-  computedLandedCost Decimal            @default(0.0)
-  dutyStack          Json?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                  String             @id @default(cuid())
+  scenarioId          String
+  scenario            LandedCostScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  description         String
+  htsCodeId           String
+  htsCode             HtsNode            @relation(fields: [htsCodeId], references: [id])
+  unitValue           Decimal
+  quantity            Int
+  freightCost         Decimal            @default(0.0)
+  insuranceCost       Decimal            @default(0.0)
+  manufacturer        String?
+  tradeAgreementClaim String?
+  dutyRateOverride    Decimal?
+  computedDuty        Decimal            @default(0.0)
+  computedFees        Decimal            @default(0.0)
+  computedLandedCost  Decimal            @default(0.0)
+  dutyStack           Json?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([scenarioId])
   @@index([htsCodeId])
@@ -1023,7 +1033,7 @@ model RefundOpportunity {
   filingId              String
   filing                CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
   opportunityType       String // overpayment | retroactive_exclusion | classification_error
-  estimatedRefundAmount Decimal
+  estimatedRefundAmount Decimal?
   confidence            Int           @default(92)
   basis                 Json // Rule/Comparison details
   status                String        @default("Identified") // Identified | Dismissed | ConvertedToPSC
@@ -1634,6 +1644,11 @@ model ReconciliationIssue {
   sourceDocuments String[] // e.g. ["Commercial Invoice", "Packing List"]
   status          String    @default("Open") // Open | Resolved | Ignored
   issueType       String    @default("DOCUMENT_CONFLICT") // DOCUMENT_CONFLICT | ENTRY_DISCREPANCY | PSC_CANDIDATE
+  // C-2: Resolution detail — which value was accepted and by whom
+  resolution      String?   // ACCEPTED_A | ACCEPTED_B | BOTH_WRONG | ACKNOWLEDGED
+  note            String?   // free-text resolution note entered by the reviewer
+  resolvedByUserId   String?
+  resolvedByUserName String?
   createdAt       DateTime  @default(now())
   resolvedAt      DateTime?
 
@@ -2011,10 +2026,15 @@ model HtsNode {
 model HtsDutyRate {
   id               String  @id @default(cuid())
   htsNodeId        String
-  rateColumn       String // General, Special, Column 2
+  rateColumn       String // General, Special, Column 2, Section301, AD_CVD
   programCode      String? // GSP, USMCA, etc.
   rawRateText      String
-  rateType         String? // Free, AdValorem, Specific, Compound, Unparsed
+  rateType         String? // Free, AdValorem, Specific, Compound, Unparsed, SECTION_301, ANTIDUMPING, COUNTERVAILING
+  trancheId        String? // List1, List2, List3, List4A, List4B
+  exclusion        Boolean @default(false)
+  caseNumber       String? // e.g. A-570-601
+  manufacturer     String? // Manufacturer name or "*"
+  countryOfOrigin  String? // e.g. CN
   adValoremPercent Float?
   specificAmount   Float?
   specificUnit     String?
@@ -2026,6 +2046,8 @@ model HtsDutyRate {
 
   @@index([htsNodeId])
   @@index([rateColumn])
+  @@index([rateType])
+  @@index([caseNumber])
 }
 
 model HtsUnit {

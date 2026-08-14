@@ -273,6 +273,10 @@ DATE: ${new Date().toISOString().split("T")[0]}
                 </button>
               </div>
 
+              <div className="text-[11px] text-ink-muted bg-surface-muted/30 p-2.5 rounded-lg border border-border/60">
+                <span className="font-semibold text-brand">Coverage note:</span> Rule evaluation uses key HTS chapter Product-Specific Rules (USMCA Annex 4-B chapters 27-30, 39, 64, 73, 84-85, 87-88, 90, 94; CAFTA-DR 61-62, 64, 84; KORUS 84-85, 87; GSP 35% RVC). Unmapped chapters use generic agreement thresholds.
+              </div>
+
               {qualifyResult && (
                 <div className="bg-surface-muted/50 p-4 rounded-xl space-y-3 border border-border">
                   <div className="flex items-center justify-between">

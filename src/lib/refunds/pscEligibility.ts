@@ -17,6 +17,9 @@ export async function checkPscEligibility(accountId: string, filingId: string): 
           lineItems: {
             include: { drawbackMatches: true },
           },
+          complianceDeadlines: {
+            where: { type: "PSC_WINDOW" },
+          },
         },
       },
     },
@@ -37,13 +40,19 @@ export async function checkPscEligibility(accountId: string, filingId: string): 
     return { eligible: false, reason: "Entry is closed and fully liquidated. PSC window is closed." };
   }
 
-  // 3. PSC cannot be filed for entries already matched in a DrawbackClaim
+  // 3. Check PSC_WINDOW ComplianceDeadline expiration (19 CFR 174)
+  const pscDeadline = filing.shipment?.complianceDeadlines?.[0];
+  if (pscDeadline && pscDeadline.dueAt && pscDeadline.dueAt < new Date()) {
+    return { eligible: false, reason: "PSC filing window has expired (exceeded statutory 300-day limit under 19 CFR 174)." };
+  }
+
+  // 4. PSC cannot be filed for entries already matched in a DrawbackClaim
   const hasDrawback = filing.shipment.lineItems.some((item) => item.drawbackMatches.length > 0);
   if (hasDrawback) {
     return { eligible: false, reason: "Entry contains line items that have active drawback claims." };
   }
 
-  // 4. Correction must be material (requires actual duties paid > 0)
+  // 5. Correction must be material (requires actual duties paid > 0)
   if (!filing.totalDuties || Number(filing.totalDuties) <= 0) {
     return { eligible: false, reason: "Entry has no recorded duty paid. PSC requires positive duty impact." };
   }

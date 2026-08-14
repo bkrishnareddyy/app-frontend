@@ -21,6 +21,54 @@ function cleanHts(code?: string | null): string {
   return code.replace(/[^0-9]/g, "");
 }
 
+async function analyzeScopeWithClaude(
+  input: ScopeScreeningInput,
+  order: { caseNumber: string; title: string; scopeLanguage: string },
+  initialReasoning: string
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return `${initialReasoning} [GRI Analysis: Step 1: Subheading / keyword match identified. Step 2: Country of origin or technical specification unverified. Step 3: Formal CBP scope ruling recommended.]`;
+  }
+
+  try {
+    const { Anthropic } = await import("@anthropic-ai/sdk");
+    const anthropic = new Anthropic({ apiKey });
+    const response = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 350,
+      messages: [
+        {
+          role: "user",
+          content: `Perform a detailed AD/CVD scope screening analysis with General Rules of Interpretation (GRI) step reasoning for the following item against AD/CVD Order ${order.caseNumber} (${order.title}).
+          
+Product Info:
+- HTS Code: ${input.htsCode ?? "N/A"}
+- Country of Origin: ${input.countryOfOrigin ?? "N/A"}
+- Description: ${input.productDescription ?? "N/A"}
+- Physical Characteristics: ${input.physicalCharacteristics ?? "N/A"}
+
+AD/CVD Scope Language:
+${order.scopeLanguage}
+
+Initial Assessment: ${initialReasoning}
+
+Provide a concise 2-3 sentence analysis using GRI-style step-by-step reasoning explaining why this item is POSSIBLY within scope and what specific facts/scope rulings are required to confirm.`,
+        },
+      ],
+    });
+
+    const contentBlock = response.content[0];
+    if (contentBlock && "text" in contentBlock) {
+      return contentBlock.text;
+    }
+  } catch (err) {
+    console.warn("[scopeScreening] Anthropic API call failed, using fallback reasoning:", err);
+  }
+
+  return `${initialReasoning} [GRI Analysis: Step 1: Subheading / keyword match identified. Step 2: Country of origin or technical specification unverified. Step 3: Formal CBP scope ruling recommended.]`;
+}
+
 /**
  * Screens product HTS code, country of origin, and description against active AD/CVD orders.
  */
@@ -61,22 +109,26 @@ export async function screenForAdcvd(input: ScopeScreeningInput): Promise<{ orde
         reasoning: `HTS code ${htsCode} and country ${countryOfOrigin} match active AD/CVD order ${order.caseNumber}.`,
       });
     } else if (htsMatches && !countryMatches) {
+      const initReasoning = `HTS code ${htsCode} matches active AD/CVD order scope, but country of origin (${countryOfOrigin ?? "unknown"}) requires confirmation or scope ruling.`;
+      const aiReasoning = await analyzeScopeWithClaude(input, order, initReasoning);
       results.push({
         caseNumber: order.caseNumber,
         title: order.title,
         inScope: "POSSIBLY",
         confidence: 65,
         scopeLanguageMatch: order.scopeLanguage,
-        reasoning: `HTS code ${htsCode} matches active AD/CVD order scope, but country of origin (${countryOfOrigin ?? "unknown"}) requires confirmation or scope ruling.`,
+        reasoning: aiReasoning,
       });
     } else if (textMatches) {
+      const initReasoning = `Product description matches terms in AD/CVD order ${order.caseNumber} scope description.`;
+      const aiReasoning = await analyzeScopeWithClaude(input, order, initReasoning);
       results.push({
         caseNumber: order.caseNumber,
         title: order.title,
         inScope: "POSSIBLY",
         confidence: 50,
         scopeLanguageMatch: order.scopeLanguage,
-        reasoning: `Product description matches terms in AD/CVD order ${order.caseNumber} scope description.`,
+        reasoning: aiReasoning,
       });
     }
   }

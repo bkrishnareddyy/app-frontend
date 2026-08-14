@@ -80,7 +80,16 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     if (errorMessage(error) === "STALE_VERSION") {
       return buildErrorResponse(409, "CONFLICT", "Stale update detected. Exception item has been modified by another user.", undefined, requestId);
     }
-    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to update exception item", undefined, requestId);
+    const msg = errorMessage(error);
+    if (
+      msg.includes("required to move") ||
+      msg.includes("requires a reason code") ||
+      msg.includes("not valid for category") ||
+      msg.includes("is a risk acceptance")
+    ) {
+      return buildErrorResponse(422, "UNPROCESSABLE_ENTITY", msg, undefined, requestId);
+    }
+    return buildErrorResponse(400, "BUSINESS_RULE_FAILURE", msg || "Failed to update exception item", undefined, requestId);
   }
 
 }, { permission: "exceptions.resolve", write: true });

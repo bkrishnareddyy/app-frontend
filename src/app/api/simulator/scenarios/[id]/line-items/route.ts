@@ -15,6 +15,8 @@ const bodySchema = z.object({
   quantity: z.number().int().positive(),
   freightCost: z.number().optional(),
   insuranceCost: z.number().optional(),
+  manufacturer: z.string().optional(),
+  tradeAgreementClaim: z.string().optional(),
   dutyRateOverride: z.number().optional(),
 });
 
@@ -25,7 +27,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
 
   const bodyVal = await parseAndValidateBody(req, bodySchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
-  const { description, htsCode10, unitValue, quantity, freightCost, insuranceCost, dutyRateOverride } = bodyVal.data;
+  const { description, htsCode10, unitValue, quantity, freightCost, insuranceCost, manufacturer, tradeAgreementClaim, dutyRateOverride } = bodyVal.data;
 
   if (typeof htsCode10 !== "string" || htsCode10.trim() === "") {
     return NextResponse.json({ error: "htsCode10 is required", code: "HTS_CODE_REQUIRED" },
@@ -133,6 +135,8 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       quantity,
       freightCost,
       insuranceCost,
+      manufacturer: manufacturer || scenario.manufacturer || null,
+      tradeAgreementClaim: tradeAgreementClaim || scenario.tradeAgreementClaim || null,
       dutyRateOverride,
       computedDuty,
       computedFees,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { screenForAdcvd } from "@/lib/adcvd/scopeScreening";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, params }) => {
   const { id: productId } = params;
@@ -59,6 +60,20 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, pa
       }
     }
   }
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: AuditAction.COMPLIANCE_AUDIT_RUN,
+    entity: "Product",
+    entityId: productId || "unknown",
+    source: "API",
+    metadata: {
+      htsCode: targetHts,
+      countryOfOrigin: targetCountry,
+      matchedOrdersCount: result.orders.length,
+    },
+  });
 
   return NextResponse.json({
     productId,

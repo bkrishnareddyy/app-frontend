@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
@@ -12,11 +13,12 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   
   const pageParam = searchParams.get("page");
   const limitParam = searchParams.get("limit");
-  const page = pageParam ? parseInt(pageParam) : 1;
-  const limit = limitParam ? parseInt(limitParam) : 50;
+  const page = pageParam ? Math.max(1, parseInt(pageParam)) : 1;
+  const rawLimit = limitParam ? parseInt(limitParam) : 50;
+  const limit = Math.min(Math.max(1, isNaN(rawLimit) ? 50 : rawLimit), 200);
   const skip = (page - 1) * limit;
 
-  const whereClause: any = {
+  const whereClause: Prisma.AuditLogWhereInput = {
     accountId: ctx.accountId,
   };
 

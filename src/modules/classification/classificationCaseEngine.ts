@@ -370,6 +370,46 @@ export class ClassificationCaseEngine {
           evidenceItems: true,
         },
       });
+
+      // Generate secondary proposals for competing candidates (F05 B-3 side-by-side comparison)
+      try {
+        const candidateSearch = await HtsNodeRepository.searchNodes({
+          q: rawDescription,
+          level: 10,
+          limit: 5,
+        });
+        const competingNodes = (candidateSearch.items || []).filter(
+          (c) => c.id !== resolvedNodeId
+        );
+        for (let i = 0; i < Math.min(2, competingNodes.length); i++) {
+          const compNode = competingNodes[i];
+          const rank = i + 2;
+          await db.classificationProposal.create({
+            data: {
+              runId: run.id,
+              proposedHtsNodeId: compNode.id,
+              rank,
+              calibratedConfidence: Math.max(0.1, finalConfidence - (i + 1) * 0.15),
+              confidenceBand: "MEDIUM",
+              recommendationStatus: "HUMAN_REVIEW_REQUIRED",
+              summary: `Competing candidate HTS ${compNode.htsNumberDisplay}: ${compNode.description}`,
+              missingFactsJson: [],
+              griSteps: {
+                create: evalOutput.griSteps.map((step) => ({
+                  sequence: step.sequence,
+                  griRule: step.griRule,
+                  question: step.question,
+                  conclusion: step.conclusion,
+                  outcome: step.outcome,
+                  deterministicChecksJson: step.deterministicChecksJson || {},
+                })),
+              },
+            },
+          });
+        }
+      } catch {
+        // Competing proposal generation failure is non-fatal
+      }
     }
 
     const finalStatus = finalRecommendationStatus;

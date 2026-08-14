@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateDutyStack,
+  calculateLineItemDuty,
   calculateMPFDecimal,
+  computeFilingTariff,
   getSection301Rate,
 } from "../../src/lib/tariff/dutyEngine";
 import { Decimal } from "../../src/lib/tariff/decimal";
@@ -49,5 +51,42 @@ describe("dutyEngine refactor & duty stack", () => {
     expect(stack.mpf.toNumber()).toBe(34.64); // 10000 * 0.003464
     expect(stack.hmf.toNumber()).toBe(12.5); // 10000 * 0.00125
     expect(stack.totalWithFees.toNumber()).toBe(4547.14);
+  });
+
+  it("preserves non-zero customs value and computes MPF for duty-free (Free) line items", () => {
+    const res = calculateLineItemDuty(
+      {
+        htsCode: "8481.80.1000",
+        quantity: 100,
+        unitPrice: 150,
+      },
+      {
+        generalDutyRate: "Free",
+      }
+    );
+
+    expect(res.customsValue).toBe(15000); // 100 * 150
+    expect(res.baseDutyAmount).toBe(0);
+    expect(res.totalDutyAmount).toBe(0);
+    expect(res.mpfAmount).toBe(51.96); // 15000 * 0.003464
+    expect(res.totalAmount).toBe(70.71); // 51.96 MPF + 18.75 HMF
+  });
+
+  it("computes filing tariff using Decimal math across multiple line items", () => {
+    const res = computeFilingTariff(
+      [
+        { htsCode: "8481.80.5090", quantity: 10, unitPrice: 1000 },
+        { htsCode: "8481.80.1000", quantity: 20, unitPrice: 500 },
+      ],
+      {
+        "8481.80.5090": { generalDutyRate: "5%" },
+        "8481.80.1000": { generalDutyRate: "Free" },
+      }
+    );
+
+    expect(res.totalCustomsValue).toBe(20000); // 10000 + 10000
+    expect(res.totalDuty).toBe(500); // 5% of 10000
+    expect(res.unratedLineCount).toBe(0);
+    expect(res.totalFees).toBe(94.28); // MPF(20000) = 69.28 + HMF(20000) = 25.00
   });
 });

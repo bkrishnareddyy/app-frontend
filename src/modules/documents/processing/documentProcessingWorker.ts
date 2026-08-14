@@ -721,7 +721,7 @@ async function tryAutoMatchShipment(run: DueRun): Promise<string | null> {
   });
   await createAuditLog({
     accountId: run.document.accountId,
-    action: "document.auto_matched",
+    action: AuditAction.AUTO_ATTACH_DOCUMENT,
     entity: "ShipmentDocument",
     entityId: run.documentId,
     source: "SYSTEM",

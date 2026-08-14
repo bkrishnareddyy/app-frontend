@@ -171,15 +171,21 @@ export function VaultClient() {
     }
   };
 
-  // Task A-5 Opportunity ranking logic
+  // Task A-5 Opportunity ranking logic: 1. Confirmed recovery amount DESC, 2. confidence DESC, 3. deadline proximity ASC
   const sortedOpportunities = [...opportunities].sort((a, b) => {
-    // Confirmed recovery amount (DESC) -> confidence (DESC)
     if (a.status === "Confirmed" && b.status !== "Confirmed") return -1;
     if (a.status !== "Confirmed" && b.status === "Confirmed") return 1;
-    if (b.estimatedRefundAmount !== a.estimatedRefundAmount) {
-      return b.estimatedRefundAmount - a.estimatedRefundAmount;
+    const amountA = a.estimatedRefundAmount ?? 0;
+    const amountB = b.estimatedRefundAmount ?? 0;
+    if (amountB !== amountA) {
+      return amountB - amountA;
     }
-    return b.confidence - a.confidence;
+    if (b.confidence !== a.confidence) {
+      return b.confidence - a.confidence;
+    }
+    const deadlineA = (a as any).deadline ? new Date((a as any).deadline).getTime() : Infinity;
+    const deadlineB = (b as any).deadline ? new Date((b as any).deadline).getTime() : Infinity;
+    return deadlineA - deadlineB;
   });
 
   const confirmedOpportunities = sortedOpportunities.filter(

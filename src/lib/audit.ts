@@ -3,7 +3,21 @@ import { headers } from "next/headers";
 import { AuditAction } from "./audit/auditActions";
 
 export { AuditAction };
+export { diff } from "./audit/diffHelper";
 export type AuditSource = "UI" | "CHAT" | "SYSTEM" | "API";
+
+/**
+ * QPR-008 Immutable Audit Trail:
+ * AuditLog is legally append-only. Under no circumstances should an UPDATE or DELETE
+ * query be run on the AuditLog model/table. Row-level security on PostgreSQL
+ * (migration 20260814000000_audit_log_rls) enforces this constraint.
+ */
+export function assertAppendOnlyAuditPolicy(operation: "INSERT" | "UPDATE" | "DELETE" = "INSERT"): boolean {
+  if (operation !== "INSERT") {
+    throw new Error(`AuditLog mutation violation: ${operation} operation prohibited on append-only audit trail.`);
+  }
+  return true;
+}
 
 export interface CreateAuditLogParams {
   accountId: string;
@@ -77,13 +91,5 @@ export async function createAuditLog(params: CreateAuditLogParams) {
   }
 }
 
-/**
- * QPR-008 Immutable Audit Trail:
- * AuditLog is legally append-only. Under no circumstances should an UPDATE or DELETE
- * query be run on the AuditLog model/table. Row-level security on PostgreSQL
- * enforces this constraint (DENY UPDATE, DELETE ON audit_logs).
- */
-export function assertAppendOnlyAuditPolicy() {
-  return true;
-}
+
 

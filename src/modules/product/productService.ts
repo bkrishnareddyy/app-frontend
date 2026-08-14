@@ -970,6 +970,14 @@ export async function addCountryFact(
         createdByUserId: actor.userId,
       },
     });
+  }).then(async (res) => {
+    try {
+      const { reevaluateProductLineItems } = await import("@/app/api/cron/origin-re-eval/route");
+      await reevaluateProductLineItems(productId, actor.accountId);
+    } catch (e) {
+      console.warn("Origin re-evaluation trigger after country fact update failed silently", e);
+    }
+    return res;
   });
 }
 
@@ -1026,6 +1034,13 @@ export async function reviewCountryFact(
     metadata: { productId, factType: fact.factType, from: fact.status, to: target, reviewNote },
     requestId: actor.requestId ?? null,
   });
+
+  try {
+    const { reevaluateProductLineItems } = await import("@/app/api/cron/origin-re-eval/route");
+    await reevaluateProductLineItems(productId, actor.accountId);
+  } catch (e) {
+    console.warn("Origin re-evaluation trigger after reviewCountryFact failed silently", e);
+  }
 
   return updated;
 }

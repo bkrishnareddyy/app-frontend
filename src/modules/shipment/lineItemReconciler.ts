@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma, ShipmentLineItem } from "@prisma/client";
 import { FactService, FactSourceType, RecordFactInput } from "./factService";
+import { loadHtsCodesMap, calculateDutyStack } from "@/lib/tariff/dutyEngine";
 
 /**
  * Placeholder values LineItemReconciler writes itself when extraction didn't
@@ -147,6 +148,18 @@ export class LineItemReconciler {
     // genuinely known either.
     const wasDefaulted = item.quantity == null || item.unitPrice == null || !item.countryOfOrigin;
 
+    let dutyStackJson: object | undefined = undefined;
+    if (htsCode && htsCode !== LINE_ITEM_SENTINELS.htsCode) {
+      try {
+        const lineInput = { htsCode, countryOfOrigin, quantity, unitPrice, totalValue };
+        const htsMap = await loadHtsCodesMap([lineInput]);
+        const stack = calculateDutyStack(lineInput, htsMap[htsCode]);
+        dutyStackJson = JSON.parse(JSON.stringify(stack));
+      } catch (err) {
+        console.warn("[lineItemReconciler] Failed to calculate duty stack:", err);
+      }
+    }
+
     await db.shipmentLineItem.create({
       data: {
         shipmentId: ctx.shipmentId,
@@ -162,6 +175,7 @@ export class LineItemReconciler {
         htsConfidence: item.htsConfidence ?? null,
         eccnCode: item.eccnCode ?? null,
         status: wasDefaulted ? "Review Required" : "Unreviewed",
+        dutyStack: dutyStackJson,
       },
     });
   }
@@ -191,6 +205,23 @@ export class LineItemReconciler {
     if (existing.description === LINE_ITEM_SENTINELS.description && item.description) data.description = item.description;
 
     if (Object.keys(data).length === 0) return;
+
+    const finalHts = (data.htsCode as string) ?? existing.htsCode;
+    const finalCountry = (data.countryOfOrigin as string) ?? existing.countryOfOrigin;
+    const finalQty = typeof data.quantity === "number" ? data.quantity : existing.quantity;
+    const finalPrice = data.unitPrice ? Number(data.unitPrice) : existing.unitPrice.toNumber();
+    const finalTotal = data.totalValue ? Number(data.totalValue) : existing.totalValue.toNumber();
+
+    if (finalHts && finalHts !== LINE_ITEM_SENTINELS.htsCode) {
+      try {
+        const lineInput = { htsCode: finalHts, countryOfOrigin: finalCountry, quantity: finalQty, unitPrice: finalPrice, totalValue: finalTotal };
+        const htsMap = await loadHtsCodesMap([lineInput]);
+        const stack = calculateDutyStack(lineInput, htsMap[finalHts]);
+        data.dutyStack = JSON.parse(JSON.stringify(stack));
+      } catch (err) {
+        console.warn("[lineItemReconciler] Failed to calculate duty stack on update:", err);
+      }
+    }
 
     await db.shipmentLineItem.update({ where: { id: existing.id }, data });
   }

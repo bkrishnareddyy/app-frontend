@@ -2,10 +2,8 @@ import Ajv, { type ValidateFunction } from "ajv";
 import { db } from "@/lib/db";
 import type { CanonicalSchemaType } from "./types";
 
-// ajv v6 (draft-07). The $schema/$defs keys in our 2020-12 schemas are
-// tolerated via unknownFormats; allErrors collects every violation.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ajv = new (Ajv as any)({ allErrors: true, unknownFormats: "ignore" });
+const ajv = new (Ajv as any)({ allErrors: true, strict: false, strictSchema: false, validateSchema: false });
 
 /** Compiled-validator cache, keyed by "schemaType@version". Invalidated on promoteSchemaVersion(). */
 const validatorCache = new Map<string, ValidateFunction>();
@@ -32,6 +30,11 @@ async function getActiveValidator(schemaType: CanonicalSchemaType): Promise<{ va
   const cacheKey = `${schemaType}@${active.version}`;
   const cached = validatorCache.get(cacheKey);
   if (cached) return { validator: cached, version: active.version };
+
+  const schemaObj = active.schemaJson as { $id?: string };
+  if (schemaObj?.$id) {
+    ajv.removeSchema(schemaObj.$id);
+  }
 
   const validator = ajv.compile(active.schemaJson as object);
   validatorCache.set(cacheKey, validator);

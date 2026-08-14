@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { determineOrigin } from "@/lib/origin/originEngine";
 import { calculateDutyStack, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
-import { Decimal } from "@/lib/tariff/decimal";
 
 export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   const accountId = ctx.accountId;
@@ -19,6 +18,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
             include: {
               product: { include: { compositions: true } },
               origins: { include: { tradeAgreement: true } },
+              drawbackMatches: true,
             },
           },
         },
@@ -38,64 +38,91 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   // Load HTS duty rates from the database for all line items across all filings
   const allLineItems = filings.flatMap((f) => f.shipment.lineItems).map((item) => ({
     htsCode: item.htsCode,
+    countryOfOrigin: item.countryOfOrigin,
   }));
   const htsCodesMap = await loadHtsCodesMap(allLineItems);
+
+  // Fetch exports to check drawback eligibility
+  const exportItems = await db.exportLineItem.findMany({
+    where: { accountId },
+  });
 
   const opportunitiesCreated = [];
 
   for (const filing of filings) {
     for (const item of filing.shipment.lineItems) {
-      const htsRateInput = item.htsCode ? htsCodesMap[item.htsCode] : null;
+      if (!item.htsCode) continue;
+
+      const htsRateInput = htsCodesMap[item.htsCode];
       const stack = calculateDutyStack(
         {
           htsCode: item.htsCode,
           totalValue: Number(item.totalValue || 0),
           countryOfOrigin: item.countryOfOrigin,
         },
-        htsRateInput ?? {
-          generalDutyRate: "2.8%",
-          section301Applicable: item.countryOfOrigin === "CN",
-          section301Tranche: "List3",
-        },
+        htsRateInput ?? null,
         "hts_rel_v1"
       );
 
-      // 1. check SECTION_301_EXCLUSION: if CN origin and description matches active exclusion Hts
-      const isChina = item.countryOfOrigin.toUpperCase() === "CN";
-      if (isChina) {
-        // Query if there is an exclusion rate or if exclusion is granted
-        // For matching, search node or check if node rate contains exclusion text
-        const matchedExclusion = item.description.toLowerCase().includes("exclude") || item.description.toLowerCase().includes("excl");
-        
-        if (matchedExclusion) {
-          const exists = await db.refundOpportunity.findFirst({
-            where: { accountId, filingId: filing.id, opportunityType: "SECTION_301_EXCLUSION" },
-          });
+      // Query database HtsDutyRate for active Section 301 exclusions on this HTS
+      const htsExclusionRate = await db.htsDutyRate.findFirst({
+        where: {
+          rateType: "SECTION_301_EXCLUSION",
+          exclusion: true,
+          node: {
+            htsNumberNormalized: item.htsCode.replace(/[^0-9]/g, ""),
+          },
+        },
+      });
 
-          if (!exists) {
-            const opp = await db.refundOpportunity.create({
-              data: {
-                accountId,
-                filingId: filing.id,
-                opportunityType: "SECTION_301_EXCLUSION",
-                estimatedRefundAmount: stack.section301, // real Section 301 duty paid
-                confidence: 95,
-                basis: {
-                  reason: "Product description matches Section 301 retroactive exclusion language.",
-                  lineItemId: item.id,
-                },
-                status: "Identified",
+      // 1. SECTION_301_EXCLUSION: Check HtsDutyRate in DB or htsRateInput for exclusion
+      const isChina = item.countryOfOrigin.toUpperCase() === "CN";
+      const hasSection301Exclusion = isChina && (!!htsExclusionRate || htsRateInput?.section301Exclusion === true);
+
+      if (hasSection301Exclusion) {
+        const exists = await db.refundOpportunity.findFirst({
+          where: { accountId, filingId: filing.id, opportunityType: "SECTION_301_EXCLUSION" },
+        });
+
+        if (!exists) {
+          const opp = await db.refundOpportunity.create({
+            data: {
+              accountId,
+              filingId: filing.id,
+              opportunityType: "SECTION_301_EXCLUSION",
+              estimatedRefundAmount: null, // Null until confirmed per spec A-4
+              confidence: 95,
+              basis: {
+                reason: "HtsDutyRate record grants Section 301 exclusion for this HTS code.",
+                lineItemId: item.id,
+                htsCode: item.htsCode,
               },
-            });
-            opportunitiesCreated.push(opp);
-          }
+              status: "Identified",
+            },
+          });
+          opportunitiesCreated.push(opp);
         }
       }
 
-      // 2. check TRADE_AGREEMENT: run F06 origin engine to see if preferential rate wasn't claimed
+      // 2. TRADE_AGREEMENT: Check applicable agreement based on country of origin
       const claimsTa = item.origins.length > 0;
       if (!claimsTa && item.countryOfOrigin !== "US") {
-        // Run origin engine
+        const agreementCodeMap: Record<string, string> = {
+          MX: "USMCA",
+          CA: "USMCA",
+          KR: "KORUS",
+          CL: "US-Chile",
+          SG: "US-Singapore",
+          AU: "AUSFTA",
+          CR: "CAFTA-DR",
+          DO: "CAFTA-DR",
+          SV: "CAFTA-DR",
+          GT: "CAFTA-DR",
+          HN: "CAFTA-DR",
+          NI: "CAFTA-DR",
+        };
+        const targetAgreement = agreementCodeMap[item.countryOfOrigin.toUpperCase()] || "USMCA";
+
         const originRes = determineOrigin({
           product: {
             id: item.productId ?? undefined,
@@ -109,7 +136,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
             cost: c.percentage ? Number(c.percentage) : null,
           })) ?? [],
           claimedCountry: item.countryOfOrigin,
-          tradeAgreementCode: "USMCA", // Default check USMCA
+          tradeAgreementCode: targetAgreement,
         });
 
         if (originRes.qualifies) {
@@ -123,11 +150,12 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
                 accountId,
                 filingId: filing.id,
                 opportunityType: "TRADE_AGREEMENT",
-                estimatedRefundAmount: stack.base, // real base duty to recover under USMCA
+                estimatedRefundAmount: null, // Null until confirmed per spec A-4
                 confidence: 88,
                 basis: {
-                  reason: "Product qualifies for preferential USMCA duty rate but was entered under general rate.",
+                  reason: `Product qualifies for preferential ${targetAgreement} duty rate but was entered under general rate.`,
                   lineItemId: item.id,
+                  tradeAgreementCode: targetAgreement,
                   rvcPct: originRes.regionalValueContentPct,
                 },
                 status: "Identified",
@@ -135,6 +163,112 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
             });
             opportunitiesCreated.push(opp);
           }
+        }
+      }
+
+      // 3. CLASSIFICATION_REVIEW: Check if line item has pending classification review / alternative recommendation
+      const classificationDecision = await db.classificationDecision.findFirst({
+        where: { shipmentId: filing.shipment.id, htsCode: item.htsCode },
+      });
+      if (classificationDecision && classificationDecision.reviewStatus === "NeedsReview") {
+        const exists = await db.refundOpportunity.findFirst({
+          where: { accountId, filingId: filing.id, opportunityType: "CLASSIFICATION_REVIEW" },
+        });
+        if (!exists) {
+          const opp = await db.refundOpportunity.create({
+            data: {
+              accountId,
+              filingId: filing.id,
+              opportunityType: "CLASSIFICATION_REVIEW",
+              estimatedRefundAmount: null, // Null until confirmed
+              confidence: 80,
+              basis: {
+                reason: "Classification review decision recommends re-evaluating HTS classification.",
+                lineItemId: item.id,
+                htsCode: item.htsCode,
+              },
+              status: "Identified",
+            },
+          });
+          opportunitiesCreated.push(opp);
+        }
+      }
+
+      // 4. FIRST_SALE: Check if item transaction value indicates multi-tier purchase
+      const hasFirstSalePotential = item.description.toLowerCase().includes("factory") || item.description.toLowerCase().includes("middleman");
+      if (hasFirstSalePotential) {
+        const exists = await db.refundOpportunity.findFirst({
+          where: { accountId, filingId: filing.id, opportunityType: "FIRST_SALE" },
+        });
+        if (!exists) {
+          const opp = await db.refundOpportunity.create({
+            data: {
+              accountId,
+              filingId: filing.id,
+              opportunityType: "FIRST_SALE",
+              estimatedRefundAmount: null,
+              confidence: 75,
+              basis: {
+                reason: "Multi-tiered transaction structure detected; eligible for First Sale valuation discount.",
+                lineItemId: item.id,
+              },
+              status: "Identified",
+            },
+          });
+          opportunitiesCreated.push(opp);
+        }
+      }
+
+      // 5. DUTY_DRAWBACK: Check if item had paid duty and matching export item exists
+      const totalDutyPaid = stack.base.plus(stack.section301);
+      const hasExportMatch = exportItems.some((exp) => exp.htsCode === item.htsCode);
+      if (totalDutyPaid.gt(0) && hasExportMatch && item.drawbackMatches.length === 0) {
+        const exists = await db.refundOpportunity.findFirst({
+          where: { accountId, filingId: filing.id, opportunityType: "DUTY_DRAWBACK" },
+        });
+        if (!exists) {
+          const opp = await db.refundOpportunity.create({
+            data: {
+              accountId,
+              filingId: filing.id,
+              opportunityType: "DUTY_DRAWBACK",
+              estimatedRefundAmount: null,
+              confidence: 90,
+              basis: {
+                reason: "Exported merchandise matches imported HTS item with un-claimed duties paid.",
+                lineItemId: item.id,
+                htsCode: item.htsCode,
+              },
+              status: "Identified",
+            },
+          });
+          opportunitiesCreated.push(opp);
+        }
+      }
+
+      // 6. AD_CVD_SCOPE_EXCLUSION: Check if AD/CVD duty applies and scope exclusion is possible
+      const hasAdCvd = stack.antidumping.gt(0) || stack.countervailing.gt(0);
+      if (hasAdCvd) {
+        const exists = await db.refundOpportunity.findFirst({
+          where: { accountId, filingId: filing.id, opportunityType: "AD_CVD_SCOPE_EXCLUSION" },
+        });
+        if (!exists) {
+          const opp = await db.refundOpportunity.create({
+            data: {
+              accountId,
+              filingId: filing.id,
+              opportunityType: "AD_CVD_SCOPE_EXCLUSION",
+              estimatedRefundAmount: null,
+              confidence: 82,
+              basis: {
+                reason: "AD/CVD duty assessed; potential scope exclusion or non-coverage ruling opportunity.",
+                lineItemId: item.id,
+                htsCode: item.htsCode,
+              },
+              status: "Identified",
+            },
+          });
+          opportunitiesCreated.push(opp);
         }
       }
     }
@@ -157,7 +291,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     opportunities: opportunitiesCreated.map((o) => ({
       id: o.id,
       opportunityType: o.opportunityType,
-      estimatedRefundAmount: Number(o.estimatedRefundAmount),
+      estimatedRefundAmount: o.estimatedRefundAmount ? Number(o.estimatedRefundAmount) : null,
       confidence: o.confidence,
       status: o.status,
     })),

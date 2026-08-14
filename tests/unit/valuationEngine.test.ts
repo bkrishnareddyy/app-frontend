@@ -40,4 +40,18 @@ describe("valuationEngine", () => {
     expect(res.relatedParty).toBe(true);
     expect(res.relatedPartyFlagged).toBe(true);
   });
+
+  it("handles prorationMethod entire_shipment vs per_unit correctly", () => {
+    const res = calculateCustomsValuation({
+      invoiceValue: 10000,
+      assists: [
+        { category: "molds", description: "Lump sum mold", unitCost: 1000, quantity: 10, prorationMethod: "entire_shipment" },
+        { category: "tools", description: "Per unit tool", unitCost: 50, quantity: 10, prorationMethod: "per_unit" },
+      ],
+    });
+
+    // entire_shipment adds lump sum 1000, per_unit adds 50 * 10 = 500 -> total assists = 1500
+    expect(res.assistsTotal).toBe(1500);
+    expect(res.customsValue).toBe(11500);
+  });
 });

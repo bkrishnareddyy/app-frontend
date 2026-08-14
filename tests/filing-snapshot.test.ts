@@ -85,6 +85,7 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
         account: { connect: { id: accountId } },
         shipmentNumber: `SHP-TEST-${suffix}`,
         importerName: "Test Importer Inc",
+        destinationCountry: "US",
         entryType: "01",
         portOfEntry: "Port of Los Angeles (2704)",
         carrierName: "Maersk Line",

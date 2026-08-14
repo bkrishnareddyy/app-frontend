@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
-import { computeLandedCost } from "@/lib/tariff/landedCost";
+import { computeLandedCost, calculateSourcingBreakeven, LandedCostInput } from "@/lib/tariff/landedCost";
 import { loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { Decimal, roundToCents } from "@/lib/tariff/decimal";
 import { z } from "zod";
@@ -26,13 +26,20 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
         include: { htsCode: true },
       },
     },
-});
+  });
 
   // Load HTS duty rates from the database for all line items across all scenarios
-  const allLineItems = scenariosData.flatMap((sc) => sc.lineItems).map((item) => ({
-    htsCode: item.htsCode.htsNumberDisplay,
-  }));
+  const allLineItems = scenariosData.flatMap((sc) =>
+    sc.lineItems.map((item) => ({
+      htsCode: item.htsCode.htsNumberDisplay,
+      countryOfOrigin: sc.originCountry,
+      manufacturer: item.manufacturer || sc.manufacturer || undefined,
+      tradeAgreementClaim: item.tradeAgreementClaim || sc.tradeAgreementClaim || undefined,
+    }))
+  );
   const htsCodesMap = await loadHtsCodesMap(allLineItems);
+
+  const scenarioInputs: Record<string, LandedCostInput> = {};
 
   const compared = scenariosData.map((sc) => {
     let totalDutyDec = new Decimal(0);
@@ -40,12 +47,28 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     let totalHmfDec = new Decimal(0);
     let totalLandedCostDec = new Decimal(0);
 
+    const firstItem = sc.lineItems[0];
+    if (firstItem) {
+      scenarioInputs[sc.id] = {
+        productCost: Number(firstItem.unitValue) * firstItem.quantity,
+        quantity: firstItem.quantity,
+        htsCode: firstItem.htsCode.htsNumberDisplay,
+        countryOfOrigin: sc.originCountry,
+        manufacturer: firstItem.manufacturer || sc.manufacturer || undefined,
+        tradeAgreementClaim: firstItem.tradeAgreementClaim || sc.tradeAgreementClaim || undefined,
+        freight: Number(firstItem.freightCost),
+        insurance: Number(firstItem.insuranceCost),
+      };
+    }
+
     for (const item of sc.lineItems) {
       const breakdown = computeLandedCost({
         productCost: Number(item.unitValue) * item.quantity,
         quantity: item.quantity,
         htsCode: item.htsCode.htsNumberDisplay,
         countryOfOrigin: sc.originCountry,
+        manufacturer: item.manufacturer || sc.manufacturer || undefined,
+        tradeAgreementClaim: item.tradeAgreementClaim || sc.tradeAgreementClaim || undefined,
         freight: Number(item.freightCost),
         insurance: Number(item.insuranceCost),
       }, htsCodesMap[item.htsCode.htsNumberDisplay]);
@@ -60,6 +83,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       id: sc.id,
       name: sc.name,
       originCountry: sc.originCountry,
+      tradeAgreementClaim: sc.tradeAgreementClaim,
       totalDuty: roundToCents(totalDutyDec).toNumber(),
       totalMpf: roundToCents(totalMpfDec).toNumber(),
       totalHmf: roundToCents(totalHmfDec).toNumber(),
@@ -75,9 +99,23 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     savingsDelta: roundToCents(Decimal.max(0, maxLandedCostDec.minus(new Decimal(c.totalLandedCost)))).toNumber(),
   }));
 
+  // Derive breakeven volume between top 2 scenarios if available
+  let breakevenVolume: number | null = null;
+  if (scenariosData.length >= 2 && scenarioInputs[scenariosData[0].id] && scenarioInputs[scenariosData[1].id]) {
+    const inputA = scenarioInputs[scenariosData[0].id];
+    const inputB = scenarioInputs[scenariosData[1].id];
+    breakevenVolume = calculateSourcingBreakeven(
+      inputA,
+      inputB,
+      htsCodesMap[inputA.htsCode],
+      htsCodesMap[inputB.htsCode]
+    );
+  }
+
   return NextResponse.json({
     scenarios: compared,
     savingsMatrix,
+    breakevenVolume,
   });
 
 }, { permission: "intel.read", write: true });

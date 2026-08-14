@@ -57,7 +57,8 @@ export function calculateCustomsValuation(input: ValuationInput): ValuationResul
     for (const assist of input.assists) {
       const unitCost = new Decimal(assist.unitCost || 0);
       const qty = new Decimal(assist.quantity || 1);
-      assistsDecimal = assistsDecimal.plus(unitCost.times(qty));
+      const cost = assist.prorationMethod === "entire_shipment" ? unitCost : unitCost.times(qty);
+      assistsDecimal = assistsDecimal.plus(cost);
     }
   }
 

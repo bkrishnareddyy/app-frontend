@@ -23,6 +23,8 @@ export interface LandedCostInput {
   quantity: number;
   htsCode: string;
   countryOfOrigin: string;
+  manufacturer?: string | null;
+  tradeAgreementClaim?: string | null;
   freight: number;
   insurance: number;
   assists?: number;
@@ -51,12 +53,10 @@ export function computeLandedCost(input: LandedCostInput, ratesInput?: DutyRateI
       htsCode: input.htsCode,
       totalValue: customsVal.toNumber(),
       countryOfOrigin: input.countryOfOrigin,
+      manufacturer: input.manufacturer,
+      tradeAgreementClaim: input.tradeAgreementClaim,
     },
-    ratesInput ?? {
-      generalDutyRate: "2.8%",
-      section301Applicable: input.countryOfOrigin === "CN",
-      section301Tranche: "List3",
-    },
+    ratesInput ?? null,
     "hts_rel_v1"
   );
 
@@ -101,4 +101,34 @@ export function computeLandedCost(input: LandedCostInput, ratesInput?: DutyRateI
     total,
     perUnit,
   };
+}
+
+/**
+ * Calculates real alternative-sourcing breakeven volume (Task D-4)
+ * Derives crossover unit volume where total landed cost of Scenario B balances Scenario A.
+ */
+export function calculateSourcingBreakeven(
+  scenarioA: LandedCostInput,
+  scenarioB: LandedCostInput,
+  rateA?: DutyRateInput | null,
+  rateB?: DutyRateInput | null
+): number {
+  const fixedA = (scenarioA.freight || 0) + (scenarioA.insurance || 0) + (scenarioA.inland || 0);
+  const fixedB = (scenarioB.freight || 0) + (scenarioB.insurance || 0) + (scenarioB.inland || 0);
+
+  const breakdownA = computeLandedCost({ ...scenarioA, quantity: 1, freight: 0, insurance: 0, inland: 0 }, rateA);
+  const breakdownB = computeLandedCost({ ...scenarioB, quantity: 1, freight: 0, insurance: 0, inland: 0 }, rateB);
+
+  const unitVarA = breakdownA.total.toNumber();
+  const unitVarB = breakdownB.total.toNumber();
+
+  const deltaUnitVar = unitVarA - unitVarB;
+  const deltaFixed = fixedB - fixedA;
+
+  if (Math.abs(deltaUnitVar) < 0.0001) {
+    return 0;
+  }
+
+  const breakeven = deltaFixed / deltaUnitVar;
+  return Math.max(0, Math.round(breakeven));
 }

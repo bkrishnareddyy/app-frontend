@@ -40,6 +40,48 @@
         "tariffShift": "HEADING_CHANGE",
         "defaultRvcPct": 60,
         "calculationMethod": "net cost"
+      },
+      "27": {
+        "description": "Mineral fuels, mineral oils and products of their distillation",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
+      },
+      "28": {
+        "description": "Inorganic chemicals; organic or inorganic compounds of precious metals",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
+      },
+      "29": {
+        "description": "Organic chemicals",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
+      },
+      "30": {
+        "description": "Pharmaceutical products",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
+      },
+      "64": {
+        "description": "Footwear, gaiters and the like; parts of such articles",
+        "tariffShift": "CHAPTER_CHANGE",
+        "defaultRvcPct": 55,
+        "calculationMethod": "net cost"
+      },
+      "88": {
+        "description": "Aircraft, spacecraft, and parts thereof",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 60,
+        "calculationMethod": "net cost"
+      },
+      "94": {
+        "description": "Furniture; bedding, mattresses, lamps and lighting fittings",
+        "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
       }
     }
   },
@@ -60,6 +102,18 @@
         "tariffShift": "YARN_FORWARD",
         "defaultRvcPct": 50,
         "calculationMethod": "net cost"
+      },
+      "64": {
+        "description": "Footwear, gaiters and the like",
+        "tariffShift": "CHAPTER_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "net cost"
+      },
+      "84": {
+        "description": "Nuclear reactors, boilers, machinery and mechanical appliances",
+        "tariffShift": "CHAPTER_CHANGE",
+        "defaultRvcPct": 50,
+        "calculationMethod": "transaction value"
       }
     }
   },
@@ -69,9 +123,21 @@
     "description": "Entered into force March 15, 2012.",
     "effectiveDate": "2012-03-15T00:00:00.000Z",
     "rulesByChapter": {
+      "84": {
+        "description": "Nuclear reactors, boilers, machinery and mechanical appliances",
+        "tariffShift": "CHAPTER_CHANGE",
+        "defaultRvcPct": 55,
+        "calculationMethod": "net cost"
+      },
       "85": {
         "description": "Electrical machinery and equipment",
         "tariffShift": "HEADING_CHANGE",
+        "defaultRvcPct": 55,
+        "calculationMethod": "net cost"
+      },
+      "87": {
+        "description": "Vehicles other than railway or tramway rolling-stock",
+        "tariffShift": "CHAPTER_CHANGE",
         "defaultRvcPct": 55,
         "calculationMethod": "net cost"
       }

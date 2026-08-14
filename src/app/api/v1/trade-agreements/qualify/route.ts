@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { determineOrigin } from "@/lib/origin/originEngine";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
@@ -44,10 +45,26 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     materials: lineItem.product?.compositions.map((c) => ({
       id: c.id,
       name: c.material,
+      htsCode: (c as any).htsCode ?? null,
       cost: c.percentage ? Number(c.percentage) : null,
     })) ?? [],
     claimedCountry: lineItem.countryOfOrigin,
     tradeAgreementCode: code,
+  });
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: AuditAction.ORIGIN_DETERMINED,
+    entity: "ShipmentLineItem",
+    entityId: lineItemId,
+    source: "API",
+    metadata: {
+      agreementCode: code,
+      qualified: result.qualifies,
+      confidence: result.confidence,
+      basis: result.basis,
+    },
   });
 
   return NextResponse.json({

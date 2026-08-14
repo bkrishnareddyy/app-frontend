@@ -12,6 +12,7 @@ export type TariffLineInput = Pick<Partial<ShipmentLineItem>, "htsCode"> & {
   totalValue?: ShipmentLineItem["totalValue"] | number | null;
   countryOfOrigin?: string | null;
   manufacturer?: string | null;
+  tradeAgreementClaim?: string | null;
 };
 
 export interface DutyRateInput {
@@ -119,7 +120,8 @@ export function getSection301Rate(
     case "List4B":
       return new Decimal("0.15");
     default:
-      return new Decimal("0.25");
+      // D-2 Audit Requirement: Stop defaulting unknown tranches to 25%
+      return new Decimal(0);
   }
 }
 
@@ -131,20 +133,34 @@ export function calculateDutyStack(
   htsRateInput?: DutyRateInput | null,
   htsReleaseId: string = "hts_rel_current"
 ): DutyStack {
-  const valueNum = Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0);
-  const customsValue = roundToCents(new Decimal(valueNum));
+  const totalValDec = lineItem.totalValue != null && String(lineItem.totalValue) !== "" ? new Decimal(lineItem.totalValue) : null;
+  const qtyDec = new Decimal(lineItem.quantity ?? 1);
+  const priceDec = new Decimal(lineItem.unitPrice ?? 0);
+  const customsValue = roundToCents(totalValDec && totalValDec.gt(0) ? totalValDec : qtyDec.times(priceDec));
+
+  const isUsmca = lineItem.tradeAgreementClaim?.toUpperCase() === "USMCA";
 
   const baseRateNum = parsePublishedDutyRate(htsRateInput?.generalDutyRate);
-  const baseRate = new Decimal(baseRateNum ?? 0);
+  const baseRate = isUsmca ? new Decimal(0) : new Decimal(baseRateNum ?? 0);
   const baseDuty = roundToCents(customsValue.times(baseRate));
 
-  const sec301Rate = htsRateInput?.section301Applicable
-    ? new Decimal(htsRateInput.section301AdditionalRate || 0).dividedBy(100)
-    : getSection301Rate(
-        lineItem.countryOfOrigin,
-        htsRateInput?.section301Tranche || "List3",
-        htsRateInput?.section301Exclusion
-      );
+  const sec301Rate = isUsmca
+    ? new Decimal(0)
+    : (htsRateInput?.section301Applicable
+        ? (htsRateInput.section301AdditionalRate != null
+            ? new Decimal(htsRateInput.section301AdditionalRate).dividedBy(100)
+            : getSection301Rate(
+                lineItem.countryOfOrigin,
+                htsRateInput?.section301Tranche,
+                htsRateInput?.section301Exclusion
+              ))
+        : (htsRateInput?.section301Tranche
+            ? getSection301Rate(
+                lineItem.countryOfOrigin,
+                htsRateInput?.section301Tranche,
+                htsRateInput?.section301Exclusion
+              )
+            : new Decimal(0)));
   const sec301Duty = roundToCents(customsValue.times(sec301Rate));
 
   const sec232Rate = htsRateInput?.section232Applicable
@@ -215,14 +231,80 @@ export async function loadHtsCodesMap(
 
   const map: Record<string, DutyRateInput> = {};
   for (const code of codes) {
-    const node = byNormalized.get(normalizedOf.get(code) ?? "");
+    const norm = normalizedOf.get(code) ?? "";
+    const node = byNormalized.get(norm);
     const general = node?.dutyRates.find((r) => r.rateColumn === "General");
+    
+    // Check Section 301 duty rate in DB
+    const sec301Rate = node?.dutyRates.find(
+      (r) => r.rateType === "SECTION_301" || r.rateColumn === "Section301"
+    );
+    
+    // Check line items matching this HTS code to determine country/manufacturer
+    const matchingLine = lineItems.find((li) => li.htsCode === code);
+    const lineCountry = matchingLine?.countryOfOrigin?.toUpperCase();
+    const lineManufacturer = matchingLine?.manufacturer?.trim().toLowerCase();
+
+    let sec301Applicable = false;
+    let sec301Tranche: string | null = null;
+    let sec301AdditionalRate: number | null = null;
+    let sec301Exclusion = false;
+
+    if (sec301Rate) {
+      sec301Applicable = lineCountry ? lineCountry === "CN" : true;
+      sec301Tranche = sec301Rate.trancheId ?? "List3";
+      sec301AdditionalRate = sec301Rate.adValoremPercent ?? (sec301Rate.rawRateText ? parseFloat(sec301Rate.rawRateText) : 25);
+      sec301Exclusion = sec301Rate.exclusion;
+    }
+
+    // Resolve AD/CVD rates with "most specific wins" logic
+    let adRate: number | null = null;
+    let cvdRate: number | null = null;
+
+    const adRates = node?.dutyRates.filter(
+      (r) => r.rateType === "ANTIDUMPING" || r.rateColumn === "AD_CVD" && r.programCode?.includes("AD")
+    ) ?? [];
+
+    const cvdRates = node?.dutyRates.filter(
+      (r) => r.rateType === "COUNTERVAILING" || r.rateColumn === "AD_CVD" && r.programCode?.includes("CVD")
+    ) ?? [];
+
+    const resolveMostSpecific = (rates: typeof adRates) => {
+      if (rates.length === 0) return null;
+      // 1. Exact manufacturer + country match
+      const exact = rates.find(
+        (r) =>
+          r.manufacturer?.trim().toLowerCase() === lineManufacturer &&
+          r.countryOfOrigin?.toUpperCase() === lineCountry
+      );
+      if (exact) return exact.adValoremPercent ?? (exact.rawRateText ? parseFloat(exact.rawRateText) : null);
+
+      // 2. Country match with wildcard or null manufacturer
+      const countryMatch = rates.find(
+        (r) =>
+          r.countryOfOrigin?.toUpperCase() === lineCountry &&
+          (!r.manufacturer || r.manufacturer === "*")
+      );
+      if (countryMatch) return countryMatch.adValoremPercent ?? (countryMatch.rawRateText ? parseFloat(countryMatch.rawRateText) : null);
+
+      // 3. Fallback to first matched rate for node
+      const fallback = rates[0];
+      return fallback?.adValoremPercent ?? (fallback?.rawRateText ? parseFloat(fallback.rawRateText) : null);
+    };
+
+    adRate = resolveMostSpecific(adRates);
+    cvdRate = resolveMostSpecific(cvdRates);
+
     map[code] = {
       generalDutyRate: general?.rawRateText ?? null,
-      section301Applicable: false,
-      section301AdditionalRate: 0,
+      section301Applicable: sec301Applicable,
+      section301Tranche: sec301Tranche,
+      section301AdditionalRate: sec301AdditionalRate,
+      section301Exclusion: sec301Exclusion,
       section232Applicable: false,
       section232AdditionalRate: 0,
+      antidumpingRate: adRate,
+      countervailingRate: cvdRate,
     };
   }
   return map;
@@ -241,12 +323,15 @@ export function calculateLineItemDuty(
   htsCode?: DutyRateInput | null
 ): LineItemDutyResult {
   const stack = calculateDutyStack(lineItem, htsCode);
-  const customsValue = Number(lineItem.totalValue) || (Number(lineItem.quantity) || 1) * (Number(lineItem.unitPrice) || 0);
+  const totalValDec = lineItem.totalValue != null && String(lineItem.totalValue) !== "" ? new Decimal(lineItem.totalValue) : null;
+  const qtyDec = new Decimal(lineItem.quantity ?? 1);
+  const priceDec = new Decimal(lineItem.unitPrice ?? 0);
+  const customsValueDec = roundToCents(totalValDec && totalValDec.gt(0) ? totalValDec : qtyDec.times(priceDec));
 
   const baseDutyRate = parsePublishedDutyRate(htsCode?.generalDutyRate);
 
   return {
-    customsValue: Math.round(customsValue * 100) / 100,
+    customsValue: customsValueDec.toNumber(),
     baseDutyRate,
     baseDutyAmount: stack.base.toNumber(),
     section301Rate: htsCode?.section301Applicable ? (Number(htsCode.section301AdditionalRate) || 0) / 100 : 0,

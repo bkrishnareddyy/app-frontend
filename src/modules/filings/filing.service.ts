@@ -257,10 +257,18 @@ export class FilingService {
     // second row. The full history of what was actually sent at each point in
     // time still lives in FilingMessage.envelope, one immutable row per
     // message -- this snapshot is deliberately "latest," not an archive.
+    const hasSection301 = tariff.lineResults.some((r) => r.section301Amount > 0);
+    const htsCodesMapForSnapshot = await loadHtsCodesMap(filing.shipment.lineItems);
+    const section301List = hasSection301
+      ? (filing.shipment.lineItems
+          .map((item) => (item.htsCode ? htsCodesMapForSnapshot[item.htsCode]?.section301Tranche : null))
+          .find(Boolean) || "List3")
+      : null;
+
     await db.filingSnapshot.upsert({
       where: { filingId },
-      update: { snapshotData },
-      create: { filingId, snapshotData },
+      update: { snapshotData, hasSection301, section301List },
+      create: { filingId, snapshotData, hasSection301, section301List },
     });
 
     // Build the canonical (country-agnostic) declaration and hand it to the

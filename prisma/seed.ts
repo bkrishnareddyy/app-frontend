@@ -68,6 +68,8 @@ async function main() {
         { rateColumn: "General", rawRateText: "2%", rateType: "AdValorem", adValoremPercent: 2, isFree: false, parseStatus: "PARSED", currency: "USD" },
         { rateColumn: "Special", rawRateText: "Free (A,AU,BH,CA,CL,CO,D,E,IL,JO,JP,KR,MA,MX,OM,P,PA,PE,S,SG)", rateType: "Free", adValoremPercent: 0, isFree: true, parseStatus: "PARSED", currency: "USD" },
         { rateColumn: "Column 2", rawRateText: "45%", rateType: "AdValorem", adValoremPercent: 45, isFree: false, parseStatus: "PARSED", currency: "USD" },
+        { rateColumn: "Section301", rawRateText: "25%", rateType: "SECTION_301", trancheId: "List3", countryOfOrigin: "CN", adValoremPercent: 25, isFree: false, parseStatus: "PARSED", currency: "USD" },
+        { rateColumn: "AD_CVD", programCode: "AD", rawRateText: "15%", rateType: "ANTIDUMPING", caseNumber: "A-570-601", manufacturer: "*", countryOfOrigin: "CN", adValoremPercent: 15, isFree: false, parseStatus: "PARSED", currency: "USD" },
       ],
     },
     {
@@ -176,8 +178,14 @@ async function main() {
         dutyRates: {
           create: n.dutyRates.map((r) => ({
             rateColumn: r.rateColumn,
+            programCode: (r as Record<string, unknown>).programCode as string | null ?? null,
             rawRateText: r.rawRateText,
             rateType: r.rateType,
+            trancheId: (r as Record<string, unknown>).trancheId as string | null ?? null,
+            exclusion: Boolean((r as Record<string, unknown>).exclusion ?? false),
+            caseNumber: (r as Record<string, unknown>).caseNumber as string | null ?? null,
+            manufacturer: (r as Record<string, unknown>).manufacturer as string | null ?? null,
+            countryOfOrigin: (r as Record<string, unknown>).countryOfOrigin as string | null ?? null,
             adValoremPercent: r.adValoremPercent ?? null,
             specificAmount: null,
             specificUnit: null,

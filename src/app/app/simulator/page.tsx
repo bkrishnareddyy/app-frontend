@@ -14,10 +14,13 @@ import {
 } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
 
+import { Decimal, roundToCents } from "@/lib/tariff/decimal";
+
 interface Scenario {
   id: string;
   name: string;
   originCountry: string;
+  htsReleaseDate?: string;
   totalDuty: number;
   totalMpf: number;
   totalHmf: number;
@@ -41,6 +44,7 @@ export default function SimulatorPage() {
   // Compare results
   const [comparedScenarios, setComparedScenarios] = useState<Scenario[]>([]);
   const [savingsMatrix, setSavingsMatrix] = useState<any[]>([]);
+  const [breakevenVol, setBreakevenVol] = useState<number | null>(null);
   const [isComparing, setIsComparing] = useState(false);
 
   useEffect(() => {
@@ -56,6 +60,7 @@ export default function SimulatorPage() {
           id: s.id,
           name: s.name,
           originCountry: s.originCountry,
+          htsReleaseDate: s.htsRelease?.effectiveFrom ? String(s.htsRelease.effectiveFrom).split("T")[0] : "2026-01-01",
           totalDuty: Number(s.lineItems[0]?.computedDuty || 0),
           totalMpf: Number(s.lineItems[0]?.computedFees || 0) * 0.7,
           totalHmf: Number(s.lineItems[0]?.computedFees || 0) * 0.3,
@@ -118,6 +123,7 @@ export default function SimulatorPage() {
       if (data.scenarios) {
         setComparedScenarios(data.scenarios);
         setSavingsMatrix(data.savingsMatrix || []);
+        setBreakevenVol(data.breakevenVolume ?? null);
       }
     } catch (e) {
       console.error(e);
@@ -159,16 +165,26 @@ export default function SimulatorPage() {
     );
   };
 
-  // Client-side real-time calculation delta
-  const customsVal = unitCost * quantity;
-  const calculatedDuty = customsVal * (baseDutyPct + section301Pct);
-  const calculatedMpf = Math.max(25, Math.min(500, customsVal * 0.003464));
-  const calculatedHmf = customsVal * 0.00125;
-  const calculatedTotal = customsVal + freight + insurance + calculatedDuty + calculatedMpf + calculatedHmf + inland;
+  // Client-side real-time calculation using Decimal (Task D-3)
+  const customsValDec = new Decimal(unitCost).times(quantity);
+  const calculatedDutyDec = customsValDec.times(new Decimal(baseDutyPct).plus(section301Pct));
+  const rawMpfDec = customsValDec.times("0.003464");
+  const calculatedMpfDec = Decimal.min(Decimal.max(rawMpfDec, new Decimal("31.67")), new Decimal("614.35"));
+  const calculatedHmfDec = customsValDec.times("0.00125");
+  const calculatedTotalDec = customsValDec
+    .plus(freight)
+    .plus(insurance)
+    .plus(calculatedDutyDec)
+    .plus(calculatedMpfDec)
+    .plus(calculatedHmfDec)
+    .plus(inland);
+
+  const calculatedTotal = roundToCents(calculatedTotalDec).toNumber();
 
   // Sourcing Breakeven Analysis (Task D-4)
-  const section301Ref = section301Pct > 0 ? section301Pct : 0.075;
-  const breakevenPoint = Math.round((freight * 1.5) / section301Ref);
+  const displayBreakeven = breakevenVol !== null && breakevenVol > 0
+    ? breakevenVol
+    : Math.round((freight * 1.5) / (section301Pct > 0 ? section301Pct : 0.075));
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -283,7 +299,7 @@ export default function SimulatorPage() {
                 <span>China vs Vietnam Breakeven Analysis</span>
               </p>
               <p className="text-[11px] text-indigo-800">
-                Vietnam scenario is more competitive at higher volumes due to Section 301 savings. Below <span className="font-bold">{breakevenPoint} units</span>, China remains cheaper despite duties.
+                Vietnam scenario is more competitive at higher volumes due to Section 301 savings. Below <span className="font-bold">{displayBreakeven} units</span>, China remains cheaper despite duties.
               </p>
             </div>
           </div>
@@ -330,7 +346,7 @@ export default function SimulatorPage() {
                     <h4 className="text-xs font-bold text-slate-800 mt-2">{sc.name}</h4>
                   </div>
                   <div className="flex items-center justify-between border-t border-slate-200/50 pt-2 mt-2">
-                    <span className="text-[10px] text-slate-400">Calculated using HTS Release v1</span>
+                    <span className="text-[10px] text-slate-400">Calculated using HTS Release ({sc.htsReleaseDate || "2026-01-01"})</span>
                     <span className="text-sm font-extrabold text-slate-800">{displayCurrency(sc.totalLandedCost, "USD")}</span>
                   </div>
                 </div>
@@ -349,6 +365,9 @@ export default function SimulatorPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {comparedScenarios.map((sc) => {
                   const savings = savingsMatrix.find((s) => s.scenarioId === sc.id)?.savingsDelta || 0;
+                  const dutyPct = sc.totalLandedCost > 0 ? Math.min(100, Math.round((sc.totalDuty / sc.totalLandedCost) * 100)) : 0;
+                  const feesPct = sc.totalLandedCost > 0 ? Math.min(100, Math.round(((sc.totalMpf + sc.totalHmf) / sc.totalLandedCost) * 100)) : 0;
+
                   return (
                     <div key={sc.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                       <div>
@@ -364,16 +383,16 @@ export default function SimulatorPage() {
                             <span>{displayCurrency(sc.totalDuty, "USD")}</span>
                           </div>
                           <div className="w-full h-1.5 bg-red-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-red-500" style={{ width: "35%" }} />
+                            <div className="h-full bg-red-500" style={{ width: `${dutyPct}%` }} />
                           </div>
                         </div>
                         <div>
                           <div className="flex justify-between text-[10px] text-slate-500">
                             <span>Fees (MPF/HMF)</span>
-                            <span>{displayCurrency(sc.totalDuty ? (sc.totalMpf + sc.totalHmf) : 0, "USD")}</span>
+                            <span>{displayCurrency(sc.totalMpf + sc.totalHmf, "USD")}</span>
                           </div>
                           <div className="w-full h-1.5 bg-blue-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-500" style={{ width: "15%" }} />
+                            <div className="h-full bg-blue-500" style={{ width: `${feesPct}%` }} />
                           </div>
                         </div>
                       </div>

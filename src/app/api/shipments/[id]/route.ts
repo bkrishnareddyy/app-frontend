@@ -8,6 +8,7 @@ import { FactAuditService } from "@/modules/audit/factAuditService";
 import { FactService } from "@/modules/shipment/factService";
 import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
 import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment/shipmentPartyService";
+import { loadHtsCodesMap, calculateDutyStack } from "@/lib/tariff/dutyEngine";
 import { normalizeCountryCode } from "@/modules/shipment/countryCode";
 import { z } from "zod";
 
@@ -210,6 +211,26 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
           if (htsChanged || originChanged) {
             anyLineItemChanged = true;
+            const newHts = item.htsCode !== undefined ? item.htsCode : existingItem.htsCode;
+            const newCountry = item.countryOfOrigin !== undefined ? item.countryOfOrigin : existingItem.countryOfOrigin;
+            let dutyStackJson: object | undefined = undefined;
+            if (newHts) {
+              try {
+                const lineInput = {
+                  htsCode: newHts,
+                  countryOfOrigin: newCountry,
+                  quantity: existingItem.quantity,
+                  unitPrice: existingItem.unitPrice.toNumber(),
+                  totalValue: existingItem.totalValue.toNumber(),
+                };
+                const map = await loadHtsCodesMap([lineInput]);
+                const stack = calculateDutyStack(lineInput, map[newHts]);
+                dutyStackJson = JSON.parse(JSON.stringify(stack));
+              } catch (err) {
+                console.warn("[shipments API] Failed to compute duty stack:", err);
+              }
+            }
+
             await db.shipmentLineItem.update({
               where: { id: item.id },
               data: {
@@ -219,6 +240,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
                 // A user directly editing a line's classification/origin is
                 // exactly what confirming it looks like.
                 status: "Valid",
+                dutyStack: dutyStackJson,
               },
             });
           }

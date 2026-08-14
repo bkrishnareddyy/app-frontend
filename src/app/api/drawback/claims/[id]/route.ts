@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
+import { buildErrorResponse } from "@/lib/api/error";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { transitionDrawbackClaim, DrawbackClaimWorkflowError, DrawbackClaimStatus } from "@/modules/drawback/drawbackClaimWorkflow";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -28,7 +30,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     return NextResponse.json({ error: "Drawback claim not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ drawbackClaim: claim });
+  return NextResponse.json({ drawbackClaim: claim, requestId });
 });
 
 export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
@@ -41,37 +43,50 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const existingClaim = await db.drawbackClaim.findFirst({
     where: { id, accountId: ctx.accountId },
-});
+  });
 
   if (!existingClaim) {
-    return NextResponse.json({ error: "Drawback claim not found" });
+    return buildErrorResponse(404, "NOT_FOUND", "Drawback claim not found", undefined, requestId);
   }
 
-  const updateData: import("@prisma/client").Prisma.DrawbackClaimUpdateInput = {};
+  let updatedClaim = existingClaim;
+
   if (status) {
-    return NextResponse.json(
-      { error: "Forbidden: State mutations must be performed via the workflow engine." },
-      { status: 403 }
-    );
+    try {
+      updatedClaim = await transitionDrawbackClaim({
+        claimId: id,
+        targetStatus: status as DrawbackClaimStatus,
+        accountId: ctx.accountId,
+        userId: ctx.userId,
+        userPermissions: ctx.permissions || [],
+        isBroker: ctx.roles?.includes("broker") || ctx.roles?.includes("admin"),
+      });
+    } catch (err: any) {
+      if (err instanceof DrawbackClaimWorkflowError) {
+        return buildErrorResponse(err.statusCode, err.statusCode === 403 ? "FORBIDDEN" : "INVALID_TRANSITION", err.message, undefined, requestId);
+      }
+      return buildErrorResponse(400, "BAD_REQUEST", err.message || "Failed to update drawback claim status", undefined, requestId);
+    }
   }
-  if (totalRefundClaimed !== undefined) updateData.totalRefundClaimed = totalRefundClaimed;
 
-  const updatedClaim = await db.drawbackClaim.update({
-    where: { id },
-    data: updateData,
-    include: { matches: true },
-  });
+  if (totalRefundClaimed !== undefined) {
+    updatedClaim = await db.drawbackClaim.update({
+      where: { id },
+      data: { totalRefundClaimed },
+      include: { matches: true },
+    });
 
-  await createAuditLog({
-    accountId: ctx.accountId,
-    userId: ctx.userId,
-    action: "drawback.claim_update",
-    entity: "DrawbackClaim",
-    entityId: id,
-    source: "UI",
-    metadata: { newStatus: status || existingClaim.status },
-  });
+    await createAuditLog({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      action: "drawback.claim_update",
+      entity: "DrawbackClaim",
+      entityId: id,
+      source: "UI",
+      metadata: { totalRefundClaimed },
+    });
+  }
 
-  return NextResponse.json({ drawbackClaim: updatedClaim });
+  return NextResponse.json({ drawbackClaim: updatedClaim, requestId });
 
 }, { permission: "drawback.claim", write: true });

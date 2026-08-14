@@ -90,6 +90,7 @@ export default async function ActionsPage(props: {
         reviewedByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
       orderBy: { createdAt: "desc" },
+      take: 200,
     }),
     db.shipmentDocument.findMany({
       where: {
@@ -97,6 +98,7 @@ export default async function ActionsPage(props: {
         ...(shipmentId ? { shipmentId } : {}),
       },
       orderBy: { createdAt: "desc" },
+      take: 200,
     }),
     db.exceptionItem.findMany({
       where: {
@@ -107,6 +109,7 @@ export default async function ActionsPage(props: {
       },
       select: exceptionSelect,
       orderBy: { createdAt: "desc" },
+      take: 200,
     }),
   ]);
 

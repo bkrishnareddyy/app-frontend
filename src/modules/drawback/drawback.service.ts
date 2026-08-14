@@ -3,6 +3,13 @@ import { createAuditLog, AuditAction } from "@/lib/audit";
 import { Decimal, roundToCents } from "@/lib/tariff/decimal";
 import { calculateDutyStack, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 
+export class InsufficientLotQuantityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InsufficientLotQuantityError";
+  }
+}
+
 export interface InventoryAllocationMatchInput {
   matchStrategy: "FIFO" | "LIFO" | "DIRECT_IDENTIFICATION";
 }
@@ -48,11 +55,7 @@ export class DrawbackService {
           totalValue: Number(item.totalValue || 0),
           countryOfOrigin: item.countryOfOrigin,
         },
-        htsRateInput ?? {
-          generalDutyRate: "2.8%", // Representative fallback rate
-          section301Applicable: item.countryOfOrigin === "CN",
-          section301Tranche: "List3",
-        },
+        htsRateInput ?? null,
         "hts_rel_v1"
       );
 
@@ -82,7 +85,7 @@ export class DrawbackService {
               importDate: filing.createdAt,
               exportDeadline: new Date(filing.createdAt.getTime() + 5 * 365 * 24 * 60 * 60 * 1000), // 5 years
               hasSection301: stack.section301.greaterThan(0),
-              section301List: stack.section301.greaterThan(0) ? "List3" : null,
+              section301List: htsRateInput?.section301Tranche || (stack.section301.greaterThan(0) ? "List3" : null),
             },
           });
           createdCount++;
@@ -155,7 +158,12 @@ export class DrawbackService {
           qtyNeeded = qtyNeeded.minus(allocated);
         }
 
-        // If export has remaining unmatched quantities, we do not fail match run, but represent partial match
+        // Task B-3: Insufficient quantity throws error (422 HTTP status error)
+        if (qtyNeeded.greaterThan(0)) {
+          throw new InsufficientLotQuantityError(
+            `Insufficient drawback lot quantity available to fulfill export match for HTS ${exp.htsCode}. Shortfall: ${qtyNeeded.toString()} units.`
+          );
+        }
       }
 
       return {

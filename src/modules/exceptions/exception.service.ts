@@ -217,6 +217,24 @@ export class ExceptionService {
       },
     });
 
+    if (
+      input.assignedToUserId &&
+      input.assignedToUserId !== existing.assignedToUserId
+    ) {
+      await db.notification
+        .create({
+          data: {
+            accountId,
+            userId: input.assignedToUserId,
+            type: "EXCEPTION_ASSIGNED",
+            message: `Exception "${existing.description}" has been assigned to you.`,
+            entityType: "ExceptionItem",
+            entityId: exceptionId,
+          },
+        })
+        .catch(() => {});
+    }
+
     return updated;
   }
 

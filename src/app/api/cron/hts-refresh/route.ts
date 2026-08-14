@@ -22,15 +22,11 @@ async function handleRefresh(req: Request, requestId: string) {
     items = fetchRes.items;
     chapterResults = fetchRes.chapterResults;
   } catch (e) {
-    console.error("USITC fetch failed, using fallback mock items for stability.", e);
-    // Mock HTS rate update items
-    items = [
-      {
-        htsNumber: "8541430010",
-        description: "Silicon solar cells",
-        generalDutyRate: "4.5%", // Rate changed from 2.8% to 4.5%
-      }
-    ];
+    console.error("USITC fetch failed:", e);
+    return NextResponse.json(
+      { status: "FAILED", requestId, reason: "USITC fetch failed", error: e instanceof Error ? e.message : String(e) },
+      { status: 502 }
+    );
   }
 
   const failedChapters = chapterResults.filter((c) => !c.ok);

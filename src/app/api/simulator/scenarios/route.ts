@@ -19,11 +19,17 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
-  const { name, originCountry, destinationPort, incoterm, currency } = body;
+  const { name, originCountry, destinationPort, incoterm, currency, manufacturer, tradeAgreementClaim } = body;
 
   if (!name) {
     return NextResponse.json({ error: "Scenario name is required" });
   }
+
+  const publishedRelease = await db.htsRelease.findFirst({
+    where: { publicationStatus: "PUBLISHED" },
+    orderBy: { effectiveFrom: "desc" },
+    select: { id: true },
+  });
 
   const scenario = await db.landedCostScenario.create({
     data: {
@@ -33,11 +39,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       destinationPort: destinationPort || "Port of Long Beach (2709)",
       incoterm: incoterm || "CIF",
       currency: currency || "USD",
+      manufacturer: manufacturer || null,
+      tradeAgreementClaim: tradeAgreementClaim || null,
       createdByUserId: ctx.userId,
       status: "Draft",
+      htsReleaseId: publishedRelease?.id || null,
     },
     include: { lineItems: true },
-});
+  });
 
   await createAuditLog({
     accountId: ctx.accountId,

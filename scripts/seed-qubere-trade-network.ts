@@ -16,7 +16,7 @@
  * Usage:
  *   npx tsx scripts/seed-qubere-trade-network.ts
  */
-import { db } from "@/lib/db";
+import { db, withDataModeContext } from "@/lib/db";
 import { assertDemoSeedingAllowed } from "@/lib/environment";
 import {
   createParty,
@@ -99,9 +99,15 @@ async function seedAccountsAndUsers() {
   const tenantA = await seedAccount(TENANT_A_SLUG, "Qubere Demo Trading");
   const tenantB = await seedAccount(TENANT_B_SLUG, "Qubere Test Logistics");
 
-  const ownerRole = await db.role.findFirst({ where: { accountId: null, name: "OWNER" } });
+  let ownerRole = await db.role.findFirst({ where: { accountId: null, name: "OWNER" } });
   if (!ownerRole) {
-    throw new Error('System role "OWNER" not found. Run the normal app bootstrap/migrations first.');
+    const SYSTEM_ROLES = ["OWNER", "ADMIN", "BROKER", "SPECIALIST", "REVIEWER", "MEMBER", "VIEWER"];
+    for (const name of SYSTEM_ROLES) {
+      await db.role.create({
+        data: { name, description: `System role ${name}`, isSystem: true },
+      }).catch(() => null);
+    }
+    ownerRole = await db.role.findFirstOrThrow({ where: { accountId: null, name: "OWNER" } });
   }
 
   const seedAgentUser = await seedUser(
@@ -1321,7 +1327,7 @@ async function main() {
   console.log("\nDone.");
 }
 
-main()
+withDataModeContext("DEMO", () => main())
   .catch((err) => {
     console.error(err);
     process.exit(1);

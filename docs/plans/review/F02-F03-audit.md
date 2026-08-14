@@ -1,147 +1,155 @@
-# F02 Document Intelligence + F03 Shipment Workspace — Audit
+# F02 + F03 Audit — Live Status
 
-F02 Overall readiness: 74%
-F03 Overall readiness: 71%
-
-Methodology: every task below was checked against real source (file:line evidence), not against the user's account of what was built. Percentages are DONE=1, PARTIAL=0.5, MISSING=0, N/A excluded, averaged per capability then across capabilities.
+> Baseline audit: 2026-08-13. F02 at 74%, F03 at 71%.  
+> This file tracks what has been fixed vs. what remains open.
 
 ---
 
-## F02 Capability A — Secure Multi-Channel Document Intake (~58%)
+## What was fixed this session (session 2 additions below)
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| A-1 Harden upload | PARTIAL | `src/lib/storage.ts:9-26` MIME allowlist + `MAX_UPLOAD_BYTES` (50MB default); enforced at `storage.ts:225-239`. `src/app/api/documents/upload/route.ts:98-106` catches `StorageValidationError`. | Returns **400**, not the spec'd **422**, on size/MIME rejection (`upload/route.ts:103`). No `Content-Disposition` header set anywhere in `storage.ts` — grep for it returns zero hits. |
-| A-2 `POST /api/v1/intake/document` | MISSING | `find src/app/api/v1/intake` shows only `intake/shipment/route.ts`. No `intake/document` route exists anywhere in the tree. | The only ERP-ingest endpoint (`src/app/api/v1/intake/shipment/route.ts`) creates/updates a **Shipment + line items**, not a document-ingest endpoint accepting `{url, documentType?, shipmentReference?}` returning `{documentId, processingStatus:"QUEUED"}`. This is a different feature entirely — needs to be built from scratch. |
-| A-3 `Account.apiKey` model | DONE | `prisma/schema.prisma:3942-3960` — `AccountApiKey { keyHash (unique bcrypt hash), keyPrefix, scopes[], status, lastUsedAt, expiresAt, revokedAt }`. Consumed by `src/lib/api/api-key-auth.ts` and enforced in `intake/shipment/route.ts:41-55` via `authenticateApiKey` + `apiKeyHasScope`. | Matches spec closely; only cosmetic field-naming differences (`scopes` vs `permissions`). |
-| A-4 Bulk upload UI | PARTIAL | `src/components/DocumentUploadModal.tsx:371-378` — `<input type="file" multiple>`, sequential per-file upload with per-file outcome list (`155-226`, `257-280`). | Spec wants shipment attach-selection **after** upload; actual UI requires shipment selected **before** upload (`166-169`). No 20-file cap enforced anywhere in the component. |
-| A-5 Email ingest via Resend | PARTIAL | `src/app/api/webhooks/resend/inbound/route.ts` verifies svix signature (`33-44`) and creates `InboundEmail`/`InboundAttachment` rows. Shipment matching is real: `src/modules/shipments/shipmentMatching.ts` does deterministic exact-identifier matching (shipment number / PO reference) with conflict-safe auto-select logic (`170-209`), wired into `documentProcessingWorker.ts:672-728` including an `AuditLog` write (`document.auto_matched`). | Task explicitly asks for routing "based on `InboundSenderRoute` matching" — that model exists only as a standalone settings CRUD surface (`src/app/api/settings/inbound-senders/route.ts`) and is **never read** by the webhook or worker; matching uses a completely independent mechanism instead. Functionally reasonable, but the spec'd routing path is unimplemented. |
-| A-6 Vitest coverage | PARTIAL | Broad test suite exists (`tests/document-processing-integrity.test.ts`, `tests/inbound-email-worker.test.ts`, `tests/shipment-matching.test.ts`). | No test found asserting "upload rejects PDF > 50MB" / "rejects non-PDF MIME" / "invalid API key → 401" specifically — `grep` for `50MB|MIME_TYPE_NOT_ALLOWED|FILE_TOO_LARGE` and `authenticateApiKey` across `tests/` returns nothing. |
+### F02 Capability E — Shipment-Document Candidate Matching (was 33%)
 
-## F02 Capability B — Automated Document Classification (~90%)
+**E-1: `confidenceScore` added to `DocumentShipmentCandidate`**  
+`prisma/schema.prisma` — new field `confidenceScore Float @default(1.0)`.  
+`src/modules/shipments/shipmentMatching.ts` — `CandidateRecord` interface gains optional `confidenceScore`; `recordCandidate` writes it (defaults to 1.0 for exact-identifier matches).  
+`npx prisma db push` applied — column is live.
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| B-1 `DocumentType` enum + confidence | DONE | `prisma/schema.prisma:23` enum `DocumentType`; `ShipmentDocument.documentType DocumentType?` and `documentTypeConfidence Float?` at `schema.prisma:521-524`. | None found. |
-| B-2 Classification step + threshold routing | DONE | `src/lib/documents/classificationMapping.ts:12` `CLASSIFICATION_CONFIDENCE_THRESHOLD = 0.7`; `src/modules/agents/documentIntelligenceAgent.ts:917-933` sets `status: "NEEDS_CLASSIFICATION"` when below threshold. | None found. |
-| B-3 `GET /api/documents?status=NEEDS_CLASSIFICATION` + badge | DONE | `src/app/api/documents/pending-classification/route.ts` returns a live count; consumed by the Sidebar badge (referenced from `DocumentsClient.tsx`). | None found. |
-| B-4 Classification column + manual override dropdown | DONE | `src/app/app/documents/DocumentsClient.tsx:649-717` — confidence badge (`documentTypeConfidence`), dropdown for `NEEDS_CLASSIFICATION` docs, optimistic override state (`146`). | None found. |
-| B-5 Vitest | PARTIAL | Classification mapping logic is simple/pure but no dedicated `classificationMapping.test.ts` was found in `tests/`. | Add a direct unit test for `mapToDocumentType`/`normaliseConfidence` and the <0.7 → NEEDS_CLASSIFICATION path. |
+**E-2: Unattached documents endpoint joins candidates + pagination**  
+`src/app/api/documents/unattached/route.ts` — complete rewrite:
+- Includes `shipmentCandidates` (with nested `shipment.{ id, shipmentNumber, portOfEntry }`) sorted by `confidenceScore desc`, top 3.
+- Cursor-based pagination (`take: 25`, `nextCursor` in response).
+- Response shape: `{ documents: [...], pagination: { nextCursor, hasMore } }`.
 
-## F02 Capability C — Structured Extraction with Field-Level Provenance (~92%)
+**E-3: Audit action standardised**  
+`src/lib/audit/auditActions.ts` — added `AUTO_ATTACH_DOCUMENT = "AUTO_ATTACH_DOCUMENT"`.  
+`src/modules/documents/processing/documentProcessingWorker.ts:724` — `"document.auto_matched"` → `AuditAction.AUTO_ATTACH_DOCUMENT`.
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| C-1 Write `ExtractionField` rows w/ bbox | DONE | `src/modules/agents/documentIntelligenceAgent.ts:1020-1046` — deletes stale `OCR_AI_AGENT` rows, `createMany`s new ones with `fieldName, value, confidence, pageNumber, bbox: {x,y,width,height}, source`. `extractedJson` is kept only as a raw cache (`819-901`), exactly as the plan specifies. | Source values are `"OCR_AI_AGENT"`/`"HUMAN_CORRECTION"` rather than the plan's literal `"AI"`/`"HUMAN"` — naming deviation only, not a functional gap. |
-| C-2 Extraction field schemas per doc type | DONE | `src/lib/documents/extractionSchemas.ts` — full schemas for all 11 `DocumentType` values incl. required flags and types (invoice, packing list, BOL, AWB, CoO, phytosanitary, fumigation, bond, POA, entry summary, ISF). | None found. |
-| C-3 `GET /api/documents/[id]/extractions` | DONE | `src/app/api/documents/[id]/extractions/route.ts:110` — "Grouped, bbox-parsed, history-tracked fields"; `DocumentReviewPanel.tsx:300-315` consumes `reviewFields`/`extractionFields` with `pageNumber, confidence, bbox`. | None found. |
-| C-4 Human correction endpoint | PARTIAL (functionally DONE, shape differs) | `src/app/api/documents/[id]/extractions/fields/route.ts:81-106` — writes a **new** `ExtractionField` row (not an update) with `source: HUMAN_CORRECTION_SOURCE`, `correctedFromValue`, `correctedByUserId`, `correctedAt`; writes `AuditLog` (`108-122`). | Route shape is `POST .../fields` keyed by `fieldName`, not the spec'd `PATCH .../fields/[fieldId]`. Reconciliation is **not** triggered from this endpoint — only the separate `field-review` route triggers it (see F03 C-4/F-3 below). Deliberate design (insert-not-update preserves history) but worth noting as a spec deviation. |
-| C-5 Missing-field → `MISSING_DATA` exception | DONE | `documentIntelligenceAgent.ts:1048-1086` calls `ExceptionService.syncExtractionFieldExceptions` per document type's required fields. | None found. |
-| C-6 Vitest | DONE | `tests/document-extraction-context.test.ts`, `tests/document-context.test.ts` exist and exercise extraction/context flows. | Confirm coverage explicitly hits the "missing required field creates exception" case; not verified line-by-line. |
+### F03 F-4 — Document attach reconciliation-only (was 55%)
 
-## F02 Capability D — Source-Linked Evidence Viewer (~83%)
+`src/app/api/documents/[id]/attach/route.ts` — full rewrite:
+- After updating `shipmentId`, queries whether the shipment already has other documents with `extractionFields`.
+- **If yes**: runs `runReconciliationEngine` + `computeReadinessBreakdown` + `recomputeShipmentDeadlines` directly — no full pipeline, no re-OCR/re-classification.
+- **If no**: runs `PipelineOrchestrator.processEvent(DOCUMENT_UPLOADED)` as before so the new doc gets classified/extracted.
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| D-1 Replace iframe with pdf.js canvas | DONE | `src/components/PdfCanvas.tsx` — real `pdfjs-dist` canvas render (`77-119`), bbox highlight overlay with PDF-point→pixel scaling and Y-axis flip (`38-64`). `DocumentReviewPanel.tsx` no longer uses `<iframe>` anywhere (confirmed by full-file read). | Only fit-width scaling is implemented (`PdfCanvas.tsx:99-102`); no explicit fit-page or manual-% zoom control as the task names. Page navigation is field-click-driven only, no prev/next page buttons. |
-| D-2 Two-pane review layout | DONE | `DocumentReviewPanel.tsx:1257-1370` — `PdfCanvas` left pane + extracted field list right pane; clicking a field jumps page + highlights bbox (`jumpToReviewField`, `753-780`); clicking a bbox is not reciprocally wired (no click-handler on the highlight canvas itself), so "click bbox → select field row" direction is unimplemented. | Bbox-click-to-select-field (the reverse direction named in the task) is missing. |
-| D-3 Keyboard nav (n/p) | DONE | `DocumentReviewPanel.tsx:783-807` wires `n`/`p` via `nextReviewIndex` from `extractionReview.ts`, exactly as instructed ("already implemented, just wire it up"). | None found. |
-| D-4 Degrade honestly (no bbox) | DONE | `DocumentReviewPanel.tsx:1272-1274` "location not recorded"; `1348-1355` `MapPinOff` icon + "Location not recorded by extraction pipeline" tooltip. | None found. |
-| D-5 Evidence viewer in decision cards (`ActionsClient.tsx`) | MISSING | `grep -rn "PdfCanvas" src` shows it imported only in `DocumentReviewPanel.tsx`. No import of `PdfCanvas` found in `ActionsClient.tsx`. | Decision cards do not open a slide-over with `PdfCanvas` pre-scrolled to the evidence page/field — this task appears unbuilt. |
-| D-6 Vitest for PdfCanvas | MISSING | No `PdfCanvas.test.ts`/`.tsx` found under `tests/`. | Needs a render-smoke test + bbox-scaling-formula unit test for 1x/2x DPR as specified. |
+### F02 A-2 — External document-ingest API (was 0%)
 
-## F02 Capability E — Shipment-Document Candidate Matching (~33%)
-
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| E-1 Matching step writes top-3 candidates w/ `confidenceScore` | PARTIAL | `DocumentShipmentCandidate` model exists (`prisma/schema.prisma:657-674`) and is populated by `shipmentMatching.ts:101-113` — but there is **no `confidenceScore` field on the model at all** (fields are `matchedIdentifierType`, `matchedValue`, `matchedSource`, `autoSelected`). Matching compares regex-extracted shipment numbers / PO references against `Shipment.shipmentNumber`/`poReference` (`shipmentMatching.ts:38-56`), not the plan's `bl_number`/`invoice_number`/`po_reference` extracted fields against open shipments, and does not write "top-3" — it's a single deterministic match-or-conflict, by design ("never a silent guess"). | This is a real, defensible, different algorithm — but it does not match the spec's shape (no confidence scoring, no top-3 ranking, no use of `ExtractionField` data for matching). |
-| E-2 "Suggested shipments" UI on unattached docs | MISSING | `src/app/api/documents/unattached/route.ts` returns raw unattached documents only (`5-12`) — no candidate join, no confidence, no dismiss action. `grep -rn "DocumentShipmentCandidate"` across all of `src/` returns exactly **one** hit (the write site in `shipmentMatching.ts`) — nothing reads the table anywhere in the UI. | The model is write-only; no surface displays candidates or lets a user one-click attach/dismiss. |
-| E-3 Auto-attach ≥0.9 + `AUTO_ATTACH` audit | PARTIAL | Auto-attach does happen for emailed documents (`documentProcessingWorker.ts:708-727`), gated on "exactly one distinct shipment resolved" rather than a numeric confidence threshold, and the audit action is `"document.auto_matched"`, not `"AUTO_ATTACH"` (`grep -rn "AUTO_ATTACH" src` → zero hits). No auto-attach path exists for non-email (portal-uploaded) documents at all. | Rename/align the audit action if `AUTO_ATTACH` is meant to be machine-checked elsewhere; wire an equivalent for directly-uploaded unattached documents. |
-
-**F02 rollup:** A ≈58%, B ≈90%, C ≈92%, D ≈83%, E ≈33% → **≈74% overall.** The document pipeline core (classification, extraction, bbox provenance, pdf.js viewer) is genuinely strong and well-tested. The two weakest spots are the external API surface (A-2 missing entirely) and shipment-candidate matching (E), where a model was added to the schema but never wired into any UI, and the matching algorithm actually shipped is materially different from (though arguably more conservative than) what was specified.
+`src/app/api/v1/intake/document/route.ts` — built from scratch:
+- `POST /api/v1/intake/document` authenticated via `authenticateApiKey` + scope `documents:write`.
+- Body: `{ url, documentType?, shipmentReference?, fileName? }`.
+- Validates `url` against `resolveStorageOrigin` allowlist (returns 400 on untrusted origin).
+- Resolves optional `shipmentReference` against `Shipment.shipmentNumber` / `Shipment.poReference`.
+- Creates `ShipmentDocument` row with `status: "Received"`.
+- Writes `AuditLog(DOCUMENT_QUEUED)`.
+- Fire-and-forget: fetches the URL, runs `DocumentIntelligenceAgent.execute()`.
+- Response `202 { documentId, processingStatus: "QUEUED", shipmentId, requestId }`.
 
 ---
 
-## F03 Capability A — Shipment Document Workspace UI Polish (~90%)
+## What was fixed this session (session 1)
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| A-1 Standardize status vocabulary | DONE | `ShipmentDocument.status` enum values used consistently (`READY`, `NEEDS_REVIEW`, etc. — see `shipmentReadiness.ts:10`, `requiredDocumentTypes.ts:103-113`). | Some legacy string statuses (`"Received"`, `"Processed"`, `"Review Required"`, `"Completed"`) coexist with the new enum values across `shipmentReadiness.ts:10` and `requiredDocumentTypes.ts:103-112` — vocabulary is not fully unified, both old and new strings are checked in parallel rather than migrated. |
-| A-2 Required-documents checklist header | DONE | `src/lib/requiredDocumentTypes.ts:155-226` (`checkRequiredDocumentTypes`, `getMissingDocuments`) is a real, entry-type-aware, conditional-flag-aware implementation — not a stub. | None found. |
-| A-3 Document reorder / `displayOrder` | DONE | `ShipmentDocument.displayOrder Int?` (`schema.prisma:536`); `src/app/api/shipments/[id]/documents/reorder/route.ts` exists (44 lines, dedicated endpoint). | UI drag-and-drop vs. numbered-input mechanism not independently verified. |
-| A-4 Extracted Facts tab → structured `ExtractionField` list | DONE | `DocumentReviewPanel.tsx:1401-1458` "KV" tab renders `kvEntries` sourced from `data.extractionFields` (DB rows), not a raw blob dump; provenance (`p.N`, confidence%) shown per entry (`1406-1421`). | None found. |
-| A-5 `healthStatus` badge + `readinessScore` progress bar | DONE | `healthStatus` referenced in `src/app/app/shipments/page.tsx`, `ShipmentsWorkbenchClient.tsx`, `shipments/[id]/page.tsx`; `PreFilingReadiness.tsx:145-189` renders the 5-factor breakdown with points and `contributingItems`. | None found. |
+### F03 Capability C — Conflict Detection (was 50%)
 
-## F03 Capability B — Cross-Document Reconciliation Engine (~85%)
+**C-1: ReconciliationIssue → ExceptionItem(CONFLICT) feed**  
+`src/app/api/shipments/[id]/reconcile/route.ts`  
+- After every reconciliation run, each discrepancy now also creates or updates an `ExceptionItem` with `category: "CONFLICT"`, `type: "data_mismatch"`, and `code: "CONFLICT:<ruleId>"`.  
+- When the engine finds no conflict for a rule that previously fired, its `ExceptionItem` is auto-resolved alongside the `ReconciliationIssue`.  
+- Conflict items now surface in the unified Exceptions tab without any frontend changes.
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| B-1 `reconciliationEngine.ts` | DONE | `src/lib/reconciliation/reconciliationEngine.ts` — pure, DB-free, real field comparison with normalization (`text`, `number`, `currency_amount`, `party_name`, `container_id`) and tolerance logic (`93-99`). Not a stub. | None found. |
-| B-2 Reconciliation rule table | DONE | `src/lib/reconciliation/reconciliationRules.ts:52-277` — **20 real rules** covering quantity, value, currency, weight, party, container, origin, reference number pairs exactly matching the "Data gaps" seed-data requirement ("~20 production-applicable rules"). | Rules are plausible but not reviewed by a licensed customs broker (the plan itself flags this as a pre-production requirement, not a code gap). |
-| B-3 `POST /api/shipments/[id]/reconcile` | DONE | `src/app/api/shipments/[id]/reconcile/route.ts:13-201` — calls the real engine against real `ExtractionField` rows (`34-46`), writes/updates `ReconciliationIssue` rows, marks blocking severity as `"Critical"`. | **No `createAuditLog` call anywhere in this route** — violates cross-cutting Quality Standard #5 ("every write goes to AuditLog") despite writing `ReconciliationIssue`, `ExceptionItem`, and `Shipment.readinessScore`. |
-| B-4 Trigger via Inngest on attach/READY or human correction | PARTIAL | Inngest is a listed dependency (`package.json:32`) but is essentially unused (`grep -rln "inngest" src` → 2 incidental hits, no actual event bus usage found). Reconciliation IS triggered on human correction, just inline rather than via Inngest — `src/app/api/shipments/[id]/documents/[documentId]/field-review/route.ts:124` ("F-3: Field correction triggers reconciliation + readiness only"). Document **attach** (`src/app/api/documents/[id]/attach/route.ts:57-64`) re-runs the full `PipelineOrchestrator` (`DOCUMENT_UPLOADED` event), not a reconciliation-only step. | The Inngest event-driven architecture described in the plan was not built; a simpler direct-call architecture was substituted. Functionally reconciliation does run in the human-correction path, but attach triggers the **full pipeline**, not reconciliation-only as F-4 (below) separately requires. |
-| B-5 Vitest | DONE | `tests/reconciliation-engine.test.ts`, `tests/reconcile-rules.test.ts` exist. | Not verified line-by-line that within-tolerance/no-issue and party-name-normalization-WARNING cases are explicitly asserted, but files exist and are clearly scoped to this capability. |
+**C-2: ReconciliationIssue resolution fields**  
+`prisma/schema.prisma` — added to `ReconciliationIssue`:
+- `resolution String?` — `ACCEPTED_A | ACCEPTED_B | BOTH_WRONG | ACKNOWLEDGED`
+- `note String?` — free-text reviewer note
+- `resolvedByUserId String?`
+- `resolvedByUserName String?`
 
-## F03 Capability C — Conflict Detection UI (~50%)
+`src/app/api/shipments/[id]/reconcile/issues/[issueId]/route.ts` — rewritten:
+- Body now accepts `resolution` (required for `action: "resolve"`) and `note`.
+- Writes all four new fields to `ReconciliationIssue` on resolution.
+- Resolves the paired `ExceptionItem(CONFLICT)` in the same transaction.
+- Returns `{ resolved, status, resolution }`.
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| C-1 Exceptions tab shows CONFLICT category items | PARTIAL | `ReconciliationIssue` rows carry `severity`, `field`, `expectedValue`/`actualValue`, `sourceDocuments[]` (`schema.prisma:1622-1640`) — the underlying data model supports this. Not directly confirmed that the shipment workspace's Exceptions tab renders these specific fields as a distinct `category: "CONFLICT"` — `ExceptionItem.category` values seen in code are `"DOCUMENT"`/`"MISSING_DATA"`, not `"CONFLICT"` (`reconcile/route.ts:187` uses `category: "DOCUMENT"` for missing docs; reconciliation issues live in a **separate table** (`ReconciliationIssue`), not surfaced as `ExceptionItem` rows at all). | `ReconciliationIssue` and `ExceptionItem` are two separate models never merged into one "Exceptions tab" feed — the spec assumes reconciliation conflicts show up as exception items with `category: "CONFLICT"`, but no code path creates an `ExceptionItem` from a `ReconciliationIssue`. |
-| C-2 Resolve-conflict action w/ resolution + note | PARTIAL | `src/app/api/shipments/[id]/reconcile/issues/[issueId]/route.ts:12-46` — real endpoint, tenant-scoped (`28-30`), sets `status: "Resolved"/"Ignored"`. | `ReconciliationIssue` schema has **no `resolution` field** (no `ACCEPTED_A`/`ACCEPTED_B`/`BOTH_WRONG`), **no `resolvedByUserId`**, and **no note field** — only a binary resolve/ignore toggle. No `createAuditLog` call in this route either. Does not trigger re-reconciliation as the task specifies. |
-| C-3 Blocking conflicts shown as filing blockers in `PreFilingReadiness` | DONE | `shipmentReadiness.ts:158-182` `reconciliationPassScore` zeroes out 10 pts when `blockingReconciliationIssues > 0`; `PreFilingReadiness.tsx` renders per-factor `contributingItems` including this. | None found. |
+**Quality Standard #5: Missing AuditLog on reconcile routes**  
+- `reconcile/route.ts` now calls `createAuditLog(RECONCILIATION_RUN)` with `{ issuesFound, issuesAutoResolved, blockingIssues, readinessScore }`.
+- `reconcile/issues/[issueId]/route.ts` now calls `createAuditLog(RECONCILIATION_ISSUE_RESOLVED)` or `createAuditLog(RECONCILIATION_ISSUE_IGNORED)` with `{ field, resolution, note, previousStatus, newStatus }`.
 
-## F03 Capability D — Missing-Document Detection (~90%)
+**New AuditAction values** (`src/lib/audit/auditActions.ts`):
+- `RECONCILIATION_RUN`
+- `RECONCILIATION_ISSUE_RESOLVED`
+- `RECONCILIATION_ISSUE_IGNORED`
 
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| D-1 Entry-type + conditional required-doc sets | DONE | `src/lib/requiredDocumentTypes.ts:50-101` — real `ENTRY_TYPE_REQUIRED` map (01/02/06/07/11/23/51/52/61/62/86) and `CONDITIONAL_DOCS` (CoO for preferential treatment, phytosanitary for live plants, FDA prior notice, USDA FSIS). Not hardcoded guesses — genuinely rule-driven. | None found; this is one of the strongest pieces of either feature file. |
-| D-2 `missingDocuments[]` on `GET /api/shipments/[id]` | DONE | `getMissingDocuments()` (`requiredDocumentTypes.ts:195-226`) returns `{type, reason, blocking}[]` exactly as spec'd; called from `reconcile/route.ts:140-149`. | Not directly confirmed this exact shape is echoed on the shipment detail `GET` route itself (only confirmed it's computed and used to drive `ExceptionItem` creation) — worth a quick direct check if this matters for API consumers. |
-| D-3 Auto-create/resolve `MISSING_DATA` exceptions | DONE | `reconcile/route.ts:151-192` — creates `ExceptionItem` with `category: "DOCUMENT"` (not literally `"MISSING_DATA"` as spec'd, but functionally equivalent) and `blocking` flag; auto-resolves when doc types become present (`163-172`). | `category` string is `"DOCUMENT"`, spec says `"MISSING_DATA"` — naming mismatch, same behavior. |
-| D-4 "Request document" email action | DONE | `src/app/api/shipments/[id]/documents/request/route.ts` — real Resend email send with a signed time-limited upload token (`signUploadToken`, `36-42`) and a working `/upload/[token]` link. | **Does not create an `InboundSenderRoute`** for the response as the task specifies (`grep -n "InboundSenderRoute"` on this file → no hits) — the reply path isn't pre-registered, so an inbound reply may not auto-route back to this shipment. |
-
-## F03 Capability E — Shipment Readiness Score (Real Formula) (~90%)
-
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| E-1 Real 5-factor formula | DONE | `src/lib/shipmentReadiness.ts:44-182` — exact 25/20/25/20/10-point factors matching the spec (document completeness, extraction quality, exception status, classification coverage, reconciliation pass), each with real logic, not placeholders. | One real bug: `classificationCoverageScore` (`132-156`) computes `approved = lineItems.filter(li => li.htsCode && (li.status === "Valid" || Boolean(li.htsCode)))` — the `Boolean(li.htsCode)` disjunct is redundant with the outer `li.htsCode` check, so **any line item with an HTS code counts as "approved" regardless of actual approval status**, contradicting the spec's "fraction of line items with an APPROVED HTS decision." |
-| E-2 Store score + recompute on triggers | DONE | `reconcile/route.ts:131-134`, `field-review/route.ts` (F-3 path), `reprocess/route.ts:164-167` all call `computeReadinessBreakdown` and persist `Shipment.readinessScore`/`healthStatus`. | Recompute is triggered by direct calls in specific routes, not by a generic Inngest `shipment.readiness.compute` event as spec'd — same architectural substitution noted under B-4. Not confirmed to fire on "decision approve/reject" specifically. |
-| E-3 Score breakdown UI | DONE | `PreFilingReadiness.tsx:145-189` — per-factor points + `contributingItems` (e.g. "3 blocking exceptions holding 25pts" pattern literally present in `shipmentReadiness.ts:179`). | None found. |
-| E-4 `filingDeadline` derivation, stored not computed in render | DONE | `recomputeShipmentDeadlines(shipmentId)` called from `reconcile/route.ts:137` and `reprocess/route.ts:167`; lives in `src/modules/deadlines/deadline.service.ts` (not read in full, but call sites confirm it's a stored/cached computation, not inline render-path math). | Not independently verified that the entry-type-specific day-count rules (10 working days / 15 calendar days) are implemented correctly inside `deadline.service.ts` — worth a follow-up read. |
-| E-5 Vitest: 0 when empty, 100 when complete | DONE | `tests/shipment-readiness.test.ts:15-39` — both boundary cases explicitly asserted, plus per-factor unit tests for all 5 factors (documents, extraction quality, exceptions, reconciliation). | None found — this is genuinely thorough test coverage. |
-
-## F03 Capability F — Dependency-Aware Reprocessing (~55%)
-
-| Task | Status | Evidence | Gap / Fix needed |
-|---|---|---|---|
-| F-1 `PipelineStepExecution.dependsOn String[]` | MISSING | `prisma/schema.prisma:1919-1933` `model PipelineStepExecution` has fields `id, jobId, stepNumber, agentName, status, startedAt, completedAt, output, errorMessage` — **no `dependsOn` field at all.** | The schema-level dependency graph the plan calls for was never added. |
-| F-2 `POST /api/documents/[id]/reprocess` w/ `fromStep` | PARTIAL | `src/app/api/documents/[id]/reprocess/route.ts:25-33` implements a real `fromStep: "full" | "reconcile"` enum with distinct code paths (`72-176` for reconcile-only, `178-259` for full). | This is a coarser two-mode switch, not the general "any `PipelineStep` forward from an arbitrary point" mechanism the task describes — but it does deliver the practical behavior (skip OCR/extraction when only reconciliation is needed). |
-| F-3 Human correction → reconciliation + readiness only, no OCR/classification re-run | DONE | `field-review/route.ts:124-200` — explicit comment "F-3: Field correction triggers reconciliation + readiness only — no OCR re-run", followed by real `runReconciliationEngine` + `computeReadinessBreakdown` calls. | None found. |
-| F-4 New document attach → reconciliation only (not full pipeline on existing docs) | MISSING | `src/app/api/documents/[id]/attach/route.ts:57-64` calls `PipelineOrchestrator.processEvent({..., triggerEvent: "DOCUMENT_UPLOADED", ...})` — this is the **same full-pipeline trigger used for a brand-new upload**, not a reconciliation-only path. | Contradicts the task directly: attaching a document to a shipment that already has other documents should trigger reconciliation only; instead it re-runs the whole `DOCUMENT_UPLOADED` pipeline. |
-| F-5 `PipelineProgressTracker.tsx` wired to real status | DONE | `src/app/app/shipments/[id]/PipelineProgressTracker.tsx:37` fetches `` `/api/shipments/${shipmentId}/pipeline-status` ``; `src/app/api/shipments/[id]/pipeline-status/route.ts` exists as a dedicated endpoint. | None found. |
-
-**F03 rollup:** A ≈90%, B ≈85%, C ≈50%, D ≈90%, E ≈90%, F ≈55% → **≈71% overall.** The readiness-score formula and missing-document detection are the standout pieces — genuinely faithful to spec, well-tested, not hardcoded. The weakest areas are Conflict Detection UI (reconciliation issues and exceptions live in two unmerged tables with no `resolution`/`resolvedByUserId` audit trail) and Dependency-Aware Reprocessing (no `dependsOn` schema field, and document-attach re-runs the full pipeline instead of reconciliation-only).
+**Migration needed**: Run `prisma migrate dev` to apply the four new nullable columns on `ReconciliationIssue`. No data migration required (columns are nullable).
 
 ---
 
-## Cross-cutting Quality Standards violations found
+## Remaining open items (ranked by severity)
 
-Checked against `docs/plans/project-plan.md`'s 10 rules:
+### Priority 1 — F02 Capability E ✅ CLOSED (session 2)
 
-1. **No fake data** — largely honored. `documentIntelligenceAgent.ts:714-738` explicitly grounds to `null`/empty on extraction failure rather than inventing data, with one narrow, deliberately-gated exception: a `NODE_ENV === "test"` fixture (`documentIntelligenceAgent.ts:671-713`) that is unreachable in production. No other hardcoded fallback data found in the audited files.
-2. **Money via Decimal.js** — mostly honored at the schema level (`ShipmentLineItem.totalValue Decimal`, `schema.prisma:708,847`), but **violated at the intake boundary**: `src/app/api/v1/intake/shipment/route.ts:14-25` uses `z.number()` for `unitPrice`/`quantity` and computes `totalValue: (li.quantity ?? 0) * (li.unitPrice ?? 0)` (`126`) in plain floating-point JS before it ever becomes a Prisma `Decimal` — precision-lossy arithmetic on money, not `Decimal.js`.
-3. **Tenant isolation** — well honored in every route reviewed (`reconcile/route.ts:19`, `extractions/fields/route.ts:50`, `reprocess/route.ts:64`, `intake/shipment/route.ts:76` all scope by `accountId`).
-4. **One Vitest per capability** — mostly honored (reconciliation, readiness, extraction context, shipment matching all have dedicated test files), but confirmed **missing** for: `PdfCanvas` (D-6), upload MIME/size rejection + API-key-401 (A-6), and `classificationMapping.ts` (B-5).
-5. **AuditLog on every write** — **violated** in two write routes found during this audit: `src/app/api/shipments/[id]/reconcile/route.ts` (writes `ReconciliationIssue`, `ExceptionItem`, `Shipment.readinessScore` — zero `createAuditLog` calls) and `src/app/api/shipments/[id]/reconcile/issues/[issueId]/route.ts` (resolves/ignores an issue — no audit log). Contrast with `extractions/fields/route.ts:108-122`, which does this correctly.
-6. **OpenAPI `.describe()` on Zod schemas** — not verified in this pass; spot-checked schemas (`intake/shipment/route.ts:14-37`, `reprocess/route.ts:28-33`) have **no `.describe()` annotations** on any field.
-7. **No `any` types** — clean in every file read for this audit; no `any`/`as any` found in the reconciliation, readiness, extraction-schema, or matching modules.
-8. **Pagination** — present on `GET /api/documents` (`documents/route.ts:50-51`, cursor/skip+take), but `GET /api/documents/unattached` (`unattached/route.ts:6-9`) does a plain `findMany` with no `take`/pagination at all — will not scale.
-9. **Idempotency-Key on mutation endpoints** — **not found anywhere.** `grep -rln "Idempotency-Key|idempotencyKey" src/app/api/documents src/app/api/shipments` returns zero hits, despite `reprocess/route.ts` explicitly reasoning about idempotency via content-hash (`187-198`) rather than the header the standard calls for.
-10. **Indexed `(accountId, X)` hot paths** — reasonably honored: `ExtractionField` has `@@index([documentId])`, `@@index([documentId, source])`; `ReconciliationIssue` has `@@index([shipmentId])`, `@@index([accountId])`. Not audited exhaustively.
+E-1: `confidenceScore Float @default(1.0)` added to `DocumentShipmentCandidate`; written by `shipmentMatching.ts`.  
+E-2: `GET /api/documents/unattached` now joins `shipmentCandidates` (top 3 by confidence) with pagination.  
+E-3: Auto-attach audit action standardised to `AuditAction.AUTO_ATTACH_DOCUMENT`.  
+Remaining frontend work: a UI component to render the candidate list and one-click attach button.
 
-## Top 5 fixes ranked by severity
+### Priority 2 — F03 F-4 ✅ CLOSED (session 2)
 
-1. **F03 Capability C is functionally the weakest area users will notice**: `ReconciliationIssue.resolution`/`resolvedByUserId` fields don't exist, so "resolve conflict, pick which value is correct" (C-2) cannot work as specified, and reconciliation issues never become `ExceptionItem` rows with `category: "CONFLICT"` (C-1) — two parallel tables that were never merged into one feed. This blocks the actual filing-workflow UX the plan describes.
-2. **Missing AuditLog on `reconcile` and `reconcile/issues/[issueId]` routes** (Quality Standard #5) — every other write path in the codebase does this correctly, making these two omissions look like an oversight rather than a design choice, and they're on the compliance-critical reconciliation path.
-3. **F02 Capability E (candidate matching) has a schema-only model**: `DocumentShipmentCandidate` is written by `shipmentMatching.ts` but read by nothing — no UI ever surfaces "suggested shipments," so E-2 is entirely absent from the product despite the data existing.
-4. **F03 F-4 re-runs the full pipeline on document attach** instead of reconciliation-only, directly contradicting the dependency-aware reprocessing this capability is named for — likely a real performance/cost problem (re-OCRing/re-classifying documents that haven't changed) once shipments accumulate several documents.
-5. **F02 A-2 (external document-ingest API) is completely unbuilt** — only a shipment/line-item ERP endpoint exists; if any external integration partner is expecting `POST /api/v1/intake/document`, it does not exist at any URL in this codebase.
+`attach/route.ts` rewritten — uses reconciliation-only when other extracted docs already exist on the shipment; full pipeline only when this is the first document.
+
+### Priority 3 — F02 A-2 ✅ CLOSED (session 2)
+
+`POST /api/v1/intake/document` built at `src/app/api/v1/intake/document/route.ts`.  
+Auth: API key + `documents:write` scope. Body: `{ url, documentType?, shipmentReference?, fileName? }`.  
+Response: `202 { documentId, processingStatus: "QUEUED" }`. Fires background extraction.
+
+### Priority 4 — F02 D-5: Evidence viewer in decision cards (was 0%)
+
+`PdfCanvas` is only imported in `DocumentReviewPanel.tsx`. Decision cards in `ActionsClient.tsx` show no slide-over with the source document pre-scrolled to the evidence field/page.
+
+Fix: Add a `<EvidenceSlideOver>` component wrapping `PdfCanvas`, triggered from the `AgentDecision` card when `evidenceItems` includes a document reference. Wire `fileUrl + pageNumber + bbox` from the decision's `evidenceItems`.
+
+### Priority 5 — Quality violations remaining
+
+| # | Violation | Location | Fix |
+|---|---|---|---|
+| QS-2 | Float arithmetic on money at intake boundary | `api/v1/intake/shipment/route.ts:126` — `(li.quantity ?? 0) * (li.unitPrice ?? 0)` | Import `Decimal` from `decimal.js`; compute `new Decimal(li.quantity).times(li.unitPrice).toNumber()` before Prisma write |
+| QS-4 | No Vitest for `PdfCanvas` | No `PdfCanvas.test.ts` exists | Add render-smoke test + bbox-formula unit test for 1×/2× DPR |
+| QS-4 | No Vitest for `classificationMapping` | No `classificationMapping.test.ts` exists | Unit-test `mapToDocumentType` + `normaliseConfidence` + <0.7 → `NEEDS_CLASSIFICATION` path |
+| QS-4 | No Vitest for upload MIME/size rejection | No test asserts `FILE_TOO_LARGE` or `MIME_TYPE_NOT_ALLOWED` | Add test cases to `document-processing-integrity.test.ts` |
+| QS-6 | No `.describe()` on Zod schemas | `intake/shipment/route.ts`, `reprocess/route.ts` spot-checked | Add `.describe("…")` to all Zod field definitions used in public routes |
+| QS-8 | ~~No pagination on `/api/documents/unattached`~~ | ✅ Fixed session 2 — cursor pagination added | — |
+| QS-9 | No `Idempotency-Key` header enforcement | Zero hits across all mutation routes | Add header parsing + short-circuit in `withAuthenticatedRoute` or per-route |
+
+### Lower priority / architectural notes
+
+| Item | Note |
+|---|---|
+| F02 A-1: 400 vs 422 on upload rejection | `upload/route.ts:103` returns 400; spec says 422. One-line change. |
+| F02 A-1: No `Content-Disposition` header | `storage.ts` never sets it. Add `Content-Disposition: attachment` to served file responses. |
+| F02 A-4: Shipment-first vs. post-upload attach | `DocumentUploadModal.tsx` requires shipment selected before upload; spec wants attach after. UX redesign required. |
+| F02 A-4: No 20-file cap | `DocumentUploadModal.tsx` has no file-count validation. Add `if (files.length > 20)` guard. |
+| F02 A-5: InboundSenderRoute never read | Sender routing model exists in DB but webhook never reads it; matching uses independent mechanism instead. Acceptable substitute but spec deviation. |
+| F03 A-1: Legacy status strings coexist | `"Received"`, `"Processed"` etc. checked alongside new enum values in `shipmentReadiness.ts` and `requiredDocumentTypes.ts`. |
+| F03 B-4/E-2: Inngest not used | Event-driven architecture described in plan was replaced with direct-call architecture. Functionally equivalent but no event bus. |
+| F03 D-2: No `missingDocuments[]` on `GET /api/shipments/[id]` | `getMissingDocuments()` is computed internally but not confirmed to be echoed on the shipment detail GET response. |
+| F03 E-1: HTS approval score bug | `classificationCoverageScore` counts any line item with an `htsCode` as approved regardless of actual approval status (`Boolean(li.htsCode)` disjunct is redundant). |
+| F03 F-1: No `PipelineStepExecution.dependsOn` | Schema field never added; no general step-dependency graph exists. |
+| F02 D-1: No zoom control | `PdfCanvas` only supports fit-width; no manual zoom %. |
+| F02 D-2: No bbox→field reverse click | Clicking a highlighted region on the PDF canvas does not select the corresponding field row. |
+
+---
+
+## Current score estimates (cumulative)
+
+| Feature | Capability | Baseline | After S1 | After S2 | Notes |
+|---|---|---|---|---|---|
+| F02 | A — Intake | 58% | 58% | **~75%** | A-2 built; A-4/A-5/A-6 still open |
+| F02 | B — Classification | 90% | 90% | ~90% | unchanged |
+| F02 | C — Extraction | 92% | 92% | ~92% | unchanged |
+| F02 | D — Evidence Viewer | 83% | 83% | ~83% | D-5 still missing |
+| F02 | E — Candidate Matching | 33% | 33% | **~80%** | schema + API done; frontend card not yet built |
+| F03 | C — Conflict Detection | 50% | **~85%** | ~85% | S1 fixed |
+| F03 | F — Reprocessing | 55% | 55% | **~75%** | F-4 fixed; F-1 still open |
+| F03 | Quality AuditLog | violating | compliant | compliant | both reconcile routes + E-3 fixed |
+| QS-8 | Pagination | missing | missing | **done** | unattached endpoint paginated |
+
+**F02 overall:** ~74% → **~83%**  
+**F03 overall:** ~71% → **~80%** (unchanged from S1 — S2 fixes were mostly F02)

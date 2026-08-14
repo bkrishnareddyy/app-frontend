@@ -67,6 +67,9 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<WorkPriority | "all">("all");
   const [taskFilter, setTaskFilter] = useState<"all" | "mine">("all");
+  const [assignedToMe, setAssignedToMe] = useState<boolean>(false);
+  const [kindFilter, setKindFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
   const [activeCategory, setActiveCategory] = useState<"all" | "blocked" | "review" | "verified">("all");
@@ -122,8 +125,10 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   const filteredGroups = localGroups.filter((g) => {
     if (priorityFilter !== "all" && g.priority !== priorityFilter) return false;
     if (clientFilter !== "all" && g.clientId !== clientFilter) return false;
-    if (taskFilter === "mine" || assigneeFilter !== "all") {
-      const targetId = taskFilter === "mine" ? userId : assigneeFilter;
+    if (kindFilter !== "all" && !g.items.some((i) => i.kind === kindFilter)) return false;
+    if (statusFilter !== "all" && !g.items.some((i) => (i.kind === "decision" ? i.status : i.kind === "exception" ? i.status : "") === statusFilter)) return false;
+    if (assignedToMe || taskFilter === "mine" || assigneeFilter !== "all") {
+      const targetId = (assignedToMe || taskFilter === "mine") ? userId : assigneeFilter;
       const isAssignedBroker = g.assignedBrokerId === targetId;
       const hasMatch = g.items.some(
         (item) => item.kind === "exception" && item.assignedToUserId === targetId
@@ -307,31 +312,61 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
             />
           </div>
 
-          {/* My Tasks / All Tasks toggle */}
+          {/* Assigned to me toggle & Task filters */}
           <div className="flex items-center bg-surface-muted border border-border rounded-xl p-0.5 gap-0.5">
             <button
-              onClick={() => { setTaskFilter("mine"); setAssigneeFilter("all"); }}
+              onClick={() => { setAssignedToMe(!assignedToMe); setTaskFilter(assignedToMe ? "all" : "mine"); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                taskFilter === "mine" ? "bg-white text-ink shadow-2xs" : "text-ink-muted hover:text-ink"
+                assignedToMe || taskFilter === "mine" ? "bg-brand text-white shadow-2xs" : "text-ink-muted hover:text-ink"
               }`}
             >
-              My Tasks
+              Assigned to me
             </button>
             <button
-              onClick={() => setTaskFilter("all")}
+              onClick={() => { setAssignedToMe(false); setTaskFilter("all"); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                taskFilter === "all" ? "bg-white text-ink shadow-2xs" : "text-ink-muted hover:text-ink"
+                !assignedToMe && taskFilter === "all" ? "bg-white text-ink shadow-2xs" : "text-ink-muted hover:text-ink"
               }`}
             >
               All Tasks
             </button>
           </div>
 
+          {/* Category / Kind filter dropdown */}
+          <select
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value)}
+            className="py-1.5 pl-3 pr-7 bg-surface-muted border border-border rounded-xl text-xs font-semibold text-ink focus:outline-none focus:border-brand appearance-none cursor-pointer"
+            style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
+          >
+            <option value="all">All Categories</option>
+            <option value="decision">Decisions</option>
+            <option value="exception">Exceptions</option>
+            <option value="document">Documents</option>
+            <option value="filing">Filings</option>
+          </select>
+
+          {/* Shipment / Item Status filter dropdown */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="py-1.5 pl-3 pr-7 bg-surface-muted border border-border rounded-xl text-xs font-semibold text-ink focus:outline-none focus:border-brand appearance-none cursor-pointer"
+            style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
+          >
+            <option value="all">All Statuses</option>
+            <option value="BLOCKED">Blocked</option>
+            <option value="NEEDS_REVIEW">Needs Review</option>
+            <option value="Approved">Approved</option>
+            <option value="AUTO_VERIFIED">Auto-Verified</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="WAIVED">Waived</option>
+          </select>
+
           {/* Team Members dropdown */}
           {teamMembers.length > 0 && (
             <select
               value={assigneeFilter}
-              onChange={(e) => { setAssigneeFilter(e.target.value); setTaskFilter("all"); }}
+              onChange={(e) => { setAssigneeFilter(e.target.value); setTaskFilter("all"); setAssignedToMe(false); }}
               className="py-1.5 pl-3 pr-7 bg-surface-muted border border-border rounded-xl text-xs font-semibold text-ink focus:outline-none focus:border-brand appearance-none cursor-pointer"
               style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
             >
@@ -395,6 +430,19 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
             <div className="space-y-2 max-h-[76vh] overflow-y-auto pr-1">
               {filteredGroups.map((g) => {
                 const isSelected = g.shipmentId === selectedShipmentId;
+                const declaredVal = g.items.reduce(
+                  (acc, item) => acc + (item.kind === "decision" ? (item.raw.valueAtRisk ?? item.raw.totalValue ?? 0) : 0),
+                  0
+                );
+                const valueAtRiskDisplay = declaredVal > 0
+                  ? `$${(declaredVal >= 1000 ? (declaredVal / 1000).toFixed(0) + "k" : declaredVal.toFixed(0))} declared value`
+                  : null;
+                const isFilingBlocked =
+                  g.priority === "critical" ||
+                  g.items.some(
+                    (i) => (i.kind === "decision" && (i.triageState === "BLOCKED" || i.status === "BLOCKED")) || (i.kind === "exception" && i.severity === "Critical")
+                  );
+
                 return (
                   <button
                     key={g.shipmentId}
@@ -409,12 +457,31 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono font-bold text-brand text-sm">{g.shipmentNumber}</span>
                       <div className="flex items-center gap-1.5">
+                        {isFilingBlocked && (
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-red-100 text-red-700 border border-red-200 shrink-0">
+                            FILING BLOCKED
+                          </span>
+                        )}
                         <span className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[g.priority]}`} />
                         <span className={`text-[10px] font-semibold ${PRIORITY_TEXT[g.priority]}`}>
                           {PRIORITY_LABEL[g.priority]}
                         </span>
                       </div>
                     </div>
+
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-ink-muted">
+                      {g.clientName ? (
+                        <p className="truncate">
+                          Importer: <span className="text-ink">{g.clientName}</span>
+                        </p>
+                      ) : (
+                        <span />
+                      )}
+                      {valueAtRiskDisplay && (
+                        <span className="font-mono font-bold text-ink shrink-0">{valueAtRiskDisplay}</span>
+                      )}
+                    </div>
+
                     {urgencyByShipment[g.shipmentNumber] && (() => {
                       const u = urgencyByShipment[g.shipmentNumber];
                       const DEADLINE_LABELS: Record<string, string> = {
@@ -432,7 +499,11 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
                         />
                       );
                     })()}
+
                     <div className="flex items-center gap-2 flex-wrap">
+                      <span className="flex items-center gap-1 text-[10px] text-ink-muted bg-white border border-border rounded-lg px-2 py-0.5 font-medium">
+                        {g.items.length} item{g.items.length !== 1 ? "s" : ""}
+                      </span>
                       {g.decisionCount > 0 && (
                         <span className="flex items-center gap-1 text-[10px] text-ink-muted bg-white border border-border rounded-lg px-2 py-0.5">
                           <Scale className="w-3 h-3" />
@@ -903,7 +974,19 @@ function ProvenanceFooter({ item }: { item: Extract<ActionItem, { kind: "decisio
     ? ([reviewer.firstName, reviewer.lastName].filter(Boolean).join(" ") || reviewer.email)
     : null;
   const isAutoVerified =
-    item.status === "AUTO_VERIFIED" || item.status === "Auto-Approved" || item.status === "Verified";
+    item.status === "AUTO_VERIFIED" ||
+    item.status === "Auto-Approved" ||
+    item.status === "Verified" ||
+    item.triageState === "AUTO_VERIFIED" ||
+    Boolean(item.raw.autoApproved);
+
+  const formattedDate = item.raw.updatedAt
+    ? new Date(item.raw.updatedAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
 
   if (confidence === null && !reviewerName && !isAutoVerified) return null;
 
@@ -923,10 +1006,12 @@ function ProvenanceFooter({ item }: { item: Extract<ActionItem, { kind: "decisio
       {reviewerName ? (
         <span className="text-[10px] text-ink-muted font-medium">
           Reviewed by <span className="font-semibold text-ink">{reviewerName}</span>
+          {(reviewer as any)?.brokerLicenseNumber ? ` (License #${(reviewer as any).brokerLicenseNumber})` : ""}
+          {formattedDate ? ` on ${formattedDate}` : ""}
         </span>
       ) : isAutoVerified ? (
         <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-          AI certified
+          not approved — auto-verified pending next audit {item.raw.autoApprovalPolicy ? `(policy ${item.raw.autoApprovalPolicy})` : ""}
         </span>
       ) : null}
     </div>
@@ -1215,6 +1300,21 @@ function ExceptionCard({
         ? "bg-amber-50 border-amber-200 text-amber-700"
         : "bg-gray-50 border-gray-200 text-gray-600";
 
+  const isBlocking = item.severity === "Critical" || item.severity === "High";
+
+  const now = new Date();
+  const created = new Date(item.createdAt);
+  const diffMs = Math.max(0, now.getTime() - created.getTime());
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  const ageText = diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : "just now";
+
+  // Calculate expiry countdown (24h for Critical, 72h for High, 120h for others)
+  const expiryHoursMax = item.severity === "Critical" ? 24 : item.severity === "High" ? 72 : 120;
+  const expiryDate = new Date(created.getTime() + expiryHoursMax * 3600 * 1000);
+  const expiryMsRemaining = expiryDate.getTime() - now.getTime();
+  const expiryHoursRemaining = Math.max(0, Math.round(expiryMsRemaining / (1000 * 3600)));
+
   return (
     <div className={`border rounded-2xl p-4 space-y-3 ${
       verified
@@ -1223,7 +1323,7 @@ function ExceptionCard({
           ? "border-red-300 bg-red-50/60"
           : "border-amber-200 bg-amber-50/40"
     }`}>
-      {/* Header: Category Badge + Title + Severity */}
+      {/* Header: Category Badge + Title + Severity + Blocking */}
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-0.5 min-w-0">
           <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600/90">
@@ -1233,9 +1333,16 @@ function ExceptionCard({
             {parsed.title}
           </h4>
         </div>
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${severityClass}`}>
-          {item.severity}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isBlocking && (
+            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-red-100 text-red-700 border border-red-200">
+              FILING BLOCKER
+            </span>
+          )}
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${severityClass}`}>
+            {item.severity}
+          </span>
+        </div>
       </div>
 
       {/* Summary with Hyperlinked Document Name */}
@@ -1267,9 +1374,17 @@ function ExceptionCard({
         </div>
       </div>
 
-      {/* Date, action link, and Details button */}
+      {/* Age, expiry countdown chip, action link, and Details button */}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50 text-[11px] text-ink-muted">
-        <span>Open {new Date(item.createdAt).toLocaleDateString()}</span>
+        <div className="flex items-center gap-2">
+          <span>Created {ageText}</span>
+          <span className="text-border">•</span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+            expiryHoursRemaining <= 12 ? "bg-red-50 border-red-200 text-red-700" : "bg-amber-50 border-amber-200 text-amber-700"
+          }`}>
+            Expires in {expiryHoursRemaining}h
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           {onOpenSlideOver && (
             <button

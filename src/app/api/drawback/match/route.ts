@@ -4,7 +4,7 @@ import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
-import { DrawbackService } from "@/modules/drawback/drawback.service";
+import { DrawbackService, InsufficientLotQuantityError } from "@/modules/drawback/drawback.service";
 import { z } from "zod";
 
 const matchSchema = z.object({
@@ -30,7 +30,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       entityId: ctx.accountId,
       source: "UI",
       metadata: { proposedMatchesCount: result.proposedMatchesCount, strategy: bodyVal.data.matchMethod },
-});
+    });
 
     const responsePayload = { ...result, requestId };
 
@@ -40,6 +40,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
 
     return NextResponse.json(responsePayload);
   } catch (error: unknown) {
+    if (error instanceof InsufficientLotQuantityError) {
+      return buildErrorResponse(422, "INSUFFICIENT_QUANTITY", error.message, undefined, requestId);
+    }
     return buildErrorResponse(500, "INTERNAL_ERROR", errorMessage(error) || "Failed to run drawback matching", undefined, requestId);
   }
 

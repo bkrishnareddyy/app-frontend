@@ -130,6 +130,19 @@ export default async function CustomsFilingDetailPage(props: { params: Promise<{
     envelope: m.envelope as object,
   }));
 
+  const auditLogs = await db.auditLog.findMany({
+    where: { entity: "CustomsFiling", entityId: filing.id },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const auditLogProps = auditLogs.map((log) => ({
+    id: log.id,
+    action: log.action,
+    actor: log.userId ?? "System",
+    createdAt: log.createdAt.toISOString(),
+    details: log.metadata as Record<string, unknown> | null,
+  }));
+
   return (
     <FilingDetailClient
       filing={filingProps}
@@ -138,6 +151,7 @@ export default async function CustomsFilingDetailPage(props: { params: Promise<{
       documents={documentProps}
       responses={responseProps}
       messages={messageProps}
+      auditLogs={auditLogProps}
       allowUpdates={allowUpdates}
       canValidate={canValidate}
       canApprove={canApprove}

@@ -101,6 +101,14 @@ interface MessageProps {
   envelope: object;
 }
 
+interface AuditLogProps {
+  id: string;
+  action: string;
+  actor: string;
+  createdAt: string;
+  details: Record<string, unknown> | null;
+}
+
 interface FilingDetailClientProps {
   filing: FilingProps;
   shipment: ShipmentProps;
@@ -108,6 +116,7 @@ interface FilingDetailClientProps {
   documents: DocumentProps[];
   responses: ResponseProps[];
   messages: MessageProps[];
+  auditLogs?: AuditLogProps[];
   allowUpdates: boolean;
   canValidate: boolean;
   canApprove: boolean;
@@ -176,7 +185,7 @@ const STAGE_STATE_LABELS: Record<FilingStageState, string> = {
 
 type LineItemEdit = { htsCode: string; countryOfOrigin: string };
 
-type Tab = "overview" | "declaration" | "response" | "form7501";
+type Tab = "overview" | "declaration" | "response" | "form7501" | "psc";
 
 function errorFromResponse(data: unknown, fallback: string): string {
   if (data && typeof data === "object" && "error" in data) {
@@ -194,6 +203,7 @@ export function FilingDetailClient({
   documents,
   responses,
   messages,
+  auditLogs = [],
   allowUpdates,
   canValidate,
   canApprove,
@@ -426,24 +436,24 @@ export function FilingDetailClient({
               Approve for Transmission
             </Button>
           )}
-          {canTransmit && (
-            <span
-              title={
-                validationBlockers.length > 0
-                  ? `Cannot transmit: ${validationBlockers.map((b) => b.message).join("; ")}`
-                  : undefined
-              }
+          <span
+            title={
+              !canTransmit
+                ? `Filing cannot be transmitted in current status (${filing.filingStatus}). Pre-filing validation or broker approval required.`
+                : validationBlockers.length > 0
+                ? `Cannot transmit: ${validationBlockers.map((b) => b.message).join("; ")}`
+                : "Transmit entry to Customs authority"
+            }
+          >
+            <Button
+              onClick={handleTransmit}
+              loading={busy === "transmit"}
+              disabled={!canTransmit || busy !== null || validationBlockers.length > 0}
             >
-              <Button
-                onClick={handleTransmit}
-                loading={busy === "transmit"}
-                disabled={busy !== null || validationBlockers.length > 0}
-              >
-                <Send className="w-3.5 h-3.5" />
-                Transmit to Customs
-              </Button>
-            </span>
-          )}
+              <Send className="w-3.5 h-3.5" />
+              Transmit to Customs
+            </Button>
+          </span>
           {allowUpdates && (
             <Button
               variant="secondary"
@@ -507,6 +517,7 @@ export function FilingDetailClient({
           ["declaration", "Declaration"],
           ["response", "Response"],
           ["form7501", "7501 Preview"],
+          ["psc", "Post-Summary Correction"],
         ] as [Tab, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -527,22 +538,39 @@ export function FilingDetailClient({
       {tab === "overview" && (
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-2xl border border-border shadow-2xs space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-ink">Customs Filing Timeline</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
-              {stages.map((stage, index) => {
-                const at = stageDates[stage.key];
-                return (
-                  <div key={stage.key} className={`p-4 rounded-xl border ${STAGE_STYLES[stage.state]} space-y-1`}>
-                    <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-sm">Step {index + 1}</span>
-                      <span className="text-[10px] uppercase font-bold">{STAGE_STATE_LABELS[stage.state]}</span>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-ink">Customs Filing Timeline & Audit Log</h2>
+            {auditLogs && auditLogs.length > 0 ? (
+              <div className="space-y-3">
+                {auditLogs.map((log) => (
+                  <div key={log.id} className="flex items-start justify-between p-3 rounded-xl border border-border bg-surface-muted text-xs">
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-ink">{log.action}</p>
+                      <p className="text-[11px] text-ink-muted">
+                        Actor: <span className="font-semibold text-ink">{log.actor}</span>
+                        {log.details && typeof log.details === "object" && "notes" in log.details ? ` — ${String(log.details.notes)}` : null}
+                      </p>
                     </div>
-                    <p className="font-bold text-ink">{stage.label}</p>
-                    {at ? <p className="text-[10px] text-ink-muted">{displayDate(at)}</p> : null}
+                    <span className="text-[10px] font-medium text-ink-muted shrink-0">{displayDate(log.createdAt)}</span>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
+                {stages.map((stage, index) => {
+                  const at = stageDates[stage.key];
+                  return (
+                    <div key={stage.key} className={`p-4 rounded-xl border ${STAGE_STYLES[stage.state]} space-y-1`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-sm">Step {index + 1}</span>
+                        <span className="text-[10px] uppercase font-bold">{STAGE_STATE_LABELS[stage.state]}</span>
+                      </div>
+                      <p className="font-bold text-ink">{stage.label}</p>
+                      {at ? <p className="text-[10px] text-ink-muted">{displayDate(at)}</p> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <Card className="space-y-6">
@@ -1020,6 +1048,33 @@ export function FilingDetailClient({
             </div>
           )}
         </div>
+      )}
+
+      {tab === "psc" && (
+        <Card className="space-y-4">
+          <div className="flex items-center justify-between border-b border-border pb-3">
+            <div>
+              <h3 className="text-sm font-extrabold text-ink">Post-Summary Correction (PSC) Management</h3>
+              <p className="text-xs text-ink-muted">Submit official CBP post-summary corrections for classification, value, or rate adjustments.</p>
+            </div>
+            <Badge variant={filing.filingStatus === "Accepted" || filing.filingStatus === "Released" ? "success" : "warning"}>
+              {filing.filingStatus === "Accepted" || filing.filingStatus === "Released" ? "Eligible for PSC" : `Status: ${filing.filingStatus}`}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-surface-muted rounded-xl space-y-2">
+              <span className="text-[10px] font-bold text-ink-muted uppercase">Original Declared Duty</span>
+              <p className="text-xl font-extrabold text-ink">{displayCurrency(filing.totalDuties)}</p>
+              <p className="text-xs text-ink-muted">Filing Entry #{filing.entryNumber}</p>
+            </div>
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+              <span className="text-[10px] font-bold text-emerald-800 uppercase">PSC Correction Window</span>
+              <p className="text-sm font-bold text-emerald-900">300 Days Statutory Limit (19 CFR 174)</p>
+              <p className="text-xs text-emerald-700">Must be filed prior to liquidation</p>
+            </div>
+          </div>
+        </Card>
       )}
 
       {confirmAction && CHILD_ACTION_REGISTRY[confirmAction] && (() => {

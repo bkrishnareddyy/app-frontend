@@ -21,7 +21,7 @@ export function CronPanel() {
       name: "Regulatory Notice Ingestion",
       endpoint: "/api/cron/regulatory-ingest",
       method: "POST",
-      schedule: "0 0 * * * (Daily at 00:00 UTC)",
+      schedule: "Daily at 08:00 UTC (via HTS Refresh) / Manual",
       lastRun: "Never",
       status: "idle",
     },

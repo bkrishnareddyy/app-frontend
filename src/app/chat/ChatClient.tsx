@@ -1389,6 +1389,245 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
     );
   }
 
+  if (tc.name === "get_shipment") {
+    const s = (r?.shipment as Record<string, any>) ?? r;
+    if (!s || r.error) return <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: "#fca5a5" } as React.CSSProperties}><Badge variant="danger">Error</Badge><p style={{ fontSize: 14, color: th.ink, marginTop: 8 }}>{safeErrorMessage(r?.error) ?? "Shipment not found"}</p></Card>;
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: th.ink }}>{s.shipmentNumber ?? "Shipment Details"}</span>
+          <Badge variant={s.status === "FILED" ? "success" : "neutral"}>{s.status ?? "Draft"}</Badge>
+        </div>
+        <p style={{ fontSize: 12, color: th.inkMuted }}>Importer: {s.importerName ?? "N/A"}</p>
+        {s.readinessScore != null && <p style={{ fontSize: 12, color: th.inkMuted }}>Readiness Score: {s.readinessScore}/100</p>}
+        <ViewInAppLink href={s.id ? `/app/shipments/${s.id}` : "/app/shipments"} label="shipment" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "get_duty_stack") {
+    const total = Number(r?.totalDutyUsd ?? r?.totalDuty ?? 0);
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: th.inkMuted, marginBottom: 4 }}>Duty Stack Calculation</p>
+        <p style={{ fontSize: 22, fontWeight: 700, color: th.ink, marginBottom: 8 }}>${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+        <p style={{ fontSize: 12, color: th.inkMuted }}>Effective Duty Rate: {Number(r?.effectiveDutyRate ?? 0).toFixed(2)}%</p>
+        <ViewInAppLink href="/app/duty-calculator" label="duty calculator" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "list_decisions" || tc.name === "approve_decision" || tc.name === "reject_decision") {
+    const decisions = (r?.decisions as any[]) ?? (r?.decision ? [r.decision] : []);
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: th.inkMuted, marginBottom: 12 }}>
+          Proposed Decisions ({decisions.length})
+        </p>
+        {decisions.length === 0 ? <p style={{ fontSize: 14, color: th.inkMuted }}>No pending decisions found.</p>
+          : decisions.map((d) => (
+            <div key={d.id} style={{ borderRadius: 8, border: `1px solid ${th.border}`, padding: "10px 12px", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: th.ink }}>Proposed HTS: {d.proposedHtsCode || d.htsCode || "Pending"}</span>
+                <Badge variant={d.status === "APPROVED" ? "success" : d.status === "REJECTED" ? "danger" : "neutral"}>{d.status || "PROPOSED"}</Badge>
+              </div>
+              <p style={{ fontSize: 12, color: th.inkMuted, marginTop: 4 }}>{d.decisionSummary || d.proposedDescription || "HTS Classification proposal"}</p>
+              {(!d.status || d.status === "PROPOSED" || d.status === "PENDING") && (
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <Button size="sm" variant="outline" style={{ fontSize: 11, padding: "2px 10px" }}
+                    onClick={async () => {
+                      await fetch("/api/decisions", {
+                        method: "POST",
+                        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+                        body: JSON.stringify({ decisionId: d.id, action: "APPROVE", source: "CHAT" }),
+                      });
+                      alert("Decision approved successfully.");
+                    }}>
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="outline" style={{ fontSize: 11, padding: "2px 10px", color: "#dc2626" }}
+                    onClick={async () => {
+                      const reason = prompt("Enter rejection reason:");
+                      if (reason) {
+                        await fetch("/api/decisions", {
+                          method: "POST",
+                          headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+                          body: JSON.stringify({ decisionId: d.id, action: "REJECT", humanNotes: reason, source: "CHAT" }),
+                        });
+                        alert("Decision rejected.");
+                      }
+                    }}>
+                    Reject
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        <ViewInAppLink href="/app/decisions" label="decisions" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "list_exceptions" || tc.name === "resolve_exception") {
+    const exceptions = (r?.exceptions as any[]) ?? (r?.exception ? [r.exception] : []);
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: th.inkMuted, marginBottom: 12 }}>
+          Compliance Exceptions ({exceptions.length})
+        </p>
+        {exceptions.length === 0 ? <p style={{ fontSize: 14, color: th.inkMuted }}>No open exceptions found.</p>
+          : exceptions.map((ex) => (
+            <div key={ex.id} style={{ borderRadius: 8, border: `1px solid ${th.border}`, padding: "10px 12px", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: th.ink }}>{ex.title || ex.category}</span>
+                <Badge variant={ex.severity === "CRITICAL" ? "danger" : "neutral"}>{ex.severity || ex.status}</Badge>
+              </div>
+              <p style={{ fontSize: 11, color: th.inkMuted, marginTop: 4 }}>{ex.shipmentNumber ? `Shipment: ${ex.shipmentNumber}` : ex.category}</p>
+              {ex.status !== "RESOLVED" && ex.status !== "WAIVED" && (
+                <div style={{ marginTop: 8 }}>
+                  <Button size="sm" variant="outline" style={{ fontSize: 11, padding: "2px 10px" }}
+                    onClick={async () => {
+                      const note = prompt("Enter resolution note:") || "Resolved via chat action";
+                      await fetch(`/api/exceptions/${ex.id}`, {
+                        method: "PATCH",
+                        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+                        body: JSON.stringify({ status: "RESOLVED", resolutionReasonCode: "DOCUMENTATION_VERIFIED", resolutionReason: note, source: "CHAT" }),
+                      });
+                      alert("Exception resolved.");
+                    }}>
+                    Resolve Exception
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        <ViewInAppLink href="/app/exceptions" label="exceptions" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "get_document") {
+    const doc = (r?.document as any) ?? r;
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: th.ink }}>{doc.fileName ?? "Document"}</span>
+          <Badge variant={doc.status === "PROCESSED" ? "success" : "neutral"}>{doc.status ?? "PROCESSED"}</Badge>
+        </div>
+        <p style={{ fontSize: 12, color: th.inkMuted }}>Type: {doc.docType ?? "General Document"}</p>
+        <ViewInAppLink href="/app/documents" label="documents" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "get_product" || tc.name === "classify_product") {
+    const prod = (r?.product as any) ?? (r?.classification as any) ?? r;
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: th.ink }}>{prod.productName ?? prod.name ?? "Product Record"}</span>
+          <Badge variant="success">{prod.status ?? "ACTIVE"}</Badge>
+        </div>
+        {prod.sku && <p style={{ fontSize: 12, color: th.inkMuted }}>SKU: {prod.sku}</p>}
+        <ViewInAppLink href={prod.id ? `/app/products/${prod.id}` : "/app/products"} label="product" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "get_filing_status" || tc.name === "validate_shipment_filing") {
+    const blockers = (r?.blockers as any[]) ?? [];
+    const warnings = (r?.warnings as any[]) ?? [];
+    const valid = r?.valid ?? (blockers.length === 0);
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: valid ? "#6ee7b7" : "#fca5a5" } as React.CSSProperties}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: th.ink }}>Filing Validation & Status</span>
+          <Badge variant={valid ? "success" : "danger"}>{valid ? "Ready to File" : "Blockers Present"}</Badge>
+        </div>
+        {blockers.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "#dc2626" }}>Blockers:</p>
+            {blockers.map((b: any, idx: number) => <p key={idx} style={{ fontSize: 12, color: th.ink }}>• {b.message || b.rule}</p>)}
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "#d97706" }}>Warnings:</p>
+            {warnings.map((w: any, idx: number) => <p key={idx} style={{ fontSize: 12, color: th.inkMuted }}>• {w.message || w.rule}</p>)}
+          </div>
+        )}
+        <ViewInAppLink href="/app/filing" label="filing center" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "run_impact_analysis") {
+    const high = Number(r?.highImpactCount ?? 0);
+    const total = Number(r?.totalAffectedShipments ?? 0);
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: th.inkMuted, marginBottom: 4 }}>Portfolio Impact Analysis</p>
+        <p style={{ fontSize: 20, fontWeight: 700, color: th.ink, marginBottom: 8 }}>{total} Shipment{total !== 1 ? "s" : ""} Impacted ({high} High Risk)</p>
+        <ViewInAppLink href="/app/regulatory" label="regulatory" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "generate_reasonable_care_record") {
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: "#6ee7b7" } as React.CSSProperties}>
+        <Badge variant="success">Reasonable Care Package Generated</Badge>
+        <p style={{ fontSize: 13, color: th.ink, marginTop: 8 }}>Audit defense record and checklist compiled successfully.</p>
+        <ViewInAppLink href="/app/documents" label="documents" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "get_classification_rationale") {
+    const griSteps = (r?.griSteps as any[]) ?? [];
+    const rulings = (r?.rulingCitations as any[]) ?? [];
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: th.inkMuted, marginBottom: 4 }}>Classification Rationale (GRI Analysis)</p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: th.ink, marginBottom: 8 }}>HTS Code: {r?.approvedHtsCode ?? r?.htsCode ?? "Assigned"}</p>
+        {griSteps.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: th.inkMuted }}>GRI Steps:</p>
+            {griSteps.map((g: any, i: number) => <p key={i} style={{ fontSize: 12, color: th.ink }}>GRI {g.step || g.sequence}: {g.rationale || g.reasoning}</p>)}
+          </div>
+        )}
+        {rulings.length > 0 && (
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: th.inkMuted }}>CBP Ruling Citations:</p>
+            {rulings.map((c: any, i: number) => <p key={i} style={{ fontSize: 12, color: th.inkMuted }}>• {typeof c === "string" ? c : c.rulingNumber}</p>)}
+          </div>
+        )}
+        <ViewInAppLink href="/app/products" label="products" />
+      </Card>
+    );
+  }
+
+  if (tc.name === "get_duty_exposure_risks") {
+    const topRisks = (r?.topRisks as any[]) ?? [];
+    const totalExp = Number(r?.totalExposure ?? 0);
+    return (
+      <Card className="p-4 mb-3" style={{ background: th.surface, borderColor: th.border } as React.CSSProperties}>
+        <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: th.inkMuted, marginBottom: 4 }}>Top Portfolio Duty Exposure Risks</p>
+        <p style={{ fontSize: 22, fontWeight: 700, color: th.ink, marginBottom: 12 }}>${totalExp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Total Exposure</p>
+        {topRisks.map((item: any, idx: number) => (
+          <div key={idx} style={{ padding: "8px 0", borderTop: idx > 0 ? `1px solid ${th.border}` : "none" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: th.ink }}>{item.shipmentNumber} — {item.description}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: th.ink }}>${Number(item.estimatedDuty).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+            </div>
+            <p style={{ fontSize: 11, color: th.inkMuted }}>HTS {item.htsCode} · Value ${Number(item.enteredValue).toLocaleString()}</p>
+          </div>
+        ))}
+        <ViewInAppLink href="/app/shipments" label="shipments" />
+      </Card>
+    );
+  }
+
   return null;
 }
 

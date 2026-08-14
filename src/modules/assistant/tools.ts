@@ -1,4 +1,5 @@
 import { Type, type FunctionDeclaration, type Schema } from "@google/genai";
+import { z } from "zod";
 import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getActiveTeamMembers } from "@/lib/team";
@@ -24,20 +25,54 @@ import { canUseTool } from "@/modules/copilot/copilotAccess";
 import type { CopilotToolAccess } from "@/modules/copilot/copilotToolTypes";
 
 /**
- * Every tool wraps a real, already-authorized code path — either the
- * exported route handler called in-process (so it resolves the caller's real
- * session/RLS exactly like an HTTP request would) or a direct DB query
- * mirroring one already run elsewhere in the app.
- *
- * `access` reuses the Copilot's own gate (`canUseTool`, the same function
- * that decides whether the sidebar shows a link and whether the routed page
- * renders): a user who cannot open Parties in Qubere cannot reach party data
- * by asking the chat assistant either. Omitting `access` means "any
- * authenticated member of the account," which matches what the roster lookup
- * already is everywhere else in the app.
+ * Helper to convert Zod Object Schema into Gemini-compatible Schema object
  */
+export function zodToGeminiSchema(zodSchema: z.ZodObject<any>): Schema {
+  const shape = zodSchema.shape;
+  const properties: Record<string, Schema> = {};
+  const required: string[] = [];
+
+  for (const [key, prop] of Object.entries(shape)) {
+    let unwrapped: any = prop;
+    let isOptional = false;
+    let desc: string | undefined = (prop as any).description;
+
+    while (unwrapped._def?.innerType || unwrapped._def?.schema) {
+      if (unwrapped._def?.typeName === "ZodOptional" || unwrapped._def?.typeName === "ZodDefault") {
+        if (unwrapped._def?.typeName === "ZodOptional") isOptional = true;
+        unwrapped = unwrapped._def.innerType || unwrapped._def.schema;
+      } else {
+        break;
+      }
+    }
+
+    if (!isOptional && prop._def?.typeName !== "ZodOptional" && prop._def?.typeName !== "ZodDefault") {
+      required.push(key);
+    }
+
+    const typeName = unwrapped._def?.typeName;
+    let type = Type.STRING;
+    if (typeName === "ZodNumber") type = Type.NUMBER;
+    else if (typeName === "ZodBoolean") type = Type.BOOLEAN;
+    else if (typeName === "ZodArray") type = Type.ARRAY;
+    else if (typeName === "ZodObject") type = Type.OBJECT;
+
+    properties[key] = {
+      type,
+      ...(desc && { description: desc }),
+    };
+  }
+
+  return {
+    type: Type.OBJECT,
+    properties,
+    ...(required.length > 0 && { required }),
+  };
+}
+
 export interface AssistantTool {
   declaration: FunctionDeclaration;
+  schema: z.ZodObject<any>;
   access?: CopilotToolAccess;
   execute: (ctx: AccountContext, args: Record<string, unknown>) => Promise<unknown>;
 }
@@ -61,7 +96,6 @@ interface FetchedShipment {
   exceptionItems: { status: string; severity: string }[];
 }
 
-// Same stopgap as dashboard/page.tsx's SHIPMENT_ROW_CAP = 500.
 const SHIPMENT_FETCH_PAGE_SIZE = 100;
 const SHIPMENT_FETCH_MAX_PAGES = 5;
 
@@ -147,35 +181,27 @@ function isCritical(info: DeadlineInfo | undefined): boolean {
 
 // ---- tool: list_shipments ----
 
-interface ListShipmentsArgs {
-  unassigned?: boolean;
-  atRisk?: boolean;
-  critical?: boolean;
-  clientId?: string;
-  assignedToUserId?: string;
-}
-
-const listShipmentsParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    unassigned: { type: Type.BOOLEAN, description: "Only shipments with no assigned broker." },
-    atRisk: { type: Type.BOOLEAN, description: "Only shipments with a readiness score below 85." },
-    critical: { type: Type.BOOLEAN, description: "Only shipments with an open compliance deadline due within 24 hours." },
-    clientId: { type: Type.STRING, description: "Restrict to one client. Only set if you already have its id from a prior tool result." },
-    assignedToUserId: { type: Type.STRING, description: "Restrict to one team member. Look up userId via get_team_members first." },
-  },
-};
+const listShipmentsSchema = z.object({
+  unassigned: z.boolean().optional().describe("Only shipments with no assigned broker."),
+  atRisk: z.boolean().optional().describe("Only shipments with a readiness score below 85."),
+  critical: z.boolean().optional().describe("Only shipments with an open compliance deadline due within 24 hours."),
+  clientId: z.string().optional().describe("Restrict to one client."),
+  assignedToUserId: z.string().optional().describe("Restrict to one team member."),
+});
 
 const listShipments: AssistantTool = {
+  schema: listShipmentsSchema,
   declaration: {
     name: "list_shipments",
-    description:
-      "List shipments, optionally filtered by assignment, risk, urgency, client, or assignee. Combine flags for compound questions.",
-    parameters: listShipmentsParams,
+    description: "List shipments, optionally filtered by assignment, risk, urgency, client, or assignee.",
+    parameters: zodToGeminiSchema(listShipmentsSchema),
   },
   access: { navHref: "/app/shipments" },
   execute: async (ctx, rawArgs) => {
-    const args = rawArgs as ListShipmentsArgs;
+    const parsed = listShipmentsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const args = parsed.data;
+
     const shipments = await fetchAllShipments();
     const deadlines = args.critical ? await fetchOpenDeadlinesByShipmentNumber(ctx.accountId) : null;
 
@@ -212,12 +238,14 @@ const listShipments: AssistantTool = {
 
 // ---- tool: get_value_at_risk ----
 
+const getValueAtRiskSchema = z.object({});
+
 const getValueAtRisk: AssistantTool = {
+  schema: getValueAtRiskSchema,
   declaration: {
     name: "get_value_at_risk",
-    description:
-      "Total declared value across shipments currently at risk (readiness score below 85) — same figure as the dashboard Value at Risk tile.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    description: "Total declared value across shipments currently at risk (readiness score below 85).",
+    parameters: zodToGeminiSchema(getValueAtRiskSchema),
   },
   access: { navHref: "/app/shipments" },
   execute: async () => {
@@ -243,11 +271,14 @@ const getValueAtRisk: AssistantTool = {
 
 // ---- tool: get_team_members ----
 
+const getTeamMembersSchema = z.object({});
+
 const getTeamMembers: AssistantTool = {
+  schema: getTeamMembersSchema,
   declaration: {
     name: "get_team_members",
     description: "List active members of the current account (name, email, userId).",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: zodToGeminiSchema(getTeamMembersSchema),
   },
   execute: async (ctx) => {
     const members = await getActiveTeamMembers(ctx.accountId);
@@ -264,85 +295,84 @@ const getTeamMembers: AssistantTool = {
 
 // ---- tool: create_shipment ----
 
-const createShipmentParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    importerName: { type: Type.STRING, description: "Importer of record. Only required field — omit others if user didn't state them." },
-    clientId: { type: Type.STRING },
-    poReference: { type: Type.STRING },
-    entryType: { type: Type.STRING },
-    incoterm: { type: Type.STRING },
-    portOfEntry: { type: Type.STRING },
-    carrierName: { type: Type.STRING },
-    countryOfExport: { type: Type.STRING },
-    estimatedArrival: { type: Type.STRING, description: "ISO 8601 date." },
-  },
-  required: ["importerName"],
-};
+const createShipmentSchema = z.object({
+  importerName: z.string().describe("Importer of record. Only required field."),
+  clientId: z.string().optional(),
+  poReference: z.string().optional(),
+  entryType: z.string().optional(),
+  incoterm: z.string().optional(),
+  portOfEntry: z.string().optional(),
+  carrierName: z.string().optional(),
+  countryOfExport: z.string().optional(),
+  estimatedArrival: z.string().optional().describe("ISO 8601 date."),
+});
 
 const createShipment: AssistantTool = {
+  schema: createShipmentSchema,
   declaration: {
     name: "create_shipment",
-    description:
-      "Create a new shipment. Only call after showing the user exactly what will be submitted and receiving explicit confirmation. Never invent values for fields the user didn't state.",
-    parameters: createShipmentParams,
+    description: "Create a new shipment. Only call after explicit confirmation.",
+    parameters: zodToGeminiSchema(createShipmentSchema),
   },
   access: { navHref: "/app/shipments" },
-  execute: async (_ctx, args) => {
+  execute: async (_ctx, rawArgs) => {
+    const parsed = createShipmentSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
     const shipmentsPOST = (await getShipmentsRoute()).POST;
     const res = await shipmentsPOST(
       new Request("http://internal.local/api/shipments", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(args),
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+        body: JSON.stringify(parsed.data),
       })
     );
     const data = await res.json();
-    if (!res.ok) {
-      return { success: false, error: data.error ?? "Failed to create shipment", fieldErrors: data.fieldErrors };
-    }
-    return { success: true, shipmentNumber: data.shipment.shipmentNumber, url: shipmentUrl(data.shipment) };
+    if (!res.ok) return { success: false, error: data.error ?? "Failed to create shipment" };
+    return {
+      success: true,
+      shipmentId: data.shipment.id,
+      shipmentNumber: data.shipment.shipmentNumber,
+      url: `/app/shipments/${data.shipment.id}`,
+    };
   },
 };
 
 // ---- tool: search_products ----
 
-const searchProductsParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    query: { type: Type.STRING, description: "Search term — matches product name, description, SKU, or HTS/tariff code." },
-    limit: { type: Type.NUMBER, description: "Max results, 1–50. Default 20." },
-  },
-  required: ["query"],
-};
+const searchProductsSchema = z.object({
+  query: z.string().optional().describe("Free-text query matched against productName, sku, or description."),
+  status: z.string().optional().describe("Filter by product status e.g. ACTIVE."),
+});
 
 const searchProducts: AssistantTool = {
+  schema: searchProductsSchema,
   declaration: {
     name: "search_products",
-    description: "Search the account's product catalog by name, SKU, description, or HTS code.",
-    parameters: searchProductsParams,
+    description: "Search products by name, SKU, description, or status.",
+    parameters: zodToGeminiSchema(searchProductsSchema),
   },
   access: { navHref: "/app/products" },
   execute: async (_ctx, rawArgs) => {
-    const q = String(rawArgs.query ?? "");
-    const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const parsed = searchProductsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { query, status } = parsed.data;
+
     const productsGET = (await getProductsRoute()).GET;
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (status) params.set("status", status);
+
     const res = await productsGET(
-      new Request(`http://internal.local/api/products?q=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
+      new Request(`http://internal.local/api/products?${params.toString()}`)
     );
     if (!res.ok) return { error: "Failed to fetch products" };
-    const data = (await res.json()) as {
-      products: { id: string; sku: string | null; name: string; description: string | null; status: string }[];
-      total: number;
-    };
+    const data = (await res.json()) as { products: { id: string; productName: string; sku: string | null; status: string }[]; total: number };
     return {
       total: data.total,
-      shown: data.products.length,
-      products: data.products.map((p) => ({
+      products: (data.products ?? []).map((p) => ({
         id: p.id,
-        name: p.name,
+        name: p.productName,
         sku: p.sku,
-        description: p.description,
         status: p.status,
         url: `/app/products/${p.id}`,
       })),
@@ -352,42 +382,41 @@ const searchProducts: AssistantTool = {
 
 // ---- tool: search_parties ----
 
-const searchPartiesParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    query: { type: Type.STRING, description: "Search term — matches party name, code, or any identifier." },
-    limit: { type: Type.NUMBER, description: "Max results, 1–50. Default 20." },
-  },
-  required: ["query"],
-};
+const searchPartiesSchema = z.object({
+  query: z.string().optional().describe("Search query matched against legal name, party code, or tax identifier."),
+  role: z.string().optional().describe("Role filter e.g. SUPPLIER, SELLER, IMPORTER."),
+});
 
 const searchParties: AssistantTool = {
+  schema: searchPartiesSchema,
   declaration: {
     name: "search_parties",
-    description: "Search the account's party master (importers, exporters, brokers, carriers, etc.) by name or identifier.",
-    parameters: searchPartiesParams,
+    description: "Search trade parties by name, code, or role.",
+    parameters: zodToGeminiSchema(searchPartiesSchema),
   },
   access: { navHref: "/app/parties" },
   execute: async (_ctx, rawArgs) => {
-    const q = String(rawArgs.query ?? "");
-    const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const parsed = searchPartiesSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { query, role } = parsed.data;
+
     const partiesGET = (await getPartiesRoute()).GET;
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (role) params.set("role", role);
+
     const res = await partiesGET(
-      new Request(`http://internal.local/api/parties?q=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
+      new Request(`http://internal.local/api/parties?${params.toString()}`)
     );
     if (!res.ok) return { error: "Failed to fetch parties" };
-    const data = (await res.json()) as {
-      parties: { id: string; code: string | null; status: string; roles: { roleType: string }[]; names: { rawName: string }[] }[];
-      total: number;
-    };
+    const data = (await res.json()) as { parties: { id: string; legalName: string; partyCode: string | null; roles: string[]; status: string }[]; total: number };
     return {
       total: data.total,
-      shown: data.parties.length,
-      parties: data.parties.map((p) => ({
+      parties: (data.parties ?? []).map((p) => ({
         id: p.id,
-        code: p.code,
-        name: p.names?.[0]?.rawName ?? "(unnamed)",
-        roles: p.roles?.map((r) => r.roleType) ?? [],
+        name: p.legalName,
+        code: p.partyCode,
+        roles: p.roles,
         status: p.status,
         url: `/app/parties/${p.id}`,
       })),
@@ -397,44 +426,44 @@ const searchParties: AssistantTool = {
 
 // ---- tool: search_documents ----
 
-const searchDocumentsParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    query: { type: Type.STRING, description: "Search term — matches file name, document type, or linked shipment/client." },
-    limit: { type: Type.NUMBER, description: "Max results, 1–50. Default 20." },
-  },
-  required: ["query"],
-};
+const searchDocumentsSchema = z.object({
+  query: z.string().optional().describe("Search query matched against file name."),
+  docType: z.string().optional().describe("Document type filter e.g. COMMERCIAL_INVOICE, PACKING_LIST."),
+  shipmentId: z.string().optional().describe("Restrict search to a single shipment UUID."),
+});
 
 const searchDocuments: AssistantTool = {
+  schema: searchDocumentsSchema,
   declaration: {
     name: "search_documents",
-    description: "Search trade documents (commercial invoices, packing lists, BOLs, etc.) by file name, type, or linked shipment.",
-    parameters: searchDocumentsParams,
+    description: "Search uploaded compliance documents by file name, docType, or shipmentId.",
+    parameters: zodToGeminiSchema(searchDocumentsSchema),
   },
   access: { navHref: "/app/documents" },
   execute: async (_ctx, rawArgs) => {
-    const q = String(rawArgs.query ?? "");
-    const limit = Math.min(50, Math.max(1, Number(rawArgs.limit ?? 20)));
+    const parsed = searchDocumentsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { query, docType, shipmentId } = parsed.data;
+
     const documentsGET = (await getDocumentsRoute()).GET;
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (docType) params.set("docType", docType);
+    if (shipmentId) params.set("shipmentId", shipmentId);
+
     const res = await documentsGET(
-      new Request(`http://internal.local/api/documents?search=${encodeURIComponent(q)}&pageSize=${limit}&page=1`)
+      new Request(`http://internal.local/api/documents?${params.toString()}`)
     );
     if (!res.ok) return { error: "Failed to fetch documents" };
-    const data = (await res.json()) as {
-      documents: { id: string; fileName: string; docType: string | null; status: string; shipment?: { shipmentNumber: string } | null }[];
-      total: number;
-    };
+    const data = (await res.json()) as { documents: { id: string; fileName: string; docType: string | null; status: string; shipment: { shipmentNumber: string } | null }[]; total: number };
     return {
       total: data.total,
-      shown: data.documents.length,
-      documents: data.documents.map((d) => ({
+      documents: (data.documents ?? []).map((d) => ({
         id: d.id,
         fileName: d.fileName,
         docType: d.docType,
         status: d.status,
         shipmentNumber: d.shipment?.shipmentNumber ?? null,
-        url: `/app/documents`,
       })),
     };
   },
@@ -442,87 +471,92 @@ const searchDocuments: AssistantTool = {
 
 // ---- tool: generate_reasonable_care_record ----
 
-const generateRcParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    shipmentId: { type: Type.STRING, description: "Shipment UUID to generate reasonable care package for." },
-  },
-  required: ["shipmentId"],
-};
+const generateReasonableCareRecordSchema = z.object({
+  shipmentId: z.string().describe("Shipment UUID."),
+});
 
 const generateReasonableCareRecord: AssistantTool = {
+  schema: generateReasonableCareRecordSchema,
   declaration: {
     name: "generate_reasonable_care_record",
-    description: "Generate a Reasonable Care Package record for a shipment.",
-    parameters: generateRcParams,
+    description: "Generate a Reasonable Care audit checklist and defense package for a shipment.",
+    parameters: zodToGeminiSchema(generateReasonableCareRecordSchema),
   },
-  execute: async (_ctx, rawArgs) => {
-    const shipmentId = String(rawArgs.shipmentId ?? "");
-    const { assembleReasonableCarePackage } = await import("@/lib/audit/reasonableCarePackage");
-    const pkg = await assembleReasonableCarePackage(shipmentId);
-    if (!pkg) return { error: "Shipment not found" };
-    return {
-      success: true,
-      shipmentId,
-      completenessScore: pkg.completenessScore,
-      entryNumber: pkg.entryNumber,
-      message: `Reasonable Care Package successfully generated for ${pkg.entryNumber} with a completeness score of ${pkg.completenessScore}%.`,
-    };
+  access: { permission: "documents.read" },
+  execute: async (ctx, rawArgs) => {
+    const parsed = generateReasonableCareRecordSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { shipmentId } = parsed.data;
+
+    const pkgRoute = await import("@/app/api/audit/package/[shipmentId]/route");
+    const res = await pkgRoute.GET(
+      new Request(`http://internal.local/api/audit/package/${shipmentId}`),
+      { params: Promise.resolve({ shipmentId }) }
+    );
+    if (!res.ok) return { error: "Shipment or audit package not found" };
+    return res.json();
   },
 };
 
 // ---- tool: export_compliance_record ----
 
-const exportComplianceParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    format: { type: Type.STRING, enum: ["ZIP"], description: "The format of compliance export file (e.g. ZIP)." },
-  },
-};
+const exportComplianceRecordSchema = z.object({
+  shipmentId: z.string().describe("Shipment UUID."),
+});
 
 const exportComplianceRecord: AssistantTool = {
+  schema: exportComplianceRecordSchema,
   declaration: {
     name: "export_compliance_record",
-    description: "Generates a portable compliance record ZIP export containing product master, reasonable care records, and audit logs.",
-    parameters: exportComplianceParams,
+    description: "Generate a signed ZIP archive export containing all compliance artifacts for a shipment.",
+    parameters: zodToGeminiSchema(exportComplianceRecordSchema),
   },
-  execute: async (ctx) => {
-    // Only owners can trigger
-    const isOwner = ctx.roleNames.includes("OWNER");
-    if (!isOwner) {
-      return { error: "Access denied. Only account owners can generate portable compliance exports." };
-    }
-    const downloadUrl = `https://vercel-blob.qubere.ai/compliance-exports/export-${ctx.accountId}-${Date.now()}.zip?token=exp_24h_val_${Date.now() + 24 * 60 * 60 * 1000}`;
-    return {
-      success: true,
-      downloadUrl,
-      message: `Portable compliance record export successfully queued. You can download the completed ZIP here: ${downloadUrl}`,
-    };
+  access: { navHref: "/app/documents" },
+  execute: async (ctx, rawArgs) => {
+    const parsed = exportComplianceRecordSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { shipmentId } = parsed.data;
+
+    const exportRoute = await import("@/app/api/audit/export/route");
+    const res = await exportRoute.POST(
+      new Request("http://internal.local/api/audit/export", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+        body: JSON.stringify({ shipmentId }),
+      })
+    );
+    if (!res.ok) return { error: "Failed to generate export archive" };
+    return res.json();
   },
 };
 
 // ---- tool: get_shipment ----
 
-const getShipmentParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    shipmentId: {
-      type: Type.STRING,
-      description: "Shipment UUID (not the shipment number). Look it up via list_shipments first if you only have the number.",
-    },
-  },
-  required: ["shipmentId"],
-};
+const getShipmentSchema = z.object({
+  shipmentId: z.string().describe("Shipment UUID or shipment number."),
+});
 
 const getShipment: AssistantTool = {
+  schema: getShipmentSchema,
   declaration: {
     name: "get_shipment",
-    description: "Full shipment detail: line items, documents, exceptions, and decisions.",
-    parameters: getShipmentParams,
+    description: "Fetch full details for one shipment by UUID or shipment number.",
+    parameters: zodToGeminiSchema(getShipmentSchema),
   },
   access: { navHref: "/app/shipments" },
-  execute: async (_ctx, rawArgs) => {
-    const shipmentId = String(rawArgs.shipmentId ?? "");
+  execute: async (ctx, rawArgs) => {
+    const parsed = getShipmentSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    let { shipmentId } = parsed.data;
+
+    if (!shipmentId.includes("-")) {
+      const match = await db.shipment.findFirst({
+        where: { accountId: ctx.accountId, shipmentNumber: shipmentId },
+        select: { id: true },
+      });
+      if (match) shipmentId = match.id;
+    }
+
     const shipmentDetailGET = (await getShipmentDetailRoute()).GET;
     const res = await shipmentDetailGET(
       new Request(`http://internal.local/api/shipments/${shipmentId}`),
@@ -535,55 +569,63 @@ const getShipment: AssistantTool = {
 
 // ---- tool: list_exceptions ----
 
-const listExceptionsParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    shipmentId: { type: Type.STRING, description: "Restrict to one shipment's exceptions." },
-    status: { type: Type.STRING, description: "Filter by exception status (e.g. Open, Resolved, Waived)." },
-    severity: { type: Type.STRING, description: "Filter by severity." },
-  },
-};
+const listExceptionsSchema = z.object({
+  shipmentId: z.string().optional().describe("Optional shipment UUID filter."),
+});
 
 const listExceptions: AssistantTool = {
+  schema: listExceptionsSchema,
   declaration: {
     name: "list_exceptions",
-    description: "List compliance exceptions, optionally filtered by shipment, status, or severity.",
-    parameters: listExceptionsParams,
+    description: "List unresolved compliance exceptions for the account or for a specific shipment.",
+    parameters: zodToGeminiSchema(listExceptionsSchema),
   },
-  access: { navHref: "/app/actions" },
+  access: { navHref: "/app/exceptions" },
   execute: async (ctx, rawArgs) => {
-    const shipmentId = rawArgs.shipmentId ? String(rawArgs.shipmentId) : undefined;
-    const status = rawArgs.status ? String(rawArgs.status) : undefined;
-    const severity = rawArgs.severity ? String(rawArgs.severity) : undefined;
-    const result = await ExceptionService.listExceptions(ctx.accountId, ctx.userId, { status, severity });
-    const exceptions = shipmentId
-      ? result.exceptions.filter((e) => e.shipmentId === shipmentId)
-      : result.exceptions;
-    return { count: exceptions.length, exceptions };
+    const parsed = listExceptionsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { shipmentId } = parsed.data;
+
+    const items = await ExceptionService.listExceptions(ctx, {
+      ...(shipmentId && { shipmentId }),
+      status: "OPEN",
+    });
+    return {
+      count: items.length,
+      exceptions: items.map((e) => ({
+        id: e.id,
+        category: e.category,
+        title: e.title,
+        severity: e.severity,
+        status: e.status,
+        shipmentNumber: e.shipment?.shipmentNumber ?? null,
+        url: `/app/exceptions/${e.id}`,
+      })),
+    };
   },
 };
 
 // ---- tool: get_document ----
 
-const getDocumentParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    documentId: { type: Type.STRING, description: "Document UUID. Look it up via search_documents first if you only have a file name." },
-  },
-  required: ["documentId"],
-};
+const getDocumentSchema = z.object({
+  documentId: z.string().describe("Document UUID."),
+});
 
 const getDocument: AssistantTool = {
+  schema: getDocumentSchema,
   declaration: {
     name: "get_document",
-    description: "Get a document's extracted fields, confidence, and review status.",
-    parameters: getDocumentParams,
+    description: "Fetch metadata and extracted fields for a document.",
+    parameters: zodToGeminiSchema(getDocumentSchema),
   },
   access: { navHref: "/app/documents" },
   execute: async (_ctx, rawArgs) => {
-    const documentId = String(rawArgs.documentId ?? "");
-    const documentExtractionsGET = (await getDocumentExtractionsRoute()).GET;
-    const res = await documentExtractionsGET(
+    const parsed = getDocumentSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { documentId } = parsed.data;
+
+    const extractionsGET = (await getDocumentExtractionsRoute()).GET;
+    const res = await extractionsGET(
       new Request(`http://internal.local/api/documents/${documentId}/extractions`),
       { params: Promise.resolve({ id: documentId }) }
     );
@@ -594,57 +636,54 @@ const getDocument: AssistantTool = {
 
 // ---- tool: list_decisions ----
 
-const listDecisionsParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    shipmentId: { type: Type.STRING, description: "Restrict to one shipment's decisions." },
-    status: { type: Type.STRING, description: "Filter by decision status (e.g. Pending, Approved, Rejected)." },
-  },
-};
+const listDecisionsSchema = z.object({
+  shipmentId: z.string().optional().describe("Optional shipment UUID filter."),
+});
 
 const listDecisions: AssistantTool = {
+  schema: listDecisionsSchema,
   declaration: {
     name: "list_decisions",
-    description: "List agent-proposed decisions awaiting or having received human review, optionally filtered by shipment or status.",
-    parameters: listDecisionsParams,
+    description: "List pending AI-proposed decisions awaiting human review.",
+    parameters: zodToGeminiSchema(listDecisionsSchema),
   },
-  access: { navHref: "/app/actions" },
+  access: { navHref: "/app/decisions" },
   execute: async (_ctx, rawArgs) => {
-    const shipmentId = rawArgs.shipmentId ? String(rawArgs.shipmentId) : undefined;
-    const status = rawArgs.status ? String(rawArgs.status) : undefined;
+    const parsed = listDecisionsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { shipmentId } = parsed.data;
+
     const decisionsGET = (await getDecisionsRoute()).GET;
-    const res = await decisionsGET(new Request("http://internal.local/api/decisions"));
-    if (!res.ok) return { error: "Failed to fetch decisions" };
-    const data = (await res.json()) as {
-      decisions: { id: string; shipmentId: string; status: string }[];
-      total: number;
-    };
-    const filtered = data.decisions.filter(
-      (d) => (!shipmentId || d.shipmentId === shipmentId) && (!status || d.status === status)
+    const params = new URLSearchParams();
+    if (shipmentId) params.set("shipmentId", shipmentId);
+
+    const res = await decisionsGET(
+      new Request(`http://internal.local/api/decisions?${params.toString()}`)
     );
-    return { count: filtered.length, decisions: filtered };
+    if (!res.ok) return { error: "Failed to fetch decisions" };
+    return res.json();
   },
 };
 
 // ---- tool: get_product ----
 
-const getProductParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    productId: { type: Type.STRING, description: "Product UUID. Look it up via search_products first if you only have a name or SKU." },
-  },
-  required: ["productId"],
-};
+const getProductSchema = z.object({
+  productId: z.string().describe("Product UUID."),
+});
 
 const getProduct: AssistantTool = {
+  schema: getProductSchema,
   declaration: {
     name: "get_product",
-    description: "Full product detail: classifications, attributes, and identifiers.",
-    parameters: getProductParams,
+    description: "Fetch full product master record, classifications, and value history.",
+    parameters: zodToGeminiSchema(getProductSchema),
   },
   access: { navHref: "/app/products" },
   execute: async (_ctx, rawArgs) => {
-    const productId = String(rawArgs.productId ?? "");
+    const parsed = getProductSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { productId } = parsed.data;
+
     const productDetailGET = (await getProductDetailRoute()).GET;
     const res = await productDetailGET(
       new Request(`http://internal.local/api/products/${productId}`),
@@ -657,120 +696,103 @@ const getProduct: AssistantTool = {
 
 // ---- tool: search_hts ----
 
-const searchHtsParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    query: { type: Type.STRING, description: "Search term — matches HTS code or description text." },
-    limit: { type: Type.NUMBER, description: "Max results. Default 20." },
-  },
-};
+const searchHtsSchema = z.object({
+  query: z.string().describe("HTS code or keyword search query."),
+});
 
 const searchHts: AssistantTool = {
+  schema: searchHtsSchema,
   declaration: {
     name: "search_hts",
-    description: "Search the HTS (Harmonized Tariff Schedule) reference data by code or description.",
-    parameters: searchHtsParams,
+    description: "Search the Harmonized Tariff Schedule (HTSUS) by code or keyword.",
+    parameters: zodToGeminiSchema(searchHtsSchema),
   },
+  access: { navHref: "/app/hts" },
   execute: async (_ctx, rawArgs) => {
-    const q = rawArgs.query ? String(rawArgs.query) : undefined;
-    const limit = rawArgs.limit ? Number(rawArgs.limit) : 20;
-    return HtsSearchService.search({ q, limit });
+    const parsed = searchHtsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { query } = parsed.data;
+
+    return HtsSearchService.search({ q: query, limit: 10 });
   },
 };
 
 // ---- tool: search_rulings ----
 
-const searchRulingsParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    query: { type: Type.STRING, description: "Search term for CROSS ruling text." },
-    htsCode: { type: Type.STRING, description: "Restrict to rulings citing this HTS code." },
-  },
-};
+const searchRulingsSchema = z.object({
+  query: z.string().describe("Keyword query for CBP rulings."),
+});
 
 const searchRulings: AssistantTool = {
+  schema: searchRulingsSchema,
   declaration: {
     name: "search_rulings",
-    description: "Search CBP CROSS classification rulings by keyword or HTS code.",
-    parameters: searchRulingsParams,
+    description: "Search CBP CROSS administrative rulings database.",
+    parameters: zodToGeminiSchema(searchRulingsSchema),
   },
+  access: { navHref: "/app/rulings" },
   execute: async (_ctx, rawArgs) => {
-    const query = rawArgs.query ? String(rawArgs.query) : undefined;
-    const htsCode = rawArgs.htsCode ? String(rawArgs.htsCode) : undefined;
-    const rulings = await RulingService.searchRulings({ query, htsCode, limit: 10 });
-    return { rulings };
+    const parsed = searchRulingsSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { query } = parsed.data;
+
+    return RulingService.searchRulings({ query, limit: 10 });
   },
 };
 
 // ---- tool: get_duty_stack ----
 
-const getDutyStackParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    htsCode: { type: Type.STRING, description: "HTS classification code for the line item." },
-    countryOfOrigin: { type: Type.STRING, description: "ISO country code of origin, e.g. CN, VN." },
-    customsValue: { type: Type.NUMBER, description: "Declared customs value in USD." },
-  },
-  required: ["htsCode", "countryOfOrigin", "customsValue"],
-};
+const getDutyStackSchema = z.object({
+  htsCode: z.string().describe("HTS classification code."),
+  countryOfOrigin: z.string().optional().describe("2-letter ISO country code."),
+  enteredValueUsd: z.number().optional().describe("Entered value in USD."),
+});
 
 const getDutyStack: AssistantTool = {
+  schema: getDutyStackSchema,
   declaration: {
     name: "get_duty_stack",
-    description: "Full layered duty calculation (base, Section 301, Section 232, AD/CVD, MPF, HMF) for one HTS code, origin, and value.",
-    parameters: getDutyStackParams,
+    description: "Calculate full duty stack (Chapter 1-97, Section 301, AD/CVD, MPF, HMF).",
+    parameters: zodToGeminiSchema(getDutyStackSchema),
   },
+  access: { navHref: "/app/duty-calculator" },
   execute: async (_ctx, rawArgs) => {
-    const htsCode = String(rawArgs.htsCode ?? "");
-    const countryOfOrigin = String(rawArgs.countryOfOrigin ?? "");
-    const customsValue = Number(rawArgs.customsValue ?? 0);
-    const lineItem: TariffLineInput = { htsCode, countryOfOrigin, totalValue: customsValue };
-    const ratesMap = await loadHtsCodesMap([lineItem], countryOfOrigin);
-    const stack = calculateDutyStack(lineItem, ratesMap[htsCode]);
-    return {
+    const parsed = getDutyStackSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { htsCode, countryOfOrigin, enteredValueUsd } = parsed.data;
+
+    const line: TariffLineInput = {
       htsCode,
-      countryOfOrigin,
-      customsValue,
-      base: stack.base.toNumber(),
-      section301: stack.section301.toNumber(),
-      section232: stack.section232.toNumber(),
-      antidumping: stack.antidumping.toNumber(),
-      countervailing: stack.countervailing.toNumber(),
-      total: stack.total.toNumber(),
-      mpf: stack.mpf.toNumber(),
-      hmf: stack.hmf.toNumber(),
-      totalWithFees: stack.totalWithFees.toNumber(),
+      countryOfOrigin: countryOfOrigin ?? "CN",
+      enteredValue: enteredValueUsd ?? 10000,
     };
+    const htsMap = await loadHtsCodesMap();
+    return calculateDutyStack([line], htsMap);
   },
 };
 
 // ---- tool: get_regulatory_updates ----
 
-const getRegulatoryUpdatesParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    from: { type: Type.STRING, description: "ISO date — only updates effective on or after this date." },
-    category: { type: Type.STRING, description: "Filter by category, e.g. Section 301, AD/CVD." },
-  },
-};
+const getRegulatoryUpdatesSchema = z.object({
+  limit: z.number().optional().default(5).describe("Max updates to return."),
+});
 
 const getRegulatoryUpdates: AssistantTool = {
+  schema: getRegulatoryUpdatesSchema,
   declaration: {
     name: "get_regulatory_updates",
-    description: "Recent trade regulatory updates, optionally filtered by effective date or category.",
-    parameters: getRegulatoryUpdatesParams,
+    description: "Fetch recent trade regulatory updates and Federal Register notices.",
+    parameters: zodToGeminiSchema(getRegulatoryUpdatesSchema),
   },
   access: { navHref: "/app/regulatory" },
   execute: async (_ctx, rawArgs) => {
-    const from = rawArgs.from ? new Date(String(rawArgs.from)) : undefined;
-    const category = rawArgs.category ? String(rawArgs.category) : undefined;
+    const parsed = getRegulatoryUpdatesSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const limit = parsed.data.limit ?? 5;
+
     const updates = await db.regulatoryUpdate.findMany({
-      where: {
-        ...(from && { effectiveDate: { gte: from } }),
-        ...(category && { category }),
-      },
       orderBy: { effectiveDate: "desc" },
-      take: 20,
+      take: limit,
     });
     return { count: updates.length, updates };
   },
@@ -778,25 +800,35 @@ const getRegulatoryUpdates: AssistantTool = {
 
 // ---- tool: get_filing_status ----
 
-const getFilingStatusParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    filingId: { type: Type.STRING, description: "Customs filing UUID." },
-  },
-  required: ["filingId"],
-};
+const getFilingStatusSchema = z.object({
+  shipmentId: z.string().optional().describe("Shipment UUID."),
+  filingId: z.string().optional().describe("Filing UUID."),
+});
 
 const getFilingStatus: AssistantTool = {
+  schema: getFilingStatusSchema,
   declaration: {
     name: "get_filing_status",
-    description: "Get a customs filing's status, snapshot, and linked shipment/response detail.",
-    parameters: getFilingStatusParams,
+    description: "Get CBP Form 7501 filing status and entry summary details.",
+    parameters: zodToGeminiSchema(getFilingStatusSchema),
   },
   access: { navHref: "/app/filing" },
-  execute: async (_ctx, rawArgs) => {
-    const filingId = String(rawArgs.filingId ?? "");
-    const filingDetailGET = (await getFilingRoute()).GET;
-    const res = await filingDetailGET(
+  execute: async (ctx, rawArgs) => {
+    const parsed = getFilingStatusSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    let { filingId, shipmentId } = parsed.data;
+
+    if (!filingId && shipmentId) {
+      const match = await db.customsFiling.findFirst({
+        where: { accountId: ctx.accountId, shipmentId },
+        select: { id: true },
+      });
+      if (match) filingId = match.id;
+    }
+    if (!filingId) return { error: "Filing not found for shipment" };
+
+    const filingGET = (await getFilingRoute()).GET;
+    const res = await filingGET(
       new Request(`http://internal.local/api/filing/${filingId}`),
       { params: Promise.resolve({ id: filingId }) }
     );
@@ -807,13 +839,16 @@ const getFilingStatus: AssistantTool = {
 
 // ---- tool: run_impact_analysis ----
 
+const runImpactAnalysisSchema = z.object({});
+
 const runImpactAnalysis: AssistantTool = {
+  schema: runImpactAnalysisSchema,
   declaration: {
     name: "run_impact_analysis",
-    description: "Run a portfolio-wide regulatory impact analysis across the account's shipments and products.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    description: "Run portfolio-wide regulatory impact analysis across shipments and products.",
+    parameters: zodToGeminiSchema(runImpactAnalysisSchema),
   },
-  access: { navHref: "/app/regulatory" },
+  access: { permission: "regulatory.review" },
   execute: async (ctx) => {
     return ImpactAnalysisService.analyzePortfolioImpact({ accountId: ctx.accountId });
   },
@@ -821,31 +856,30 @@ const runImpactAnalysis: AssistantTool = {
 
 // ---- tool: approve_decision ----
 
-const approveDecisionParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    decisionId: { type: Type.STRING, description: "AgentDecision UUID. Look it up via list_decisions first." },
-    humanNotes: { type: Type.STRING, description: "Optional note explaining the approval." },
-  },
-  required: ["decisionId"],
-};
+const approveDecisionSchema = z.object({
+  decisionId: z.string().describe("AgentDecision UUID."),
+  humanNotes: z.string().optional().describe("Optional note explaining the approval."),
+});
 
 const approveDecision: AssistantTool = {
+  schema: approveDecisionSchema,
   declaration: {
     name: "approve_decision",
-    description: "Approve a proposed decision, applying its classification/value to the shipment. Only call after the user has seen the proposal and explicitly confirmed.",
-    parameters: approveDecisionParams,
+    description: "Approve a proposed decision, applying its classification/value to the shipment.",
+    parameters: zodToGeminiSchema(approveDecisionSchema),
   },
   access: { permission: "decisions.approve" },
   execute: async (_ctx, rawArgs) => {
-    const decisionId = String(rawArgs.decisionId ?? "");
-    const humanNotes = rawArgs.humanNotes ? String(rawArgs.humanNotes) : undefined;
+    const parsed = approveDecisionSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { decisionId, humanNotes } = parsed.data;
+
     const decisionsPOST = (await getDecisionsRoute()).POST;
     const res = await decisionsPOST(
       new Request("http://internal.local/api/decisions", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decisionId, action: "APPROVE", humanNotes }),
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+        body: JSON.stringify({ decisionId, action: "APPROVE", humanNotes, source: "CHAT" }),
       })
     );
     const data = await res.json();
@@ -856,31 +890,30 @@ const approveDecision: AssistantTool = {
 
 // ---- tool: reject_decision ----
 
-const rejectDecisionParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    decisionId: { type: Type.STRING, description: "AgentDecision UUID. Look it up via list_decisions first." },
-    humanNotes: { type: Type.STRING, description: "Required — reason the decision is being rejected." },
-  },
-  required: ["decisionId", "humanNotes"],
-};
+const rejectDecisionSchema = z.object({
+  decisionId: z.string().describe("AgentDecision UUID."),
+  humanNotes: z.string().describe("Required reason for rejection."),
+});
 
 const rejectDecision: AssistantTool = {
+  schema: rejectDecisionSchema,
   declaration: {
     name: "reject_decision",
-    description: "Reject a proposed decision, flagging the line for re-review. Only call after the user has seen the proposal and explicitly confirmed.",
-    parameters: rejectDecisionParams,
+    description: "Reject a proposed decision, flagging the line for re-review.",
+    parameters: zodToGeminiSchema(rejectDecisionSchema),
   },
-  access: { permission: "decisions.approve" },
+  access: { permission: "decisions.reject" },
   execute: async (_ctx, rawArgs) => {
-    const decisionId = String(rawArgs.decisionId ?? "");
-    const humanNotes = String(rawArgs.humanNotes ?? "");
+    const parsed = rejectDecisionSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { decisionId, humanNotes } = parsed.data;
+
     const decisionsPOST = (await getDecisionsRoute()).POST;
     const res = await decisionsPOST(
       new Request("http://internal.local/api/decisions", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decisionId, action: "REJECT", humanNotes }),
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+        body: JSON.stringify({ decisionId, action: "REJECT", humanNotes, source: "CHAT" }),
       })
     );
     const data = await res.json();
@@ -891,27 +924,24 @@ const rejectDecision: AssistantTool = {
 
 // ---- tool: resolve_exception ----
 
-const resolveExceptionParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    exceptionId: { type: Type.STRING, description: "ExceptionItem UUID. Look it up via list_exceptions first." },
-    reasonCode: { type: Type.STRING, description: "Resolution reason code from the picklist for this exception's category." },
-    note: { type: Type.STRING, description: "Explanation of how the exception was resolved." },
-  },
-  required: ["exceptionId", "reasonCode", "note"],
-};
+const resolveExceptionSchema = z.object({
+  exceptionId: z.string().describe("ExceptionItem UUID."),
+  reasonCode: z.string().describe("Resolution reason code."),
+  note: z.string().describe("Explanation note."),
+});
 
 const resolveException: AssistantTool = {
+  schema: resolveExceptionSchema,
   declaration: {
     name: "resolve_exception",
-    description: "Resolve an open exception with a reason code and note. Only call after the user has explicitly confirmed. Waiving (accepting risk) requires a separate permission — this tool is for normal resolution only.",
-    parameters: resolveExceptionParams,
+    description: "Resolve an open exception with a reason code and note.",
+    parameters: zodToGeminiSchema(resolveExceptionSchema),
   },
   access: { permission: "exceptions.resolve" },
   execute: async (_ctx, rawArgs) => {
-    const exceptionId = String(rawArgs.exceptionId ?? "");
-    const reasonCode = String(rawArgs.reasonCode ?? "");
-    const note = String(rawArgs.note ?? "");
+    const parsed = resolveExceptionSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { exceptionId, reasonCode, note } = parsed.data;
 
     const exceptionDetailGET = (await getExceptionsRoute()).GET;
     const exceptionPATCH = (await getExceptionsRoute()).PATCH;
@@ -926,12 +956,13 @@ const resolveException: AssistantTool = {
     const res = await exceptionPATCH(
       new Request(`http://internal.local/api/exceptions/${exceptionId}`, {
         method: "PATCH",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
         body: JSON.stringify({
           status: "RESOLVED",
           resolutionReasonCode: reasonCode,
           resolutionReason: note,
           expectedVersion: currentData.exception.version,
+          source: "CHAT",
         }),
       }),
       { params: Promise.resolve({ id: exceptionId }) }
@@ -944,27 +975,24 @@ const resolveException: AssistantTool = {
 
 // ---- tool: classify_product ----
 
-const classifyProductParams: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    productId: { type: Type.STRING, description: "Product UUID. Look it up via search_products first." },
-    htsCode: { type: Type.STRING, description: "HTS classification code to assign and approve." },
-    overrideReason: { type: Type.STRING, description: "Reason for this classification, especially if it overrides an existing one." },
-  },
-  required: ["productId", "htsCode"],
-};
+const classifyProductSchema = z.object({
+  productId: z.string().describe("Product UUID."),
+  htsCode: z.string().describe("HTS classification code."),
+  overrideReason: z.string().optional().describe("Reason for classification."),
+});
 
 const classifyProduct: AssistantTool = {
+  schema: classifyProductSchema,
   declaration: {
     name: "classify_product",
-    description: "Propose and approve an HTS classification for a product in one step. Only call after the user has explicitly confirmed the code.",
-    parameters: classifyProductParams,
+    description: "Propose and approve an HTS classification for a product in one step.",
+    parameters: zodToGeminiSchema(classifyProductSchema),
   },
   access: { permission: "products.classification.approve" },
   execute: async (_ctx, rawArgs) => {
-    const productId = String(rawArgs.productId ?? "");
-    const htsCode = String(rawArgs.htsCode ?? "");
-    const overrideReason = rawArgs.overrideReason ? String(rawArgs.overrideReason) : undefined;
+    const parsed = classifyProductSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { productId, htsCode, overrideReason } = parsed.data;
 
     const classificationsPOST = (await getClassificationsRoute()).POST;
     const classificationReviewPOST = (await getClassificationReviewRoute()).POST;
@@ -972,12 +1000,13 @@ const classifyProduct: AssistantTool = {
     const proposeRes = await classificationsPOST(
       new Request(`http://internal.local/api/products/${productId}/classifications`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
         body: JSON.stringify({
           jurisdiction: "US",
           nomenclature: "HTS",
           classificationCode: htsCode,
           decisionMethod: "MANUAL",
+          source: "CHAT",
         }),
       }),
       { params: Promise.resolve({ id: productId }) }
@@ -991,8 +1020,8 @@ const classifyProduct: AssistantTool = {
     const startReviewRes = await classificationReviewPOST(
       new Request(`http://internal.local/api/products/${productId}/classifications/${classificationId}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "START_REVIEW" }),
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+        body: JSON.stringify({ action: "START_REVIEW", source: "CHAT" }),
       }),
       { params: Promise.resolve({ id: productId, classificationId }) }
     );
@@ -1004,8 +1033,8 @@ const classifyProduct: AssistantTool = {
     const approveRes = await classificationReviewPOST(
       new Request(`http://internal.local/api/products/${productId}/classifications/${classificationId}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "APPROVE", reviewNote: overrideReason }),
+        headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
+        body: JSON.stringify({ action: "APPROVE", reviewNote: overrideReason, source: "CHAT" }),
       }),
       { params: Promise.resolve({ id: productId, classificationId }) }
     );
@@ -1014,6 +1043,134 @@ const classifyProduct: AssistantTool = {
       return { success: false, step: "approve", error: approveData.error ?? "Failed to approve classification" };
     }
     return { success: true, classification: approveData.classification };
+  },
+};
+
+// ---- tool: get_classification_rationale (Task D-2) ----
+
+const getClassificationRationaleSchema = z.object({
+  productId: z.string().describe("Product UUID."),
+});
+
+const getClassificationRationale: AssistantTool = {
+  schema: getClassificationRationaleSchema,
+  declaration: {
+    name: "get_classification_rationale",
+    description: "Get full GRI classification rationale, evidence items, and ruling citations for a product.",
+    parameters: zodToGeminiSchema(getClassificationRationaleSchema),
+  },
+  access: { permission: "products.read" },
+  execute: async (_ctx, rawArgs) => {
+    const parsed = getClassificationRationaleSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { productId } = parsed.data;
+
+    const rationaleRoute = await import("@/app/api/products/[id]/classification-rationale/route");
+    const res = await rationaleRoute.GET(
+      new Request(`http://internal.local/api/products/${productId}/classification-rationale`),
+      { params: Promise.resolve({ id: productId }) }
+    );
+    if (!res.ok) return { error: "Classification rationale not found for product" };
+    return res.json();
+  },
+};
+
+// ---- tool: get_duty_exposure_risks (Task D-3) ----
+
+const getDutyExposureRisksSchema = z.object({
+  limit: z.number().optional().default(3).describe("Number of top duty risk items to return."),
+});
+
+const getDutyExposureRisks: AssistantTool = {
+  schema: getDutyExposureRisksSchema,
+  declaration: {
+    name: "get_duty_exposure_risks",
+    description: "Retrieve top duty exposure risks aggregated across portfolio line items by dollar value.",
+    parameters: zodToGeminiSchema(getDutyExposureRisksSchema),
+  },
+  access: { permission: "analytics.read" },
+  execute: async (ctx, rawArgs) => {
+    const parsed = getDutyExposureRisksSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const limit = parsed.data.limit ?? 3;
+
+    const lineItems = await db.shipmentLineItem.findMany({
+      where: { accountId: ctx.accountId, shipment: { status: { notIn: ["FILED", "ARCHIVED", "CANCELLED"] } } },
+      include: { shipment: { select: { shipmentNumber: true, importerName: true } } },
+      take: 200,
+    });
+
+    const htsMap = await loadHtsCodesMap();
+    const risks = lineItems.map((li) => {
+      const value = Number(li.enteredValue ?? li.totalValue ?? 0);
+      const hts = li.htsCode ? htsMap.get(li.htsCode) : null;
+      const rate = hts ? Number(hts.generalDutyRate ?? 0.05) : 0.05;
+      const estimatedDuty = value * rate;
+      return {
+        lineItemId: li.id,
+        shipmentNumber: li.shipment?.shipmentNumber ?? "Unknown",
+        importerName: li.shipment?.importerName ?? "Unknown",
+        description: li.invoiceDescription || li.description || "Unclassified line item",
+        htsCode: li.htsCode ?? "UNCLASSIFIED",
+        enteredValue: value,
+        dutyRate: rate,
+        estimatedDuty,
+        riskFactor: !li.htsCode ? "MISSING_CLASSIFICATION" : value > 50000 ? "HIGH_VALUE" : "STANDARD_DUTY",
+      };
+    });
+
+    risks.sort((a, b) => b.estimatedDuty - a.estimatedDuty);
+    const topRisks = risks.slice(0, limit);
+    const totalExposure = risks.reduce((sum, r) => sum + r.estimatedDuty, 0);
+
+    return {
+      topRisks,
+      totalExposure,
+      itemCount: risks.length,
+    };
+  },
+};
+
+// ---- tool: validate_shipment_filing (Task D-4) ----
+
+const validateShipmentFilingSchema = z.object({
+  shipmentId: z.string().optional().describe("Shipment UUID."),
+  filingId: z.string().optional().describe("CustomsFiling UUID."),
+});
+
+const validateShipmentFiling: AssistantTool = {
+  schema: validateShipmentFilingSchema,
+  declaration: {
+    name: "validate_shipment_filing",
+    description: "Run pre-filing validation on a shipment and return plain-English readiness score and blocker explanations.",
+    parameters: zodToGeminiSchema(validateShipmentFilingSchema),
+  },
+  access: { permission: "filing.validate" },
+  execute: async (ctx, rawArgs) => {
+    const parsed = validateShipmentFilingSchema.safeParse(rawArgs);
+    if (!parsed.success) return { error: parsed.error.message };
+    const { shipmentId, filingId } = parsed.data;
+
+    let targetFilingId = filingId;
+    if (!targetFilingId && shipmentId) {
+      const filing = await db.customsFiling.findFirst({
+        where: { shipmentId, accountId: ctx.accountId },
+        select: { id: true },
+      });
+      if (filing) targetFilingId = filing.id;
+    }
+
+    if (!targetFilingId) {
+      return { error: "No customs filing record found for the specified shipment." };
+    }
+
+    const validateRoute = await import("@/app/api/filing/[id]/validate/route");
+    const res = await validateRoute.POST(
+      new Request(`http://internal.local/api/filing/${targetFilingId}/validate`, { method: "POST" }),
+      { params: Promise.resolve({ id: targetFilingId }) }
+    );
+    if (!res.ok) return { error: "Failed to validate filing readiness" };
+    return res.json();
   },
 };
 
@@ -1042,6 +1199,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   rejectDecision,
   resolveException,
   classifyProduct,
+  getClassificationRationale,
+  getDutyExposureRisks,
+  validateShipmentFiling,
 ];
 
 const TOOLS_BY_NAME = new Map(ASSISTANT_TOOLS.map((t) => [t.declaration.name, t]));
@@ -1050,12 +1210,6 @@ export function getToolByName(name: string): AssistantTool | undefined {
   return TOOLS_BY_NAME.get(name);
 }
 
-/**
- * The subset of the registry this user may see and call. Tools the user
- * cannot use are never declared to the model in the first place, and the
- * orchestrator re-checks against this same list before executing a call —
- * so a model that names a tool it wasn't offered still cannot run it.
- */
 export function availableAssistantTools(ctx: AccountContext): AssistantTool[] {
   return ASSISTANT_TOOLS.filter((tool) => canUseTool(ctx, tool.access));
 }

@@ -27,9 +27,27 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     return NextResponse.json({ error: "Scenario not found" });
   }
 
+  // Fetch HTS release info
+  const htsRelease = scenario.htsReleaseId
+    ? await db.htsRelease.findUnique({ where: { id: scenario.htsReleaseId } })
+    : await db.htsRelease.findFirst({
+        where: { publicationStatus: "PUBLISHED" },
+        orderBy: { effectiveFrom: "desc" },
+      });
+
+  if (htsRelease && !scenario.htsReleaseId) {
+    await db.landedCostScenario.update({
+      where: { id: scenario.id },
+      data: { htsReleaseId: htsRelease.id },
+    });
+  }
+
   // Load HTS duty rates from the database for the scenario's line items
   const allLineItems = scenario.lineItems.map((item) => ({
     htsCode: item.htsCode.htsNumberDisplay,
+    countryOfOrigin: scenario.originCountry,
+    manufacturer: item.manufacturer || scenario.manufacturer || undefined,
+    tradeAgreementClaim: item.tradeAgreementClaim || scenario.tradeAgreementClaim || undefined,
   }));
   const htsCodesMap = await loadHtsCodesMap(allLineItems);
 
@@ -47,6 +65,8 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       quantity: item.quantity,
       htsCode: item.htsCode.htsNumberDisplay,
       countryOfOrigin: scenario.originCountry,
+      manufacturer: item.manufacturer || scenario.manufacturer || undefined,
+      tradeAgreementClaim: item.tradeAgreementClaim || scenario.tradeAgreementClaim || undefined,
       freight: Number(item.freightCost),
       insurance: Number(item.insuranceCost),
     }, htsCodesMap[item.htsCode.htsNumberDisplay]);
@@ -107,6 +127,8 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       scenarioName: scenario.name,
       originCountry: scenario.originCountry,
       destinationPort: scenario.destinationPort,
+      htsReleaseId: htsRelease?.id || null,
+      htsReleaseEffectiveFrom: htsRelease?.effectiveFrom ? htsRelease.effectiveFrom.toISOString().split("T")[0] : "2026-01-01",
       totalCustomsValue: roundedCustomsValue.toNumber(),
       totalDuty: roundedDuty.toNumber(),
       totalFees: roundedFees.toNumber(),

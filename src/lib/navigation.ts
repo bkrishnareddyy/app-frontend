@@ -71,6 +71,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: "documents", labelKey: "tradeDocs", href: "/app/documents", icon: "documents" },
       { id: "vault", labelKey: "dutyDrawbacks", href: "/app/vault", icon: "vault" },
+      { id: "reconciliation", labelKey: "reconciliation", href: "/app/reconciliation", icon: "vault" },
       { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
       { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
       { id: "regulatory", labelKey: "regulatoryIntel", href: "/app/regulatory", icon: "regulatory" },

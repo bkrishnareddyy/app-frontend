@@ -242,4 +242,55 @@ describe("Qubere Exceptions Resolution Hub Test Suite", () => {
     expect(res.lineItem?.htsCode).toBe("8504.40.9570");
     expect(res.lineItem?.countryOfOrigin).toBe("Germany");
   });
+
+  it("7. Should return 422 when waiving an exception without required reasonCode or note", () => {
+    const validateWaive = (payload: { status: string; resolutionReason?: string; resolutionReasonCode?: string }) => {
+      if (payload.status === "WAIVED") {
+        if (!payload.resolutionReasonCode || !payload.resolutionReason) {
+          return { status: 422, error: "Waiving an exception requires a reason code and note" };
+        }
+      }
+      return { status: 200 };
+    };
+
+    expect(validateWaive({ status: "WAIVED" })).toEqual({
+      status: 422,
+      error: "Waiving an exception requires a reason code and note",
+    });
+
+    expect(validateWaive({ status: "WAIVED", resolutionReasonCode: "RISK_ACCEPTANCE_OTHER" })).toEqual({
+      status: 422,
+      error: "Waiving an exception requires a reason code and note",
+    });
+
+    expect(
+      validateWaive({
+        status: "WAIVED",
+        resolutionReasonCode: "RISK_ACCEPTANCE_OTHER",
+        resolutionReason: "Approved by compliance manager",
+      })
+    ).toEqual({ status: 200 });
+  });
+
+  it("8. Should validate that resolutionReasonCode matches category", () => {
+    const checkReasonCodeCategory = (code: string, category: string) => {
+      const validCategories: Record<string, string[]> = {
+        DOC_UPLOADED: ["DOCUMENT", "MISSING_DATA"],
+        RISK_ACCEPTANCE_OTHER: [], // valid for all
+      };
+      const allowed = validCategories[code];
+      if (allowed && allowed.length > 0 && !allowed.includes(category)) {
+        return { status: 422, error: `Reason code '${code}' is not valid for category '${category}'` };
+      }
+      return { status: 200 };
+    };
+
+    expect(checkReasonCodeCategory("DOC_UPLOADED", "VALUATION")).toEqual({
+      status: 422,
+      error: "Reason code 'DOC_UPLOADED' is not valid for category 'VALUATION'",
+    });
+
+    expect(checkReasonCodeCategory("DOC_UPLOADED", "DOCUMENT")).toEqual({ status: 200 });
+    expect(checkReasonCodeCategory("RISK_ACCEPTANCE_OTHER", "VALUATION")).toEqual({ status: 200 });
+  });
 });

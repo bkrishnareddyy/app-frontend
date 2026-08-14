@@ -5,8 +5,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 
-// Only the 10 most-recently-updated sessions per user/account are kept.
-const MAX_SESSIONS_PER_USER = 10;
+const MAX_SESSIONS_PER_USER = 20;
 
 const createChatSchema = z.object({
   title: z.string().min(1).max(200),
@@ -14,14 +13,26 @@ const createChatSchema = z.object({
   history: z.array(z.unknown()).default([]),
 });
 
-export const GET = withAuthenticatedRoute(async ({ ctx }) => {
+export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
+  const { searchParams } = new URL(req.url);
+  const cursor = searchParams.get("cursor")?.trim() || undefined;
+  const limitParam = searchParams.get("limit") || searchParams.get("pageSize");
+  const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 10, 1), 50) : 10;
+
   const sessions = await db.assistantChatSession.findMany({
     where: { accountId: ctx.accountId, userId: ctx.userId },
     orderBy: { updatedAt: "desc" },
-    take: MAX_SESSIONS_PER_USER,
+    take: limit + 1,
+    ...(cursor && { cursor: { id: cursor }, skip: 1 }),
   });
 
-  return NextResponse.json({ sessions });
+  let nextCursor: string | null = null;
+  if (sessions.length > limit) {
+    const nextItem = sessions.pop();
+    nextCursor = nextItem?.id ?? null;
+  }
+
+  return NextResponse.json({ sessions, nextCursor, limit });
 });
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
@@ -36,9 +47,8 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       messages: body.data.messages as Prisma.InputJsonValue,
       history: body.data.history as Prisma.InputJsonValue,
     },
-});
+  });
 
-  // Prune anything beyond the most-recent MAX_SESSIONS_PER_USER for this user/account.
   const stale = await db.assistantChatSession.findMany({
     where: { accountId: ctx.accountId, userId: ctx.userId },
     orderBy: { updatedAt: "desc" },

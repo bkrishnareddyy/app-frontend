@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 import { runReconciliationEngine, type DocumentGroup } from "@/lib/reconciliation/reconciliationEngine";
 import { computeReadinessBreakdown } from "@/lib/shipmentReadiness";
 import { getMissingDocuments } from "@/lib/requiredDocumentTypes";
@@ -61,11 +62,16 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   const evaluatedFields = new Set(evaluatedRuleIds);
 
   // Upsert: update if an issue for this rule already exists, else create.
+  // C-1: For every issue found, also maintain a parallel ExceptionItem with
+  // category "CONFLICT" so conflict issues surface in the unified Exceptions tab.
+  const CONFLICT_CODE_PREFIX = "CONFLICT:";
+
   for (const result of results) {
     const existing = openIssues.find((i) => i.field === result.ruleId);
+    const severity = severityMap[result.severity] ?? "Warning";
     const data = {
       field: result.ruleId,
-      severity: severityMap[result.severity] ?? "Warning",
+      severity,
       expectedValue: `${result.valueA} (${result.docTypeA})`,
       actualValue: `${result.valueB} (${result.docTypeB})`,
       sourceDocuments: [result.docTypeA, result.docTypeB],
@@ -78,18 +84,55 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
         data: { ...data, shipmentId: id, accountId: ctx.accountId, status: "Open" },
       });
     }
+
+    // Sync ExceptionItem for this conflict rule.
+    const exCode = `${CONFLICT_CODE_PREFIX}${result.ruleId}`;
+    const exSeverity = result.severity === "BLOCKING" ? "High" : result.severity === "WARNING" ? "Medium" : "Low";
+    const exDescription = `Value conflict on "${result.ruleId}": ${result.docTypeA} reports "${result.valueA}" but ${result.docTypeB} reports "${result.valueB}".`;
+    const existingEx = await db.exceptionItem.findFirst({
+      where: { shipmentId: id, accountId: ctx.accountId, code: exCode, status: { not: "Resolved" } },
+      select: { id: true },
+    });
+    if (!existingEx) {
+      await db.exceptionItem.create({
+        data: {
+          shipmentId: id,
+          accountId: ctx.accountId,
+          code: exCode,
+          category: "CONFLICT",
+          type: "data_mismatch",
+          severity: exSeverity,
+          blocking: result.severity === "BLOCKING",
+          description: exDescription,
+          requiredAction: "Review both source documents and accept the correct value, or flag both as wrong.",
+          sourceAgent: "Reconciliation Engine",
+        },
+      });
+    } else {
+      await db.exceptionItem.update({
+        where: { id: existingEx.id },
+        data: { severity: exSeverity, description: exDescription, blocking: result.severity === "BLOCKING" },
+      });
+    }
   }
 
   // Auto-resolve issues for rules that ran cleanly this time.
   const resolvedRuleIds = new Set(results.map((r) => r.ruleId));
-  const staleIds = openIssues
-    .filter((i) => evaluatedFields.has(i.field) && !resolvedRuleIds.has(i.field))
-    .map((i) => i.id);
+  const staleIssues = openIssues.filter(
+    (i) => evaluatedFields.has(i.field) && !resolvedRuleIds.has(i.field)
+  );
+  const staleIds = staleIssues.map((i) => i.id);
 
   if (staleIds.length > 0) {
     await db.reconciliationIssue.updateMany({
       where: { id: { in: staleIds } },
       data: { status: "Resolved", resolvedAt: new Date() },
+    });
+    // Also auto-resolve the paired ExceptionItems.
+    const staleCodes = staleIssues.map((i) => `${CONFLICT_CODE_PREFIX}${i.field}`);
+    await db.exceptionItem.updateMany({
+      where: { shipmentId: id, accountId: ctx.accountId, code: { in: staleCodes }, status: { not: "Resolved" } },
+      data: { status: "Resolved", resolvedAt: new Date(), resolvedBy: "SYSTEM", resolvedByName: "Reconciliation Engine" },
     });
   }
 
@@ -190,6 +233,21 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       });
     }
   }
+
+  await createAuditLog({
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    action: AuditAction.RECONCILIATION_RUN,
+    entity: "Shipment",
+    entityId: id,
+    source: "UI",
+    metadata: {
+      issuesFound: results.length,
+      issuesAutoResolved: staleIds.length,
+      blockingIssues: blockingCount,
+      readinessScore: totalScore,
+    },
+  });
 
   return NextResponse.json({
     reconciled: true,

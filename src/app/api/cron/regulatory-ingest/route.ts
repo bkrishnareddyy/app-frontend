@@ -38,22 +38,20 @@ export const POST = withPublicRoute(async ({ req, requestId }) => {
   let documents = [];
   try {
     const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      documents = data.results || [];
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: "Federal Register API fetch failed", status: response.status, requestId },
+        { status: 502 }
+      );
     }
+    const data = await response.json();
+    documents = data.results || [];
   } catch (error) {
-    console.error("Federal Register fetch failed, using fallback mock data for stability.", error);
-    // Fallback/test dataset
-    documents = [
-      {
-        document_number: "2026-10001",
-        title: "Extension of Section 301 Tariff Exclusions for China-Origin Goods",
-        abstract: "CBP announces extension of certain Section 301 exclusions under HTSUS 9903.88.67.",
-        publication_date: new Date().toISOString(),
-        pdf_url: "https://www.federalregister.gov/example.pdf",
-      }
-    ];
+    console.error("Federal Register fetch failed:", error);
+    return NextResponse.json(
+      { error: "Federal Register API fetch failed", details: String(error), requestId },
+      { status: 502 }
+    );
   }
 
   const aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -110,12 +108,17 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
       }
     } else {
       // Heuristic extraction for local/test runs
-      const text = `${doc.title} ${doc.abstract || ""}`.toLowerCase();
-      if (text.includes("exclusion")) {
+      const fullText = `${doc.title || ""} ${doc.abstract || ""}`;
+      const textLower = fullText.toLowerCase();
+      const matchedHts = Array.from(
+        new Set(fullText.match(/\b\d{4}\.\d{2}\.\d{2,4}\b|\b\d{10}\b/g) || [])
+      );
+      extracted.affectedHtsCodes = matchedHts;
+
+      if (textLower.includes("exclusion")) {
         extracted.type = "EXCLUSION_GRANTED";
         extracted.actionRequired = true;
-        extracted.affectedHtsCodes = ["9903.88.67"];
-      } else if (text.includes("rate") || text.includes("tariff")) {
+      } else if (textLower.includes("rate") || textLower.includes("tariff")) {
         extracted.type = "TARIFF_RATE_CHANGE";
         extracted.actionRequired = true;
       }
@@ -139,7 +142,45 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
 
     createdUpdates.push(update);
 
-    // Create notifications for members with regulatory.review permissions (Task A-3)
+    // Task C-3: Auto-create RefundOpportunity when exclusion is granted via Federal Register cron
+    if (extracted.type === "EXCLUSION_GRANTED" || doc.title.toLowerCase().includes("exclusion")) {
+      const acceptedFilings = await db.customsFiling.findMany({
+        where: { filingStatus: { in: ["Accepted", "Closed"] } },
+        include: { shipment: { include: { lineItems: true } } },
+      });
+
+      for (const filing of acceptedFilings) {
+        for (const item of filing.shipment.lineItems) {
+          const isChina = item.countryOfOrigin?.toUpperCase() === "CN";
+          if (!isChina || !item.htsCode) continue;
+
+          const oppExists = await db.refundOpportunity.findFirst({
+            where: { accountId: filing.accountId, filingId: filing.id, opportunityType: "SECTION_301_EXCLUSION" },
+          });
+
+          if (!oppExists) {
+            await db.refundOpportunity.create({
+              data: {
+                accountId: filing.accountId,
+                filingId: filing.id,
+                opportunityType: "SECTION_301_EXCLUSION",
+                estimatedRefundAmount: null, // Null until confirmed per spec
+                confidence: 95,
+                basis: {
+                  reason: `Federal Register notice ${docNum} granted Section 301 retroactive exclusion.`,
+                  regulatoryUpdateId: update.id,
+                  lineItemId: item.id,
+                  htsCode: item.htsCode,
+                },
+                status: "Identified",
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // Create notifications for members with regulatory.review permissions
     if (extracted.actionRequired) {
       const { searchParams } = new URL(req.url);
       const accountId = searchParams.get("accountId");
@@ -153,13 +194,18 @@ Extract matching type, affected HTS codes, effective date, short summary, and if
           roles: {
             some: {
               role: {
-                rolePermissions: {
-                  some: {
-                    permission: {
-                      name: "regulatory.review",
+                OR: [
+                  { name: { in: ["OWNER", "ADMIN"] } },
+                  {
+                    rolePermissions: {
+                      some: {
+                        permission: {
+                          name: "regulatory.review",
+                        },
+                      },
                     },
                   },
-                },
+                ],
               },
             },
           },

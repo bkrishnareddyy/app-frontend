@@ -67,6 +67,8 @@ export interface CandidateRecord {
   matchedValue: string;
   matchedSource: "EMAIL_SUBJECT" | "PARSED_DOCUMENT_TEXT";
   autoSelected: boolean;
+  /** E-1: 0.0–1.0 match signal. Exact-identifier matches write 1.0. */
+  confidenceScore?: number;
 }
 
 export interface ShipmentIdentifierLookup {
@@ -108,6 +110,7 @@ export const databaseShipmentIdentifierLookup: ShipmentIdentifierLookup = {
         matchedValue: record.matchedValue,
         matchedSource: record.matchedSource,
         autoSelected: record.autoSelected,
+        confidenceScore: record.confidenceScore ?? 1.0,
       },
     });
   },

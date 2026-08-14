@@ -347,6 +347,11 @@ export interface ReviewDecision {
   proposedHtsCode?: string | null;
   /** Prisma `Json`; its shape varies by agent, so it is narrowed where read. */
   evidenceItems?: unknown;
+  valueAtRisk?: number | null;
+  totalValue?: number | null;
+  autoApproved?: boolean | null;
+  updatedAt?: string | Date | null;
+  autoApprovalPolicy?: string | null;
 }
 
 export interface DocumentHtsScore {

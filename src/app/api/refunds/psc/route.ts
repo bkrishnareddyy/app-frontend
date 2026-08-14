@@ -5,16 +5,25 @@ import { parseAndValidateBody } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { checkPscEligibility } from "@/lib/refunds/pscEligibility";
-import { Decimal } from "@/lib/tariff/decimal";
+import { Decimal, roundToCents } from "@/lib/tariff/decimal";
+import { calculateDutyStack, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { z } from "zod";
+
+export const PscCorrectionTypeEnum = z.enum([
+  "DUTY_RATE_CORRECTION",
+  "VALUE_CORRECTION",
+  "CLASSIFICATION_CORRECTION",
+  "QUANTITY_CORRECTION",
+]);
 
 const createPscSchema = z.object({
   originalFilingId: z.string().min(1, "originalFilingId is required"),
   refundOpportunityId: z.string().optional(),
   reason: z.string().optional(),
-  correctionType: z.string().optional(),
+  correctionType: PscCorrectionTypeEnum.default("CLASSIFICATION_CORRECTION"),
   originalDutyAmount: z.number().nonnegative().optional(),
   correctedDutyAmount: z.number().nonnegative({ message: "correctedDutyAmount is required and must be a non-negative number" }),
+  correctedHtsCode: z.string().optional(),
 });
 
 export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
@@ -36,20 +45,21 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, createPscSchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
 
-  const { originalFilingId, refundOpportunityId, reason, correctionType, originalDutyAmount, correctedDutyAmount } = bodyVal.data;
+  const { originalFilingId, refundOpportunityId, reason, correctionType, originalDutyAmount, correctedDutyAmount, correctedHtsCode } = bodyVal.data;
 
   if (refundOpportunityId) {
     const opp = await db.refundOpportunity.findFirst({
       where: { id: refundOpportunityId, accountId: ctx.accountId },
-});
+    });
     if (!opp) {
       return buildErrorResponse(404, "NOT_FOUND", "Refund opportunity not found", undefined, requestId);
     }
   }
 
-  // 1. Fetch filing
+  // 1. Fetch filing with line items
   const filing = await db.customsFiling.findFirst({
     where: { id: originalFilingId, accountId: ctx.accountId },
+    include: { shipment: { include: { lineItems: true } } },
   });
 
   if (!filing) {
@@ -62,16 +72,35 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", eligibility.reason, undefined, requestId);
   }
 
-  // 3. Confirm actual duty paid is available (Task D-1)
+  // 3. Compute original duty using Decimal / filing declaration
   const origDutyDec = originalDutyAmount !== undefined 
     ? new Decimal(originalDutyAmount) 
-    : (filing.totalDuties ? new Decimal(filing.totalDuties) : null);
-  if (origDutyDec === null) {
+    : (filing.totalDuties ? new Decimal(filing.totalDuties) : new Decimal(0));
+
+  if (origDutyDec.isZero()) {
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", "PSC calculation requires actual duty paid from accepted filing data.", undefined, requestId);
   }
 
-  const corrDutyDec = new Decimal(correctedDutyAmount);
-  const refundAmountDec = Decimal.max(0, origDutyDec.minus(corrDutyDec));
+  // Task D-4: Calculate corrected duty via dutyEngine & Decimal math
+  let corrDutyDec = new Decimal(correctedDutyAmount);
+
+  if (correctedHtsCode && filing.shipment?.lineItems?.[0]) {
+    const item = filing.shipment.lineItems[0];
+    const htsMap = await loadHtsCodesMap([{ htsCode: correctedHtsCode }]);
+    const htsInput = htsMap[correctedHtsCode] ?? null;
+    const stack = calculateDutyStack(
+      {
+        htsCode: correctedHtsCode,
+        totalValue: Number(item.totalValue || 0),
+        countryOfOrigin: item.countryOfOrigin,
+      },
+      htsInput
+    );
+    corrDutyDec = stack.total;
+  }
+
+  // Decimal precision math for refund amount
+  const refundAmountDec = roundToCents(Decimal.max(0, origDutyDec.minus(corrDutyDec)));
 
   const psc = await db.postSummaryCorrection.create({
     data: {
@@ -79,9 +108,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       originalFilingId,
       refundOpportunityId,
       reason: reason ?? "Post-Summary Correction",
-      correctionType: correctionType ?? "classification",
-      originalDutyAmount: origDutyDec,
-      correctedDutyAmount: corrDutyDec,
+      correctionType,
+      originalDutyAmount: roundToCents(origDutyDec),
+      correctedDutyAmount: roundToCents(corrDutyDec),
       refundAmount: refundAmountDec,
       status: "Draft",
       createdByUserId: ctx.userId,
@@ -106,7 +135,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     entity: "PostSummaryCorrection",
     entityId: psc.id,
     source: "UI",
-    metadata: { originalFilingId, refundAmount: refundAmountDec.toNumber() },
+    metadata: { originalFilingId, refundAmount: refundAmountDec.toNumber(), correctionType },
   });
 
   return NextResponse.json({ psc, requestId });

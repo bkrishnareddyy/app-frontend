@@ -141,7 +141,7 @@ export async function assembleFocusedAssessmentFile(
     byCategory[cat] = (byCategory[cat] || 0) + 1;
   }
 
-  let importerName = "Platform Importer of Record";
+  let importerName = "Unspecified Importer";
   let cbpNumber = "";
   let addressStr = "";
 

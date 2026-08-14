@@ -82,10 +82,11 @@ export async function computeRegulatoryImpact(
   const rateDeltaByHts = new Map<string, Decimal>();
   for (const change of rateChanges) {
     const fields = change.changedFields as any;
-    if (fields && fields.htsNumber && affectedHtsCodes.includes(fields.htsNumber)) {
+    const htsNum = fields?.htsNumber || fields?.htsCode;
+    if (fields && htsNum && affectedHtsCodes.includes(htsNum)) {
       const oldRate = parseFloat((fields.oldRate || "0").replace("%", "")) / 100;
       const newRate = parseFloat((fields.newRate || "0").replace("%", "")) / 100;
-      rateDeltaByHts.set(fields.htsNumber, new Decimal(newRate - oldRate));
+      rateDeltaByHts.set(htsNum, new Decimal(newRate - oldRate));
     }
   }
 
@@ -96,8 +97,8 @@ export async function computeRegulatoryImpact(
     s.lineItems.forEach((item) => {
       if (affectedHtsCodes.includes(item.htsCode)) {
         const customsVal = new Decimal(Number(item.totalValue || 0));
-        // Retrieve the real rate delta from the HtsChange mapping, fallback to 0.017 if not found
-        const rateDelta = rateDeltaByHts.get(item.htsCode) ?? new Decimal(0.017); 
+        // Retrieve the real rate delta from the HtsChange mapping (0 if unspecified)
+        const rateDelta = rateDeltaByHts.get(item.htsCode) ?? new Decimal(0);
         shipDelta = shipDelta.plus(customsVal.times(rateDelta));
       }
     });
