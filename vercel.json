@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/hts-refresh",
-      "schedule": "0 8 * * *"
+      "path": "/api/cron/data-dispatcher",
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/cron/document-processing",
