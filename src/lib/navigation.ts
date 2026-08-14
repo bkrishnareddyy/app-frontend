@@ -74,6 +74,8 @@ export const NAV_SECTIONS: NavSection[] = [
     renderAs: "pills",
     items: [
       { id: "documents", labelKey: "tradeDocs", href: "/app/documents", icon: "documents" },
+      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
+      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
       { id: "trade-data", labelKey: "tradeData", href: "/app/trade-data", icon: "tradeData" },
       { id: "tariffs", labelKey: "tariffsAndRegulations", href: "/app/tariffs", icon: "tariffs" },
       { id: "filingConfig", labelKey: "filingConfiguration", href: "/app/filing-config", icon: "settings", platformAdminOnly: true },

@@ -26,6 +26,9 @@ const dbMock = {
   filingAuthorityConfig: {
     findUnique: vi.fn(),
   },
+  section232Rate: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
 };
 
 const getAccountContext = vi.fn();

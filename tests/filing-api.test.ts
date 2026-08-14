@@ -40,6 +40,9 @@ const dbMock = {
   filingMessage: {
     create: vi.fn(),
   },
+  section232Rate: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
 };
 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
