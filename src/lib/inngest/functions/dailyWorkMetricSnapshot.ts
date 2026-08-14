@@ -32,8 +32,7 @@ export async function executeDailyWorkMetricSnapshot() {
 }
 
 export const dailyWorkMetricSnapshotJob = (inngest.createFunction as any)(
-  { id: "daily-work-metric-snapshot" },
-  { cron: "0 1 * * *" },
+  { id: "daily-work-metric-snapshot", triggers: [{ cron: "0 1 * * *" }] },
   async ({ step }: { step: any }) => {
     const result = await step.run("write-work-metric-snapshots", async () => {
       return await executeDailyWorkMetricSnapshot();

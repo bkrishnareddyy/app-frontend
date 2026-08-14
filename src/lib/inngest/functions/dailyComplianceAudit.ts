@@ -153,8 +153,7 @@ export async function executeDailyComplianceAudit() {
 }
 
 export const dailyComplianceAuditJob = (inngest.createFunction as any)(
-  { id: "daily-compliance-audit" },
-  { cron: "0 0 * * *" },
+  { id: "daily-compliance-audit", triggers: [{ cron: "0 0 * * *" }] },
   async ({ step }: { step: any }) => {
     const result = await step.run("run-compliance-audits", async () => {
       return await executeDailyComplianceAudit();
