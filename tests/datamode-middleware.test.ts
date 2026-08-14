@@ -180,7 +180,8 @@ describe("buildIsolatedQueryArgs Isolation Transformation", () => {
 
 describe("DataMode Prisma Client Integration", () => {
   it("converts findUnique to findFirst on Account model and calls rawDb.account.findFirst", async () => {
-    const spy = vi.spyOn(rawDb.account, "findFirst").mockImplementation(async () => null as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const spy = vi.spyOn(rawDb.account, "findFirst").mockImplementation((() => Promise.resolve(null)) as any);
 
     await runWithDataMode("PRODUCTION", async () => {
       await db.account.findUnique({ where: { id: "acc_123" } });
@@ -197,7 +198,8 @@ describe("DataMode Prisma Client Integration", () => {
   });
 
   it("converts findUnique to findFirst on tenant model (e.g. CustomsFiling) and calls rawDb.customsFiling.findFirst", async () => {
-    const spy = vi.spyOn(rawDb.customsFiling, "findFirst").mockImplementation(async () => null as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const spy = vi.spyOn(rawDb.customsFiling, "findFirst").mockImplementation((() => Promise.resolve(null)) as any);
 
     await runWithDataMode("PRODUCTION", async () => {
       await db.customsFiling.findUnique({ where: { id: "filing_123" } });

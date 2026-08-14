@@ -46,7 +46,7 @@ function postBulk(body: Record<string, unknown>) {
       method: "POST",
       body: JSON.stringify(body),
     }),
-    {}
+    undefined
   );
 }
 

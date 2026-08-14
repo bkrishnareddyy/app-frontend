@@ -570,7 +570,7 @@ export class ClassificationCaseEngine {
       if (!htsCode) return new Decimal(0);
       const normalized = htsCode.replace(/[^0-9]/g, "");
       const node = await db.htsNode.findFirst({
-        where: { normalizedCode: { startsWith: normalized.slice(0, 10) } },
+        where: { htsNumberNormalized: { startsWith: normalized.slice(0, 10) } },
         include: { dutyRates: { where: { rateColumn: "General", rateType: "AdValorem" } } },
       });
       const rate = node?.dutyRates?.[0]?.adValoremPercent;
