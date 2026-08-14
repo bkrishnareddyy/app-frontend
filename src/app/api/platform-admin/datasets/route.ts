@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { getAllDatasets } from "@/lib/data/datasetRegistry";
+import { getAllDatasetsWithStatus } from "@/lib/data/datasetRegistry";
 
 export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   if (!ctx.isPlatformAdmin) {
@@ -10,12 +10,14 @@ export const GET = withAuthenticatedRoute(async ({ ctx, requestId }) => {
     );
   }
 
-  const datasets = getAllDatasets();
+  const datasets = await getAllDatasetsWithStatus();
+
   const summary = {
     total: datasets.length,
+    liveCount: datasets.filter((d) => d.readinessStatus === "LIVE").length,
+    notYetImplementedCount: datasets.filter((d) => d.readinessStatus === "NOT_YET_IMPLEMENTED").length,
     publicApiCount: datasets.filter((d) => d.category === "Public API").length,
     structuredDocumentCount: datasets.filter((d) => d.category === "Structured Document").length,
-    healthyCount: datasets.filter((d) => d.status === "success" || d.status === "idle").length,
   };
 
   return NextResponse.json({
