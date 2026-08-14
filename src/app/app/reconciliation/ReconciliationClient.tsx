@@ -166,7 +166,7 @@ export function ReconciliationClient({ issues: initialIssues }: { issues: IssueP
               <Card key={issue.id} className="p-4 hover:shadow-md transition-shadow space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant={issue.issueType === "PSC_CANDIDATE" ? "purple" : issue.issueType === "ENTRY_DISCREPANCY" ? "warning" : "info"}>
+                    <Badge variant={issue.issueType === "PSC_CANDIDATE" ? "neutral" : issue.issueType === "ENTRY_DISCREPANCY" ? "warning" : "info"}>
                       {issue.issueType.replace("_", " ")}
                     </Badge>
                     <span className="text-xs font-extrabold text-slate-800">Field: {issue.field}</span>
@@ -214,7 +214,7 @@ export function ReconciliationClient({ issues: initialIssues }: { issues: IssueP
                 {issue.status === "Open" && (issue.issueType === "PSC_CANDIDATE" || issue.issueType === "ENTRY_DISCREPANCY") && (
                   <div className="flex justify-end pt-1">
                     <Button
-                      variant="brand"
+                      variant="primary"
                       size="sm"
                       onClick={() => convertToPsc(issue.id)}
                       loading={busyId === issue.id}

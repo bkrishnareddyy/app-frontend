@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { FilingService } from "@/modules/filings/filing.service";
 import { simulateAndApplyResponse } from "@/lib/canonicalMessaging/devStub";
 import { runFilingValidation, type ValidatorInput } from "@/lib/filing/filingValidator";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
@@ -150,6 +151,12 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       },
       requestId,
     };
+
+    deliverWebhookEvent(ctx.accountId, "filing.submitted", {
+      filingId: id,
+      entryNumber: result.filing.entryNumber,
+      messageId: result.messageId,
+    }).catch((err) => console.error("[webhook] Failed to dispatch filing.submitted:", err));
 
     if (idempotencyKey) {
       await persistIdempotency(ctx.accountId, idempotencyKey, requestHash ?? "", 200, responsePayload);

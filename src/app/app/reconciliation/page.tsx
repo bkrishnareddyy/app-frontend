@@ -1,19 +1,16 @@
+import { getAccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getAuthenticatedUser } from "@/lib/api/auth-guards";
 import { ReconciliationClient } from "./ReconciliationClient";
 
 export default async function ReconciliationPage() {
-  const user = await getAuthenticatedUser();
-  const accountId = user.accountId;
+  const ctx = await getAccountContext();
+  if (!ctx) return null;
 
   const issues = await db.reconciliationIssue.findMany({
-    where: { accountId },
+    where: { accountId: ctx.accountId },
     include: {
       shipment: {
-        include: {
-          filings: true,
-          complianceDeadlines: true,
-        },
+        include: { complianceDeadlines: true },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -30,8 +27,8 @@ export default async function ReconciliationPage() {
     sourceDocuments: i.sourceDocuments,
     status: i.status,
     issueType: i.issueType,
-    resolution: i.resolution,
-    note: i.note,
+    resolution: i.resolution ?? null,
+    note: i.note ?? null,
     createdAt: i.createdAt.toISOString(),
     resolvedAt: i.resolvedAt ? i.resolvedAt.toISOString() : null,
     deadlines: i.shipment.complianceDeadlines.map((d) => ({

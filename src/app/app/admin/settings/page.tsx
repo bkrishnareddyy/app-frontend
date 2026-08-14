@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { SettingsAuditPanel } from "./SettingsAuditPanel";
 import { DocumentEmailPanel } from "./DocumentEmailPanel";
 import { AgentPoliciesPanel } from "./AgentPoliciesPanel";
+import { ApiKeyPanel } from "./ApiKeyPanel";
 
 export default async function AdminSettingsPage() {
   const context = await getAccountContext();
@@ -12,7 +13,7 @@ export default async function AdminSettingsPage() {
     return null;
   }
 
-  const [data, routes, memberships, agentPolicies, policyHistory] = await Promise.all([
+  const [data, routes, memberships, agentPolicies, policyHistory, apiKeys] = await Promise.all([
     getSettingsAuditData(context),
     db.inboundSenderRoute.findMany({
       where: { accountId: context.accountId },
@@ -37,6 +38,10 @@ export default async function AdminSettingsPage() {
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
+    db.accountApiKey.findMany({
+      where: { accountId: context.accountId },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   const teamMembers = memberships.map((m) => ({
@@ -58,6 +63,19 @@ export default async function AdminSettingsPage() {
           defaultAssignedToUser: r.defaultAssignedToUser,
         }))}
         teamMembers={teamMembers}
+      />
+      <ApiKeyPanel
+        initialKeys={apiKeys.map((k) => ({
+          id: k.id,
+          label: k.label,
+          keyPrefix: k.keyPrefix,
+          scopes: k.scopes,
+          status: k.status,
+          lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
+          expiresAt: k.expiresAt?.toISOString() ?? null,
+          createdAt: k.createdAt.toISOString(),
+          revokedAt: k.revokedAt?.toISOString() ?? null,
+        }))}
       />
       <AgentPoliciesPanel
         initialPolicies={agentPolicies.map((p) => ({

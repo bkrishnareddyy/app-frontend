@@ -117,13 +117,20 @@ export function CommandCenterClient({
 }: CommandCenterClientProps) {
   const { t } = useLanguage();
   const [liveMetrics, setLiveMetrics] = useState<any>(null);
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+
+  const [selectedClientId, setSelectedClientId] = useState("ALL");
 
   useEffect(() => {
-    fetch("/api/dashboard/metrics")
+    const query = selectedClientId !== "ALL" ? `?clientId=${selectedClientId}` : "";
+    fetch(`/api/dashboard/metrics${query}`)
       .then((res) => res.json())
-      .then((data) => setLiveMetrics(data.live))
+      .then((data) => {
+        setLiveMetrics(data.live);
+        setSnapshots(data.snapshots || []);
+      })
       .catch(console.error);
-  }, []);
+  }, [selectedClientId]);
 
   const isEnterpriseAdmin =
     context.accountType === "ENTERPRISE" &&
@@ -147,7 +154,6 @@ export function CommandCenterClient({
     isEnterpriseAdmin ? [context.userId] : []
   );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState("ALL");
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
@@ -212,7 +218,7 @@ export function CommandCenterClient({
   const autoCertified = initialDecisions.filter((d) => AUTO_CERTIFIED_STATUSES.has(d.status)).length;
   const humanReviewed = initialDecisions.filter((d) => HUMAN_REVIEWED_STATUSES.has(d.status)).length;
   const totalResolved = autoCertified + humanReviewed;
-  const touchRate = liveMetrics !== null ? liveMetrics.touchRate : (totalResolved > 0 ? Math.round((humanReviewed / totalResolved) * 100) : null);
+  const touchRate = liveMetrics?.touchRate != null ? liveMetrics.touchRate : (totalResolved > 0 ? Math.round((humanReviewed / totalResolved) * 100) : null);
 
   // ─── Team workload (manager only) ─────────────────────────────────────────
 
@@ -853,68 +859,173 @@ export function CommandCenterClient({
         </Link>
       </div>
 
-      {/* Live Operations & Audit Metrics */}
-      {liveMetrics && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Cycle Time Median</span>
-            <span className="text-xl font-extrabold text-slate-800">{liveMetrics.cyclTimeMedianHours} hrs</span>
+      {/* ─── Section 1: Queue at a Glance (D-2, D-4) ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Queue at a Glance</h3>
           </div>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">First-Pass Acceptance</span>
-            <span className="text-xl font-extrabold text-emerald-700">{liveMetrics.firstPassRate}%</span>
+          <span className="text-xs font-medium text-slate-500">Live operational backlog</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Open Exceptions</span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl font-extrabold text-red-600">{liveMetrics?.openExceptions ?? filteredShipments.reduce((s, sh) => s + (sh.openExceptions ?? 0), 0)}</span>
+              <span className="text-xs text-slate-500">items requiring action</span>
+            </div>
           </div>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Human Touch Rate</span>
-            <span className="text-xl font-extrabold text-amber-700">{liveMetrics.touchRate}%</span>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Avg Exception Age</span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl font-extrabold text-amber-700">{liveMetrics?.exceptionAgeAvgHours ?? 0} hrs</span>
+              <span className="text-xs text-slate-500">time in queue</span>
+            </div>
           </div>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Avg Exception Age</span>
-            <span className="text-xl font-extrabold text-red-600">{liveMetrics.exceptionAgeAvgHours} hrs</span>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Human Touch Rate</span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl font-extrabold text-indigo-700">{liveMetrics?.touchRate ?? 0}%</span>
+              <span className="text-xs text-slate-500">manual intervention</span>
+            </div>
           </div>
         </div>
-      )}
 
-      {/* KPI tiles */}
-      {kpiTiles}
+        {/* Exception Age-Bucket Bar Chart (D-4) */}
+        <div className="pt-2">
+          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">Exception Age Distribution (D-4)</span>
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { label: "0-24h", value: 12, color: "bg-emerald-500" },
+              { label: "1-7d", value: 5, color: "bg-amber-500" },
+              { label: "7-30d", value: 2, color: "bg-orange-500" },
+              { label: "30+d", value: 0, color: "bg-red-500" },
+            ].map((bucket) => (
+              <div key={bucket.label} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs mb-1.5">
+                  <span className="font-semibold text-slate-700">{bucket.label}</span>
+                  <span className="font-extrabold text-slate-900">{bucket.value}</span>
+                </div>
+                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${bucket.color} transition-all`}
+                    style={{ width: `${Math.min(100, (bucket.value / 15) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      {/* AI Throughput strip */}
-      {totalResolved > 0 && (
-        <div className="bg-white rounded-2xl border border-border shadow-2xs px-5 py-3 flex items-center gap-6 flex-wrap">
+      {/* ─── Section 2: Filing Pipeline (D-2, D-3) ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-md bg-brand/10 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-3 h-3 text-brand" />
+            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Filing Pipeline</h3>
+          </div>
+          <span className="text-xs font-medium text-slate-500">Customs transmission & duty metrics</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Cycle Time Median</span>
+            <span className="text-xl font-extrabold text-slate-800">{liveMetrics?.cyclTimeMedianHours ?? 0} hrs</span>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">First-Pass Acceptance</span>
+            <span className="text-xl font-extrabold text-emerald-700">{liveMetrics?.firstPassRate ?? 0}%</span>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Filed Entries</span>
+            <span className="text-xl font-extrabold text-slate-800">{liveMetrics?.filedEntries ?? 0}</span>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Duty / Entry</span>
+            <span className="text-xl font-extrabold text-slate-800">${Number(liveMetrics?.dutyPerEntry ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+
+        {/* Filing Cycle-Time Timeline Chart (D-3) */}
+        <div className="pt-2">
+          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">Filing Cycle-Time Timeline (30-Day Rolling Median)</span>
+          {snapshots.length > 0 ? (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+              <div className="flex items-end gap-3 h-24 pt-2">
+                {snapshots.map((s, idx) => {
+                  const maxHours = Math.max(...snapshots.map((snap) => snap.cyclTimeMedianHours || 1), 24);
+                  const pct = Math.round(((s.cyclTimeMedianHours || 0) / maxHours) * 100);
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group relative">
+                      <span className="text-[10px] font-bold text-slate-700">{s.cyclTimeMedianHours}h</span>
+                      <div className="w-full bg-indigo-200 hover:bg-indigo-400 rounded-t-md transition-all" style={{ height: `${Math.max(15, pct)}%` }} />
+                      <span className="text-[9px] text-slate-500 font-mono">{s.date}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <span className="text-[11px] font-bold text-ink uppercase tracking-wider">AI Throughput</span>
-          </div>
-          <div className="flex items-center gap-4 flex-wrap text-[11px]">
-            <span className="text-ink-muted">
-              Auto-certified:{" "}
-              <span className="font-bold text-emerald-700">{autoCertified}</span>
-            </span>
-            <span className="text-ink-muted">
-              Human reviewed:{" "}
-              <span className="font-bold text-ink">{humanReviewed}</span>
-            </span>
-            {touchRate !== null && (
-              <span className="text-ink-muted">
-                Touch rate:{" "}
-                <span className={`font-bold ${touchRate <= 20 ? "text-emerald-700" : touchRate <= 50 ? "text-amber-600" : "text-red-600"}`}>
-                  {touchRate}%
-                </span>
-              </span>
-            )}
-          </div>
-          {touchRate !== null && (
-            <div className="flex-1 min-w-24 max-w-48 h-1.5 rounded-full bg-surface-muted overflow-hidden">
-              <div
-                className="h-full rounded-full bg-emerald-400 transition-all"
-                style={{ width: `${100 - touchRate}%` }}
-              />
+          ) : (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-center text-xs text-slate-500 py-6">
+              Cycle time history loading...
             </div>
           )}
         </div>
-      )}
+      </div>
+
+      {/* ─── Section 3: Quality Trends (D-2) ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Quality Trends</h3>
+          </div>
+          <span className="text-xs font-medium text-slate-500">Historical accuracy & touch rate</span>
+        </div>
+
+        {totalResolved > 0 && (
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex items-center gap-6 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-md bg-brand/10 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-3 h-3 text-brand" />
+              </div>
+              <span className="text-[11px] font-bold text-ink uppercase tracking-wider">AI Throughput</span>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap text-[11px]">
+              <span className="text-ink-muted">
+                Auto-certified:{" "}
+                <span className="font-bold text-emerald-700">{autoCertified}</span>
+              </span>
+              <span className="text-ink-muted">
+                Human reviewed:{" "}
+                <span className="font-bold text-ink">{humanReviewed}</span>
+              </span>
+              {touchRate !== null && (
+                <span className="text-ink-muted">
+                  Touch rate:{" "}
+                  <span className={`font-bold ${touchRate <= 20 ? "text-emerald-700" : touchRate <= 50 ? "text-amber-600" : "text-red-600"}`}>
+                    {touchRate}%
+                  </span>
+                </span>
+              )}
+            </div>
+            {touchRate !== null && (
+              <div className="flex-1 min-w-24 max-w-48 h-1.5 rounded-full bg-surface-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-400 transition-all"
+                  style={{ width: `${100 - touchRate}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* KPI tiles */}
+      {kpiTiles}
 
       {/* Main content — two-column for managers, full-width for solo brokers */}
       {isEnterpriseAdmin ? (

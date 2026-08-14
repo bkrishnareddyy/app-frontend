@@ -819,12 +819,18 @@ model AgentPolicyConfig {
   accountId             String
   account               Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   agentName             String
+  /// Policy type (e.g. THRESHOLD or STAGE_GATE)
+  policyType            String   @default("THRESHOLD")
   /// Minimum confidence for AUTO outcome (default 85).
   autoThreshold         Int      @default(85)
   /// Minimum confidence for CONFIRM outcome (default 60).
   confirmThreshold      Int      @default(60)
   /// When true, a missing part-master match forces REVIEW regardless of confidence.
   requirePartMasterMatch Boolean @default(false)
+  /// Force human review at stage gate regardless of score
+  requireHumanApproval  Boolean  @default(false)
+  /// Minimum reviewer role required to approve
+  minimumReviewerRole   String?  @default("SPECIALIST")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -1221,6 +1227,8 @@ model Client {
   shipments         Shipment[]
   importersOfRecord ImporterOfRecord[]
   legalEntities     LegalEntity[]
+  products          Product[]
+  parties           Party[]
 
   @@index([accountId])
   @@index([accountId, status])
@@ -2598,6 +2606,8 @@ model Product {
   id        String  @id @default(cuid())
   accountId String
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   /// Convenience copy of the INTERNAL_SKU identifier, kept unique per account so
   /// the database refuses a second product under the same internal SKU. The
@@ -3196,6 +3206,8 @@ model Party {
   id        String  @id @default(cuid())
   accountId String
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   /// Convenience copy of the INTERNAL_PARTY_CODE identifier, kept unique per
   /// account. The authoritative list of identifiers is still `identifiers`.

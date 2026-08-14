@@ -46,6 +46,7 @@ export interface ProductQuery extends TableQuery<ProductSortColumn> {
   needsRevalidation: boolean;
   /** Restricts to products with no approved classification anywhere. */
   unclassified: boolean;
+  clientId: string | null;
 }
 
 function trimmed(raw: string | null): string | null {
@@ -65,6 +66,7 @@ export function parseProductQuery(params: URLSearchParams): ProductQuery {
     jurisdiction: trimmed(params.get("jurisdiction"))?.toUpperCase() ?? null,
     needsRevalidation: params.get("needsRevalidation") === "true",
     unclassified: params.get("unclassified") === "true",
+    clientId: trimmed(params.get("clientId")),
   };
 }
 
@@ -80,6 +82,7 @@ export interface ProductWhere {
   deletedAt: null;
   status?: string;
   reviewStatus?: string;
+  clientId?: string;
   classifications?: {
     some: { jurisdiction?: string; status: string };
     none?: never;
@@ -113,6 +116,7 @@ type ProductSearchClause =
 export function buildProductWhere(accountId: string, query: ProductQuery): ProductWhere {
   const where: ProductWhere = { accountId, deletedAt: null };
 
+  if (query.clientId) where.clientId = query.clientId;
   if (query.status) where.status = query.status;
   if (query.reviewStatus) where.reviewStatus = query.reviewStatus;
 

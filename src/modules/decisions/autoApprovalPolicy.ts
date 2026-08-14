@@ -4,9 +4,12 @@ export type AutoApprovalOutcome = "AUTO" | "CONFIRM" | "REVIEW";
 
 export interface AgentPolicyConfigLike {
   id?: string;
+  policyType?: string | null;
   autoThreshold?: number | null;
   confirmThreshold?: number | null;
   requirePartMasterMatch?: boolean | null;
+  requireHumanApproval?: boolean | null;
+  minimumReviewerRole?: string | null;
 }
 
 export interface AutoApprovalInput {
@@ -70,6 +73,15 @@ export function applyAutoApprovalPolicy(
   const highThreshold = config?.autoThreshold ?? DEFAULT_HIGH_CONFIDENCE_THRESHOLD;
   const mediumThreshold = config?.confirmThreshold ?? DEFAULT_MEDIUM_CONFIDENCE_THRESHOLD;
   const requirePartMaster = config?.requirePartMasterMatch ?? false;
+
+  // STAGE_GATE policy type or explicit requireHumanApproval forces REVIEW
+  if (config?.policyType === "STAGE_GATE" || config?.requireHumanApproval) {
+    return {
+      outcome: "REVIEW",
+      policyId,
+      reason: `Stage-gate policy requires human review by ${config.minimumReviewerRole ?? "SPECIALIST"} or above.`,
+    };
+  }
 
   // Part master disagreement outranks confidence.
   if (partMasterMatch && !partMasterHtsAgrees) {

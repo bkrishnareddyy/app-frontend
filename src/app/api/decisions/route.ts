@@ -4,6 +4,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import type { AccountContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 import { FactAuditService } from "@/modules/audit/factAuditService";
 import { FactService } from "@/modules/shipment/factService";
 import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
@@ -434,6 +435,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       permissionBypass: overrideCheck.bypass,
     },
   });
+
+  if (action === "APPROVE") {
+    deliverWebhookEvent(ctx.accountId, "decision.approved", {
+      decisionId,
+      shipmentId: decision.shipmentId,
+      status: newStatus,
+      reviewedByUserId: ctx.userId,
+    }).catch((err) => console.error("[webhook] Failed to dispatch decision.approved:", err));
+  }
 
   return NextResponse.json({
     decision: updatedDecision,

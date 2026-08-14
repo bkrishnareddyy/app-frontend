@@ -42,6 +42,7 @@ export interface PartyQuery extends TableQuery<PartySortColumn> {
   roleType: string | null;
   /** Restricts to parties with at least one open revalidation flag. */
   needsRevalidation: boolean;
+  clientId: string | null;
 }
 
 function trimmed(raw: string | null): string | null {
@@ -60,6 +61,7 @@ export function parsePartyQuery(params: URLSearchParams): PartyQuery {
     reviewStatus: trimmed(params.get("reviewStatus")),
     roleType: trimmed(params.get("roleType")),
     needsRevalidation: params.get("needsRevalidation") === "true",
+    clientId: trimmed(params.get("clientId")),
   };
 }
 
@@ -75,6 +77,7 @@ export interface PartyWhere {
   deletedAt: null;
   status?: string;
   reviewStatus?: string;
+  clientId?: string;
   roles?: { some: { roleType: string; status: string } };
   revalidationFlags?: { some: { status: string } };
   OR?: PartySearchClause[];
@@ -99,6 +102,7 @@ type PartySearchClause =
 export function buildPartyWhere(accountId: string, query: PartyQuery): PartyWhere {
   const where: PartyWhere = { accountId, deletedAt: null };
 
+  if (query.clientId) where.clientId = query.clientId;
   if (query.status) where.status = query.status;
   if (query.reviewStatus) where.reviewStatus = query.reviewStatus;
 
