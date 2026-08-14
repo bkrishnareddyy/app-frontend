@@ -9,6 +9,7 @@ import { logAgentError } from "./agentLogger";
 import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
 import { applyAutoApprovalPolicy, getAgentPolicyConfig } from "@/modules/decisions/autoApprovalPolicy";
 import { matchPartMaster } from "@/modules/product/partMasterMatch";
+import { CrossIngestionService } from "@/modules/regulatory/crossIngestionService";
 
 // Real, ingested HTS Master Release data (29k+ classifiable nodes, 50k+
 // parsed duty rate rows) -- looks up the General column rate for a
@@ -302,6 +303,36 @@ ${candidateContext}`;
           if (parsed.htsCode) {
             htsResult = parsed;
             aiProvider = "Gemini 2.5 Flash HTS Classification Engine";
+
+            // Zero-hallucination policy: the LLM's crossRulings are a claim,
+            // not evidence. A ruling number only becomes trustworthy CBP
+            // supporting evidence once it resolves against the persisted
+            // Qubere CROSS corpus via verifyCitation() -- an unverified or
+            // fabricated ruling number must never reach downstream facts,
+            // AgentDecision evidence, or the filing UI as if it were real.
+            if (Array.isArray(parsed.crossRulings) && parsed.crossRulings.length > 0) {
+              const verifiedRulings: string[] = [];
+              for (const citation of parsed.crossRulings as unknown[]) {
+                if (typeof citation !== "string" || !citation.trim()) continue;
+                try {
+                  const verification = await CrossIngestionService.verifyCitation(citation);
+                  if (verification.verified) {
+                    verifiedRulings.push(citation);
+                  }
+                } catch (err) {
+                  // Lookup failure means we could not confirm the citation,
+                  // not that it is real -- treat it the same as unverified
+                  // rather than risking a false positive.
+                  debugError = logAgentError(
+                    "HTS Classification Agent",
+                    input.shipmentId,
+                    "CROSS citation verification",
+                    err
+                  );
+                }
+              }
+              parsed.crossRulings = verifiedRulings;
+            }
 
             // Ground the LLM's recalled duty rate in the real ingested HTS
             // data rather than trusting what it remembered. If the code it
