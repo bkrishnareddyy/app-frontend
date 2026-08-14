@@ -28,9 +28,13 @@ export interface CreateAuditLogParams {
   /** Provenance source: "UI" (default), "CHAT" (copilot), "SYSTEM" (cron/worker), "API" (external API) */
   source?: AuditSource | string | null;
   metadata?: Record<string, unknown> | null;
-  /** Snapshot of the record BEFORE the mutation (for immutable evidence trail). */
+  /**
+   * Snapshot of the record BEFORE the mutation (for immutable evidence trail).
+   * The AuditLog table has no dedicated column for this — it's persisted as
+   * `metadata.beforeJson` alongside any caller-supplied `metadata`.
+   */
   beforeJson?: Record<string, unknown> | null;
-  /** Snapshot of the record AFTER the mutation. */
+  /** Snapshot of the record AFTER the mutation. Persisted as `metadata.afterJson`. */
   afterJson?: Record<string, unknown> | null;
   /** Correlation ID linking related audit events across a single user operation. */
   correlationId?: string | null;
@@ -67,6 +71,15 @@ export async function createAuditLog(params: CreateAuditLogParams) {
       // Ignore if called outside request context
     }
 
+    const metadata: Record<string, unknown> | undefined =
+      params.metadata || params.beforeJson || params.afterJson
+        ? {
+            ...(params.metadata ?? {}),
+            ...(params.beforeJson ? { beforeJson: params.beforeJson } : {}),
+            ...(params.afterJson ? { afterJson: params.afterJson } : {}),
+          }
+        : undefined;
+
     return await db.auditLog.create({
       data: {
         accountId: params.accountId,
@@ -75,7 +88,7 @@ export async function createAuditLog(params: CreateAuditLogParams) {
         entity: params.entity,
         entityId: params.entityId,
         source: params.source ?? "UI",
-        metadata: params.metadata ? JSON.parse(JSON.stringify(params.metadata)) : undefined,
+        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : undefined,
         ipAddress: ipAddress || null,
         userAgent: userAgent || null,
         requestId: params.requestId || null,
