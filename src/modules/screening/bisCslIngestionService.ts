@@ -51,6 +51,7 @@ export class BisCslIngestionService {
           const s = String(item.source).toUpperCase();
           if (s.includes("DPL")) sourceList = "DPL";
           else if (s.includes("UNVERIFIED")) sourceList = "UNVERIFIED";
+          else if (s.includes("MEU") || s.includes("MILITARY END USER")) sourceList = "MEU_LIST";
           else if (s.includes("ISN")) sourceList = "ISN";
           else if (s.includes("SSI")) sourceList = "SSI";
           else if (s.includes("FSE")) sourceList = "FSE";
@@ -120,7 +121,7 @@ export class BisCslIngestionService {
     // Release Snapshot & Point-in-time Superseding:
     // Mark entities removed from official CSL list as SUPERSEDED
     if (activeHashes.size > 0) {
-      const activeCslSources = ["ENTITY_LIST", "DPL", "UNVERIFIED", "ISN", "SSI", "FSE", "PLC", "SDN", "NS_MBS"];
+      const activeCslSources = ["ENTITY_LIST", "DPL", "UNVERIFIED", "MEU_LIST", "ISN", "SSI", "FSE", "PLC", "SDN", "NS_MBS"];
       const existingPublished = await db.screeningEntity.findMany({
         where: {
           publicationStatus: "PUBLISHED",

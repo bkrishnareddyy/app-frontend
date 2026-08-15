@@ -4542,6 +4542,27 @@ model ScreeningEntity {
   @@index([country])
 }
 
+/// Phrase/keyword reference data shared by End-Use Screening (restricted end-use
+/// categories), Military End-Use Screening, and Anti-Boycott Screening
+/// (boycott-request language). DRAFT/PUBLISHED gating mirrors ScreeningEntity --
+/// unpublished rows must never be treated as loaded reference data.
+model ComplianceKeywordRule {
+  id                String    @id @default(cuid())
+  category          String // END_USE_NUCLEAR | END_USE_MISSILE | END_USE_CHEM_BIO | END_USE_ROCKET_UAV | MILITARY_END_USE | ANTI_BOYCOTT_REQUEST
+  phrase            String
+  matchType         String    @default("CONTAINS") // CONTAINS | EXACT | REGEX
+  citation          String?
+  severity          String    @default("HIGH") // LOW | MEDIUM | HIGH | CRITICAL
+  authority         String    @default("US BIS / Dept of Commerce")
+  publicationStatus String    @default("DRAFT") // DRAFT | PUBLISHED | SUPERSEDED
+  publishedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([category])
+  @@index([publicationStatus])
+}
+
 /// CBP ACE 4-digit port codes — reference table for pre-filing validation.
 /// Used by filingValidator.ts to reject invalid port codes on ISF and 7501 entries.
 model AcePortCode {

@@ -5,7 +5,6 @@ import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
 import { hashPromptVersion } from "@/lib/ai/promptVersion";
 import { logAgentError } from "./agentLogger";
-import { screenValue } from "@/lib/screening/embargoMatch";
 import { Prisma } from "@prisma/client";
 import { runCountryEmbargoScreening } from "./compliance/embargo/countryEmbargoScreening";
 import { getAccountEmbargoConfig } from "./compliance/embargo/embargoRepository";
@@ -14,6 +13,16 @@ import type {
   EmbargoParty,
   EmbargoLineItem,
 } from "./compliance/embargo/types";
+import { runForcedLaborScreening } from "./compliance/forcedLabor/forcedLaborScreening";
+import type { ForcedLaborScreeningResult } from "./compliance/forcedLabor/types";
+import { runEndUseScreening } from "./compliance/endUse/endUseScreening";
+import type { EndUseScreeningResult } from "./compliance/endUse/types";
+import { runEndUserScreening } from "./compliance/endUser/endUserScreening";
+import type { EndUserScreeningResult } from "./compliance/endUser/types";
+import { runAntiBoycottScreening } from "./compliance/antiBoycott/antiBoycottScreening";
+import type { AntiBoycottScreeningResult } from "./compliance/antiBoycott/types";
+import { runMilitaryEndUseScreening } from "./compliance/militaryEndUse/militaryEndUseScreening";
+import type { MilitaryEndUseScreeningResult } from "./compliance/militaryEndUse/types";
 
 export interface AuditCheckResult {
   ruleId: string;
@@ -26,7 +35,12 @@ export interface AuditCheckResult {
     | "HTS_INTEGRITY"
     | "DATA_MISSING"
     | "SCREENING_GAP"
-    | "COUNTRY_EMBARGO";
+    | "COUNTRY_EMBARGO"
+    | "END_USE_RESTRICTION"
+    | "END_USER_RESTRICTION"
+    | "ANTI_BOYCOTT"
+    | "MILITARY_END_USE"
+    | "MILITARY_END_USER";
   passed: boolean;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   details: string;
@@ -79,6 +93,10 @@ export interface ComplianceAuditInput {
   parties?: EmbargoParty[];
   /** Explicit per-invocation Country Embargo Screening disable, independent of account configuration. */
   embargoScreening?: boolean;
+  /** End-Use / Military End-Use Screening -- stated end-use text (e.g. an end-use statement/certificate), captured as a Fact. */
+  endUseStatement?: string | null;
+  /** Anti-Boycott Screening -- free-text transaction document/narrative content (e.g. an LC or purchase order), captured as a Fact. */
+  documentNarrativeText?: string | null;
 }
 
 export interface ComplianceAuditOutput {
@@ -99,6 +117,11 @@ export interface ComplianceAuditOutput {
   aiProviderUsed: string;
   debugError?: string;
   countryEmbargoScreening?: CountryEmbargoScreeningResult;
+  forcedLaborScreening?: ForcedLaborScreeningResult;
+  endUseScreening?: EndUseScreeningResult;
+  endUserScreening?: EndUserScreeningResult;
+  antiBoycottScreening?: AntiBoycottScreeningResult;
+  militaryEndUseScreening?: MilitaryEndUseScreeningResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,31 +323,6 @@ export class ComplianceAuditAgent {
         });
       }
 
-      if (li.countryOfOrigin && embargoRules.length > 0) {
-        const matches = screenValue(li.countryOfOrigin, embargoRules);
-        if (matches.length > 0) {
-          auditResults.push({
-            ruleId: "RULE-UFLPA-01",
-            ruleName: "UFLPA Forced Labor & Sanctions Country Check",
-            category: "UFLPA",
-            passed: false,
-            severity: "CRITICAL",
-            details: `Line ${li.lineNumber}: origin "${li.countryOfOrigin}" matches ${matches.map((m) => `${m.regime} (${m.countryName})`).join(", ")}. Manual entity-list screening and supply chain documentation required before CBP release.`,
-            lineNumber: li.lineNumber,
-          });
-        } else {
-          auditResults.push({
-            ruleId: "RULE-UFLPA-01",
-            ruleName: "UFLPA Forced Labor & Sanctions Country Check",
-            category: "UFLPA",
-            passed: true,
-            severity: "CRITICAL",
-            details: `Line ${li.lineNumber}: origin "${li.countryOfOrigin}" does not match any loaded embargo/sanctions rule.`,
-            lineNumber: li.lineNumber,
-          });
-        }
-      }
-
       if (co && hts) {
         const addCvdMatch = ADD_CVD_ALERTS.find(
           (a) => a.originCountry === co && htsPrefix4.startsWith(a.htsPrefix.substring(0, 4))
@@ -444,6 +442,247 @@ export class ComplianceAuditAgent {
       }
     }
 
+    // ---- UFLPA / Forced Labor Screening (deterministic; see compliance/forcedLabor/) ----
+    const entityNames = [
+      input.exporterName ? { role: "Exporter", name: input.exporterName } : null,
+      input.supplierName ? { role: "Supplier/Manufacturer", name: input.supplierName } : null,
+    ].filter((n): n is { role: string; name: string } => n !== null);
+
+    const forcedLaborScreening = await runForcedLaborScreening({
+      accountId: input.accountId,
+      shipmentId: input.shipmentId,
+      lineItems: lineItems.map((li) => ({ lineNumber: li.lineNumber, countryOfOrigin: li.countryOfOrigin ?? null })),
+      entityNames,
+      screeningDate: new Date(),
+    }).catch((err) => {
+      debugError = logAgentError("Compliance Agent", input.shipmentId, "runForcedLaborScreening", err);
+      return undefined;
+    });
+
+    if (forcedLaborScreening) {
+      if (forcedLaborScreening.status === "SKIPPED") {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-04",
+          ruleName: "UFLPA / Forced Labor Screening Availability",
+          category: "UFLPA",
+          passed: false,
+          severity: "MEDIUM",
+          details: `UFLPA / Forced Labor Screening did not run: ${[...forcedLaborScreening.skipped].map((s) => s.reason).join(" ") || "no reference data loaded"}. This is not a CLEAR result.`,
+        });
+      }
+      for (const hit of forcedLaborScreening.hits) {
+        auditResults.push({
+          ruleId: hit.kind === "COUNTRY_REGION" ? `RULE-UFLPA-01-${hit.ruleId}` : "RULE-UFLPA-02",
+          ruleName:
+            hit.kind === "COUNTRY_REGION"
+              ? "UFLPA Country/Region Rebuttable Presumption Check"
+              : "UFLPA Entity List Check",
+          category: "UFLPA",
+          passed: false,
+          severity: "CRITICAL",
+          details: hit.reason,
+          lineNumber: hit.kind === "COUNTRY_REGION" ? hit.lineNumber : undefined,
+        });
+      }
+      if (forcedLaborScreening.errors.length > 0) {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-05",
+          ruleName: "UFLPA / Forced Labor Screening Completeness",
+          category: "UFLPA",
+          passed: false,
+          severity: "MEDIUM",
+          details: `UFLPA / Forced Labor Screening encountered ${forcedLaborScreening.errors.length} error(s) -- some checks did not complete.`,
+        });
+      }
+    }
+
+    // ---- End-Use Screening (deterministic; see compliance/endUse/) ----
+    const endUseScreening = await runEndUseScreening({
+      accountId: input.accountId,
+      shipmentId: input.shipmentId,
+      endUseStatement: input.endUseStatement ?? null,
+      screeningDate: new Date(),
+    }).catch((err) => {
+      debugError = logAgentError("Compliance Agent", input.shipmentId, "runEndUseScreening", err);
+      return undefined;
+    });
+
+    if (endUseScreening) {
+      if (endUseScreening.status === "SKIPPED") {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-06",
+          ruleName: "End-Use Screening Availability",
+          category: "END_USE_RESTRICTION",
+          passed: false,
+          severity: "MEDIUM",
+          details: `End-Use Screening did not run: ${[...endUseScreening.skipped].map((s) => s.reason).join(" ") || "no reference data loaded"}. This is not a CLEAR result.`,
+        });
+      }
+      for (const hit of endUseScreening.hits) {
+        auditResults.push({
+          ruleId: `RULE-END-USE-01-${hit.category}`,
+          ruleName: "Restricted End-Use Check",
+          category: "END_USE_RESTRICTION",
+          passed: false,
+          severity: "CRITICAL",
+          details: hit.reason,
+        });
+      }
+      if (endUseScreening.errors.length > 0) {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-07",
+          ruleName: "End-Use Screening Completeness",
+          category: "END_USE_RESTRICTION",
+          passed: false,
+          severity: "MEDIUM",
+          details: `End-Use Screening encountered ${endUseScreening.errors.length} error(s) -- some checks did not complete.`,
+        });
+      }
+    }
+
+    // ---- End-User Screening (deterministic; see compliance/endUser/) ----
+    // Broader than the UFLPA/forced-labor entityNames set -- BIS Entity List /
+    // Unverified List concern any transaction party, so the importer (the
+    // usual receiving/end-user party) is included alongside exporter/supplier.
+    const endUserEntityNames = [
+      input.exporterName ? { role: "Exporter", name: input.exporterName } : null,
+      input.supplierName ? { role: "Supplier/Manufacturer", name: input.supplierName } : null,
+      input.importerName ? { role: "Importer", name: input.importerName } : null,
+    ].filter((n): n is { role: string; name: string } => n !== null);
+
+    const endUserScreening = await runEndUserScreening({
+      accountId: input.accountId,
+      shipmentId: input.shipmentId,
+      entityNames: endUserEntityNames,
+      screeningDate: new Date(),
+    }).catch((err) => {
+      debugError = logAgentError("Compliance Agent", input.shipmentId, "runEndUserScreening", err);
+      return undefined;
+    });
+
+    if (endUserScreening) {
+      if (endUserScreening.status === "SKIPPED") {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-08",
+          ruleName: "End-User Screening Availability",
+          category: "END_USER_RESTRICTION",
+          passed: false,
+          severity: "MEDIUM",
+          details: `End-User Screening did not run: ${[...endUserScreening.skipped].map((s) => s.reason).join(" ") || "no reference data loaded"}. This is not a CLEAR result.`,
+        });
+      }
+      for (const hit of endUserScreening.hits) {
+        auditResults.push({
+          ruleId: "RULE-END-USER-01",
+          ruleName: "BIS Entity List / Unverified List Check",
+          category: "END_USER_RESTRICTION",
+          passed: false,
+          severity: "CRITICAL",
+          details: hit.reason,
+        });
+      }
+      if (endUserScreening.errors.length > 0) {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-09",
+          ruleName: "End-User Screening Completeness",
+          category: "END_USER_RESTRICTION",
+          passed: false,
+          severity: "MEDIUM",
+          details: `End-User Screening encountered ${endUserScreening.errors.length} error(s) -- some checks did not complete.`,
+        });
+      }
+    }
+
+    // ---- Anti-Boycott Screening (deterministic; see compliance/antiBoycott/) ----
+    const antiBoycottScreening = await runAntiBoycottScreening({
+      accountId: input.accountId,
+      shipmentId: input.shipmentId,
+      destinationCountry: input.destinationCountry ?? null,
+      documentNarrativeText: input.documentNarrativeText ?? null,
+      screeningDate: new Date(),
+    }).catch((err) => {
+      debugError = logAgentError("Compliance Agent", input.shipmentId, "runAntiBoycottScreening", err);
+      return undefined;
+    });
+
+    if (antiBoycottScreening) {
+      if (antiBoycottScreening.status === "SKIPPED") {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-10",
+          ruleName: "Anti-Boycott Screening Availability",
+          category: "ANTI_BOYCOTT",
+          passed: false,
+          severity: "MEDIUM",
+          details: `Anti-Boycott Screening did not run: ${[...antiBoycottScreening.skipped].map((s) => s.reason).join(" ") || "no reference data loaded"}. This is not a CLEAR result.`,
+        });
+      }
+      for (const hit of antiBoycottScreening.hits) {
+        auditResults.push({
+          ruleId: hit.kind === "COUNTRY" ? "RULE-ANTI-BOYCOTT-01" : "RULE-ANTI-BOYCOTT-02",
+          ruleName: hit.kind === "COUNTRY" ? "Anti-Boycott Country Check" : "Anti-Boycott Document Language Check",
+          category: "ANTI_BOYCOTT",
+          passed: false,
+          severity: "HIGH",
+          details: hit.reason,
+        });
+      }
+      if (antiBoycottScreening.errors.length > 0) {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-11",
+          ruleName: "Anti-Boycott Screening Completeness",
+          category: "ANTI_BOYCOTT",
+          passed: false,
+          severity: "MEDIUM",
+          details: `Anti-Boycott Screening encountered ${antiBoycottScreening.errors.length} error(s) -- some checks did not complete.`,
+        });
+      }
+    }
+
+    // ---- Military End-Use / End-User Screening (deterministic; see compliance/militaryEndUse/) ----
+    const militaryEndUseScreening = await runMilitaryEndUseScreening({
+      accountId: input.accountId,
+      shipmentId: input.shipmentId,
+      endUseStatement: input.endUseStatement ?? null,
+      entityNames: endUserEntityNames,
+      screeningDate: new Date(),
+    }).catch((err) => {
+      debugError = logAgentError("Compliance Agent", input.shipmentId, "runMilitaryEndUseScreening", err);
+      return undefined;
+    });
+
+    if (militaryEndUseScreening) {
+      if (militaryEndUseScreening.status === "SKIPPED") {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-12",
+          ruleName: "Military End-Use / End-User Screening Availability",
+          category: "MILITARY_END_USE",
+          passed: false,
+          severity: "MEDIUM",
+          details: `Military End-Use / End-User Screening did not run: ${[...militaryEndUseScreening.skipped].map((s) => s.reason).join(" ") || "no reference data loaded"}. This is not a CLEAR result.`,
+        });
+      }
+      for (const hit of militaryEndUseScreening.hits) {
+        auditResults.push({
+          ruleId: hit.kind === "MILITARY_END_USE" ? "RULE-MILITARY-END-USE-01" : "RULE-MILITARY-END-USER-01",
+          ruleName: hit.kind === "MILITARY_END_USE" ? "Military End-Use Keyword Check" : "Military End User (MEU) List Check",
+          category: hit.kind,
+          passed: false,
+          severity: "CRITICAL",
+          details: hit.reason,
+        });
+      }
+      if (militaryEndUseScreening.errors.length > 0) {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-13",
+          ruleName: "Military End-Use / End-User Screening Completeness",
+          category: "MILITARY_END_USE",
+          passed: false,
+          severity: "MEDIUM",
+          details: `Military End-Use / End-User Screening encountered ${militaryEndUseScreening.errors.length} error(s) -- some checks did not complete.`,
+        });
+      }
+    }
+
     // Optional, best-effort valuation/origin sanity check against benchmark data.
     const uniqueHts = Array.from(new Set(lineItems.map((li) => li.htsCode).filter((h): h is string => Boolean(h) && !isBlockedHtsCode(h))));
     for (const hts of uniqueHts) {
@@ -470,8 +709,10 @@ export class ComplianceAuditAgent {
     const highCount = failedResults.filter((r) => r.severity === "HIGH").length;
     const mediumCount = failedResults.filter((r) => r.severity === "MEDIUM").length;
 
-    const uflpaResults = auditResults.filter((r) => r.category === "UFLPA");
-    const uflpaCleared = embargoRules.length > 0 && uflpaResults.length > 0 && uflpaResults.every((r) => r.passed);
+    // CLEAR only when both the country/region and entity-list checks actually
+    // ran with no hits/errors -- SKIPPED/ERROR/PARTIAL/HIT/undefined all fall
+    // through to false, never a fabricated clearance.
+    const uflpaCleared = forcedLaborScreening?.status === "CLEAR";
     const addCvdApplicable = auditResults.some((r) => r.category === "ADD_CVD" && !r.passed);
     const pgaRequirements = auditResults
       .filter((r) => r.category === "PGA" && !r.passed)
@@ -491,8 +732,23 @@ export class ComplianceAuditAgent {
     const htsCoverage = classifiedLines.length / totalLines;
     const embargoDataLoaded = embargoRules.length > 0 ? 1 : 0;
     const embargoScreeningRan = countryEmbargoScreening && countryEmbargoScreening.status !== "SKIPPED" ? 1 : 0;
+    const forcedLaborScreeningRan = forcedLaborScreening && forcedLaborScreening.status !== "SKIPPED" ? 1 : 0;
+    const endUseScreeningRan = endUseScreening && endUseScreening.status !== "SKIPPED" ? 1 : 0;
+    const endUserScreeningRan = endUserScreening && endUserScreening.status !== "SKIPPED" ? 1 : 0;
+    const antiBoycottScreeningRan = antiBoycottScreening && antiBoycottScreening.status !== "SKIPPED" ? 1 : 0;
+    const militaryEndUseScreeningRan = militaryEndUseScreening && militaryEndUseScreening.status !== "SKIPPED" ? 1 : 0;
     const confidence = Math.round(
-      ((originCoverage + htsCoverage + embargoDataLoaded + embargoScreeningRan) / 4) * 100
+      ((originCoverage +
+        htsCoverage +
+        embargoDataLoaded +
+        embargoScreeningRan +
+        forcedLaborScreeningRan +
+        endUseScreeningRan +
+        endUserScreeningRan +
+        antiBoycottScreeningRan +
+        militaryEndUseScreeningRan) /
+        9) *
+        100
     );
     const auditChecksRun = auditResults.length;
     const auditChecksPassed = auditResults.filter((r) => r.passed).length;
@@ -530,6 +786,11 @@ export class ComplianceAuditAgent {
           },
           findings: auditResults,
           embargoRulesLoaded: embargoRules.length,
+          forcedLaborScreeningStatus: forcedLaborScreening?.status ?? null,
+          endUseScreeningStatus: endUseScreening?.status ?? null,
+          endUserScreeningStatus: endUserScreening?.status ?? null,
+          antiBoycottScreeningStatus: antiBoycottScreening?.status ?? null,
+          militaryEndUseScreeningStatus: militaryEndUseScreening?.status ?? null,
         };
 
         const prompt = `${SYNTHESIS_SYSTEM_PROMPT}\n\nEVIDENCE:\n${JSON.stringify(evidence, null, 2)}`;
@@ -592,8 +853,19 @@ export class ComplianceAuditAgent {
             "Internal ADD/CVD Alert Table",
             "EmbargoRule Reference Table (OFAC/UFLPA)",
             ...(countryEmbargoScreening ? ["Country Embargo Screening (countries / country_by_country_maps)"] : []),
+            ...(forcedLaborScreening ? ["UFLPA Entity List Reference Table (ScreeningEntity)"] : []),
+            ...(endUseScreening ? ["Restricted End-Use Keyword Reference Table (ComplianceKeywordRule)"] : []),
+            ...(endUserScreening ? ["BIS Entity List / Unverified List Reference Table (ScreeningEntity)"] : []),
+            ...(antiBoycottScreening ? ["Anti-Boycott Country Flag (countries) + Keyword Reference Table (ComplianceKeywordRule)"] : []),
+            ...(militaryEndUseScreening ? ["Military End-Use Keyword Reference Table + Military End User (MEU) List (ComplianceKeywordRule / ScreeningEntity)"] : []),
           ],
-          regulations: ["19 CFR § 141.86", "UFLPA (Public Law 117-78)", "19 CFR Part 159 (ADD/CVD)"],
+          regulations: [
+            "19 CFR § 141.86",
+            "UFLPA (Public Law 117-78)",
+            "19 CFR Part 159 (ADD/CVD)",
+            "15 CFR Part 744 (End-Use / End-User / Military End-Use Controls)",
+            "15 CFR Part 760 (Anti-Boycott Regulations)",
+          ],
           modelVersion: aiProvider.includes("Gemini") ? aiModel("compliance-audit") : null,
           promptVersion: aiProvider.includes("Gemini") ? hashPromptVersion(SYNTHESIS_SYSTEM_PROMPT) : null,
           proposedDescription: `Compliance check for ${lineItems.length} line item(s)`,
@@ -603,6 +875,11 @@ export class ComplianceAuditAgent {
             flags,
             embargoRulesLoaded: embargoRules.length,
             countryEmbargoScreening,
+            forcedLaborScreening,
+            endUseScreening,
+            endUserScreening,
+            antiBoycottScreening,
+            militaryEndUseScreening,
           } as unknown as Prisma.InputJsonValue,
         },
       });
@@ -650,6 +927,11 @@ export class ComplianceAuditAgent {
       aiProviderUsed: aiProvider,
       debugError,
       countryEmbargoScreening,
+      forcedLaborScreening,
+      endUseScreening,
+      endUserScreening,
+      antiBoycottScreening,
+      militaryEndUseScreening,
     };
   }
 }

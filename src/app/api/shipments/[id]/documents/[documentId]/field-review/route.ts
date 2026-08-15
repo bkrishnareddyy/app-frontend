@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody, validatePathParams } from "@/lib/api/validation";
@@ -20,6 +21,7 @@ const bodySchema = z.object({
   fieldKey: z.enum(["exporterName", "importerName", "originCountry"]),
   action: z.enum(["APPROVE", "EDIT"]),
   value: z.string().trim().min(1, "A value is required"),
+  expectedVersion: z.number().optional(),
 });
 
 export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(async ({ req, ctx, requestId, params }) => {
@@ -29,7 +31,7 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
 
   const bodyVal = await parseAndValidateBody(req, bodySchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
-  const { fieldKey, action, value } = bodyVal.data;
+  const { fieldKey, action, value, expectedVersion } = bodyVal.data;
 
   try {
     const [shipment, document] = await Promise.all([
@@ -41,6 +43,30 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
 
     if (!shipment) return buildErrorResponse(404, "NOT_FOUND", "Shipment not found", undefined, requestId);
     if (!document) return buildErrorResponse(404, "NOT_FOUND", "Document not found", undefined, requestId);
+
+    if (typeof expectedVersion === "number" && expectedVersion !== shipment.version) {
+      return buildErrorResponse(
+        409,
+        "STALE_SHIPMENT",
+        "This shipment changed since it was loaded. Reload before saving again.",
+        undefined,
+        requestId
+      );
+    }
+
+    // Two reviewers approving/editing the same field both used to win: neither
+    // write below checked shipment.version, so whichever request landed last
+    // silently overwrote the other's change. Claiming the row with a
+    // conditional update (mirroring PATCH /api/shipments/[id]) makes the
+    // second, now-stale write fail with 409 instead of clobbering silently.
+    const shipmentVersion = shipment.version;
+    async function applyVersionedShipmentUpdate(data: Prisma.ShipmentUpdateInput): Promise<boolean> {
+      const result = await db.shipment.updateMany({
+        where: { id: shipmentId, accountId: ctx.accountId, version: shipmentVersion },
+        data: { ...data, version: { increment: 1 } },
+      });
+      return result.count > 0;
+    }
 
     const resolverName = [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || ctx.email;
 
@@ -57,7 +83,15 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
         newValue: value,
         reason: action === "EDIT" ? "Corrected via field review" : "Approved via field review",
       });
-      await db.shipment.update({ where: { id: shipmentId }, data: { countryOfOrigin: value, version: { increment: 1 } } });
+      if (!(await applyVersionedShipmentUpdate({ countryOfOrigin: value }))) {
+        return buildErrorResponse(
+          409,
+          "STALE_SHIPMENT",
+          "This shipment changed since it was loaded. Reload before saving again.",
+          undefined,
+          requestId
+        );
+      }
       await FactService.record({ shipmentId, field: "countryOfOrigin", value, sourceType: "USER_ENTERED", documentId });
     } else {
       const role: ShipmentPartyRole = fieldKey === "importerName" ? "IMPORTER_OF_RECORD" : "EXPORTER";
@@ -90,7 +124,15 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
         newValue: value,
         reason: action === "EDIT" ? "Corrected via field review" : "Approved via field review",
       });
-      await db.shipment.update({ where: { id: shipmentId }, data: { version: { increment: 1 } } });
+      if (!(await applyVersionedShipmentUpdate({}))) {
+        return buildErrorResponse(
+          409,
+          "STALE_SHIPMENT",
+          "This shipment changed since it was loaded. Reload before saving again.",
+          undefined,
+          requestId
+        );
+      }
       await FactService.record({ shipmentId, field: fieldKey, value, sourceType: "USER_ENTERED", documentId });
     }
 

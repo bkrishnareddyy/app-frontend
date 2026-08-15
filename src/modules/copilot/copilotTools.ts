@@ -18,6 +18,7 @@ import { partyTools } from "./tools/partyTools";
 import { shipmentTools } from "./tools/shipmentTools";
 import { documentTools } from "./tools/documentTools";
 import { workTools } from "./tools/workTools";
+import { complianceTools } from "./tools/complianceTools";
 
 export const COPILOT_TOOLS: readonly AnyCopilotTool[] = [
   ...productTools,
@@ -25,6 +26,7 @@ export const COPILOT_TOOLS: readonly AnyCopilotTool[] = [
   ...shipmentTools,
   ...documentTools,
   ...workTools,
+  ...complianceTools,
 ];
 
 const BY_NAME = new Map(COPILOT_TOOLS.map((tool) => [tool.name, tool]));

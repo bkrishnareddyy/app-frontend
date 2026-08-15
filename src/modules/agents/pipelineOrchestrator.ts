@@ -573,6 +573,8 @@ export class PipelineOrchestrator {
           transportDocumentNumber: strOrNull(logistics?.transportDocumentNumber),
           isHtsBlocked,
           parties: context.parties,
+          endUseStatement: factValue(context, "endUseStatement"),
+          documentNarrativeText: factValue(context, "documentNarrativeText"),
         };
         const output: ComplianceAuditOutput = await ComplianceAuditAgent.execute(agentInput);
         scratch.isComplianceBlocked = output.status === "BLOCKED_DEPENDENCY";

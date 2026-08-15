@@ -7,7 +7,20 @@ import { runReconciliationEngine, type DocumentGroup } from "@/lib/reconciliatio
 
 interface ComplianceAuditFinding {
   ruleId: string;
-  category: "PGA" | "ADD_CVD" | "UFLPA" | "VALUATION" | "HTS_INTEGRITY" | "DATA_MISSING" | "SCREENING_GAP";
+  category:
+    | "PGA"
+    | "ADD_CVD"
+    | "UFLPA"
+    | "VALUATION"
+    | "HTS_INTEGRITY"
+    | "DATA_MISSING"
+    | "SCREENING_GAP"
+    | "COUNTRY_EMBARGO"
+    | "END_USE_RESTRICTION"
+    | "END_USER_RESTRICTION"
+    | "ANTI_BOYCOTT"
+    | "MILITARY_END_USE"
+    | "MILITARY_END_USER";
   passed: boolean;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   details: string;
@@ -30,6 +43,12 @@ const COMPLIANCE_EXCEPTION_CATEGORY: Record<ComplianceAuditFinding["category"], 
   VALUATION: "COMPLIANCE",
   HTS_INTEGRITY: "COMPLIANCE",
   DATA_MISSING: "MISSING_DATA",
+  COUNTRY_EMBARGO: "COMPLIANCE",
+  END_USE_RESTRICTION: "COMPLIANCE",
+  END_USER_RESTRICTION: "COMPLIANCE",
+  ANTI_BOYCOTT: "COMPLIANCE",
+  MILITARY_END_USE: "COMPLIANCE",
+  MILITARY_END_USER: "COMPLIANCE",
 };
 
 function complianceExceptionCode(finding: ComplianceAuditFinding): string {
