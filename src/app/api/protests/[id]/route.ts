@@ -104,6 +104,16 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   // Replace entries if provided
   if (entries !== undefined) {
+    if (entries.length > 0) {
+      const filingIds = [...new Set(entries.map((e) => e.filingId))];
+      const ownedFilings = await db.customsFiling.findMany({
+        where: { id: { in: filingIds }, accountId: ctx.accountId },
+        select: { id: true },
+      });
+      if (ownedFilings.length !== filingIds.length) {
+        return buildErrorResponse(404, "NOT_FOUND", "One or more linked filings were not found in this account", undefined, requestId);
+      }
+    }
     await db.protestEntry.deleteMany({ where: { protestId: id } });
     updateData.protestEntries = {
       create: entries.map((e) => ({

@@ -68,8 +68,8 @@ export class ProductMasterService {
    * a human already approved it in the classification workflow.
    */
   static async bindClassification(input: BindClassificationInput) {
-    const decision = await db.classificationDecision.findUnique({
-      where: { id: input.decisionId },
+    const decision = await db.classificationDecision.findFirst({
+      where: { id: input.decisionId, case: { accountId: input.accountId } },
       include: {
         approvedNode: { include: { dutyRates: true } },
         case: true,

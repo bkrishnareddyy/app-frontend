@@ -74,6 +74,8 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
         shipmentId,
         legalEntityId: resolvedEntity.id,
         role,
+        accountId: ctx.accountId,
+        userId: ctx.userId,
         source: "USER",
         confidence: 1.0,
         isVerified: true,
@@ -108,6 +110,7 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
     await ExceptionService.resolveDocumentFieldException(
       documentId,
       fieldKey,
+      ctx.accountId,
       { userId: ctx.userId, name: resolverName },
       action === "EDIT" ? `${label} corrected via field review to "${value}".` : `${label} approved as extracted: "${value}".`
     );

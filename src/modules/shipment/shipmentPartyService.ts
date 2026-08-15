@@ -21,10 +21,10 @@ export interface AssignPartyInput {
   shipmentId: string;
   legalEntityId: string;
   role: ShipmentPartyRole;
+  accountId: string;
   source?: "USER" | "DOCUMENT" | "AI" | "SYSTEM" | "EXTERNAL_API";
   confidence?: number;
   isVerified?: boolean;
-  accountId?: string;
   userId?: string | null;
 }
 
@@ -34,6 +34,14 @@ export class ShipmentPartyService {
    * Ensures idempotency: updating existing role assignment if present.
    */
   static async assignParty(input: AssignPartyInput) {
+    const legalEntity = await db.legalEntity.findFirst({
+      where: { id: input.legalEntityId, accountId: input.accountId },
+      select: { id: true },
+    });
+    if (!legalEntity) {
+      throw new Error(`LegalEntity '${input.legalEntityId}' not found for account.`);
+    }
+
     const existing = await db.shipmentParty.findFirst({
       where: {
         shipmentId: input.shipmentId,
@@ -76,14 +84,12 @@ export class ShipmentPartyService {
 
     // When the LegalEntity is linked to a Party master record, check for open
     // revalidation flags that would make using this party on a shipment risky.
-    if (input.accountId) {
-      await ShipmentPartyService.checkPartyMasterRevalidation(
-        input.shipmentId,
-        input.legalEntityId,
-        input.accountId,
-        input.userId ?? null
-      );
-    }
+    await ShipmentPartyService.checkPartyMasterRevalidation(
+      input.shipmentId,
+      input.legalEntityId,
+      input.accountId,
+      input.userId ?? null
+    );
 
     return created;
   }

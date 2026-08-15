@@ -264,6 +264,12 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   // Handle Client update
   if (clientId !== undefined) {
+    if (clientId) {
+      const client = await db.client.findFirst({ where: { id: clientId, accountId: ctx.accountId } });
+      if (!client) {
+        return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
+      }
+    }
     await db.shipment.update({
       where: { id },
       data: { clientId: clientId || null },
@@ -279,6 +285,8 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
           legalEntityId: party.legalEntityId,
           role: party.role as ShipmentPartyRole,
           source: "USER",
+          accountId: ctx.accountId,
+          userId: ctx.userId,
         });
       }
     }

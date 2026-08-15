@@ -685,7 +685,7 @@ export class PipelineOrchestrator {
       })),
     });
 
-    await LineItemReconciler.fillShipmentFields(shipmentId, {
+    await LineItemReconciler.fillShipmentFields(shipmentId, accountId, {
       countryOfOrigin: output.originCountry,
       incoterm: output.incoterm,
     });
@@ -826,7 +826,7 @@ export class PipelineOrchestrator {
 
     for (const finding of findings) {
       const existing = await db.exceptionItem.findFirst({
-        where: { shipmentId, code: finding.code, status: { not: "Resolved" } },
+        where: { shipmentId, accountId, code: finding.code, status: { not: "Resolved" } },
       });
       if (existing) continue;
 

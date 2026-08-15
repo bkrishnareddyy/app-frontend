@@ -40,6 +40,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const data = val.data;
 
+  if (data.clientId) {
+    const client = await db.client.findFirst({ where: { id: data.clientId, accountId: ctx.accountId } });
+    if (!client) {
+      return NextResponse.json({ error: "Invalid clientId: Client not found in this account" }, { status: 400 });
+    }
+  }
+
   const entity = await db.legalEntity.create({
     data: {
       accountId: ctx.accountId,
