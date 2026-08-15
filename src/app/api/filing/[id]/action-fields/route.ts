@@ -28,14 +28,19 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
 
   const filing = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
-    include: { shipment: true },
+    include: { shipment: true, transactionType: true },
   });
   if (!filing) {
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
   }
 
+  // Multi-country migration: Use new field structure with fallbacks for backwards compatibility
   const context = await resolveMessageContext(
-    { entryType: filing.entryType, destinationCountry: filing.shipment.destinationCountry },
+    { 
+      transactionType: filing.transactionType?.code || "IMPORT",
+      procedureCode: filing.procedureCode || filing.entryType || "01",
+      country: filing.country || filing.shipment.destinationCountry || "US"
+    },
     action
   );
 

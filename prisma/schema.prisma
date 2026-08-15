@@ -860,11 +860,36 @@ model CustomsFiling {
   bondId             String?
   bond               Bond?             @relation(fields: [bondId], references: [id], onDelete: SetNull)
   entryNumber        String // internal reference until the authority assigns its own; see authorityReference on CustomsResponse
-  // No default: both are resolved per destinationCountry from FilingAuthorityConfig
-  // at creation time (see POST /api/filing) -- a schema-level default here is
-  // exactly the kind of hardcoded-to-one-country value this table exists to avoid.
-  authority          String
-  entryType          String // a code from entryType.ts today; see the country-agnostic-design gap notes
+  
+  // ========================================================================
+  // NEW MULTI-COUNTRY FIELDS (replaces US-centric entryType + authority)
+  // ========================================================================
+  
+  /// Transaction type (IMPORT, EXPORT, NCTS, etc.) - replaces US entry type concept
+  transactionTypeId  String?
+  transactionType    FilingTransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
+  
+  /// ISO 3166-1 alpha-2 country code (NL, IE, FR, IN, US, etc.)
+  /// Replaces the authority field which was storing authority names
+  country            String?
+  
+  /// Country-specific procedure code (e.g., "5100" for NL NCTS, "4000" for IN Import)
+  /// Together with country, uniquely identifies the customs procedure
+  procedureCode      String?
+  
+  // ========================================================================
+  // LEGACY FIELDS (kept temporarily for backwards compatibility)
+  // TODO: Remove after data migration
+  // ========================================================================
+  
+  /// @deprecated Use transactionTypeId instead. US-centric field from entryType.ts
+  entryType          String?
+  
+  /// @deprecated Use country instead. Was storing authority display names like "CBP"
+  authority          String?
+  
+  // ========================================================================
+  
   filingType         String
   filingStatus       String            @default("Draft") // Draft, Preparing, ValidationFailed, ReadyForBrokerReview, BrokerApproved, TransmissionPending, Transmitted, Accepted, Rejected, DocumentsRequested, CustomsHold, Released, Cancelled, Closed, Simulation
   paymentStatus      String            @default("Pending") // Pending, Paid, Deferred
@@ -906,6 +931,8 @@ model CustomsFiling {
   @@index([shipmentId])
   @@index([accountId])
   @@index([filingStatus])
+  @@index([country, procedureCode])
+  @@index([transactionTypeId])
 }
 
 model CustomsResponse {
@@ -4165,83 +4192,22 @@ model FilingSchemaVersion {
 /// well-tested domain state machine and stays there. This table exists
 /// because which canonical status maps to which transition can legitimately
 /// vary as new countries/authorities are onboarded.
-model FilingResponseStatusMapping {
-  id               String @id @default(cuid())
-  country          String // ISO code, or "*" wildcard
-  messageName      String // the response messageName this applies to, or "*"
-  canonicalStatus  String // e.g. "ACCEPTED", "REJECTED", "NEEDS_INFO"
-  filingTransition String // a FilingTransition value, e.g. "cbp.accept"
-
-  @@unique([country, messageName, canonicalStatus])
-}
-
-/// Valid outbound message actions. Replaces a hardcoded FilingMessageType
-/// union so a new action never requires a code deploy.
-model FilingMessageActionCatalog {
-  code                 String  @id // SUBMIT, AMENDMENT, CANCELLATION, RESUBMIT, STATUS_INQUIRY
-  label                String
-  requiresPriorMessage Boolean @default(false)
-}
-
-/// (entryType, country) -> the procedure code the third party's message
-/// catalog expects. Wraps entryType.ts's stable CBP entry-type vocabulary; it
-/// does not replace it -- entryType.ts stays the internal source of truth,
-/// this table only translates it per destination country.
-model FilingProcedureMapping {
-  id            String @id @default(cuid())
-  entryType     String // a code from entryType.ts, e.g. "01"
-  country       String // ISO code, or "*" wildcard
-  procedureCode String
-
-  @@unique([entryType, country])
-}
-
-/// (action, country, procedureCode) -> the messageName and queue the message
-/// catalog expects for that combination. queueName is included so queue
-/// routing per country is configuration too, not a hardcoded string.
-model FilingMessageCatalog {
-  id            String @id @default(cuid())
-  action        String // a FilingMessageActionCatalog code, or "*"
-  country       String // or "*"
-  procedureCode String // or "*"
-  messageName   String
-  queueName     String
-
-  @@unique([action, country, procedureCode])
-}
-
-/// Whether a filing's declaration is editable, and Save/Submit/Resubmit
-/// buttons shown, for a given (country, procedure, messageName, status)
-/// combination. Resolution is most-specific-match-wins; no match defaults to
-/// false -- fail closed, never fail open.
-model FilingActionRule {
-  id            String  @id @default(cuid())
-  country       String // ISO code, or "*" wildcard
-  procedureCode String // or "*"
-  messageName   String // the messageName of the message that produced the current status, or "*"
-  status        String // a CustomsFiling.filingStatus value, or "*"
-  allowUpdates  Boolean @default(false)
-
-  @@unique([country, procedureCode, messageName, status])
-}
-
-/// Which child actions (CANCEL, AMEND, INVALIDATE, ...) are offered for a given
-/// (country, procedure, messageName, status). One row per action rather than a
-/// boolean column per action -- adding a new child action later is a seed-data
-/// row, never a migration, and the set of actions works the same way for every
-/// country instead of being enumerated in code. Resolution is
-/// most-specific-match-wins per action (see resolveChildActions()); a status
-/// with no matching row for an action simply doesn't offer it -- fail closed.
-model FilingChildActionRule {
-  id            String @id @default(cuid())
-  country       String // ISO code, or "*" wildcard
-  procedureCode String // or "*"
-  messageName   String // or "*"
-  status        String // a CustomsFiling.filingStatus value, or "*"
-  action        String // "CANCEL", "AMEND", "INVALIDATE", ...
-
-  @@unique([country, procedureCode, messageName, status, action])
-}
+// ============================================================================
+// OLD FILING CONFIGURATION TABLES (REMOVED)
+//
+// The following tables have been dropped and replaced by the new multi-country
+// filing configuration design:
+//
+// - FilingResponseStatusMapping → removed (state machine handled differently)
+// - FilingMessageActionCatalog → replaced by FilingActionCatalog
+// - FilingProcedureMapping → replaced by FilingProcedureConfig
+// - FilingMessageCatalog → replaced by FilingActionMessageMapping
+// - FilingActionRule → replaced by FilingActionConfiguration.allowSubmit
+// - FilingChildActionRule → replaced by FilingActionConfiguration.availableActions
+// - FilingAuthorityConfig → removed (authority names handled in UI layer)
+//
+// See new tables starting at line 4063 (FilingTransactionType, etc.)
+// ============================================================================
 
 /// Which extra data a given (country, procedure, messageName, action) needs
 /// beyond the declaration itself -- e.g. a German NCTS transit cancellation
@@ -4272,17 +4238,119 @@ model FilingActionDataRequirement {
   @@unique([country, procedureCode, messageName, action])
 }
 
-/// (destinationCountry) -> the authority name and filing-system label to stamp
-/// on a new CustomsFiling. No wildcard fallback -- unlike the lookup tables
-/// above, "which authority is this filing with" has no sensible generic
-/// default; a country with no row here simply cannot have a filing created
-/// for it yet (POST /api/filing fails closed), the same way an unmapped
-/// entryType/country combination already fails closed in resolveMessageContext.
-model FilingAuthorityConfig {
-  id                String @id @default(cuid())
-  country           String @unique // ISO 3166-1 alpha-2
-  authorityName     String // e.g. "U.S. Customs and Border Protection (CBP)"
-  filingSystemLabel String // e.g. "ABI - Automated"
+
+// ============================================================================
+// NEW MULTI-COUNTRY FILING CONFIGURATION (Redesigned)
+//
+// These tables replace the US-centric filing configuration with a country-
+// agnostic design that supports multiple countries (NL, IE, FR, IN, etc.)
+// and their specific customs procedures and message types.
+//
+// Design Principles:
+// - No JSON storage for configuration data
+// - All tables prefixed with "Filing"
+// - Labels handled by i18n layer (not stored in DB)
+// - Support for multi-country, multi-procedure workflows
+// - Clean separation between catalog tables and configuration tables
+// ============================================================================
+
+/// Universal transaction type catalog (IMPORT, EXPORT, NCTS, TEMP_STORAGE, etc.).
+/// These are global categories that transcend country-specific procedures.
+model FilingTransactionType {
+  id        String   @id @default(cuid())
+  code      String   @unique // IMPORT, EXPORT, NCTS, TEMP_STORAGE, BONDED_WAREHOUSE
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  procedures FilingProcedureConfig[]
+  filings    CustomsFiling[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+/// Universal action catalog (SUBMIT, AMENDMENT, CANCELLATION, etc.).
+/// These are the user-initiated actions that can be performed on a filing.
+model FilingActionCatalog {
+  id        String   @id @default(cuid())
+  code      String   @unique // SUBMIT, AMENDMENT, CANCELLATION, INVALIDATION, WITHDRAWAL
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  @@index([code])
+  @@index([isActive])
+}
+
+/// Lists valid message names for each country/procedure/transaction combination.
+/// Replaces the old FilingProcedureMapping which was US-centric (entryType-based).
+/// Example: (NL, NCTS, 5100, IE015) means Netherlands NCTS procedure 5100 uses message IE015.
+model FilingProcedureConfig {
+  id                String                 @id @default(cuid())
+  transactionTypeId String
+  transactionType   FilingTransactionType  @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
+  country           String                 // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
+  procedureCode     String                 // Country-specific procedure code (5100, 4000, etc.)
+  messageName       String                 // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
+  isActive          Boolean                @default(true)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  createdBy         String?
+  updatedBy         String?
+
+  @@unique([country, procedureCode, messageName])
+  @@index([country, procedureCode])
+  @@index([transactionTypeId])
+  @@index([isActive])
+}
+
+/// Maps user actions to outbound message names per country/procedure.
+/// Example: (NL, 5100, AMENDMENT, IE013) means Amendment action sends IE013 message.
+model FilingActionMessageMapping {
+  id            String   @id @default(cuid())
+  country       String   // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
+  procedureCode String   // Country-specific procedure code
+  action        String   // Action code from FilingActionCatalog (SUBMIT, AMENDMENT, CANCELLATION)
+  messageName   String   // Outbound message name to send (IE015, IE013, IE014, etc.)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([country, procedureCode, action])
+  @@index([country, procedureCode])
+  @@index([action])
+  @@index([isActive])
+}
+
+/// Determines which actions are available and whether resubmit is allowed
+/// based on the request message sent and the response status received.
+/// Example: (NL, 5100, IE015, ACCEPTED, [AMENDMENT,CANCELLATION], false)
+/// means after sending IE015 and receiving ACCEPTED status, Amendment and
+/// Cancellation actions are available but Resubmit is not allowed.
+model FilingActionConfiguration {
+  id               String   @id @default(cuid())
+  country          String   // ISO 3166-1 alpha-2
+  procedureCode    String   // Country-specific procedure code
+  messageName      String   // REQUEST message that was sent (IE015, IE013, ICEGATE_BOE, etc.)
+  status           String   // Response status received (TRANSMITTED, ACCEPTED, REJECTED, PENDING, etc.)
+  availableActions String[] // Array of action codes that are available (AMENDMENT, CANCELLATION, etc.)
+  allowSubmit      Boolean  @default(false) // Whether original declaration can be resubmitted
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdBy        String?
+  updatedBy        String?
+
+  @@unique([country, procedureCode, messageName, status])
+  @@index([country, procedureCode, messageName])
+  @@index([isActive])
 }
 
 model WorkMetricSnapshot {

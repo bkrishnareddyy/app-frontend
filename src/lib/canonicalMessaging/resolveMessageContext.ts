@@ -1,77 +1,156 @@
 import { db } from "@/lib/db";
-import { requireEntryTypeCode } from "@/modules/filing/entryType";
-import { findMostSpecificMatch } from "./wildcardLookup";
 import type { FilingMessageAction } from "./types";
 
 export interface MessageContextInput {
-  /** Raw entryType as stored on Shipment/CustomsFiling -- normalized internally. */
-  entryType: string | null | undefined;
-  destinationCountry: string | null | undefined;
+  /** 
+   * Transaction type (IMPORT, EXPORT, NCTS, etc.) - replaces US-centric entryType.
+   * Required for new multi-country design.
+   */
+  transactionType: string | null | undefined;
+  
+  /** 
+   * Country-specific procedure code (e.g., "5100" for NL NCTS, "4000" for IN Import).
+   * Required for new multi-country design.
+   */
+  procedureCode: string | null | undefined;
+  
+  /** ISO 3166-1 alpha-2 country code (NL, IE, FR, IN, etc.) */
+  country: string | null | undefined;
 }
 
 export interface ResolvedMessageContext {
-  entryTypeCode: string;
+  transactionType: string;
   country: string;
   procedure: string;
   messageName: string;
-  queueName: string;
 }
 
 /**
- * Derives country/procedure/messageName from shipment data and the
- * FilingProcedureMapping/FilingMessageCatalog reference tables. No caller may
- * hardcode any of these three values -- this is the single resolution point.
+ * Derives country/procedure/messageName from filing data and the new
+ * multi-country configuration tables (FilingProcedureConfig, FilingActionMessageMapping).
+ * 
+ * Replaces the old US-centric approach that used entryType + FilingProcedureMapping
+ * + FilingMessageCatalog.
+ * 
+ * No caller may hardcode any of these values -- this is the single resolution point.
  */
 export async function resolveMessageContext(
   input: MessageContextInput,
   action: FilingMessageAction
 ): Promise<ResolvedMessageContext> {
-  const entryTypeCode = requireEntryTypeCode(input.entryType);
-
-  const country = input.destinationCountry?.trim();
+  // Validate required inputs
+  const country = input.country?.trim().toUpperCase();
   if (!country) {
     throw new Error(
-      "Cannot resolve a message context: shipment.destinationCountry is not set. " +
-        "The destination country is never inferred -- set it explicitly on the shipment."
+      "Cannot resolve message context: country is not set. " +
+        "The destination country is never inferred -- set it explicitly."
     );
   }
 
-  const procedureCandidates = await db.filingProcedureMapping.findMany({
-    where: { entryType: entryTypeCode, country: { in: [country, "*"] } },
-  });
-  const procedureMatch = findMostSpecificMatch(procedureCandidates, ["country"], { country });
-  if (!procedureMatch) {
+  const procedureCode = input.procedureCode?.trim();
+  if (!procedureCode) {
     throw new Error(
-      `No FilingProcedureMapping row for entryType "${entryTypeCode}" and country "${country}" ` +
-        `(and no "*" wildcard fallback exists). Add the mapping before filing to this destination.`
+      "Cannot resolve message context: procedureCode is not set. " +
+        "Set the country-specific procedure code explicitly (e.g., '5100' for NL NCTS)."
     );
   }
-  const procedure = procedureMatch.procedureCode;
 
-  const catalogCandidates = await db.filingMessageCatalog.findMany({
+  const transactionType = input.transactionType?.trim().toUpperCase();
+  if (!transactionType) {
+    throw new Error(
+      "Cannot resolve message context: transactionType is not set. " +
+        "Set the transaction type (IMPORT, EXPORT, NCTS, etc.) explicitly."
+    );
+  }
+
+  // Verify the transaction type exists
+  const txType = await db.filingTransactionType.findUnique({
+    where: { code: transactionType, isActive: true },
+  });
+  if (!txType) {
+    throw new Error(
+      `Transaction type "${transactionType}" not found or inactive. ` +
+        `Valid types: IMPORT, EXPORT, NCTS, TEMP_STORAGE, BONDED_WAREHOUSE, etc.`
+    );
+  }
+
+  // Look up the action → messageName mapping
+  const actionMapping = await db.filingActionMessageMapping.findUnique({
     where: {
-      action: { in: [action, "*"] },
-      country: { in: [country, "*"] },
-      procedureCode: { in: [procedure, "*"] },
+      country_procedureCode_action: {
+        country,
+        procedureCode,
+        action,
+      },
+      isActive: true,
     },
   });
-  const catalogMatch = findMostSpecificMatch(catalogCandidates, ["action", "country", "procedureCode"], {
-    action,
-    country,
-    procedureCode: procedure,
-  });
-  if (!catalogMatch) {
+
+  if (!actionMapping) {
+    // BACKWARDS COMPATIBILITY: Handle old US filings that haven't been migrated yet
+    if (country === "US") {
+      console.warn(
+        `[resolveMessageContext] No action mapping found for US filing with ` +
+        `procedureCode="${procedureCode}", action="${action}". ` +
+        `This is expected for old filings not yet migrated. Using fallback.`
+      );
+      
+      // Return fallback for US CBP entries (old system)
+      return {
+        transactionType,
+        country,
+        procedure: procedureCode,
+        messageName: "CBP_ENTRY_7501", // Generic US entry message (Form 7501)
+      };
+    }
+    
     throw new Error(
-      `No FilingMessageCatalog row for action "${action}", country "${country}", procedure "${procedure}" ` +
-        `(and no "*" wildcard fallback exists).`
+      `No message mapping found for action "${action}", country "${country}", ` +
+        `procedure "${procedureCode}". Add FilingActionMessageMapping configuration ` +
+        `before filing to this destination.`
+    );
+  }
+
+  // Verify the procedure + messageName combination exists
+  const procedureConfig = await db.filingProcedureConfig.findUnique({
+    where: {
+      country_procedureCode_messageName: {
+        country,
+        procedureCode,
+        messageName: actionMapping.messageName,
+      },
+      isActive: true,
+    },
+  });
+
+  if (!procedureConfig) {
+    // BACKWARDS COMPATIBILITY: Skip validation for old US filings
+    if (country === "US") {
+      console.warn(
+        `[resolveMessageContext] No procedure config found for US filing with ` +
+        `procedureCode="${procedureCode}", messageName="${actionMapping.messageName}". ` +
+        `This is expected for old filings not yet migrated. Skipping validation.`
+      );
+      
+      return {
+        transactionType,
+        country,
+        procedure: procedureCode,
+        messageName: actionMapping.messageName,
+      };
+    }
+    
+    throw new Error(
+      `Procedure configuration not found for country "${country}", ` +
+        `procedure "${procedureCode}", message "${actionMapping.messageName}". ` +
+        `Add FilingProcedureConfig row before filing.`
     );
   }
 
   return {
-    entryTypeCode,
+    transactionType,
     country,
-    procedure,
-    messageName: catalogMatch.messageName,
-    queueName: catalogMatch.queueName,
+    procedure: procedureCode,
+    messageName: actionMapping.messageName,
   };
 }

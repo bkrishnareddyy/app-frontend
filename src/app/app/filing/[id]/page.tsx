@@ -58,11 +58,12 @@ export default async function CustomsFilingDetailPage(props: { params: Promise<{
   const filingProps = {
     id: filing.id,
     entryNumber: filing.entryNumber,
-    entryType: filing.entryType,
+    entryType: filing.entryType ?? null, // Multi-country migration: entryType is now nullable
     filingType: filing.filingType,
     filingStatus: filing.filingStatus,
     paymentStatus: filing.paymentStatus,
-    authority: filing.authority,
+    authority: filing.authority ?? null, // Multi-country migration: authority is now nullable
+    country: filing.country ?? null, // Multi-country support
     totalValue: filing.totalValue === null ? null : Number(filing.totalValue),
     totalDuties: filing.totalDuties === null ? null : Number(filing.totalDuties),
     totalTaxes: filing.totalTaxes === null ? null : Number(filing.totalTaxes),

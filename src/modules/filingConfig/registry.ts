@@ -9,16 +9,29 @@ import { z } from "zod";
  * migration/seed only, never edited live through a runtime admin surface.
  * FilingMessage is excluded too: it's an audit/queue log of real messages,
  * not configuration.
+ * 
+ * MULTI-COUNTRY MIGRATION NOTE:
+ * Many old tables have been dropped and replaced with new design.
+ * Commented out entries reference dropped tables.
  */
 export type FilingConfigTableKey =
-  | "procedure-mapping"
-  | "authority-config"
-  | "message-catalog"
-  | "response-status-mapping"
-  | "action-rule"
-  | "child-action-rule"
-  | "message-action-catalog"
-  | "action-data-requirement";
+  // NEW TABLES (multi-country design)
+  | "transaction-type"
+  | "action-catalog"
+  | "procedure-config"
+  | "action-message-mapping"
+  | "action-configuration"
+  // KEPT TABLES
+  | "action-data-requirement"
+  // DROPPED TABLES (commented out - kept for reference)
+  // | "procedure-mapping" // DROPPED - replaced by procedure-config
+  // | "authority-config" // DROPPED - authority names in UI layer
+  // | "message-catalog" // DROPPED - replaced by action-message-mapping
+  // | "response-status-mapping" // DROPPED - response handling redesigned
+  // | "action-rule" // DROPPED - merged into action-configuration
+  // | "child-action-rule" // DROPPED - merged into action-configuration
+  // | "message-action-catalog"; // DROPPED - replaced by action-catalog
+
 
 /**
  * The shape of one entry inside a "fieldArray" column -- e.g. one required
@@ -62,48 +75,106 @@ interface TableDef<TRow> {
 
 const wildcardHelp = '"*" matches any value (wildcard fallback) when no more specific row exists.';
 
-const procedureMappingSchema = z.object({
-  entryType: z.string().trim().min(1).max(50),
+// ============================================================================
+// NEW MULTI-COUNTRY SCHEMAS
+// ============================================================================
+
+const transactionTypeSchema = z.object({
+  code: z.string().trim().min(1).max(50),
+  isActive: z.boolean(),
+  createdBy: z.string().trim().max(100).optional(),
+  updatedBy: z.string().trim().max(100).optional(),
+});
+
+const actionCatalogSchema = z.object({
+  code: z.string().trim().min(1).max(50),
+  isActive: z.boolean(),
+  createdBy: z.string().trim().max(100).optional(),
+  updatedBy: z.string().trim().max(100).optional(),
+});
+
+const procedureConfigSchema = z.object({
+  transactionTypeId: z.string().trim().min(1),
   country: z.string().trim().min(1).max(50),
   procedureCode: z.string().trim().min(1).max(50),
+  messageName: z.string().trim().min(1).max(100),
+  isActive: z.boolean(),
+  createdBy: z.string().trim().max(100).optional(),
+  updatedBy: z.string().trim().max(100).optional(),
 });
 
-const authorityConfigSchema = z.object({
+const actionMessageMappingSchema = z.object({
   country: z.string().trim().min(1).max(50),
-  authorityName: z.string().trim().min(1).max(200),
-  filingSystemLabel: z.string().trim().min(1).max(200),
-});
-
-const messageCatalogSchema = z.object({
+  procedureCode: z.string().trim().min(1).max(50),
   action: z.string().trim().min(1).max(50),
-  country: z.string().trim().min(1).max(50),
-  procedureCode: z.string().trim().min(1).max(50),
   messageName: z.string().trim().min(1).max(100),
-  queueName: z.string().trim().min(1).max(100),
+  isActive: z.boolean(),
+  createdBy: z.string().trim().max(100).optional(),
+  updatedBy: z.string().trim().max(100).optional(),
 });
 
-const responseStatusMappingSchema = z.object({
-  country: z.string().trim().min(1).max(50),
-  messageName: z.string().trim().min(1).max(100),
-  canonicalStatus: z.string().trim().min(1).max(50),
-  filingTransition: z.string().trim().min(1).max(50),
-});
-
-const actionRuleSchema = z.object({
+const actionConfigurationSchema = z.object({
   country: z.string().trim().min(1).max(50),
   procedureCode: z.string().trim().min(1).max(50),
   messageName: z.string().trim().min(1).max(100),
   status: z.string().trim().min(1).max(50),
-  allowUpdates: z.boolean(),
+  availableActions: z.array(z.string().trim().min(1).max(50)).max(20),
+  allowSubmit: z.boolean(),
+  isActive: z.boolean(),
+  createdBy: z.string().trim().max(100).optional(),
+  updatedBy: z.string().trim().max(100).optional(),
 });
 
-const childActionRuleSchema = z.object({
-  country: z.string().trim().min(1).max(50),
-  procedureCode: z.string().trim().min(1).max(50),
-  messageName: z.string().trim().min(1).max(100),
-  status: z.string().trim().min(1).max(50),
-  action: z.string().trim().min(1).max(50),
-});
+// ============================================================================
+// OLD SCHEMAS (commented out - tables dropped)
+// ============================================================================
+
+// const procedureMappingSchema = z.object({
+//   entryType: z.string().trim().min(1).max(50),
+//   country: z.string().trim().min(1).max(50),
+//   procedureCode: z.string().trim().min(1).max(50),
+// });
+
+// const authorityConfigSchema = z.object({
+//   country: z.string().trim().min(1).max(50),
+//   authorityName: z.string().trim().min(1).max(200),
+//   filingSystemLabel: z.string().trim().min(1).max(200),
+// });
+
+// const messageCatalogSchema = z.object({
+//   action: z.string().trim().min(1).max(50),
+//   country: z.string().trim().min(1).max(50),
+//   procedureCode: z.string().trim().min(1).max(50),
+//   messageName: z.string().trim().min(1).max(100),
+//   queueName: z.string().trim().min(1).max(100),
+// });
+
+// const responseStatusMappingSchema = z.object({
+//   country: z.string().trim().min(1).max(50),
+//   messageName: z.string().trim().min(1).max(100),
+//   canonicalStatus: z.string().trim().min(1).max(50),
+//   filingTransition: z.string().trim().min(1).max(50),
+// });
+
+// const actionRuleSchema = z.object({
+//   country: z.string().trim().min(1).max(50),
+//   procedureCode: z.string().trim().min(1).max(50),
+//   messageName: z.string().trim().min(1).max(100),
+//   status: z.string().trim().min(1).max(50),
+//   allowUpdates: z.boolean(),
+// });
+
+// const childActionRuleSchema = z.object({
+//   country: z.string().trim().min(1).max(50),
+//   procedureCode: z.string().trim().min(1).max(50),
+//   messageName: z.string().trim().min(1).max(100),
+//   status: z.string().trim().min(1).max(50),
+//   action: z.string().trim().min(1).max(50),
+// });
+
+// ============================================================================
+// KEPT SCHEMAS
+// ============================================================================
 
 // Recursive: type "grid" makes a field a list of rows shaped by `columns`,
 // and a column can itself be another grid to any depth (e.g. a GoodsItem
@@ -145,12 +216,13 @@ const actionDataRequirementSchema = z.object({
   fields: z.array(actionDataFieldEntrySchema).max(50),
 });
 
-const messageActionCatalogCreateSchema = z.object({
-  code: z.string().trim().min(1).max(50),
-  label: z.string().trim().min(1).max(100),
-  requiresPriorMessage: z.boolean(),
-});
-const messageActionCatalogUpdateSchema = messageActionCatalogCreateSchema.omit({ code: true });
+// OLD SCHEMA (commented out - FilingMessageActionCatalog dropped, replaced by FilingActionCatalog)
+// const messageActionCatalogCreateSchema = z.object({
+//   code: z.string().trim().min(1).max(50),
+//   label: z.string().trim().min(1).max(100),
+//   requiresPriorMessage: z.boolean(),
+// });
+// const messageActionCatalogUpdateSchema = messageActionCatalogCreateSchema.omit({ code: true });
 
 /** P2002 (unique constraint) -> a clear, expected 409, not a generic 500. */
 export class DuplicateConfigRowError extends Error {}
@@ -168,125 +240,141 @@ function wrapPrismaErrors<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown>> = {
-  "procedure-mapping": {
-    label: "Procedure Mapping",
-    description: "(entryType, country) → the third-party procedure code used to file that entry type in that country.",
+  // ============================================================================
+  // NEW MULTI-COUNTRY TABLES (stubs - TODO: Implement full UI)
+  // ============================================================================
+  "transaction-type": {
+    label: "Transaction Type",
+    description: "Universal transaction types (IMPORT, EXPORT, NCTS, etc.)",
     idField: "id",
     fields: [
-      { key: "entryType", label: "Entry Type", type: "text" },
-      { key: "country", label: "Country", type: "text", help: 'ISO 3166-1 alpha-2, or "*". ' + wildcardHelp },
+      { key: "code", label: "Code", type: "text" },
+      { key: "isActive", label: "Is Active", type: "boolean" },
+    ],
+    list: () => db.filingTransactionType.findMany({ orderBy: { code: "asc" } }),
+    create: (data) => wrapPrismaErrors(() => db.filingTransactionType.create({ data: transactionTypeSchema.parse(data) })),
+    update: (id, data) => wrapPrismaErrors(() => db.filingTransactionType.update({ where: { id }, data: transactionTypeSchema.parse(data) })),
+    remove: (id) => wrapPrismaErrors(() => db.filingTransactionType.delete({ where: { id } })).then(() => undefined),
+    createSchema: transactionTypeSchema,
+    updateSchema: transactionTypeSchema,
+  },
+  "action-catalog": {
+    label: "Action Catalog",
+    description: "Universal action codes (SUBMIT, AMENDMENT, CANCELLATION, etc.)",
+    idField: "id",
+    fields: [
+      { key: "code", label: "Code", type: "text" },
+      { key: "isActive", label: "Is Active", type: "boolean" },
+    ],
+    list: () => db.filingActionCatalog.findMany({ orderBy: { code: "asc" } }),
+    create: (data) => wrapPrismaErrors(() => db.filingActionCatalog.create({ data: actionCatalogSchema.parse(data) })),
+    update: (id, data) => wrapPrismaErrors(() => db.filingActionCatalog.update({ where: { id }, data: actionCatalogSchema.parse(data) })),
+    remove: (id) => wrapPrismaErrors(() => db.filingActionCatalog.delete({ where: { id } })).then(() => undefined),
+    createSchema: actionCatalogSchema,
+    updateSchema: actionCatalogSchema,
+  },
+  "procedure-config": {
+    label: "Procedure Configuration",
+    description: "(transactionType, country, procedureCode, messageName) - lists valid messages per country/procedure",
+    idField: "id",
+    fields: [
+      { key: "transactionTypeId", label: "Transaction Type ID", type: "text" },
+      { key: "country", label: "Country", type: "text" },
       { key: "procedureCode", label: "Procedure Code", type: "text" },
-    ],
-    list: () => db.filingProcedureMapping.findMany({ orderBy: [{ country: "asc" }, { entryType: "asc" }] }),
-    create: (data) => wrapPrismaErrors(() => db.filingProcedureMapping.create({ data: procedureMappingSchema.parse(data) })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingProcedureMapping.update({ where: { id }, data: procedureMappingSchema.parse(data) })),
-    remove: (id) => wrapPrismaErrors(() => db.filingProcedureMapping.delete({ where: { id } })).then(() => undefined),
-    createSchema: procedureMappingSchema,
-    updateSchema: procedureMappingSchema,
-  },
-  "authority-config": {
-    label: "Authority Config",
-    description: "country → the filing authority name and filing-system label used on every filing for that destination. No wildcard fallback.",
-    idField: "id",
-    fields: [
-      { key: "country", label: "Country", type: "text", help: "ISO 3166-1 alpha-2. Must be unique -- no wildcard fallback for authority." },
-      { key: "authorityName", label: "Authority Name", type: "text" },
-      { key: "filingSystemLabel", label: "Filing System Label", type: "text" },
-    ],
-    list: () => db.filingAuthorityConfig.findMany({ orderBy: { country: "asc" } }),
-    create: (data) => wrapPrismaErrors(() => db.filingAuthorityConfig.create({ data: authorityConfigSchema.parse(data) })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingAuthorityConfig.update({ where: { id }, data: authorityConfigSchema.parse(data) })),
-    remove: (id) => wrapPrismaErrors(() => db.filingAuthorityConfig.delete({ where: { id } })).then(() => undefined),
-    createSchema: authorityConfigSchema,
-    updateSchema: authorityConfigSchema,
-  },
-  "message-catalog": {
-    label: "Message Catalog",
-    description: "(action, country, procedure) → our own internal messageName + queueName. Usually wildcard country (\"*\") -- our message vocabulary doesn't vary by destination.",
-    idField: "id",
-    fields: [
-      { key: "action", label: "Action", type: "text" },
-      { key: "country", label: "Country", type: "text", help: wildcardHelp },
-      { key: "procedureCode", label: "Procedure Code", type: "text", help: wildcardHelp },
       { key: "messageName", label: "Message Name", type: "text" },
-      { key: "queueName", label: "Queue Name", type: "text" },
+      { key: "isActive", label: "Is Active", type: "boolean" },
     ],
-    list: () => db.filingMessageCatalog.findMany({ orderBy: [{ action: "asc" }, { country: "asc" }] }),
-    create: (data) => wrapPrismaErrors(() => db.filingMessageCatalog.create({ data: messageCatalogSchema.parse(data) })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingMessageCatalog.update({ where: { id }, data: messageCatalogSchema.parse(data) })),
-    remove: (id) => wrapPrismaErrors(() => db.filingMessageCatalog.delete({ where: { id } })).then(() => undefined),
-    createSchema: messageCatalogSchema,
-    updateSchema: messageCatalogSchema,
+    list: () => db.filingProcedureConfig.findMany({ orderBy: [{ country: "asc" }, { procedureCode: "asc" }] }),
+    create: (data) => wrapPrismaErrors(() => db.filingProcedureConfig.create({ data: procedureConfigSchema.parse(data) })),
+    update: (id, data) => wrapPrismaErrors(() => db.filingProcedureConfig.update({ where: { id }, data: procedureConfigSchema.parse(data) })),
+    remove: (id) => wrapPrismaErrors(() => db.filingProcedureConfig.delete({ where: { id } })).then(() => undefined),
+    createSchema: procedureConfigSchema,
+    updateSchema: procedureConfigSchema,
   },
-  "response-status-mapping": {
-    label: "Response Status Mapping",
-    description: "(country, messageName, canonicalStatus) → which filing-status transition to apply when a response arrives. Usually wildcard country -- response semantics don't vary by destination.",
+  "action-message-mapping": {
+    label: "Action Message Mapping",
+    description: "(country, procedureCode, action) → messageName - maps user actions to outbound messages",
     idField: "id",
     fields: [
-      { key: "country", label: "Country", type: "text", help: wildcardHelp },
-      { key: "messageName", label: "Message Name", type: "text", help: wildcardHelp },
-      { key: "canonicalStatus", label: "Canonical Status", type: "text", help: "The status value the third-party response carries (e.g. ACCEPTED, REJECTED, CANCELLED)." },
-      { key: "filingTransition", label: "Filing Transition", type: "text", help: "Must name a real transition in filingStateMachine.ts. An unrecognized name is logged as a warning and does nothing -- it does not crash message processing." },
+      { key: "country", label: "Country", type: "text" },
+      { key: "procedureCode", label: "Procedure Code", type: "text" },
+      { key: "action", label: "Action", type: "text" },
+      { key: "messageName", label: "Message Name", type: "text" },
+      { key: "isActive", label: "Is Active", type: "boolean" },
     ],
-    list: () => db.filingResponseStatusMapping.findMany({ orderBy: [{ country: "asc" }, { messageName: "asc" }] }),
-    create: (data) => wrapPrismaErrors(() => db.filingResponseStatusMapping.create({ data: responseStatusMappingSchema.parse(data) })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingResponseStatusMapping.update({ where: { id }, data: responseStatusMappingSchema.parse(data) })),
-    remove: (id) => wrapPrismaErrors(() => db.filingResponseStatusMapping.delete({ where: { id } })).then(() => undefined),
-    createSchema: responseStatusMappingSchema,
-    updateSchema: responseStatusMappingSchema,
+    list: () => db.filingActionMessageMapping.findMany({ orderBy: [{ country: "asc" }, { action: "asc" }] }),
+    create: (data) => wrapPrismaErrors(() => db.filingActionMessageMapping.create({ data: actionMessageMappingSchema.parse(data) })),
+    update: (id, data) => wrapPrismaErrors(() => db.filingActionMessageMapping.update({ where: { id }, data: actionMessageMappingSchema.parse(data) })),
+    remove: (id) => wrapPrismaErrors(() => db.filingActionMessageMapping.delete({ where: { id } })).then(() => undefined),
+    createSchema: actionMessageMappingSchema,
+    updateSchema: actionMessageMappingSchema,
   },
-  "action-rule": {
-    label: "Action Rule",
-    description: "(country, procedure, messageName, status) → whether the declaration can currently be edited/resubmitted. No match defaults to false (fail closed).",
+  "action-configuration": {
+    label: "Action Configuration",
+    description: "(country, procedureCode, messageName, status) → availableActions, allowSubmit - determines UI actions",
     idField: "id",
     fields: [
-      { key: "country", label: "Country", type: "text", help: wildcardHelp },
-      { key: "procedureCode", label: "Procedure Code", type: "text", help: wildcardHelp },
-      { key: "messageName", label: "Message Name", type: "text", help: wildcardHelp },
-      { key: "status", label: "Status", type: "text", help: wildcardHelp + " Must otherwise name a real FilingStatus." },
-      { key: "allowUpdates", label: "Allow Updates", type: "boolean" },
+      { key: "country", label: "Country", type: "text" },
+      { key: "procedureCode", label: "Procedure Code", type: "text" },
+      { key: "messageName", label: "Message Name", type: "text" },
+      { key: "status", label: "Status", type: "text" },
+      { 
+        key: "availableActions", 
+        label: "Available Actions", 
+        type: "fieldArray",
+        help: "List of actions available in this state. Select from the Action Catalog.",
+        itemFields: [
+          { 
+            key: "action", 
+            label: "Action", 
+            type: "select",
+            // Will be populated dynamically - see getFilingConfigTableMeta()
+            options: [],
+            help: "Select an action from the catalog" 
+          }
+        ]
+      },
+      { key: "allowSubmit", label: "Allow Submit", type: "boolean" },
+      { key: "isActive", label: "Is Active", type: "boolean" },
     ],
-    list: () => db.filingActionRule.findMany({ orderBy: [{ country: "asc" }, { status: "asc" }] }),
-    create: (data) => wrapPrismaErrors(() => db.filingActionRule.create({ data: actionRuleSchema.parse(data) })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingActionRule.update({ where: { id }, data: actionRuleSchema.parse(data) })),
-    remove: (id) => wrapPrismaErrors(() => db.filingActionRule.delete({ where: { id } })).then(() => undefined),
-    createSchema: actionRuleSchema,
-    updateSchema: actionRuleSchema,
+    list: async () => {
+      const rows = await db.filingActionConfiguration.findMany({ 
+        orderBy: [{ country: "asc" }, { status: "asc" }] 
+      });
+      
+      // Transform string[] to object[] for UI
+      return rows.map((row) => ({
+        ...row,
+        availableActions: row.availableActions.map((action) => ({ action })),
+      }));
+    },
+    create: async (data) => {
+      // Transform object[] back to string[] for database
+      const transformed = {
+        ...data,
+        availableActions: Array.isArray(data.availableActions) 
+          ? (data.availableActions as Array<{ action: string }>).map((item) => item.action)
+          : [],
+      };
+      return wrapPrismaErrors(() => db.filingActionConfiguration.create({ data: actionConfigurationSchema.parse(transformed) }));
+    },
+    update: async (id, data) => {
+      // Transform object[] back to string[] for database
+      const transformed = {
+        ...data,
+        availableActions: Array.isArray(data.availableActions) 
+          ? (data.availableActions as Array<{ action: string }>).map((item) => item.action)
+          : [],
+      };
+      return wrapPrismaErrors(() => db.filingActionConfiguration.update({ where: { id }, data: actionConfigurationSchema.parse(transformed) }));
+    },
+    remove: (id) => wrapPrismaErrors(() => db.filingActionConfiguration.delete({ where: { id } })).then(() => undefined),
+    createSchema: actionConfigurationSchema,
+    updateSchema: actionConfigurationSchema,
   },
-  "child-action-rule": {
-    label: "Child Action Rule",
-    description: "(country, procedure, messageName, status, action) → whether this extra action (e.g. CANCEL) is offered right now. A row's mere existence means yes.",
-    idField: "id",
-    fields: [
-      { key: "country", label: "Country", type: "text", help: wildcardHelp },
-      { key: "procedureCode", label: "Procedure Code", type: "text", help: wildcardHelp },
-      { key: "messageName", label: "Message Name", type: "text", help: wildcardHelp },
-      { key: "status", label: "Status", type: "text", help: wildcardHelp + " Must otherwise name a real FilingStatus." },
-      { key: "action", label: "Action", type: "text", help: "e.g. CANCEL. Must have an entry in Message Action Catalog to mean anything in the UI's action registry." },
-    ],
-    list: () => db.filingChildActionRule.findMany({ orderBy: [{ country: "asc" }, { status: "asc" }, { action: "asc" }] }),
-    create: (data) => wrapPrismaErrors(() => db.filingChildActionRule.create({ data: childActionRuleSchema.parse(data) })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingChildActionRule.update({ where: { id }, data: childActionRuleSchema.parse(data) })),
-    remove: (id) => wrapPrismaErrors(() => db.filingChildActionRule.delete({ where: { id } })).then(() => undefined),
-    createSchema: childActionRuleSchema,
-    updateSchema: childActionRuleSchema,
-  },
-  "message-action-catalog": {
-    label: "Message Action Catalog",
-    description: "The closed vocabulary of valid message actions (SUBMIT, RESUBMIT, CANCELLATION, ...). code is the primary key -- it cannot be changed after creation.",
-    idField: "code",
-    fields: [
-      { key: "code", label: "Code", type: "text", help: "Primary key. Cannot be edited after creation -- delete and recreate instead." },
-      { key: "label", label: "Label", type: "text" },
-      { key: "requiresPriorMessage", label: "Requires Prior Message", type: "boolean" },
-    ],
-    list: () => db.filingMessageActionCatalog.findMany({ orderBy: { code: "asc" } }),
-    create: (data) => wrapPrismaErrors(() => db.filingMessageActionCatalog.create({ data: messageActionCatalogCreateSchema.parse(data) })),
-    update: (code, data) => wrapPrismaErrors(() => db.filingMessageActionCatalog.update({ where: { code }, data: messageActionCatalogUpdateSchema.parse(data) })),
-    remove: (code) => wrapPrismaErrors(() => db.filingMessageActionCatalog.delete({ where: { code } })).then(() => undefined),
-    createSchema: messageActionCatalogCreateSchema,
-    updateSchema: messageActionCatalogUpdateSchema,
-  },
+  // ============================================================================
+  // KEPT TABLE (existing functionality)
+  // ============================================================================
   "action-data-requirement": {
     label: "Action Data Requirement",
     description:
@@ -329,6 +417,49 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
     updateSchema: actionDataRequirementSchema,
   },
 };
+
+/**
+ * Get table metadata with dynamically populated options (for select fields)
+ * This is called from the page component to populate dropdown options from the database
+ */
+export async function getFilingConfigTableMeta(tableKey: FilingConfigTableKey): Promise<TableMeta<unknown>> {
+  const tableDef = FILING_CONFIG_TABLES[tableKey];
+  
+  // For action-configuration table, populate action options from FilingActionCatalog
+  if (tableKey === "action-configuration") {
+    const actions = await db.filingActionCatalog.findMany({
+      where: { isActive: true },
+      orderBy: { code: "asc" },
+      select: { code: true }
+    });
+    const actionOptions = actions.map(a => a.code);
+
+    // Deep clone and update the itemFields options
+    const fieldsWithOptions: FieldDef[] = tableDef.fields.map(field => {
+      if (field.key === "availableActions" && field.type === "fieldArray" && field.itemFields) {
+        return {
+          ...field,
+          itemFields: field.itemFields.map(subField => {
+            if (subField.key === "action" && subField.type === "select") {
+              return { ...subField, options: actionOptions };
+            }
+            return subField;
+          })
+        };
+      }
+      return field;
+    });
+
+    return {
+      ...tableDef,
+      fields: fieldsWithOptions
+    };
+  }
+
+  return tableDef;
+}
+
+type TableMeta<TRow> = Omit<TableDef<TRow>, 'list' | 'create' | 'update' | 'remove' | 'createSchema' | 'updateSchema'>;
 
 export function isFilingConfigTableKey(key: string): key is FilingConfigTableKey {
   return Object.prototype.hasOwnProperty.call(FILING_CONFIG_TABLES, key);

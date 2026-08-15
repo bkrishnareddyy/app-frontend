@@ -86,7 +86,10 @@ export async function assembleFocusedAssessmentFile(
 
   for (const f of filings) {
     totalDutyPaid = totalDutyPaid.plus(new Decimal(f.totalDuties || 0));
-    byEntryType[f.entryType] = (byEntryType[f.entryType] || 0) + 1;
+    // Multi-country migration: entryType is now nullable
+    if (f.entryType) {
+      byEntryType[f.entryType] = (byEntryType[f.entryType] || 0) + 1;
+    }
 
     for (const item of f.shipment.lineItems) {
       const chapter = item.htsCode.slice(0, 2);

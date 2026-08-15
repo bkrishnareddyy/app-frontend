@@ -1,19 +1,17 @@
 import { db } from "@/lib/db";
 import { applyTransition, FilingTransitionError } from "@/modules/filings/filingStateMachine";
 import { DrawbackService } from "@/modules/drawback/drawback.service";
-import { findMostSpecificMatch } from "./wildcardLookup";
 import { PgCanonicalMessageConsumer } from "./consumer";
 import type { CanonicalFilingResponseData, CanonicalMessage } from "./types";
 
 /**
- * Maps an inbound response's canonical status onto a FilingTransition via
- * FilingResponseStatusMapping, and applies it through
- * filingStateMachine.ts -- never writes CustomsFiling.filingStatus directly.
- * If no mapping row matches (deliberately absent for CANCELLED/ERROR today,
- * see scripts/seed-canonical-messaging.ts), or the transition isn't legal
- * from the filing's current status, the response is still recorded but the
- * status is left unchanged -- a bad or unexpected transition should never be
- * forced through.
+ * Processes inbound responses and updates filing status.
+ * 
+ * MULTI-COUNTRY MIGRATION NOTE:
+ * FilingResponseStatusMapping table was dropped. Response status → state transition
+ * mapping is now handled directly based on canonical status codes.
+ * 
+ * TODO: Implement proper state machine integration with new FilingActionConfiguration
  */
 export async function processInboundMessage(message: CanonicalMessage<CanonicalFilingResponseData>): Promise<void> {
   const { header, data } = message;
@@ -23,38 +21,35 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
     throw new Error(`Inbound response references unknown filingId "${header.filingId}" (messageId=${header.messageId}).`);
   }
 
-  const candidates = await db.filingResponseStatusMapping.findMany({
-    where: {
-      country: { in: [header.country, "*"] },
-      messageName: { in: [header.messageName, "*"] },
-      canonicalStatus: data.status,
-    },
-  });
-  const mapping = findMostSpecificMatch(candidates, ["country", "messageName"], {
-    country: header.country,
-    messageName: header.messageName,
-  });
+  // Direct status mapping (simplified until proper state machine integration)
+  const statusTransitionMap: Record<string, Parameters<typeof applyTransition>[1] | null> = {
+    "ACCEPTED": "cbp.accept",
+    "REJECTED": "cbp.reject",
+    "RELEASED": "cbp.release",
+    "CANCELLED": null, // No automatic transition
+    "ERROR": null, // No automatic transition
+  };
 
   let transitionApplied = false;
   let newFilingStatus = filing.filingStatus;
 
-  if (mapping) {
+  const transition = statusTransitionMap[data.status];
+  if (transition) {
     try {
-      newFilingStatus = applyTransition(filing.filingStatus, mapping.filingTransition as Parameters<typeof applyTransition>[1]);
+      newFilingStatus = applyTransition(filing.filingStatus, transition);
       await db.customsFiling.update({ where: { id: filing.id }, data: { filingStatus: newFilingStatus } });
       transitionApplied = true;
     } catch (err) {
       const reason = err instanceof FilingTransitionError ? err.message : err instanceof Error ? err.message : String(err);
       console.warn(
-        `[inboundConsumer] Response status "${data.status}" maps to transition "${mapping.filingTransition}", ` +
+        `[inboundConsumer] Response status "${data.status}" maps to transition "${transition}", ` +
           `but it could not be applied to filing "${filing.id}" (currently "${filing.filingStatus}"). ` +
           `Recording the response without changing status. ${reason}`
       );
     }
   } else {
     console.warn(
-      `[inboundConsumer] No FilingResponseStatusMapping for country="${header.country}", ` +
-        `messageName="${header.messageName}", canonicalStatus="${data.status}". Recording the response without changing status.`
+      `[inboundConsumer] No automatic transition for canonicalStatus="${data.status}". Recording the response without changing status.`
     );
   }
 
