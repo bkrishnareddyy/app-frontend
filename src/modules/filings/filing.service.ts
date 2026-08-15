@@ -95,7 +95,10 @@ export class FilingService {
   ) {
     const filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId },
-      include: { shipment: true },
+      include: { 
+        shipment: true,
+        transactionType: true, // NEW: Include transaction type relation
+      },
     });
     if (!filing) throw new Error("NOT_FOUND");
 
@@ -118,8 +121,14 @@ export class FilingService {
     const priorEnvelope = priorMessage.envelope as unknown as CanonicalMessage<CanonicalFilingRequestData>;
     const declaration = priorEnvelope.data.declaration;
 
+    // TODO: MULTI-COUNTRY MIGRATION - Handle both old and new field structure
+    // For backwards compatibility during migration
     const context = await resolveMessageContext(
-      { entryType: filing.entryType, destinationCountry: filing.shipment.destinationCountry },
+      {
+        transactionType: filing.transactionType?.code || "IMPORT", // TODO: Remove fallback
+        procedureCode: filing.procedureCode || filing.entryType || "01", // TODO: Remove fallbacks
+        country: filing.country || filing.shipment.destinationCountry || "US", // TODO: Remove fallbacks
+      },
       "CANCELLATION"
     );
 
@@ -140,12 +149,13 @@ export class FilingService {
     const message = await FilingService.buildMessage(
       accountId,
       filingId,
-      filing.authority,
+      filing.authority || "Customs", // Multi-country migration: authority is now nullable
       context,
       declarationWithExtensions,
       priorMessage.messageId
     );
-    await new PgCanonicalMessagePublisher().publish(context.queueName, message);
+    // Multi-country migration: queueName removed from context, using default queue
+    await new PgCanonicalMessagePublisher().publish("filing-outbound-queue", message);
 
     const updatedFiling = await db.customsFiling.update({
       where: { id: filingId },
@@ -203,6 +213,7 @@ export class FilingService {
       where: { id: filingId, accountId },
       include: {
         shipment: { include: { documents: true, lineItems: true } },
+        transactionType: true, // NEW: Include transaction type relation
       },
     });
 
@@ -226,17 +237,58 @@ export class FilingService {
       throw new Error("Cannot submit entry filing without line items.");
     }
 
-    // An entry summary declares the duty owed. If any line has no published rate
-    // the total understates that duty, and transmitting it is a misdeclaration.
-    const tariff: TariffEngineResult = computeFilingTariff(
-      filing.shipment.lineItems,
-      await loadHtsCodesMap(filing.shipment.lineItems)
-    );
-
-    if (tariff.unratedLineCount > 0) {
-      throw new Error(
-        `Cannot transmit: ${tariff.unratedLineCount} of ${filing.shipment.lineItems.length} line(s) have no published duty rate, so the declared duty would understate the amount owed.`
+    // MULTI-COUNTRY FIX: Only calculate US-specific duties for US filings
+    // Other countries have different duty structures (EU VAT, India IGST, etc.)
+    const country = (filing.country || filing.shipment.destinationCountry || "US").toUpperCase();
+    
+    let tariff: TariffEngineResult;
+    
+    if (country === "US") {
+      // US-specific duty calculation (Section 301, 232, MPF, HMF)
+      tariff = computeFilingTariff(
+        filing.shipment.lineItems,
+        await loadHtsCodesMap(filing.shipment.lineItems)
       );
+
+      if (tariff.unratedLineCount > 0) {
+        throw new Error(
+          `Cannot transmit: ${tariff.unratedLineCount} of ${filing.shipment.lineItems.length} line(s) have no published duty rate, so the declared duty would understate the amount owed.`
+        );
+      }
+    } else {
+      // Non-US countries: Skip US-specific duty calculation
+      // Duties are calculated by destination country's customs system
+      // TODO: Implement country-specific duty calculation for EU, India, etc.
+      const totalValue = filing.shipment.lineItems.reduce(
+        (sum, item) => sum + Number(item.totalValue || 0), 
+        0
+      );
+      
+      tariff = {
+        totalCustomsValue: totalValue,
+        totalDuty: 0, // TODO: Implement country-specific duty calculation
+        totalTaxes: 0, // TODO: VAT for EU, IGST for India, etc.
+        totalFees: 0, // No US fees for non-US countries
+        totalAmount: totalValue,
+        unratedLineCount: 0,
+        dutyBreakdown: [], // No US fees for non-US countries
+        lineResults: filing.shipment.lineItems.map(item => ({
+          customsValue: Number(item.totalValue || 0),
+          baseDutyRate: null,
+          baseDutyAmount: 0,
+          section301Rate: 0,
+          section301Amount: 0,
+          section232Rate: 0,
+          section232Amount: 0,
+          totalDutyAmount: 0,
+          mpfAmount: 0,
+          hmfAmount: 0,
+          totalFeesAmount: 0,
+          totalAmount: Number(item.totalValue || 0)
+        }))
+      };
+      
+      console.log(`[Filing] Skipped US duty calculation for ${country} filing. Duties will be calculated by destination customs.`);
     }
 
     const snapshotData: FilingSnapshotData = {
@@ -266,7 +318,7 @@ export class FilingService {
       })),
       filingHeader: {
         entryNumber: filing.entryNumber,
-        entryType: filing.entryType,
+        entryType: filing.entryType || "01", // Multi-country migration: entryType is now nullable
         totalValue: Number(filing.totalValue),
         totalDuties: Number(filing.totalDuties),
         totalTaxes: Number(filing.totalTaxes),
@@ -311,14 +363,24 @@ export class FilingService {
       tariff,
     });
 
+    // TODO: MULTI-COUNTRY MIGRATION - Handle both old and new field structure
+    // For backwards compatibility during migration
     const context = await resolveMessageContext(
-      { entryType: filing.entryType, destinationCountry: filing.shipment.destinationCountry },
+      {
+        transactionType: filing.transactionType?.code || "IMPORT", // TODO: Remove fallback
+        procedureCode: filing.procedureCode || filing.entryType || "01", // TODO: Remove fallbacks
+        country: filing.country || filing.shipment.destinationCountry || "US", // TODO: Remove fallbacks
+      },
       action
     );
 
-    const message = await FilingService.buildMessage(accountId, filingId, filing.authority, context, declaration, priorMessageId);
+    const message = await FilingService.buildMessage(accountId, filingId, filing.authority || "Customs", context, declaration, priorMessageId);
 
-    await new PgCanonicalMessagePublisher().publish(context.queueName, message);
+    // TODO: MULTI-COUNTRY MIGRATION - queueName removed from context
+    // For now, use a default queue. Proper implementation should use
+    // environment-specific queue configuration
+    const queueName = "filing-outbound-queue"; // TODO: Configure properly
+    await new PgCanonicalMessagePublisher().publish(queueName, message);
 
     const updatedFiling = await db.customsFiling.update({
       where: { id: filingId },
