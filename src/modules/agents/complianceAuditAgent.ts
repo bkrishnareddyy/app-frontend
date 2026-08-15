@@ -478,7 +478,21 @@ export class ComplianceAuditAgent {
 
     const riskScore = Math.min(100, criticalCount * 40 + highCount * 20 + mediumCount * 10);
     const deterministicRequiresReview = criticalCount > 0 || highCount > 0;
-    const confidence = 70;
+
+    // Confidence reflects how much of the audit surface actually had data to
+    // evaluate -- never a flat constant regardless of what ran. Each factor
+    // is real coverage, not a proxy for risk (that's riskScore): the fraction
+    // of lines with a usable origin, the fraction with a usable HTS code,
+    // whether embargo/sanctions reference data was loaded at all, and whether
+    // Country Embargo Screening actually ran rather than being skipped.
+    const totalLines = lineItems.length || 1;
+    const originCoverage = originLines.length / totalLines;
+    const htsCoverage = classifiedLines.length / totalLines;
+    const embargoDataLoaded = embargoRules.length > 0 ? 1 : 0;
+    const embargoScreeningRan = countryEmbargoScreening && countryEmbargoScreening.status !== "SKIPPED" ? 1 : 0;
+    const confidence = Math.round(
+      ((originCoverage + htsCoverage + embargoDataLoaded + embargoScreeningRan) / 4) * 100
+    );
     const auditChecksRun = auditResults.length;
     const auditChecksPassed = auditResults.filter((r) => r.passed).length;
 
