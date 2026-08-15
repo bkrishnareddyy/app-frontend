@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { getAccountContext } from "@/lib/auth";
-import { FILING_CONFIG_TABLES, type FilingConfigTableKey } from "@/modules/filingConfig/registry";
+import { getFilingConfigTableMeta, type FilingConfigTableKey } from "@/modules/filingConfig/registry";
 import { FilingConfigClient, type TableMeta } from "./FilingConfigClient";
 
 export default async function FilingConfigPage() {
@@ -27,12 +27,29 @@ export default async function FilingConfigPage() {
     );
   }
 
-  // Function-valued properties (list/create/update/remove) can't cross the
-  // server->client boundary -- only the plain, serializable metadata is sent.
-  const tables: TableMeta[] = (Object.keys(FILING_CONFIG_TABLES) as FilingConfigTableKey[]).map((key) => {
-    const t = FILING_CONFIG_TABLES[key];
-    return { key, label: t.label, description: t.description, idField: t.idField, fields: t.fields };
-  });
+  // Get table metadata - extract only serializable parts (no functions/schemas)
+  const tableKeys: FilingConfigTableKey[] = [
+    "transaction-type",
+    "action-catalog",
+    "procedure-config",
+    "action-message-mapping",
+    "action-configuration",
+    "action-data-requirement"
+  ];
+  
+  const tables: TableMeta[] = await Promise.all(
+    tableKeys.map(async (key) => {
+      const tableMeta = await getFilingConfigTableMeta(key);
+      // Extract only serializable properties for client component
+      return {
+        key,
+        label: tableMeta.label,
+        description: tableMeta.description,
+        idField: tableMeta.idField,
+        fields: tableMeta.fields,
+      };
+    })
+  );
 
   return <FilingConfigClient tables={tables} />;
 }

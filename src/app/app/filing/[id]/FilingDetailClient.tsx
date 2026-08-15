@@ -24,15 +24,17 @@ import { Input } from "@/components/ui/Input";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/Modal";
 import { displayCurrency, displayDate, displayText } from "@/lib/honest";
 import { filingStages, type FilingStageState } from "@/modules/filings/filingStateMachine";
+import { getFilingConfig, formatCurrencyAmount } from "@/lib/filing/countryConfig";
 
 interface FilingProps {
   id: string;
   entryNumber: string;
-  entryType: string;
+  entryType: string | null; // Multi-country migration: now nullable (legacy field)
   filingType: string;
   filingStatus: string;
   paymentStatus: string;
-  authority: string;
+  authority: string | null; // Multi-country migration: now nullable (legacy field)
+  country: string | null; // Multi-country support
   totalValue: number | null;
   totalDuties: number | null;
   totalTaxes: number | null;
@@ -488,6 +490,12 @@ export function FilingDetailClient({
   childActions,
 }: FilingDetailClientProps) {
   const router = useRouter();
+  
+  // Get country-specific configuration for multi-country support
+  const country = filing.country || shipment.destinationCountry || "US";
+  const config = getFilingConfig(country);
+  
+  type Tab = "overview" | "declaration" | "response" | "form7501" | "psc";
   const [tab, setTab] = useState<Tab>("overview");
   const [edits, setEdits] = useState<Record<string, LineItemEdit>>(() =>
     Object.fromEntries(lineItems.map((li) => [li.id, { htsCode: li.htsCode, countryOfOrigin: li.countryOfOrigin }]))
@@ -841,13 +849,15 @@ export function FilingDetailClient({
 
       {/* Tabs */}
       <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-border shadow-2xs w-fit">
-        {([
-          ["overview", "Overview"],
-          ["declaration", "Declaration"],
-          ["response", "Response"],
-          ["form7501", "7501 Preview"],
-          ["psc", "Post-Summary Correction"],
-        ] as [Tab, string][]).map(([key, label]) => (
+        {(
+          [
+            ["overview", "Overview"],
+            ["declaration", "Declaration"],
+            ["response", "Response"],
+            config.showForm7501 && ["form7501", config.formPreviewLabel || "7501 Preview"],
+            config.showPSC && ["psc", config.postCorrectionLabel || "Post-Summary Correction"],
+          ].filter(Boolean) as [Tab, string][]
+        ).map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -905,14 +915,14 @@ export function FilingDetailClient({
           <Card className="space-y-6">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div>
-                <h3 className="text-sm font-extrabold text-ink">Entry Summary</h3>
-                <p className="text-xs text-ink-muted">Filing Authority: {displayText(filing.authority)}</p>
+                <h3 className="text-sm font-extrabold text-ink">{config.entrySummaryLabel}</h3>
+                <p className="text-xs text-ink-muted">Filing Authority: {displayText(filing.authority) || config.authorityName}</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
               <div>
-                <p className="text-ink-muted">Entry Type</p>
+                <p className="text-ink-muted">{config.entryTypeLabel}</p>
                 <p className="font-bold text-ink">{displayText(filing.entryType)}</p>
               </div>
               <div>
@@ -927,7 +937,7 @@ export function FilingDetailClient({
               </div>
               <div>
                 <p className="text-ink-muted">Entered Value</p>
-                <p className="font-bold text-ink">{displayCurrency(filing.totalValue)}</p>
+                <p className="font-bold text-ink">{formatCurrencyAmount(filing.totalValue, config.currency)}</p>
               </div>
             </div>
 
@@ -941,7 +951,7 @@ export function FilingDetailClient({
                     <tr className="border-b border-border text-ink-muted">
                       <th className="pb-2">Duty Fee Item</th>
                       <th className="pb-2">Calculation Rate</th>
-                      <th className="pb-2 text-right">Amount (USD)</th>
+                      <th className="pb-2 text-right">Amount ({config.currency})</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -949,7 +959,7 @@ export function FilingDetailClient({
                       <tr key={idx} className="hover:bg-surface-muted">
                         <td className="py-2.5 font-semibold text-ink">{duty.feeName}</td>
                         <td className="py-2.5 text-ink-muted">{duty.rate}</td>
-                        <td className="py-2.5 text-right font-bold text-ink">{displayCurrency(duty.amount)}</td>
+                        <td className="py-2.5 text-right font-bold text-ink">{formatCurrencyAmount(duty.amount, config.currency)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -958,12 +968,12 @@ export function FilingDetailClient({
               <div className="flex justify-end pt-3 border-t border-border text-xs text-right">
                 <div>
                   <p className="text-ink-muted">
-                    Total Duties: <span className="font-bold text-ink">{displayCurrency(filing.totalDuties)}</span>
+                    Total Duties: <span className="font-bold text-ink">{formatCurrencyAmount(filing.totalDuties, config.currency)}</span>
                   </p>
                   <p className="text-ink-muted">
-                    Total Taxes: <span className="font-bold text-ink">{displayCurrency(filing.totalTaxes)}</span>
+                    Total Taxes: <span className="font-bold text-ink">{formatCurrencyAmount(filing.totalTaxes, config.currency)}</span>
                   </p>
-                  <p className="font-extrabold text-sm text-brand mt-1">Total Due: {displayCurrency(filing.totalAmount)}</p>
+                  <p className="font-extrabold text-sm text-brand mt-1">Total Due: {formatCurrencyAmount(filing.totalAmount, config.currency)}</p>
                 </div>
               </div>
             </div>
@@ -1476,7 +1486,7 @@ export function FilingDetailClient({
                 {/* Legend */}
                 <p className="text-[10px] text-ink-muted">
                   Click any block to see its source record. Green = sourced and approved; amber = sourced but not approved; red = missing.
-                  Mock provider active — this filing has not been transmitted to CBP.
+                  Mock provider active — this filing has not been transmitted to {config.authorityName}.
                 </p>
               </div>
             );
@@ -1503,18 +1513,18 @@ export function FilingDetailClient({
         <Card className="space-y-4">
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div>
-              <h3 className="text-sm font-extrabold text-ink">Post-Summary Correction (PSC) Management</h3>
-              <p className="text-xs text-ink-muted">Submit official CBP post-summary corrections for classification, value, or rate adjustments.</p>
+              <h3 className="text-sm font-extrabold text-ink">{config.postCorrectionLabel || "Post-Summary Correction"} Management</h3>
+              <p className="text-xs text-ink-muted">{config.postCorrectionDescription}</p>
             </div>
             <Badge variant={filing.filingStatus === "Accepted" || filing.filingStatus === "Released" ? "success" : "warning"}>
-              {filing.filingStatus === "Accepted" || filing.filingStatus === "Released" ? "Eligible for PSC" : `Status: ${filing.filingStatus}`}
+              {filing.filingStatus === "Accepted" || filing.filingStatus === "Released" ? `Eligible for ${config.postCorrectionLabel || "Correction"}` : `Status: ${filing.filingStatus}`}
             </Badge>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 bg-surface-muted rounded-xl space-y-2">
               <span className="text-[10px] font-bold text-ink-muted uppercase">Original Declared Duty</span>
-              <p className="text-xl font-extrabold text-ink">{displayCurrency(filing.totalDuties)}</p>
+              <p className="text-xl font-extrabold text-ink">{formatCurrencyAmount(filing.totalDuties, config.currency)}</p>
               <p className="text-xs text-ink-muted">Filing Entry #{filing.entryNumber}</p>
             </div>
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">

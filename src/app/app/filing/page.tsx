@@ -50,16 +50,11 @@ export default async function CustomsFilingDashboardPage(props: {
       );
     }
 
-    // Only offer entry types this destination actually has a procedure
-    // mapping for -- showing all 18 CBP codes regardless of destination is
-    // exactly the "one country's vocabulary presented as universal" mistake
-    // this page used to make.
-    const procedureRows = await db.filingProcedureMapping.findMany({
-      where: { country: { in: [shipment.destinationCountry, "*"] } },
-      select: { entryType: true },
-    });
-    const mappedEntryTypes = new Set(procedureRows.map((r) => r.entryType));
-    const entryTypeOptions = ENTRY_TYPES.filter((e) => mappedEntryTypes.has(e.code)).map((e) => ({
+    // TODO: MULTI-COUNTRY MIGRATION - Update to use new FilingProcedureConfig
+    // For now, show all entry types as a temporary workaround
+    // Proper implementation should query FilingProcedureConfig and show
+    // available transaction types + procedures for the destination country
+    const entryTypeOptions = ENTRY_TYPES.map((e) => ({
       code: e.code,
       label: e.label,
     }));
