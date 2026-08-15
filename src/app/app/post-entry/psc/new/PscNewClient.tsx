@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ReceiptText, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { ReceiptText, ChevronRight, ArrowLeft, AlertCircle } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
 
 interface FilingOption {

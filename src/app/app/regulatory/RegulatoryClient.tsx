@@ -3,14 +3,6 @@
 import { useState } from "react";
 import {
   Globe,
-  TrendingUp,
-  AlertTriangle,
-  FileText,
-  Search,
-  ShieldAlert,
-  Info,
-  CheckCircle2,
-  Clock,
   Sparkles,
   ChevronLeft,
   ChevronRight,

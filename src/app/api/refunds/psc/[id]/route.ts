@@ -4,7 +4,6 @@ import { buildErrorResponse } from "@/lib/api/error";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
-import { checkPscEligibility } from "@/lib/refunds/pscEligibility";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });

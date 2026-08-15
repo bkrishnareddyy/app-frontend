@@ -1,22 +1,16 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Scale,
   ChevronRight,
   ArrowLeft,
-  CheckCircle2,
   AlertTriangle,
   Clock,
   Send,
-  RotateCcw,
   FileCheck,
   ShieldCheck,
-  Plus,
   MessageSquare,
-  FileText,
 } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
 
@@ -57,7 +51,6 @@ interface ProtestDetail {
 }
 
 export function ProtestDetailClient({ protestId }: { protestId: string }) {
-  const router = useRouter();
   const [protest, setProtest] = useState<ProtestDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,9 +183,12 @@ export function ProtestDetailClient({ protestId }: { protestId: string }) {
     );
   }
 
+  // Day-granularity countdown display; being off by a render is harmless.
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now();
   const daysLeft = Math.max(
     0,
-    Math.floor((new Date(protest.protestDeadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    Math.floor((new Date(protest.protestDeadline).getTime() - nowMs) / (1000 * 60 * 60 * 24))
   );
 
   return (

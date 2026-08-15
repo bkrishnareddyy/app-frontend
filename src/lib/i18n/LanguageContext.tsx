@@ -49,7 +49,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   // localStorage is unreadable during SSR, so the saved locale can only be applied
   // after mount. Reading it in a lazy initializer would desync hydration.
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const savedCountry = localStorage.getItem("qubere_country_code");
     if (savedCountry) {
@@ -64,7 +63,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       setLocaleState(savedLocale);
     }
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const setCountryByCode = (countryCode: string) => {
     const matched = COUNTRIES.find((c) => c.code === countryCode) || COUNTRIES[0];

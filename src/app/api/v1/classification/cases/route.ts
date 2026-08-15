@@ -41,7 +41,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   try {
     const { searchParams } = new URL(req.url);
-    const productIdsParam = searchParams.getAll("productIds[]");
     const status = searchParams.get("status") ?? undefined;
 
     const cases = await db.classificationCase.findMany({

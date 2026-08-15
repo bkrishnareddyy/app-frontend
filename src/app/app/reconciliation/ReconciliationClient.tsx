@@ -72,7 +72,7 @@ export function ReconciliationClient({ issues: initialIssues }: { issues: IssueP
         )
       );
       router.refresh();
-    } catch (e) {
+    } catch {
       alert("Error converting issue to Post-Summary Correction.");
     } finally {
       setBusyId(null);

@@ -10,7 +10,7 @@ const compareSchema = z.object({
   scenarioIds: z.array(z.string()).min(1).max(5),
 });
 
-export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
+export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
   const parsed = compareSchema.safeParse(body);
   if (!parsed.success) {

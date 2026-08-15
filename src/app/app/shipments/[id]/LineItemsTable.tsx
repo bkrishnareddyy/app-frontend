@@ -49,8 +49,6 @@ export function LineItemsTable({ shipmentId, initialLineItems, currency }: LineI
 
       return () => clearTimeout(timer);
     } else {
-      
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHtsSuggestions([]);
     }
   }, [editHts, editingItemId]);

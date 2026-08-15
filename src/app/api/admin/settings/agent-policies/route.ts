@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { buildErrorResponse } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { createAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";

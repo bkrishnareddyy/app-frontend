@@ -35,8 +35,7 @@ export function DecisionReviewClient({
   const [localDecisions, setLocalDecisions] = useState(decisions);
 
   useEffect(() => {
-    // Resyncs the local copy after router.refresh() returns new server data. The
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Resyncs the local copy after router.refresh() returns new server data.
     setLocalDecisions(decisions);
   }, [decisions]);
 
@@ -92,7 +91,6 @@ export function DecisionReviewClient({
   useEffect(() => {
     if (filteredGroups.length > 0 && !filteredGroups.some((g) => g.id === selectedGroupId)) {
       // Keeps the selection valid when the active filter removes the selected group.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedGroupId(filteredGroups[0].id);
     }
   }, [filteredGroups, selectedGroupId]);

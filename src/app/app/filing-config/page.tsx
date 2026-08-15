@@ -17,7 +17,7 @@ export default async function FilingConfigPage() {
           </div>
           <h1 className="text-xl font-extrabold text-ink">Platform Admin Access Restricted</h1>
           <p className="text-sm text-ink-muted">
-            Filing Configuration edits the global rules every tenant's customs filings resolve against. It's available to Qubere Platform Administrators only.
+            Filing Configuration edits the global rules every tenant&apos;s customs filings resolve against. It&apos;s available to Qubere Platform Administrators only.
           </p>
           <Link href="/app/dashboard" className="inline-block text-sm font-semibold text-brand">
             Return to Dashboard

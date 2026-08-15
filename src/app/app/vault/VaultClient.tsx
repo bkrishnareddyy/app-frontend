@@ -1,17 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
-  Search,
   Sparkles,
-  FileText,
   BadgeCheck,
   TrendingUp,
-  AlertTriangle,
   History,
   Coins,
-  ArrowRight,
   ClipboardCheck,
 } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
@@ -180,7 +175,7 @@ export function VaultClient() {
       } else {
         alert("No export lots found matching available import lots.");
       }
-    } catch (e) {
+    } catch {
       alert("Error matching lots.");
     } finally {
       setIsMatching(false);

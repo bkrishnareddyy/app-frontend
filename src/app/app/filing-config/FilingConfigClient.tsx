@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Settings2, Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -18,7 +18,6 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
  * FilingDetailClient.tsx's ActionFieldPrompts, which renders admin-entered
  * labels as-is.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Dict = any;
 
 function toCamelKey(kebab: string): string {
@@ -164,7 +163,7 @@ function TablePanel({ table }: { table: TableMeta }) {
     }
   };
 
-  useMemo(() => {
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table.key]);

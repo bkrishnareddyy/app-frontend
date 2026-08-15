@@ -1,13 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ReceiptText,
   ChevronRight,
   ArrowLeft,
-  CheckCircle2,
   AlertTriangle,
   Clock,
   Send,
@@ -15,8 +12,6 @@ import {
   FileCheck,
   Edit2,
   Save,
-  XCircle,
-  FileText,
 } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
 
@@ -54,7 +49,6 @@ interface PscDetail {
 }
 
 export function PscDetailClient({ pscId }: { pscId: string }) {
-  const router = useRouter();
   const [psc, setPsc] = useState<PscDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -188,11 +182,14 @@ export function PscDetailClient({ pscId }: { pscId: string }) {
     );
   }
 
+  // Day-granularity countdown display; being off by a render is harmless.
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now();
   const daysLeft = psc.originalFiling?.shipment?.complianceDeadlines?.[0]?.dueAt
     ? Math.max(
         0,
         Math.floor(
-          (new Date(psc.originalFiling.shipment.complianceDeadlines[0].dueAt).getTime() - Date.now()) /
+          (new Date(psc.originalFiling.shipment.complianceDeadlines[0].dueAt).getTime() - nowMs) /
             (1000 * 60 * 60 * 24)
         )
       )
