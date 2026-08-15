@@ -237,7 +237,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // Reconcile each affected shipment once
   await Promise.allSettled(
     Array.from(affectedShipmentIds).map((shipmentId) =>
-      ReconciliationEngine.reconcileShipment(shipmentId, "USER_FIELD_UPDATED").catch((err) => {
+      ReconciliationEngine.reconcileShipment(shipmentId, ctx.accountId, "USER_FIELD_UPDATED").catch((err) => {
         console.error(`[decisions/bulk] Reconciliation failed for shipment ${shipmentId}:`, err);
       })
     )

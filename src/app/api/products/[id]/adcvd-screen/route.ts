@@ -42,10 +42,14 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, pa
   });
 
   // Task E-4: Create ExceptionItem for YES or POSSIBLY results
+  const targetShipmentId = shipmentId || body.shipmentId;
+  const ownedShipment = targetShipmentId
+    ? await db.shipment.findFirst({ where: { id: targetShipmentId, accountId: ctx.accountId }, select: { id: true } })
+    : null;
+
   for (const order of result.orders) {
     if (order.inScope === "YES" || order.inScope === "POSSIBLY") {
-      const targetShipmentId = shipmentId || body.shipmentId;
-      if (targetShipmentId) {
+      if (ownedShipment) {
         await db.exceptionItem.create({
           data: {
             accountId: ctx.accountId,

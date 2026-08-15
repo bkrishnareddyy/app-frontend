@@ -7,6 +7,7 @@ import { ENTRY_TYPE_CODES, entryTypeVariants, normalizeEntryType } from "@/modul
 import { findMostSpecificMatch } from "@/lib/canonicalMessaging/wildcardLookup";
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
+import { FactAuditService } from "@/modules/audit/factAuditService";
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
@@ -414,6 +415,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
           procedureCode: null,
           filingType: filingType || "Standard",
           filingStatus: "Draft",
+          preparedByUserId: ctx.userId,
           totalValue: calculatedValue,
           totalDuties: calculatedDuty,
           // Null, not 0: no tax calculation runs here, and 0 would claim one did.
@@ -435,10 +437,33 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "Could not generate a unique filing reference. Try again." }, { status: 500 });
   }
 
-  await db.shipment.update({
-    where: { id: shipmentId },
-    data: { status: "Draft" },
-  });
+  // A shipment already Submitted or Completed has left the filing-preparation
+  // part of its lifecycle; a correction/second filing created against it must
+  // not silently regress it back to Draft. Guarded here (rather than left as
+  // an unconditional write) because this is the only call site in the
+  // codebase that ever writes Shipment.status, and there is no centralized
+  // transition check it goes through.
+  const TERMINAL_SHIPMENT_STATUSES = new Set(["Submitted", "Completed"]);
+  if (!TERMINAL_SHIPMENT_STATUSES.has(shipment.status)) {
+    // Optimistic concurrency, matching the compare-and-swap every other
+    // shipment field write uses (see shipments/[id]/route.ts) -- without it,
+    // this write can silently clobber a concurrent status-relevant change.
+    const updated = await db.shipment.updateMany({
+      where: { id: shipmentId, accountId: ctx.accountId, version: shipment.version },
+      data: { status: "Draft", version: { increment: 1 } },
+    });
+    if (updated.count > 0 && shipment.status !== "Draft") {
+      await FactAuditService.logChangeEvent({
+        shipmentId,
+        userId: ctx.userId,
+        changeType: "STATUS_CHANGED",
+        field: "status",
+        previousValue: shipment.status,
+        newValue: "Draft",
+        reason: "New filing created for shipment",
+      });
+    }
+  }
 
   await createAuditLog({
     accountId: ctx.accountId,

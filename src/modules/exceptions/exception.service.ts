@@ -366,11 +366,12 @@ export class ExceptionService {
   static async resolveDocumentFieldException(
     documentId: string,
     fieldKey: string,
+    accountId: string,
     resolver: ExceptionResolver,
     note: string
   ) {
     const existingOpen = await db.exceptionItem.findFirst({
-      where: { documentId, fieldKey, status: { not: "Resolved" } },
+      where: { documentId, fieldKey, accountId, status: { not: "Resolved" } },
       omit: { resolutionReasonCode: true },
     });
     if (!existingOpen) return null;

@@ -19,6 +19,7 @@ import { screenUploadForMalware } from "./malwarePolicy";
 import { assertParseableFormat } from "./documentSource";
 import { isDocumentParserError } from "../parser/contracts";
 import { enqueueDocumentParse } from "./documentProcessingWorker";
+import { findCrossShipmentDuplicates } from "@/modules/documents/duplicateDetection";
 import { resolveInboundRoute } from "@/modules/inbound/senderRouting";
 import {
   getReceivedEmail,
@@ -256,6 +257,13 @@ async function processOneAttachment(params: {
       data: { processingStatus: "STORED", checksum: storageResult.checksum, shipmentDocumentId: document.id },
     });
 
+    const crossShipmentDuplicates = await findCrossShipmentDuplicates(
+      accountId,
+      storageResult.checksum,
+      null,
+      document.id
+    );
+
     await createAuditLog({
       accountId,
       action: AuditAction.DOCUMENT_STORED,
@@ -272,6 +280,7 @@ async function processOneAttachment(params: {
         malwareScan: scan.verdict,
         inboundEmailId: email.id,
         inboundAttachmentId: attachmentRow.id,
+        crossShipmentDuplicateCount: crossShipmentDuplicates.length,
       },
       correlationId,
     });

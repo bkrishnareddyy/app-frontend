@@ -136,6 +136,12 @@ interface CommandCenterClientProps {
   }>;
   clients: Array<{ id: string; name: string }>;
   agentOperations?: AgentOperationsRow[];
+  /** True once the account's open shipments exceed the page's SHIPMENT_ROW_CAP. */
+  shipmentsTruncated?: boolean;
+  shipmentTotalCount?: number;
+  /** True once the account's agent decisions exceed the page's SHIPMENT_ROW_CAP. */
+  decisionsTruncated?: boolean;
+  decisionTotalCount?: number;
   classificationSignals?: ClassificationSignals;
   productIntelligenceSignals?: ProductIntelligenceSignals;
   reviewQueue?: ReviewQueue;
@@ -159,6 +165,10 @@ export function CommandCenterClient({
   teamMembers,
   clients,
   agentOperations = [],
+  shipmentsTruncated = false,
+  shipmentTotalCount,
+  decisionsTruncated = false,
+  decisionTotalCount,
   classificationSignals,
   productIntelligenceSignals,
   reviewQueue,
@@ -1282,6 +1292,18 @@ export function CommandCenterClient({
               </Link>
             ))}
           </div>
+        </div>
+      )}
+
+      {(shipmentsTruncated || decisionsTruncated) && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-800 text-xs font-semibold rounded-xl px-4 py-2.5">
+          {shipmentsTruncated && (
+            <>Showing the {filteredShipments.length} most recent of {shipmentTotalCount} open shipments. </>
+          )}
+          {decisionsTruncated && (
+            <>Agent throughput reflects the {initialDecisions.length} most recent of {decisionTotalCount} decisions. </>
+          )}
+          KPI tiles below only cover the shipments/decisions shown.
         </div>
       )}
 

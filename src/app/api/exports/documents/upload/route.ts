@@ -11,6 +11,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "exportShipmentId and fileName are required" });
   }
 
+  const exportShipment = await db.exportShipment.findFirst({
+    where: { id: exportShipmentId, accountId: ctx.accountId },
+    select: { id: true },
+  });
+  if (!exportShipment) {
+    return NextResponse.json({ error: "Export shipment not found" }, { status: 404 });
+  }
+
   const exportDoc = await db.exportDocument.create({
     data: {
       exportShipmentId,

@@ -4,7 +4,6 @@ import {
   DocumentIntakeAgentOutput,
   DocumentType,
   PageAnalysisResult,
-  agentEventBus,
 } from "./documentIntakeAgent";
 
 export type {
@@ -25,4 +24,4 @@ export class DocumentIntakeService {
   }
 }
 
-export { DocumentIntakeAgent, agentEventBus };
+export { DocumentIntakeAgent };

@@ -8,6 +8,7 @@ const dbMock = {
   shipment: {
     findFirst: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   customsFiling: {
     create: vi.fn(),
@@ -57,6 +58,8 @@ function shipment(overrides: Record<string, unknown> = {}) {
     shipmentNumber: "SHP-26-004872",
     destinationCountry: "US",
     entryType: null,
+    status: "Draft",
+    version: 1,
     lineItems: [lineItem()],
     documents: [],
     ...overrides,
@@ -104,6 +107,7 @@ beforeEach(() => {
     });
   dbMock.shipment.findFirst.mockResolvedValue(shipment());
   dbMock.shipment.update.mockResolvedValue({});
+  dbMock.shipment.updateMany.mockResolvedValue({ count: 1 });
   dbMock.htsNode.findMany.mockResolvedValue(RATED);
   dbMock.customsFiling.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: "fil_1",

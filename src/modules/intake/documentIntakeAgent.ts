@@ -3,8 +3,8 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
+import { hashPromptVersion } from "@/lib/ai/promptVersion";
 import { logAgentError } from "@/modules/agents/agentLogger";
-import { EventEmitter } from "events";
 import {
   DocumentTypeCatalog,
   DocumentType,
@@ -12,9 +12,6 @@ import {
 } from "./documentTypeCatalog";
 
 export type { DocumentType, DocumentTypeCode };
-
-// Global event bus for multi-agent reactive orchestration
-export const agentEventBus = new EventEmitter();
 
 interface GeminiPage {
   pageNumber?: number;
@@ -225,6 +222,7 @@ export class DocumentIntakeAgent {
     let reasoningChain = "";
     let extractionError: string | undefined = undefined;
     let persistenceError: string | undefined = undefined;
+    let usedGeminiVision = false;
 
     const aiClient = this.getAiClient();
 
@@ -281,6 +279,7 @@ Target File Name: "${input.fileName}"`;
             headerTextExcerpt: p.headerTextExcerpt || matchedDef.description,
           };
         });
+        usedGeminiVision = true;
       } catch (err: unknown) {
         console.warn("[DocumentIntakeAgent] Gemini API call exception, using DocumentCatalog Engine fallback:", err);
         aiProvider = "DocumentCatalog Vision Engine (Fallback)";
@@ -396,6 +395,8 @@ Target File Name: "${input.fileName}"`;
           purpose: "Ingest unstructured trade document, stitch packet pages, detect illegibility, and index into document store",
           dataSources: ["Google Vision OCR Engine", "CBP Document Catalog Rules", aiProvider],
           regulations: ["19 CFR § 141.86 (Invoice Requirements)", "19 CFR § 141.83"],
+          modelVersion: usedGeminiVision ? aiModel("document-intake") : null,
+          promptVersion: usedGeminiVision ? hashPromptVersion(DOCUMENT_INTAKE_SYSTEM_PROMPT) : null,
           proposedDescription: `${primaryDoc.name} (${pages.length} pages)`,
           rulesApplied: [
             "Multi-Page Document Stitching Rule",
@@ -458,9 +459,6 @@ Target File Name: "${input.fileName}"`;
       extractionError,
       persistenceError,
     };
-
-    // 6. Reactive Multi-Agent Pipeline Trigger: Emit event to wake up Agent 2
-    agentEventBus.emit("intake:completed", agentOutput);
 
     return agentOutput;
   }

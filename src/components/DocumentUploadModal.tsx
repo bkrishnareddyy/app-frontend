@@ -7,10 +7,19 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select, Label, FormField } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
 
+interface CrossShipmentDuplicate {
+  documentId: string;
+  shipmentId: string | null;
+  shipmentNumber: string | null;
+  fileName: string;
+  createdAt: string;
+}
+
 interface UploadOutcome {
   fileName: string;
   ok: boolean;
   message: string;
+  duplicates?: CrossShipmentDuplicate[];
 }
 
 interface ShipmentOption {
@@ -194,7 +203,15 @@ export function DocumentUploadModal({
             message: data?.error?.message ?? data?.error ?? "Upload failed",
           });
         } else {
-          results.push({ fileName: file.name, ok: true, message: "Queued for processing" });
+          const duplicates: CrossShipmentDuplicate[] = Array.isArray(data?.crossShipmentDuplicates)
+            ? data.crossShipmentDuplicates
+            : [];
+          results.push({
+            fileName: file.name,
+            ok: true,
+            message: data?.status === "PARKED" ? "Stored in document library" : "Queued for processing",
+            duplicates,
+          });
         }
       } catch (err: unknown) {
         results.push({
@@ -216,8 +233,10 @@ export function DocumentUploadModal({
     }
 
     // The dialog stays open while anything failed, so the per-file errors are
-    // still on screen instead of being wiped by a reload.
-    if (succeeded.length === results.length) {
+    // still on screen instead of being wiped by a reload. Same for a duplicate
+    // warning -- an auto-reload would wipe it before the operator can read it.
+    const hasDuplicates = results.some((r) => r.duplicates && r.duplicates.length > 0);
+    if (succeeded.length === results.length && !hasDuplicates) {
       setTimeout(() => {
         closeModal();
         window.location.reload();
@@ -257,23 +276,41 @@ export function DocumentUploadModal({
       {outcomes.length > 0 && (
         <ul className="space-y-1.5" aria-live="polite">
           {outcomes.map((outcome) => (
-            <li
-              key={outcome.fileName}
-              className={cn(
-                "p-2.5 rounded-xl border text-xs flex items-start gap-2",
-                outcome.ok
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                  : "bg-red-50 border-red-200 text-red-700"
+            <li key={outcome.fileName} className="space-y-1.5">
+              <div
+                className={cn(
+                  "p-2.5 rounded-xl border text-xs flex items-start gap-2",
+                  outcome.ok
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    : "bg-red-50 border-red-200 text-red-700"
+                )}
+              >
+                {outcome.ok ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                )}
+                <span>
+                  <span className="font-semibold">{outcome.fileName}</span> — {outcome.message}
+                </span>
+              </div>
+              {outcome.duplicates && outcome.duplicates.length > 0 && (
+                <div className="p-2.5 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                  <span>
+                    Same file content already exists on{" "}
+                    {outcome.duplicates.map((d, i) => (
+                      <span key={d.documentId}>
+                        {i > 0 && ", "}
+                        <span className="font-semibold">
+                          {d.shipmentNumber ?? (d.shipmentId ? `shipment ${d.shipmentId}` : "the document library")}
+                        </span>
+                      </span>
+                    ))}
+                    . Check this isn&apos;t a duplicate upload.
+                  </span>
+                </div>
               )}
-            >
-              {outcome.ok ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-              )}
-              <span>
-                <span className="font-semibold">{outcome.fileName}</span> — {outcome.message}
-              </span>
             </li>
           ))}
         </ul>

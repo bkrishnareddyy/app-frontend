@@ -8,6 +8,7 @@ import { computeReadinessScore } from "@/lib/shipmentReadiness";
 import { generateShipmentNumber } from "@/modules/shipments/shipmentNumber";
 import { ENTRY_TYPE_CODES, normalizeEntryType } from "@/modules/filing/entryType";
 import { COUNTRY_CODES, normalizeCountryCode } from "@/modules/shipment/countryCode";
+import { MANUAL_INTAKE_INITIAL_STATUS } from "@/modules/shipments/shipmentStatus";
 
 const createShipmentSchema = z.object({
   importerName: z.string().trim().min(1, "Importer name is required").max(200),
@@ -199,7 +200,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       countryOfExport: input.countryOfExport,
       destinationCountry: destinationCountryCode,
       estimatedArrival: input.estimatedArrival,
-      status: "Draft",
+      status: MANUAL_INTAKE_INITIAL_STATUS,
       ownerName: [ctx.firstName, ctx.lastName].filter(Boolean).join(" ") || null,
       assignedBrokerId: ctx.roleNames.includes("PLANNER") ? ctx.userId : null,
       masterShipmentId: input.masterShipmentId || null,

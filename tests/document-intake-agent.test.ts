@@ -22,9 +22,9 @@ vi.mock("../src/lib/audit", () => ({
   createAuditLog: vi.fn().mockResolvedValue({ id: "audit_123" }),
 }));
 
-import { DocumentIntakeAgent, agentEventBus } from "../src/modules/intake/documentIntakeAgent";
+import { DocumentIntakeAgent } from "../src/modules/intake/documentIntakeAgent";
 
-describe("Agent 1: Document Intake Agent (AI Vision & Reactive Bus) Test Suite", () => {
+describe("Agent 1: Document Intake Agent (AI Vision) Test Suite", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -96,19 +96,4 @@ describe("Agent 1: Document Intake Agent (AI Vision & Reactive Bus) Test Suite",
     expect(result.humanReviewReason).toContain("Missing mandatory trade documents");
   });
 
-  it("should emit intake:completed event to wake up downstream agents in multi-agent pipeline", async () => {
-    const eventHandler = vi.fn();
-    agentEventBus.once("intake:completed", eventHandler);
-
-    const result = await DocumentIntakeAgent.execute({
-      accountId: "acc_test_123",
-      userId: "usr_test_123",
-      shipmentId: "shp_test_123",
-      fileName: "Commercial_Invoice_INV-994.pdf",
-      fileUrl: "https://storage.qubere.ai/docs/inv-994.pdf",
-    });
-
-    expect(eventHandler).toHaveBeenCalledTimes(1);
-    expect(eventHandler).toHaveBeenCalledWith(expect.objectContaining({ packetId: result.packetId }));
-  });
 });

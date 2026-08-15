@@ -20,8 +20,11 @@ export default async function CommandCenterPage() {
   // CommandCenterClient's filter comment), so paginating the query would make
   // "Total: 25" mean "25 on this page" and let search miss off-page rows.
   // Moving KPIs/search server-side is the real fix; this cap only bounds the
-  // worst case for now.
-  const SHIPMENT_ROW_CAP = 500;
+  // worst case for now. Raised from 500 (which accounts with >500 open
+  // shipments were silently exceeding) to 2000, and the true totals are now
+  // fetched separately below so the UI can flag it when the cap is still hit
+  // instead of undercounting without any indication.
+  const SHIPMENT_ROW_CAP = 2000;
 
   // Fetch shipments for the active tenant account, selecting only the columns
   // this page's formatting actually reads. The previous `include: { ...: true
@@ -58,6 +61,10 @@ export default async function CommandCenterPage() {
     take: SHIPMENT_ROW_CAP,
   });
 
+  // True total, independent of SHIPMENT_ROW_CAP, so the UI can tell the user
+  // when KPI tiles are computed from a truncated set instead of staying silent.
+  const shipmentTotalCount = await db.shipment.count({ where: { accountId, deletedAt: null } });
+
   const clients = await db.client.findMany({
     where: { accountId },
     orderBy: { name: "asc" },
@@ -87,13 +94,18 @@ export default async function CommandCenterPage() {
     take: SHIPMENT_ROW_CAP,
   });
 
+  // True total, independent of SHIPMENT_ROW_CAP -- see shipmentTotalCount above.
+  const decisionTotalCount = await db.agentDecision.count({ where: { accountId } });
+
   // Agent Operations table: real per-agent processed/review/blocked counts,
   // deduped to the latest decision per (shipment, agent) pair -- same rule
   // page.tsx already applies per-shipment for aiReview below. Capped to the
   // same SHIPMENT_ROW_CAP-bounded decision list as the rest of this page (see
-  // the comment on SHIPMENT_ROW_CAP above); this is a documented UI-list
-  // limitation, not a tenant-wide undercount claim.
+  // the comment on SHIPMENT_ROW_CAP above); shipmentsTruncated/decisionsTruncated
+  // below tell the UI when this cap is actually being hit.
   const agentOperations = computeAgentOperations(decisions);
+  const shipmentsTruncated = shipmentTotalCount > shipments.length;
+  const decisionsTruncated = decisionTotalCount > decisions.length;
 
   // Classification Signals: tenant-wide (ClassificationCase has no shipment/
   // client link -- see ClassificationSubject.canonicalProductId, which is
@@ -353,6 +365,10 @@ export default async function CommandCenterPage() {
       teamMembers={teamMembers}
       clients={clients.map((c) => ({ id: c.id, name: c.name }))}
       agentOperations={agentOperations}
+      shipmentsTruncated={shipmentsTruncated}
+      shipmentTotalCount={shipmentTotalCount}
+      decisionsTruncated={decisionsTruncated}
+      decisionTotalCount={decisionTotalCount}
       classificationSignals={classificationSignals}
       productIntelligenceSignals={productIntelligenceSignals}
       reviewQueue={reviewQueue}

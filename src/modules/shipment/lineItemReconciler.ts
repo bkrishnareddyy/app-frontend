@@ -125,7 +125,7 @@ export class LineItemReconciler {
     await this.recordFacts(ctx, item);
 
     const existing = await db.shipmentLineItem.findFirst({
-      where: { shipmentId: ctx.shipmentId, lineNumber: item.lineNumber },
+      where: { shipmentId: ctx.shipmentId, lineNumber: item.lineNumber, accountId: ctx.accountId },
     });
 
     if (!existing) {
@@ -236,9 +236,10 @@ export class LineItemReconciler {
    */
   static async fillShipmentFields(
     shipmentId: string,
+    accountId: string,
     discovery: Partial<Pick<Prisma.ShipmentUpdateInput, "countryOfOrigin" | "incoterm" | "countryOfExport" | "portOfEntry" | "carrierName" | "entryType">>
   ): Promise<void> {
-    const shipment = await db.shipment.findUnique({ where: { id: shipmentId } });
+    const shipment = await db.shipment.findFirst({ where: { id: shipmentId, accountId } });
     if (!shipment) return;
 
     const data: Prisma.ShipmentUpdateInput = {};

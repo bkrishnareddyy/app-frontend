@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
-import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
+import { hashPromptVersion } from "@/lib/ai/promptVersion";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
 import { matchLineItemToProduct, type ProductIntelligenceLineInput } from "./productIntelligence/matching";
@@ -246,6 +246,7 @@ export class ProductIntelligenceAgent {
       ? "Gemini 2.5 Flash Product Intelligence Engine"
       : "Deterministic Product Parser (No API Key)";
     let debugError: string | undefined = undefined;
+    let usedGeminiEnrichment = false;
 
     const hasValidDescription = input.lineItems.some((item) => {
       const d = (item.description || "").toLowerCase();
@@ -387,6 +388,7 @@ ${item.countryOfOrigin ? `Country of Origin (from shipment context, if it inform
           if (parsed.enrichedDescription) {
             enriched = parsed;
             aiProvider = "Gemini 2.5 Flash Product Intelligence Engine";
+            usedGeminiEnrichment = true;
           }
         } catch (err: unknown) {
           debugError = logAgentError(
@@ -532,6 +534,8 @@ ${item.countryOfOrigin ? `Country of Origin (from shipment context, if it inform
           purpose: "SKU catalog enrichment, material composition breakdown, and essential character analysis",
           dataSources: [aiProvider],
           regulations: ["General Rules of Interpretation (GRI 1 & GRI 3)"],
+          modelVersion: usedGeminiEnrichment ? aiModel("product-intelligence") : null,
+          promptVersion: usedGeminiEnrichment ? hashPromptVersion(PRODUCT_INTELLIGENCE_SYSTEM_PROMPT) : null,
           proposedDescription: `Enriched ${profiles[0]?.rawDescription || "Product SKU"}`,
           rulesApplied: ["GRI 3(b) Essential Character Analysis", "Material Breakdown Rule"],
           evidenceItems: { profiles, reasoningChain } as unknown as Prisma.InputJsonValue,
@@ -579,7 +583,6 @@ ${item.countryOfOrigin ? `Country of Origin (from shipment context, if it inform
       debugError,
     };
 
-    agentEventBus.emit("product:enriched", output);
     return output;
   }
 }

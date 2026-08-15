@@ -22,6 +22,22 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   const num = `EXP-2026-${Math.floor(100000 + Math.random() * 900000)}`;
 
+  // lineItems comes straight from the request body -- force accountId on every
+  // item rather than trusting whatever (if anything) the caller supplied,
+  // so a crafted body can't create ExportLineItem rows tagged to another tenant.
+  const sanitizedLineItems = Array.isArray(lineItems)
+    ? lineItems.map((item) => ({ ...item, accountId: ctx.accountId }))
+    : [
+        {
+          accountId: ctx.accountId,
+          partNumber: "VALVE-316-NPT",
+          description: "Exported Stainless Steel Valve 1/2 NPT",
+          quantity: 200,
+          htsCode: "8481.80.5090",
+          unitValue: 250.0,
+        },
+      ];
+
   const exportShipment = await db.exportShipment.create({
     data: {
       accountId: ctx.accountId,
@@ -30,16 +46,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       destinationCountry: destinationCountry || "Japan",
       status: "Exported",
       lineItems: {
-        create: lineItems || [
-          {
-            accountId: ctx.accountId,
-            partNumber: "VALVE-316-NPT",
-            description: "Exported Stainless Steel Valve 1/2 NPT",
-            quantity: 200,
-            htsCode: "8481.80.5090",
-            unitValue: 250.0,
-          },
-        ],
+        create: sanitizedLineItems,
       },
     },
     include: { lineItems: true, documents: true },

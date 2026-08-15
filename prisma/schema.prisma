@@ -786,6 +786,11 @@ model AgentDecision {
   dataSources         String[] // e.g. Documents, Product Master, Historical Shipments, Tariff Rulings
   regulations         String[] // e.g. US HTS 2025, General Rules of Interpretation (GRI 1 & 6)
   modelVersion        String?
+  // Short hash of the exact prompt template that produced this decision (see
+  // hashPromptVersion in src/lib/ai/promptVersion.ts). Prompts are edited in
+  // place in source over time, so without this a decision from months ago has
+  // no durable link to the wording that actually produced it.
+  promptVersion       String?
   // Which ShipmentLineItem this decision targets, when it targets one -- e.g.
   // HTS Classification's proposedHtsCode. Approving/rejecting the decision
   // resolves this line item, not a fragile match on currentHtsCode's value.
@@ -903,6 +908,16 @@ model CustomsFiling {
   releasedAt         DateTime?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+
+  // Maker/checker segregation of duties: the user who prepared the filing
+  // (preparedByUserId, stamped at POST /api/filing) must differ from whoever
+  // approves it and whoever transmits it -- enforced in the approve/transmit
+  // route handlers, not here. Plain userId strings (matching the resolvedBy
+  // pattern on ExceptionItem) rather than a User relation, since this is an
+  // attribution record, not a referential-integrity requirement.
+  preparedByUserId    String?
+  approvedByUserId    String?
+  transmittedByUserId String?
 
   responses              CustomsResponse[]
   exceptionItems         ExceptionItem[]
