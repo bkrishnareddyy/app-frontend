@@ -7,6 +7,37 @@ import { DatasetAlertService } from "@/lib/data/datasetAlertService";
 export const maxDuration = 300;
 
 /**
+ * Notification is a tenant-scoped model (accountId/userId are non-nullable,
+ * FK-constrained) -- there is no "global platform" row to attach a
+ * platform-level alert to. Deliver it as a real notification through each
+ * platform admin's own real account membership instead of a fabricated
+ * accountId/userId that violates the FK constraint on every insert.
+ */
+async function notifyPlatformAdmins(message: string, type: string) {
+  const platformAdmins = await db.user.findMany({
+    where: { platformRoles: { some: { platformRole: { name: "PLATFORM_ADMIN" } } }, deletedAt: null },
+    include: {
+      memberships: {
+        where: { status: "ACTIVE", account: { deletedAt: null } },
+        take: 1,
+      },
+    },
+  });
+
+  for (const admin of platformAdmins) {
+    const membership = admin.memberships[0];
+    if (!membership) continue; // platform admin has no active tenant membership to notify through
+    await db.notification
+      .create({
+        data: { accountId: membership.accountId, userId: admin.id, message, type },
+      })
+      .catch((err) => {
+        console.error(`[data-dispatcher] Failed to notify platform admin ${admin.id}:`, err);
+      });
+  }
+}
+
+/**
  * Single daily dispatcher cron — fits the Vercel Hobby plan's 2-cron ceiling.
  * Runs at 02:00 UTC and fans out to whichever LIVE datasets are due based on
  * scheduledFrequencyHours vs lastSuccessAt from DatasetRefreshLog.
@@ -55,19 +86,12 @@ async function handleDispatch(requestId: string) {
     // Fire for ALL datasets (LIVE and NOT_YET_IMPLEMENTED) that exceed their threshold.
     if (hoursSinceLast > dataset.staleThresholdHours) {
       staleAlerts.push(dataset.id);
-      try {
-        await db.notification.create({
-          data: {
-            // Platform-level notification; no accountId (global platform alert)
-            accountId: null as any,
-            userId: "system",
-            message: `Dataset staleness alert: "${dataset.name}" has not refreshed successfully in ${Math.round(hoursSinceLast)}h (threshold: ${dataset.staleThresholdHours}h). Ingestion may be misconfigured or source API unavailable.`,
-            type: "dataset_staleness_alert",
-          },
-        });
-      } catch {
-        // Don't let notification failure block dispatch
-      }
+      await notifyPlatformAdmins(
+        `Dataset staleness alert: "${dataset.name}" has not refreshed successfully in ${Math.round(hoursSinceLast)}h (threshold: ${dataset.staleThresholdHours}h). Ingestion may be misconfigured or source API unavailable.`,
+        "dataset_staleness_alert"
+      ).catch((err) => {
+        console.error(`[data-dispatcher] Staleness notification error for ${dataset.id}:`, err);
+      });
     }
 
     // ── Dispatch if due ────────────────────────────────────────────────────
