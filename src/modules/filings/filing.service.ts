@@ -52,7 +52,7 @@ export type FilingSnapshotData = {
 
 export class FilingService {
   static async transmitFiling(accountId: string, userId: string, filingId: string) {
-    return FilingService.buildSnapshotAndPublish(accountId, filingId, "SUBMIT", "transmit.send");
+    return FilingService.buildSnapshotAndPublish(accountId, filingId, "SUBMIT", "transmit.send", undefined, userId);
   }
 
   /**
@@ -197,7 +197,8 @@ export class FilingService {
     filingId: string,
     action: FilingMessageAction,
     transition: Parameters<typeof applyTransition>[1],
-    priorMessageId?: string
+    priorMessageId?: string,
+    userId?: string
   ) {
     const filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId },
@@ -326,6 +327,7 @@ export class FilingService {
         filingStatus: nextStatus,
         submittedAt: new Date(),
         version: { increment: 1 },
+        ...(userId && action === "SUBMIT" ? { transmittedByUserId: userId } : {}),
       },
     });
 

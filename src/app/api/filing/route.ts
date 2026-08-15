@@ -429,6 +429,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
           entryType: entryTypeCode,
           filingType: filingType || authorityConfig.filingSystemLabel,
           filingStatus: "Draft",
+          preparedByUserId: ctx.userId,
           totalValue: calculatedValue,
           totalDuties: calculatedDuty,
           // Null, not 0: no tax calculation runs here, and 0 would claim one did.

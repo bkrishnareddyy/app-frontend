@@ -51,6 +51,28 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
   }
 
+  // Maker/checker: whoever prepared this filing cannot also be the one who
+  // transmits it to the customs authority. See the matching check in
+  // approve/route.ts for the null-preparedByUserId (pre-existing filing) case.
+  if (filingForValidation.preparedByUserId && filingForValidation.preparedByUserId === ctx.userId) {
+    await createAuditLog({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      action: AuditAction.FILING_SEGREGATION_VIOLATION,
+      entity: "CustomsFiling",
+      entityId: id,
+      source: "UI",
+      metadata: { attemptedAction: "transmit", entryNumber: filingForValidation.entryNumber },
+    });
+    return buildErrorResponse(
+      403,
+      "SEGREGATION_OF_DUTIES_VIOLATION",
+      "The user who prepared this filing cannot also transmit it. A different user must submit it to customs.",
+      undefined,
+      requestId
+    );
+  }
+
   const policyConfig = await db.agentPolicyConfig.findFirst({
     where: { accountId: ctx.accountId, agentName: "FilingReadinessAgent" },
     select: { autoThreshold: true },

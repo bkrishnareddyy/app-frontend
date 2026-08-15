@@ -879,6 +879,16 @@ model CustomsFiling {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
+  // Maker/checker segregation of duties: the user who prepared the filing
+  // (preparedByUserId, stamped at POST /api/filing) must differ from whoever
+  // approves it and whoever transmits it -- enforced in the approve/transmit
+  // route handlers, not here. Plain userId strings (matching the resolvedBy
+  // pattern on ExceptionItem) rather than a User relation, since this is an
+  // attribution record, not a referential-integrity requirement.
+  preparedByUserId    String?
+  approvedByUserId    String?
+  transmittedByUserId String?
+
   responses              CustomsResponse[]
   exceptionItems         ExceptionItem[]
   refundOpportunities    RefundOpportunity[]

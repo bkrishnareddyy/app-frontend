@@ -30,11 +30,34 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
   }
 
+  // Maker/checker: whoever prepared this filing cannot also be the one who
+  // signs off on it. A filing created before this field existed has
+  // preparedByUserId === null, which never matches a real userId, so it
+  // falls through to allow the approval rather than blocking on missing data.
+  if (filing.preparedByUserId && filing.preparedByUserId === ctx.userId) {
+    await createAuditLog({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      action: AuditAction.FILING_SEGREGATION_VIOLATION,
+      entity: "CustomsFiling",
+      entityId: id,
+      source: "UI",
+      metadata: { attemptedAction: "approve", entryNumber: filing.entryNumber },
+    });
+    return buildErrorResponse(
+      403,
+      "SEGREGATION_OF_DUTIES_VIOLATION",
+      "The user who prepared this filing cannot also approve it. A different reviewer must sign off.",
+      undefined,
+      requestId
+    );
+  }
+
   try {
     const nextStatus = applyTransition(filing.filingStatus, "broker.approve");
     const updated = await db.customsFiling.update({
       where: { id },
-      data: { filingStatus: nextStatus },
+      data: { filingStatus: nextStatus, approvedByUserId: ctx.userId },
     });
 
     await createAuditLog({
