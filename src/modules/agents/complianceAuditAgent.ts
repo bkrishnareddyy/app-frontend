@@ -496,16 +496,55 @@ export class ComplianceAuditAgent {
       }
     }
 
-    // ---- End-Use Screening (deterministic; see compliance/endUse/) ----
-    const endUseScreening = await runEndUseScreening({
-      accountId: input.accountId,
-      shipmentId: input.shipmentId,
-      endUseStatement: input.endUseStatement ?? null,
-      screeningDate: new Date(),
-    }).catch((err) => {
-      debugError = logAgentError("Compliance Agent", input.shipmentId, "runEndUseScreening", err);
-      return undefined;
-    });
+    // ---- End-Use / End-User / Anti-Boycott / Military End-Use Screening ----
+    // These four are independent of one another (no shared data dependency),
+    // so they run concurrently rather than as four sequential round-trips.
+    const endUserEntityNames = [
+      input.exporterName ? { role: "Exporter", name: input.exporterName } : null,
+      input.supplierName ? { role: "Supplier/Manufacturer", name: input.supplierName } : null,
+      input.importerName ? { role: "Importer", name: input.importerName } : null,
+    ].filter((n): n is { role: string; name: string } => n !== null);
+
+    const [endUseScreening, endUserScreening, antiBoycottScreening, militaryEndUseScreening] = await Promise.all([
+      runEndUseScreening({
+        accountId: input.accountId,
+        shipmentId: input.shipmentId,
+        endUseStatement: input.endUseStatement ?? null,
+        screeningDate: new Date(),
+      }).catch((err) => {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "runEndUseScreening", err);
+        return undefined;
+      }),
+      runEndUserScreening({
+        accountId: input.accountId,
+        shipmentId: input.shipmentId,
+        entityNames: endUserEntityNames,
+        screeningDate: new Date(),
+      }).catch((err) => {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "runEndUserScreening", err);
+        return undefined;
+      }),
+      runAntiBoycottScreening({
+        accountId: input.accountId,
+        shipmentId: input.shipmentId,
+        destinationCountry: input.destinationCountry ?? null,
+        documentNarrativeText: input.documentNarrativeText ?? null,
+        screeningDate: new Date(),
+      }).catch((err) => {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "runAntiBoycottScreening", err);
+        return undefined;
+      }),
+      runMilitaryEndUseScreening({
+        accountId: input.accountId,
+        shipmentId: input.shipmentId,
+        endUseStatement: input.endUseStatement ?? null,
+        entityNames: endUserEntityNames,
+        screeningDate: new Date(),
+      }).catch((err) => {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "runMilitaryEndUseScreening", err);
+        return undefined;
+      }),
+    ]);
 
     if (endUseScreening) {
       if (endUseScreening.status === "SKIPPED") {
@@ -544,22 +583,6 @@ export class ComplianceAuditAgent {
     // Broader than the UFLPA/forced-labor entityNames set -- BIS Entity List /
     // Unverified List concern any transaction party, so the importer (the
     // usual receiving/end-user party) is included alongside exporter/supplier.
-    const endUserEntityNames = [
-      input.exporterName ? { role: "Exporter", name: input.exporterName } : null,
-      input.supplierName ? { role: "Supplier/Manufacturer", name: input.supplierName } : null,
-      input.importerName ? { role: "Importer", name: input.importerName } : null,
-    ].filter((n): n is { role: string; name: string } => n !== null);
-
-    const endUserScreening = await runEndUserScreening({
-      accountId: input.accountId,
-      shipmentId: input.shipmentId,
-      entityNames: endUserEntityNames,
-      screeningDate: new Date(),
-    }).catch((err) => {
-      debugError = logAgentError("Compliance Agent", input.shipmentId, "runEndUserScreening", err);
-      return undefined;
-    });
-
     if (endUserScreening) {
       if (endUserScreening.status === "SKIPPED") {
         auditResults.push({
@@ -594,17 +617,6 @@ export class ComplianceAuditAgent {
     }
 
     // ---- Anti-Boycott Screening (deterministic; see compliance/antiBoycott/) ----
-    const antiBoycottScreening = await runAntiBoycottScreening({
-      accountId: input.accountId,
-      shipmentId: input.shipmentId,
-      destinationCountry: input.destinationCountry ?? null,
-      documentNarrativeText: input.documentNarrativeText ?? null,
-      screeningDate: new Date(),
-    }).catch((err) => {
-      debugError = logAgentError("Compliance Agent", input.shipmentId, "runAntiBoycottScreening", err);
-      return undefined;
-    });
-
     if (antiBoycottScreening) {
       if (antiBoycottScreening.status === "SKIPPED") {
         auditResults.push({
@@ -639,17 +651,6 @@ export class ComplianceAuditAgent {
     }
 
     // ---- Military End-Use / End-User Screening (deterministic; see compliance/militaryEndUse/) ----
-    const militaryEndUseScreening = await runMilitaryEndUseScreening({
-      accountId: input.accountId,
-      shipmentId: input.shipmentId,
-      endUseStatement: input.endUseStatement ?? null,
-      entityNames: endUserEntityNames,
-      screeningDate: new Date(),
-    }).catch((err) => {
-      debugError = logAgentError("Compliance Agent", input.shipmentId, "runMilitaryEndUseScreening", err);
-      return undefined;
-    });
-
     if (militaryEndUseScreening) {
       if (militaryEndUseScreening.status === "SKIPPED") {
         auditResults.push({
