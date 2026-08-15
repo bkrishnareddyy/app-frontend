@@ -409,7 +409,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   // Resolves HTS_REVIEW_REQUIRED (and any other now-stale exception) against
   // the line item state this review action just produced, instead of
   // leaving it to wait for the next pipeline trigger.
-  await ReconciliationEngine.reconcileShipment(decision.shipmentId, "USER_FIELD_UPDATED").catch((err) => {
+  await ReconciliationEngine.reconcileShipment(decision.shipmentId, ctx.accountId, "USER_FIELD_UPDATED").catch((err) => {
     console.error("[decisions/route] Reconciliation after review failed:", err);
   });
 

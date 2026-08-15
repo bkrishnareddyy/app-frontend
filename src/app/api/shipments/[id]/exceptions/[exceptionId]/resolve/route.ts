@@ -18,7 +18,7 @@ export const POST = withAuthenticatedRoute<{ id: string; exceptionId: string }>(
 
   try {
     const exception = await db.exceptionItem.findFirst({
-      where: { id: exceptionId, shipmentId: id },
+      where: { id: exceptionId, shipmentId: id, accountId: ctx.accountId },
       omit: { resolutionReasonCode: true },
 });
 
@@ -27,7 +27,7 @@ export const POST = withAuthenticatedRoute<{ id: string; exceptionId: string }>(
     }
 
     await db.exceptionItem.update({
-      where: { id: exceptionId },
+      where: { id: exceptionId, accountId: ctx.accountId },
       data: {
         status: "Resolved",
         resolvedAt: new Date(),

@@ -51,9 +51,9 @@ export class ReconciliationEngine {
    * Reconciles all inputs, document extractions, and user edits for a shipment.
    * Generates or auto-resolves ExceptionItem records durably.
    */
-  static async reconcileShipment(shipmentId: string, triggerSource: string = "SYSTEM"): Promise<ReconciliationResult> {
-    const shipment = await db.shipment.findUnique({
-      where: { id: shipmentId },
+  static async reconcileShipment(shipmentId: string, accountId: string, triggerSource: string = "SYSTEM"): Promise<ReconciliationResult> {
+    const shipment = await db.shipment.findFirst({
+      where: { id: shipmentId, accountId },
       include: {
         documents: { include: { parseVersions: true, extractionFields: true } },
         exceptionItems: { where: { status: { not: "Resolved" } } },

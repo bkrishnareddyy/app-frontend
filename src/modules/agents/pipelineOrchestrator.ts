@@ -206,7 +206,7 @@ export class PipelineOrchestrator {
     // Unconditional, regardless of trigger -- this is what turns current DB
     // state into human-visible ExceptionItem action items. The old upload
     // path never called this at all; every trigger does now.
-    await ReconciliationEngine.reconcileShipment(shipmentId, triggerEvent);
+    await ReconciliationEngine.reconcileShipment(shipmentId, accountId, triggerEvent);
 
     const canonicalState = await CanonicalShipmentService.getCanonicalState(shipmentId);
 
