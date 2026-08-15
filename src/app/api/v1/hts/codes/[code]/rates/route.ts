@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
-import { calculateDutyStack } from "@/lib/tariff/dutyEngine";
+import { calculateDutyStack, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 
 export const GET = withAuthenticatedRoute<{ code: string }>(async ({ req, params }) => {
   const { code } = params;
@@ -19,30 +19,19 @@ export const GET = withAuthenticatedRoute<{ code: string }>(async ({ req, params
 
   const releaseId = publishedRelease?.id || "hts_rel_published_v1";
 
-  const normalized = code.replace(/[^0-9]/g, "");
-  const node = publishedRelease
-    ? await db.htsNode.findFirst({
-        where: { releaseId: publishedRelease.id, htsNumberNormalized: normalized },
-        include: { dutyRates: true },
-      })
-    : null;
+  const lineItem = {
+    htsCode: code,
+    totalValue: value,
+    countryOfOrigin,
+    manufacturer,
+  };
 
-  const generalRate = node?.dutyRates.find((r) => r.rateColumn === "General")?.rawRateText ?? "Free";
+  // Real per-code duty-rate lookup (Section 301 applicability/tranche included) --
+  // never assume China/List3 for a code that hasn't actually been evaluated.
+  const htsCodesMap = await loadHtsCodesMap([lineItem]);
+  const htsRateInput = htsCodesMap[code] ?? null;
 
-  const stack = calculateDutyStack(
-    {
-      htsCode: code,
-      totalValue: value,
-      countryOfOrigin,
-      manufacturer,
-    },
-    {
-      generalDutyRate: generalRate,
-      section301Applicable: countryOfOrigin.toUpperCase() === "CN",
-      section301Tranche: "List3",
-    },
-    releaseId
-  );
+  const stack = calculateDutyStack(lineItem, htsRateInput, releaseId);
 
   return NextResponse.json({
     htsCode: code,

@@ -85,7 +85,7 @@ export class DrawbackService {
               importDate: filing.createdAt,
               exportDeadline: new Date(filing.createdAt.getTime() + 5 * 365 * 24 * 60 * 60 * 1000), // 5 years
               hasSection301: stack.section301.greaterThan(0),
-              section301List: htsRateInput?.section301Tranche || (stack.section301.greaterThan(0) ? "List3" : null),
+              section301List: htsRateInput?.section301Tranche ?? null,
             },
           });
           createdCount++;
