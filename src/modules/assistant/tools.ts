@@ -721,6 +721,7 @@ const listExceptions: AssistantTool = {
         title: e.description,
         severity: e.severity,
         status: e.status,
+        version: e.version,
         shipmentNumber: e.shipment?.shipmentNumber ?? null,
         url: `/app/exceptions/${e.id}`,
       })),

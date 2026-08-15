@@ -19,8 +19,8 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
   let totalDutyPaid = new Decimal(0);
   const byListMap = new Map<string, { entries: number; dutyPaid: Decimal }>();
 
-  // Initialize lists
-  const LISTS = ["List1", "List2", "List3", "List4A", "List4B"];
+  // Initialize lists ("Unknown" holds entries where the tranche was never resolved -- never fabricated as a real list)
+  const LISTS = ["List1", "List2", "List3", "List4A", "List4B", "Unknown"];
   for (const list of LISTS) {
     byListMap.set(list, { entries: 0, dutyPaid: new Decimal(0) });
   }
@@ -32,7 +32,7 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
       const duty = new Decimal(filing.totalDuties || 0);
       totalDutyPaid = totalDutyPaid.plus(duty);
 
-      const listName = filing.snapshot.section301List || "List3";
+      const listName = filing.snapshot.section301List || "Unknown";
       const current = byListMap.get(listName) || { entries: 0, dutyPaid: new Decimal(0) };
       byListMap.set(listName, {
         entries: current.entries + 1,

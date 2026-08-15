@@ -144,9 +144,18 @@ export class ValuationAssistsAgent {
     const totalAdjustment = adjustments.reduce((sum, a) => sum + a.amount, 0);
     const enteredCustomsValue = Math.max(0, baseVal + totalAdjustment);
 
-    // Confidence is proportional to input completeness, not a hardcoded constant.
-    const inputsReceived = ["invoiceSubtotal"];
-    const inputsRequired = ["invoiceSubtotal", "currency"];
+    // Confidence tracks which adjustment inputs the caller actually supplied,
+    // not a fixed literal -- previously inputsReceived was a hardcoded
+    // one-element array, so this always evaluated to the same 50 regardless
+    // of what was really passed in. `typeof === "number"` (not `> 0`) so an
+    // explicit 0 counts as received: the caller affirmatively said "none",
+    // distinct from silently defaulting an unprovided field to zero.
+    const inputsRequired = ["invoiceSubtotal", "oceanFreight", "buyerAssists"];
+    const inputsReceived = [
+      "invoiceSubtotal",
+      ...(typeof input.oceanFreight === "number" ? ["oceanFreight"] : []),
+      ...(typeof input.buyerAssists === "number" ? ["buyerAssists"] : []),
+    ];
     const completeness = Math.round((inputsReceived.length / inputsRequired.length) * 100);
 
     const adjustmentNote =
@@ -245,7 +254,7 @@ export class ValuationAssistsAgent {
       dependencyMetadata: {
         inputsRequired,
         inputsReceived,
-        missingInputs: [],
+        missingInputs: inputsRequired.filter((i) => !inputsReceived.includes(i)),
         blockedByAgents: [],
       },
       reasoningChain,

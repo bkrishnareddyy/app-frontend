@@ -125,9 +125,7 @@ export async function POST(req: Request): Promise<Response> {
       quantity: li.quantity ?? 0,
       unitPrice: li.unitPrice ?? 0,
       totalValue: (li.quantity ?? 0) * (li.unitPrice ?? 0),
-      currency: li.currency ?? "USD",
       countryOfOrigin: li.countryOfOrigin ?? "",
-      weight: li.weight ?? null,
       // F-5: data lineage fields
       source: "ERP",
       sourceSystem,

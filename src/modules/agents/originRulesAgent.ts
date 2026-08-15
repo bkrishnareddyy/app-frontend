@@ -177,6 +177,22 @@ export class OriginRulesAgent {
     const primaryCo = qualifications[0]?.countryOfOrigin ?? null;
     const primaryFta = qualifications[0]?.ftaProgram ?? "UNDETERMINED";
     const requiresReview = usmcaCandidateCount > 0;
+
+    // Confidence reflects how much of what this agent needs was actually
+    // supplied -- known origin per line, an HTS code to anchor the rule, and
+    // a caller-provided duty rate to compare against -- never a flat 50/80
+    // regardless of input completeness. Review-required lines (unsubstantiated
+    // USMCA candidates) are additionally capped: no amount of ancillary data
+    // completeness makes an unsubstantiated FTA claim high-confidence.
+    const totalLines = input.lineItems.length || 1;
+    const linesWithKnownOrigin = qualifications.filter((q) => q.countryOfOrigin !== null).length;
+    const linesWithHts = input.lineItems.filter((li) => Boolean(li.htsCode)).length;
+    const linesWithRate = input.lineItems.filter((li) => Boolean(li.standardDutyRate)).length;
+    const inputCompleteness =
+      (linesWithKnownOrigin / totalLines + linesWithHts / totalLines + linesWithRate / totalLines) / 3;
+    const baseConfidence = Math.round(inputCompleteness * 100);
+    const confidence = requiresReview ? Math.min(baseConfidence, 60) : baseConfidence;
+
     const reasoningChain = `Evaluated origin rules for ${primaryCo ?? "an undeclared country of origin"}. ${
       primaryCo === null
         ? "No FTA qualification could be assessed because no line item declares a manufacturing country."
@@ -197,7 +213,7 @@ export class OriginRulesAgent {
           status: requiresReview ? "Needs Review" : "AUTO_VERIFIED",
           triageState: requiresReview ? "NEEDS_REVIEW" : "AUTO_VERIFIED",
           ...(requiresReview ? {} : { autoApprovalPolicy: "origin-deterministic-v1" }),
-          confidence: requiresReview ? 50 : 80,
+          confidence,
           decisionSummary: requiresReview
             ? `Origin rules evaluated for ${qualifications.length} line(s): ${usmcaCandidateCount} USMCA candidate(s) require human substantiation before any FTA preference can be claimed.`
             : `Origin rules evaluated for ${qualifications.length} line(s): ${primaryFta} qualification assessed for ${primaryCo ?? "an undeclared country of origin"}.`,
@@ -250,7 +266,7 @@ export class OriginRulesAgent {
       shipmentId: input.shipmentId,
       status: "Completed",
       qualifications,
-      confidence: requiresReview ? 50 : 80,
+      confidence,
       reasoningChain,
       agentDecisionId,
       aiProviderUsed: aiProvider,

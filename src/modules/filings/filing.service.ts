@@ -289,7 +289,7 @@ export class FilingService {
     const section301List = hasSection301
       ? (filing.shipment.lineItems
           .map((item) => (item.htsCode ? htsCodesMapForSnapshot[item.htsCode]?.section301Tranche : null))
-          .find(Boolean) || "List3")
+          .find(Boolean) ?? null)
       : null;
 
     await db.filingSnapshot.upsert({
