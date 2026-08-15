@@ -11,12 +11,12 @@
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Bonds** | `GET /api/bonds` | Production Foundation | Zod Query | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
 | **Bonds** | `POST /api/bonds` | Production Foundation | Zod Schema | `bonds.manage` | Yes (`accountId`) | Yes | Yes | Included |
-| **Classification** | `POST /api/classification/classify` | Mock / Stub — returns fixed Tokyo/valve/EAR99 output | Zod Schema | Authenticated | Yes (`accountId`) | Yes | N/A | Mock only |
+| **Classification** | `POST /api/classification/classify` | Disabled by default — returns 503 `CLASSIFICATION_ENGINE_MIGRATION` unless `ENABLE_LEGACY_CLASSIFICATION_MOCK=true`; when enabled, calls `ClassificationService` against real ingested HTS data (no fixed output) | Zod Schema | Authenticated | Yes (`accountId`) | Yes | N/A | Included |
 | **Products** | `POST /api/products/normalize` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Included |
 | **Reconciliation** | `POST /api/reconcile` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Included |
 | **Exceptions** | `GET /api/exceptions` | Production Foundation | Zod Query | Authenticated | Yes (`accountId`) | N/A (No Mutate) | N/A | Included |
 | **Exceptions** | `PATCH /api/exceptions/[id]` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | N/A | Versioned (409) | Included |
-| **Audits** | `POST /api/compliance/audits/run` | Prototype — fixed 5-item checklist, fixed risk scores | Zod Schema | `audits.run` | Yes (`accountId`) | Yes | Yes | Mock only |
+| **Audits** | `POST /api/compliance/audits/run` | Production Foundation — fixed 5-item checklist, but risk score is computed per-run from live filing/shipment/reconciliation/bond/broker data, not fixed | Zod Schema | `audits.run` | Yes (`accountId`) | Yes | Yes | Included |
 | **Audits** | `GET /api/compliance/audits/[id]` | Production Foundation | Zod Path | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
 | **Drawback** | `POST /api/drawback/match` | Prototype — no inventory lot reservation, duty rate assumed | Zod Schema | Authenticated | Yes (`accountId`) | Yes | Yes | Mock only |
 | **Drawback** | `POST /api/drawback/claims` | Prototype — legally unsafe, no over-allocation prevention | Zod Schema | `drawback.claim` | Yes (`accountId`) | Yes | Yes | Mock only |
@@ -25,7 +25,7 @@
 | **Shipments** | `GET /api/shipments/[id]` | Production Foundation | Zod Path | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
 | **Shipments** | `PATCH /api/shipments/[id]` | Production Foundation | Zod Schema | Authenticated | Yes (`accountId`) | N/A | Versioned (409) | Included |
 | **Documents** | `POST /api/documents/upload` | Prototype — public storage, no MIME/size validation, no malware scan | FormData Zod | Authenticated | Yes (`accountId`) | Yes | N/A | Mock only |
-| **Documents** | `GET /api/documents/[id]/extractions`| Mock / Stub — OCR/extraction returns fixed synthetic output | Zod Path | Authenticated | Yes (`accountId`) | N/A (No Mutate) | N/A | Mock only |
+| **Documents** | `GET /api/documents/[id]/extractions`| Production Foundation — reads results from `DocumentIntelligenceAgent`, which runs live IBM Docling OCR against the uploaded file (see `docs/document-intelligence.md`) | Zod Path | Authenticated | Yes (`accountId`) | N/A (No Mutate) | N/A | Included |
 | **Filings** | `POST /api/filing` | Production Foundation — creates DRAFT only (QPR-001 fixed) | Zod Schema | `filings.create` | Yes (`accountId`) | Yes | Yes | Mock only |
 | **Filings** | `GET /api/filing/[id]` | Production Foundation | Zod Path | Authenticated | Yes (`accountId`) | N/A | N/A | Included |
 | **Filings** | `POST /api/filing/[id]/transmit` | Mock / Stub — MockCustomsTransmissionProvider only; no real CBP | Zod Path | `filings.submit` | Yes (`accountId`) | Yes | Versioned (409) | Mock only |
@@ -50,6 +50,6 @@
 | **Compliance** | `POST /api/v1/compliance/embargo-screening` | Production Foundation — reuses last completed screening unless `forceRescreen`; rescreen requires `embargo.screen` scope | Zod Schema | API Key (`embargo.read` + `embargo.screen` scopes) | Yes (`accountId` from key) | N/A | Yes (pipeline-serialized) | Included |
 
 ---
-*Last updated: 2026-08-14 — added Partner API (`/api/v1/compliance/embargo-screening`) section.*
+*Last updated: 2026-08-15 — corrected stale Classification/Documents-extractions/Audits-run rows, which described mock/fixed behavior that no longer matches the code.*
 *Documented by Antigravity AI — Implementation Status Tracker*
 
