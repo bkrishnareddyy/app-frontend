@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
-import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
+import { hashPromptVersion } from "@/lib/ai/promptVersion";
 import { AgentState } from "./agentState";
 import { DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
 import { logAgentError } from "./agentLogger";
@@ -480,6 +480,10 @@ ${JSON.stringify(docData, null, 2)}`;
       aiProvider = "Qubere Deterministic Normalization Engine";
     }
 
+    // Captured before the deterministic fallback below unconditionally fills
+    // canonicalModel in, so it still reflects whether Gemini actually produced it.
+    const usedGeminiCanonicalModel = canonicalModel !== null;
+
     // Deterministic Canonical Fallback Normalizer — Guarantees zero-data-loss canonical output
     if (!canonicalModel) {
       const parties: CanonicalParty[] = [];
@@ -610,6 +614,8 @@ ${JSON.stringify(docData, null, 2)}`;
           purpose: "Transform document intelligence extractions into a canonical, deterministic enterprise business model",
           dataSources: ["Document Intelligence Output", aiProvider],
           regulations: ["Canonical Enterprise Model Specification"],
+          modelVersion: usedGeminiCanonicalModel ? aiModel("normalization") : null,
+          promptVersion: usedGeminiCanonicalModel ? hashPromptVersion(NORMALIZATION_AGENT_SYSTEM_PROMPT) : null,
           proposedDescription: fileName
             ? `Canonical Enterprise Model for ${fileName}`
             : "Canonical Enterprise Model for an unnamed source document",
@@ -665,7 +671,6 @@ ${JSON.stringify(docData, null, 2)}`;
       aiProviderUsed: aiProvider,
     };
 
-    agentEventBus.emit("normalization:completed", output);
     return output;
   }
 }

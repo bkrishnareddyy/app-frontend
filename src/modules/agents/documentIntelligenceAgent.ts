@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
+import { hashPromptVersion } from "@/lib/ai/promptVersion";
 import { AgentState, MultiDimensionalConfidence } from "./agentState";
 import { logAgentError } from "./agentLogger";
 import { EntityResolutionService } from "@/modules/entity/entityResolutionService";
@@ -543,6 +544,7 @@ export class DocumentIntelligenceAgent {
 
     let lineItems: LineItemExtraction[] = [];
     let aiProvider = "Gemini Flash Vision (Google GenAI SDK)";
+    let usedGeminiExtraction = false;
 
     const aiClient = this.getAiClient();
     // Resolved once for the whole run, so the model that is called and the model
@@ -656,6 +658,7 @@ ${instructions}`;
         if (typeof parsed.hasCommercialInvoice === "boolean") hasCommercialInvoice = parsed.hasCommercialInvoice;
         if (parsed.confidence) confidence = parsed.confidence;
         if (parsed.lineItems && parsed.lineItems.length > 0) lineItems = parsed.lineItems;
+        usedGeminiExtraction = true;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         console.warn("Agent 2 Gemini Vision extraction error:", message);
@@ -785,6 +788,8 @@ ${instructions}`;
           purpose: "Multimodal visual extraction, trade taxonomy classification, partner agency routing, line item extraction, and Math Reconciliation",
           dataSources: ["Gemini 2.5 Flash Vision", "Key-Value Discovery Engine", "Google ADK Math Engine", aiProvider],
           regulations: ["19 CFR § 141.86", "19 CFR Part 102 (MID Rules)"],
+          modelVersion: usedGeminiExtraction ? model : null,
+          promptVersion: usedGeminiExtraction ? hashPromptVersion(DOCUMENT_INTELLIGENCE_SYSTEM_PROMPT) : null,
           proposedDescription: `Extracted ${lineItems.length} items from ${input.fileName || "packet"}`,
           rulesApplied: [
             "Multimodal Visual & Trade Taxonomy Grounding Rule",

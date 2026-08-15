@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
+import { hashPromptVersion } from "@/lib/ai/promptVersion";
 import { logAgentError } from "./agentLogger";
 import { screenValue } from "@/lib/screening/embargoMatch";
 import { Prisma } from "@prisma/client";
@@ -593,6 +594,8 @@ export class ComplianceAuditAgent {
             ...(countryEmbargoScreening ? ["Country Embargo Screening (countries / country_by_country_maps)"] : []),
           ],
           regulations: ["19 CFR § 141.86", "UFLPA (Public Law 117-78)", "19 CFR Part 159 (ADD/CVD)"],
+          modelVersion: aiProvider.includes("Gemini") ? aiModel("compliance-audit") : null,
+          promptVersion: aiProvider.includes("Gemini") ? hashPromptVersion(SYNTHESIS_SYSTEM_PROMPT) : null,
           proposedDescription: `Compliance check for ${lineItems.length} line item(s)`,
           rulesApplied: Array.from(new Set(auditResults.map((r) => r.ruleName))),
           evidenceItems: {

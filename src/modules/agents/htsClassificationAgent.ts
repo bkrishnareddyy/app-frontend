@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { meterGeminiCall } from "@/lib/ai/aiMeter";
 import { aiModel } from "@/lib/ai/aiModel";
-import { agentEventBus } from "@/modules/intake/documentIntakeAgent";
+import { hashPromptVersion } from "@/lib/ai/promptVersion";
 import { Prisma } from "@prisma/client";
 import { logAgentError } from "./agentLogger";
 import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
@@ -32,6 +32,8 @@ export interface ClassificationResultItem {
   evaluatorCritique: string;
   refinementTurns: number;
   legalRationale: string;
+  modelVersion: string | null;
+  promptVersion: string | null;
 }
 
 interface HtsModelResult {
@@ -259,6 +261,8 @@ export class HTSClassificationAgent {
 
       // Try real Gemini call
       let htsResult: HtsModelResult | null = null;
+      let modelVersionUsed: string | null = null;
+      let promptVersionUsed: string | null = null;
 
       if (process.env.GEMINI_API_KEY) {
         try {
@@ -303,6 +307,8 @@ ${candidateContext}`;
           if (parsed.htsCode) {
             htsResult = parsed;
             aiProvider = "Gemini 2.5 Flash HTS Classification Engine";
+            modelVersionUsed = aiModel("hts-classification");
+            promptVersionUsed = hashPromptVersion(HTS_CLASSIFICATION_SYSTEM_PROMPT);
 
             // Zero-hallucination policy: the LLM's crossRulings are a claim,
             // not evidence. A ruling number only becomes trustworthy CBP
@@ -411,6 +417,8 @@ ${candidateContext}`;
             : "Single-pass classification. Evaluator refinement loop pending.",
           refinementTurns: 1,
           legalRationale: htsResult.legalRationale,
+          modelVersion: modelVersionUsed,
+          promptVersion: promptVersionUsed,
         });
       }
     }
@@ -469,6 +477,8 @@ ${candidateContext}`;
             purpose: "10-Digit HTS code resolution via Gemini legal reasoning and CBP CROSS ruling lookup",
             dataSources: ["HTSUS 2026 Rev 1", "CBP CROSS Rulings Database", aiProvider],
             regulations: ["19 U.S.C. § 1202", "GRI 1-6"],
+            modelVersion: result.modelVersion,
+            promptVersion: result.promptVersion,
             // No existing classification is read here, so there is no current code.
             currentHtsCode: null,
             proposedHtsCode: result.htsCode,
@@ -520,7 +530,6 @@ ${candidateContext}`;
       debugError,
     };
 
-    agentEventBus.emit("classification:completed", output);
     return output;
   }
 }

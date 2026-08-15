@@ -33,7 +33,6 @@ vi.mock("@/lib/audit", () => ({
 }));
 vi.mock("@/lib/ai/aiMeter", () => ({ meterGeminiCall: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/ai/aiModel", () => ({ aiModel: () => "gemini-test-model" }));
-vi.mock("@/modules/intake/documentIntakeAgent", () => ({ agentEventBus: { emit: vi.fn() } }));
 vi.mock("@/repositories/htsNodeRepository", () => ({
   HtsNodeRepository: {
     searchNodes: vi.fn().mockResolvedValue({ items: [] }),
