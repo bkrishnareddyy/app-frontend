@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { authenticateApiKey, apiKeyHasScope } from "@/lib/api/api-key-auth";
 import { generateRequestId } from "@/lib/api/error";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { ERP_INTAKE_INITIAL_STATUS } from "@/modules/shipments/shipmentStatus";
 
 const lineItemSchema = z.object({
   lineNumber: z.number().int().positive(),
@@ -105,7 +106,7 @@ export async function POST(req: Request): Promise<Response> {
         shipmentNumber,
         poReference: externalReference,
         importerName: importerName ?? "",
-        status: "In Progress",
+        status: ERP_INTAKE_INITIAL_STATUS,
         destinationCountry: destinationCountry ?? "US",
         estimatedArrival: estimatedArrival ? new Date(estimatedArrival) : null,
         portOfEntry: portOfEntry ?? null,
