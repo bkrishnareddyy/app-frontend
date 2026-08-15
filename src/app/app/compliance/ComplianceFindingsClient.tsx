@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp, Download, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -70,7 +70,7 @@ function resultBadge(result: string): BadgeProps["variant"] {
   return "neutral";
 }
 
-function FindingCard({ finding, onRunAudit, busy }: { finding: FindingProps; onRunAudit?: () => void; busy?: boolean }) {
+function FindingCard({ finding, onRunAudit: _onRunAudit, busy: _busy }: { finding: FindingProps; onRunAudit?: () => void; busy?: boolean }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);

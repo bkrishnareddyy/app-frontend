@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files, Clock, XCircle, GripVertical, FileText } from "lucide-react";
+import { CheckCircle2, AlertCircle, Plus, Unlink, Loader2, X, Files, GripVertical, FileText } from "lucide-react";
 import { DocumentUploadModal } from "@/components/DocumentUploadModal";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
@@ -28,53 +28,6 @@ interface ShipmentDocumentsSectionProps {
 }
 
 const DETACH_TITLE_ID = "detach-document-title";
-
-// Standardized status display — maps raw DB status strings to a consistent
-// label + colour so the workspace and the docs section always agree (A-1).
-function docStatusChip(status: string, hasFileUrl: boolean) {
-  const s = status.toLowerCase();
-  if (s === "uploading" || s === "processing" || s === "pending") {
-    return {
-      label: "Processing",
-      className: "text-blue-600 bg-blue-50 border-blue-200",
-      icon: <Clock className="w-3 h-3" />,
-    };
-  }
-  if (s === "processing_failed" || s === "failed" || s === "error") {
-    return {
-      label: "Failed",
-      className: "text-red-600 bg-red-50 border-red-200",
-      icon: <XCircle className="w-3 h-3" />,
-    };
-  }
-  if (s === "needs_review" || s === "review required") {
-    return {
-      label: "Needs Review",
-      className: "text-amber-600 bg-amber-50 border-amber-200",
-      icon: <AlertCircle className="w-3 h-3" />,
-    };
-  }
-  if (s === "archived") {
-    return {
-      label: "Archived",
-      className: "text-slate-500 bg-slate-50 border-slate-200",
-      icon: <XCircle className="w-3 h-3" />,
-    };
-  }
-  if (s === "missing" || (!hasFileUrl && s !== "received" && s !== "processed" && s !== "completed" && s !== "ready")) {
-    return {
-      label: "Missing",
-      className: "text-red-600 bg-red-50 border-red-200",
-      icon: <AlertCircle className="w-3 h-3" />,
-    };
-  }
-  // Ready / Received / Processed / Completed → green
-  return {
-    label: "Ready",
-    className: "text-emerald-600 bg-emerald-50 border-emerald-200",
-    icon: <CheckCircle2 className="w-3 h-3" />,
-  };
-}
 
 export function ShipmentDocumentsSection({
   shipmentId,
@@ -105,7 +58,6 @@ export function ShipmentDocumentsSection({
   // Sync state when initialDocs props change (e.g. after dynamic file upload refresh)
   useEffect(() => {
     // Resyncs the list after an upload refreshes the server props.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDocuments(Array.from(new Map(initialDocs.map((d) => [d.id, d])).values()));
   }, [initialDocs]);
 

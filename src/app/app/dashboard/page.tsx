@@ -137,6 +137,9 @@ export default async function CommandCenterPage() {
   const productReviewCount = await db.product.count({
     where: { accountId, deletedAt: null, reviewStatus: "NEEDS_REVIEW" },
   });
+  // Server Component executed once per request, not memoized by the
+  // compiler -- reading the current time here is safe.
+  // eslint-disable-next-line react-hooks/purity
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const significantProductChanges30d = await db.productChangeEvent.count({
     where: { accountId, significance: "CUSTOMS_SIGNIFICANT", createdAt: { gte: thirtyDaysAgo } },
@@ -204,6 +207,9 @@ export default async function CommandCenterPage() {
       estimated: d.estimated, exposureUsd: d.penaltyEstimate != null ? Number(d.penaltyEstimate) : null };
   }
 
+  // Server Component executed once per request, not memoized by the
+  // compiler -- reading the current time here is safe.
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
 
   // Serialize models safely for client component props

@@ -3,10 +3,10 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { assembleReasonableCarePackage } from "@/lib/audit/reasonableCarePackage";
 import { generateSimplePdfBuffer } from "@/lib/pdf/pdfGenerator";
 
-export const GET = withAuthenticatedRoute<{ shipmentId: string }>(async ({ params }) => {
+export const GET = withAuthenticatedRoute<{ shipmentId: string }>(async ({ ctx, params }) => {
   const { shipmentId } = params;
 
-  const pkg = await assembleReasonableCarePackage(shipmentId);
+  const pkg = await assembleReasonableCarePackage(ctx.accountId, shipmentId);
   if (!pkg) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Scale, ChevronRight, ArrowLeft, ShieldCheck, AlertCircle } from "lucide-react";
+import { Scale, ChevronRight, ArrowLeft, AlertCircle } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
 
 interface EligibleEntry {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createHmac, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { buildErrorResponse } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";

@@ -24,7 +24,7 @@ describe("computeAnalyticsMetrics", () => {
     vi.clearAllMocks();
   });
 
-  it("returns zeros and 100% first pass rate for empty database records", async () => {
+  it("represents empty database records honestly as null, never a fabricated 100% or 0", async () => {
     vi.mocked(db.customsFiling.findMany).mockResolvedValue([]);
     vi.mocked(db.exceptionItem.findMany).mockResolvedValue([]);
     vi.mocked(db.extractionField.findMany).mockResolvedValue([]);
@@ -33,12 +33,12 @@ describe("computeAnalyticsMetrics", () => {
     const metrics = await computeAnalyticsMetrics("acc-123");
 
     expect(metrics).toEqual({
-      cyclTimeMedianHours: 0,
-      firstPassRate: 100,
-      exceptionAgeAvgHours: 0,
+      cyclTimeMedianHours: null,
+      firstPassRate: null,
+      exceptionAgeAvgHours: null,
       exceptionAgeBuckets: { under24h: 0, days1to7: 0, days7to30: 0, over30d: 0 },
-      touchRate: 0,
-      dutyPerEntry: 0,
+      touchRate: null,
+      dutyPerEntry: null,
       openExceptions: 0,
       filedEntries: 0,
       pscCount: 0,
@@ -97,5 +97,42 @@ describe("computeAnalyticsMetrics", () => {
     expect(metrics.openExceptions).toBe(1);
     expect(metrics.filedEntries).toBe(2);
     expect(metrics.pscCount).toBe(2);
+  });
+
+  it("scopes the touch-rate extraction-field query to the requesting account, preventing cross-tenant leakage", async () => {
+    vi.mocked(db.customsFiling.findMany).mockResolvedValue([]);
+    vi.mocked(db.exceptionItem.findMany).mockResolvedValue([]);
+    vi.mocked(db.extractionField.findMany).mockResolvedValue([]);
+    vi.mocked(db.postSummaryCorrection.count).mockResolvedValue(0);
+
+    await computeAnalyticsMetrics("acc-123");
+
+    expect(db.extractionField.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          document: expect.objectContaining({ accountId: "acc-123" }),
+        }),
+      })
+    );
+  });
+
+  it("further scopes the touch-rate query to clientId when a client filter is requested", async () => {
+    vi.mocked(db.customsFiling.findMany).mockResolvedValue([]);
+    vi.mocked(db.exceptionItem.findMany).mockResolvedValue([]);
+    vi.mocked(db.extractionField.findMany).mockResolvedValue([]);
+    vi.mocked(db.postSummaryCorrection.count).mockResolvedValue(0);
+
+    await computeAnalyticsMetrics("acc-123", "client-456");
+
+    expect(db.extractionField.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          document: expect.objectContaining({
+            accountId: "acc-123",
+            shipment: { clientId: "client-456" },
+          }),
+        }),
+      })
+    );
   });
 });

@@ -83,9 +83,9 @@ up that specific record.
 ACCOUNT METRICS (real, from this account):
 - Open exceptions: ${metrics.openExceptions}
 - Filed entries: ${metrics.filedEntries}
-- Average duty per entry: $${metrics.dutyPerEntry.toFixed(2)}
-- First-pass rate: ${(metrics.firstPassRate * 100).toFixed(1)}%
-- Median cycle time: ${metrics.cyclTimeMedianHours.toFixed(1)} hours
+- Average duty per entry: ${metrics.dutyPerEntry === null ? "no filings with duty data yet" : `$${metrics.dutyPerEntry.toFixed(2)}`}
+- First-pass rate: ${metrics.firstPassRate === null ? "no filings submitted yet" : `${metrics.firstPassRate.toFixed(1)}%`}
+- Median cycle time: ${metrics.cyclTimeMedianHours === null ? "no terminal filings yet" : `${metrics.cyclTimeMedianHours.toFixed(1)} hours`}
 - Post-summary corrections (PSC) count: ${metrics.pscCount}
 
 RECENT REGULATORY UPDATES:

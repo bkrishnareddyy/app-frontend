@@ -62,7 +62,6 @@ export function ExceptionResolutionModal({
       const targetItem = lineItems[1] || lineItems[0];
       // Resets the form when a different exception is opened into the same mounted
       // dialog, so the previous exception's edits are never submitted against it.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditHts(targetItem?.htsCode || "");
       setEditCoo(targetItem?.countryOfOrigin || "");
       setSelectedQuantity(20);
@@ -89,7 +88,6 @@ export function ExceptionResolutionModal({
       return () => clearTimeout(timer);
     } else {
       // Clears stale autocomplete results as soon as the query stops qualifying.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHtsSuggestions([]);
     }
   }, [editHts, exception]);

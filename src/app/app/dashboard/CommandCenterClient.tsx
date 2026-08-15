@@ -946,14 +946,18 @@ export function CommandCenterClient({
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Avg Exception Age</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-extrabold text-amber-700">{liveMetrics?.exceptionAgeAvgHours ?? 0} hrs</span>
+              <span className="text-2xl font-extrabold text-amber-700">
+                {liveMetrics?.exceptionAgeAvgHours != null ? `${liveMetrics.exceptionAgeAvgHours} hrs` : "—"}
+              </span>
               <span className="text-xs text-slate-500">time in queue</span>
             </div>
           </div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Human Touch Rate</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-extrabold text-indigo-700">{liveMetrics?.touchRate ?? 0}%</span>
+              <span className="text-2xl font-extrabold text-indigo-700">
+                {liveMetrics?.touchRate != null ? `${liveMetrics.touchRate}%` : "—"}
+              </span>
               <span className="text-xs text-slate-500">manual intervention</span>
             </div>
           </div>
@@ -1002,11 +1006,15 @@ export function CommandCenterClient({
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Cycle Time Median</span>
-            <span className="text-xl font-extrabold text-slate-800">{liveMetrics?.cyclTimeMedianHours ?? 0} hrs</span>
+            <span className="text-xl font-extrabold text-slate-800">
+              {liveMetrics?.cyclTimeMedianHours != null ? `${liveMetrics.cyclTimeMedianHours} hrs` : "—"}
+            </span>
           </div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">First-Pass Acceptance</span>
-            <span className="text-xl font-extrabold text-emerald-700">{liveMetrics?.firstPassRate ?? 0}%</span>
+            <span className="text-xl font-extrabold text-emerald-700">
+              {liveMetrics?.firstPassRate != null ? `${liveMetrics.firstPassRate}%` : "—"}
+            </span>
           </div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Filed Entries</span>
@@ -1014,7 +1022,9 @@ export function CommandCenterClient({
           </div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Duty / Entry</span>
-            <span className="text-xl font-extrabold text-slate-800">${Number(liveMetrics?.dutyPerEntry ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            <span className="text-xl font-extrabold text-slate-800">
+              {liveMetrics?.dutyPerEntry != null ? `$${liveMetrics.dutyPerEntry.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—"}
+            </span>
           </div>
         </div>
 
@@ -1029,7 +1039,7 @@ export function CommandCenterClient({
                   const pct = Math.round(((s.cyclTimeMedianHours || 0) / maxHours) * 100);
                   return (
                     <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group relative">
-                      <span className="text-[10px] font-bold text-slate-700">{s.cyclTimeMedianHours}h</span>
+                      <span className="text-[10px] font-bold text-slate-700">{s.cyclTimeMedianHours != null ? `${s.cyclTimeMedianHours}h` : "—"}</span>
                       <div className="w-full bg-indigo-200 hover:bg-indigo-400 rounded-t-md transition-all" style={{ height: `${Math.max(15, pct)}%` }} />
                       <span className="text-[9px] text-slate-500 font-mono">{s.date}</span>
                     </div>

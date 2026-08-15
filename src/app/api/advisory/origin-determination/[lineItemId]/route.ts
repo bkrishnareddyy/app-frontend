@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { determineOrigin } from "@/lib/origin/originEngine";
 
-export const POST = withAuthenticatedRoute<{ lineItemId: string }>(async ({ req, ctx, params }) => {
+export const POST = withAuthenticatedRoute<{ lineItemId: string }>(async ({ ctx, params }) => {
   const { lineItemId } = params;
 
   const lineItem = await db.shipmentLineItem.findFirst({

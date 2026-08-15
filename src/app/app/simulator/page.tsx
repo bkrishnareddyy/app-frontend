@@ -5,16 +5,9 @@ import {
   TrendingUp,
   Scale,
   Sparkles,
-  HelpCircle,
-  AlertTriangle,
-  BookmarkCheck,
   BarChart4,
-  ArrowRight,
-  RefreshCw,
 } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
-
-import { Decimal, roundToCents } from "@/lib/tariff/decimal";
 
 interface Scenario {
   id: string;
@@ -39,7 +32,7 @@ export default function SimulatorPage() {
   const [quantity, setQuantity] = useState(5000);
   const [freight, setFreight] = useState(1200);
   const [insurance, setInsurance] = useState(150);
-  const [inland, setInland] = useState(400);
+  const [_inland, _setInland] = useState(400);
 
   // Compare results
   const [comparedScenarios, setComparedScenarios] = useState<Scenario[]>([]);
@@ -132,7 +125,7 @@ export default function SimulatorPage() {
     }
   };
 
-  const [baseDutyPct, setBaseDutyPct] = useState(0.028);
+  const [_baseDutyPct, setBaseDutyPct] = useState(0.028);
   const [section301Pct, setSection301Pct] = useState(0.075);
 
   useEffect(() => {
@@ -164,22 +157,6 @@ export default function SimulatorPage() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
-
-  // Client-side real-time calculation using Decimal (Task D-3)
-  const customsValDec = new Decimal(unitCost).times(quantity);
-  const calculatedDutyDec = customsValDec.times(new Decimal(baseDutyPct).plus(section301Pct));
-  const rawMpfDec = customsValDec.times("0.003464");
-  const calculatedMpfDec = Decimal.min(Decimal.max(rawMpfDec, new Decimal("31.67")), new Decimal("614.35"));
-  const calculatedHmfDec = customsValDec.times("0.00125");
-  const calculatedTotalDec = customsValDec
-    .plus(freight)
-    .plus(insurance)
-    .plus(calculatedDutyDec)
-    .plus(calculatedMpfDec)
-    .plus(calculatedHmfDec)
-    .plus(inland);
-
-  const calculatedTotal = roundToCents(calculatedTotalDec).toNumber();
 
   // Sourcing Breakeven Analysis (Task D-4)
   const displayBreakeven = breakevenVol !== null && breakevenVol > 0

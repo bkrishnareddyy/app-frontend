@@ -31,7 +31,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx }) => {
 
   const reasonableCareRecords = [];
   for (const s of shipments) {
-    const pkg = await assembleReasonableCarePackage(s.id);
+    const pkg = await assembleReasonableCarePackage(ctx.accountId, s.id);
     if (pkg) {
       reasonableCareRecords.push(pkg);
     }

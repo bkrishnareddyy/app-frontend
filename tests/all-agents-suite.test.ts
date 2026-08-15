@@ -143,19 +143,51 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     expect(res.classifications[0].crossRulings).toEqual([]);
   });
 
-  it("Agent 5 (Origin Rules): should evaluate USMCA tariff shift CTH and preference criterion B", async () => {
+  it("Agent 5 (Origin Rules): flags a USMCA-territory line as a candidate requiring human substantiation, never an auto-approved claim", async () => {
+    // Country of manufacture alone used to be enough to claim SPI "S",
+    // Criterion B, and a passed tariff shift with status AUTO_VERIFIED --
+    // with no product-specific rule, bill of materials, or supplier evidence
+    // behind it. This agent has none of that evidence, so it must never
+    // substantiate the claim itself.
     const res = await OriginRulesAgent.execute({
       accountId: "acc_1",
       userId: "usr_1",
       shipmentId: "shp_1",
       lineItems: [{ lineNumber: 1, htsCode: "7318.15.2065", manufacturingCountry: "MX" }],
     });
-    expect(res.qualifications[0].ftaProgram).toBe("USMCA");
-    expect(res.qualifications[0].spiCode).toBe("S");
+    expect(res.qualifications[0].ftaProgram).toBe("USMCA_CANDIDATE");
+    expect(res.qualifications[0].spiCode).toBe("");
+    expect(res.qualifications[0].tariffShiftMet).toBeNull();
+    expect(res.qualifications[0].preferenceCriterion).not.toBe("B");
     // Entered value and the HTS-specific rate are not available to this agent,
     // so no saving can be computed. It used to report a flat $3,007 per line.
     expect(res.qualifications[0].estimatedSavings).toBeNull();
     expect(res.agentDecisionId).toBeDefined();
+  });
+
+  it("Agent 5 (Origin Rules): never auto-verifies a USMCA candidate line", async () => {
+    await OriginRulesAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [{ lineNumber: 1, htsCode: "7318.15.2065", manufacturingCountry: "CA" }],
+    });
+    const createCall = vi.mocked(db.agentDecision.create).mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(createCall.data.triageState).toBe("NEEDS_REVIEW");
+    expect(createCall.data.status).toBe("Needs Review");
+    expect(createCall.data.autoApprovalPolicy).toBeUndefined();
+  });
+
+  it("Agent 5 (Origin Rules): auto-verifies a non-FTA origin line, since no preference is being claimed", async () => {
+    const res = await OriginRulesAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [{ lineNumber: 1, htsCode: "8481.80.1050", manufacturingCountry: "CN" }],
+    });
+    expect(res.qualifications[0].ftaProgram).toBe("NONE");
+    const createCall = vi.mocked(db.agentDecision.create).mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(createCall.data.triageState).toBe("AUTO_VERIFIED");
   });
 
   it("Agent 5 (Origin Rules): reports an undeclared manufacturing country as unknown, not as China", async () => {
@@ -194,6 +226,7 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
       accountId: "acc_1",
       userId: "usr_1",
       shipmentId: "shp_1",
+      shipFromCountry: "MX",
       lineItems: [{ lineNumber: 1, htsCode: "7318.15.2065", countryOfOrigin: "MX" }],
       supplierName: "Shenzhen Precision Hardware Corp",
     });

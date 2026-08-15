@@ -9,12 +9,17 @@ export interface ExceptionAgeBuckets {
 }
 
 export interface AnalyticsMetrics {
-  cyclTimeMedianHours: number;
-  firstPassRate: number;
-  exceptionAgeAvgHours: number;
+  /** Null when no terminal filing exists yet to measure a cycle time from. */
+  cyclTimeMedianHours: number | null;
+  /** Null when no filing has been submitted yet — never fabricated as a perfect 100%. */
+  firstPassRate: number | null;
+  /** Null when there are no open exceptions to average. */
+  exceptionAgeAvgHours: number | null;
   exceptionAgeBuckets: ExceptionAgeBuckets;
-  touchRate: number;
-  dutyPerEntry: number;
+  /** Null when no extraction field exists yet to measure a touch rate from. */
+  touchRate: number | null;
+  /** Null when no terminal filing carries a duty amount yet. */
+  dutyPerEntry: number | null;
   openExceptions: number;
   filedEntries: number;
   pscCount: number;
@@ -47,7 +52,7 @@ export async function computeAnalyticsMetrics(
     return Math.max(0, (end - start) / (1000 * 60 * 60));
   });
 
-  let cyclTimeMedianHours = 0;
+  let cyclTimeMedianHours: number | null = null;
   if (cycleTimes.length > 0) {
     cycleTimes.sort((a, b) => a - b);
     const mid = Math.floor(cycleTimes.length / 2);
@@ -66,8 +71,10 @@ export async function computeAnalyticsMetrics(
     (f) => !f.responses.some((r) => r.status === "REJECTED" || r.status === "Rejected")
   ).length;
 
+  // Null (not a fabricated 100%) until at least one filing has actually been
+  // submitted — "no data" and "perfect first-pass rate" are not the same claim.
   const firstPassRate =
-    totalSubmitted > 0 ? Math.round((acceptedFirstPass / totalSubmitted) * 100) : 100;
+    totalSubmitted > 0 ? Math.round((acceptedFirstPass / totalSubmitted) * 100) : null;
 
   // 3. Exception Age Average & Buckets
   const openExceptionsList = await db.exceptionItem.findMany({
@@ -88,7 +95,7 @@ export async function computeAnalyticsMetrics(
       ? Math.round(
           (exceptionAges.reduce((sum, age) => sum + age, 0) / exceptionAges.length) * 10
         ) / 10
-      : 0;
+      : null;
 
   const exceptionAgeBuckets: ExceptionAgeBuckets = {
     under24h: 0,
@@ -111,11 +118,17 @@ export async function computeAnalyticsMetrics(
 
   // 4. Touch Rate (account-wide; per-client breakdown not meaningful here)
   const fields = await db.extractionField.findMany({
-    where: { document: { shipmentId: { not: null } } },
+    where: {
+      document: {
+        accountId,
+        shipmentId: { not: null },
+        ...(clientId ? { shipment: { clientId } } : {}),
+      },
+    },
   });
   const totalFields = fields.length;
   const humanCorrected = fields.filter((f) => f.source === "HUMAN_CORRECTION").length;
-  const touchRate = totalFields > 0 ? Math.round((humanCorrected / totalFields) * 100) : 0;
+  const touchRate = totalFields > 0 ? Math.round((humanCorrected / totalFields) * 100) : null;
 
   // 5. Duty Per Entry
   const terminalFilingsWithValue = await db.customsFiling.findMany({
@@ -129,7 +142,7 @@ export async function computeAnalyticsMetrics(
   const dutyPerEntry =
     terminalFilingsWithValue.length > 0
       ? totalDutiesSum.dividedBy(terminalFilingsWithValue.length).toNumber()
-      : 0;
+      : null;
 
   // 6. Counts
   const openExceptions = openExceptionsList.length;
@@ -137,12 +150,12 @@ export async function computeAnalyticsMetrics(
   const pscCount = await db.postSummaryCorrection.count({ where: { accountId } });
 
   return {
-    cyclTimeMedianHours: Math.round(cyclTimeMedianHours * 10) / 10,
+    cyclTimeMedianHours: cyclTimeMedianHours === null ? null : Math.round(cyclTimeMedianHours * 10) / 10,
     firstPassRate,
     exceptionAgeAvgHours,
     exceptionAgeBuckets,
     touchRate,
-    dutyPerEntry: Math.round(dutyPerEntry * 100) / 100,
+    dutyPerEntry: dutyPerEntry === null ? null : Math.round(dutyPerEntry * 100) / 100,
     openExceptions,
     filedEntries,
     pscCount,

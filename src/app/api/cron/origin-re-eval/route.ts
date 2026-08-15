@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { withCronRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { determineOrigin } from "@/lib/origin/originEngine";
-import { createAuditLog } from "@/lib/audit";
 
 export const maxDuration = 300;
 

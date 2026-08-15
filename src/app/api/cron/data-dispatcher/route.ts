@@ -65,7 +65,7 @@ async function handleDispatch(requestId: string) {
             type: "dataset_staleness_alert",
           },
         });
-      } catch (_) {
+      } catch {
         // Don't let notification failure block dispatch
       }
     }

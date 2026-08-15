@@ -241,6 +241,8 @@ function renderNarrativeBody(dec: NarrativeDecision, opts: { onViewKeyValues: ()
     const ftaText =
       !primary.ftaProgram || primary.ftaProgram === "NONE" || primary.ftaProgram === "UNDETERMINED"
         ? "no FTA program qualified"
+        : primary.ftaProgram.endsWith("_CANDIDATE")
+        ? `${primary.ftaProgram.replace("_CANDIDATE", "")} candidate — pending human substantiation`
         : `${primary.ftaProgram} qualification assessed`;
     return (
       <div className="flex items-baseline gap-2 flex-wrap">

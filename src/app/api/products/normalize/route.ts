@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
-import { runNormalizationPipeline, computeFingerprint } from "@/lib/products/normalizationEngine";
+import { runNormalizationPipeline } from "@/lib/products/normalizationEngine";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();

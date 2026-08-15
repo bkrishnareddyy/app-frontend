@@ -2,7 +2,6 @@ import Ajv, { type ValidateFunction } from "ajv";
 import { db } from "@/lib/db";
 import type { CanonicalSchemaType } from "./types";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ajv = new (Ajv as any)({ allErrors: true, strict: false, strictSchema: false, validateSchema: false });
 
 /** Compiled-validator cache, keyed by "schemaType@version". Invalidated on promoteSchemaVersion(). */
