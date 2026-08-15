@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
@@ -45,7 +46,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   const { id } = paramsVal.data;
 
   const body = await req.json();
-  const { lineItems, clientId, parties, countryOfOrigin, incoterm, destinationCountry } = body;
+  const { lineItems, clientId, parties, countryOfOrigin, incoterm, destinationCountry, expectedVersion } = body;
 
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
@@ -53,6 +54,33 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   if (!shipment) {
     return NextResponse.json({ error: "Shipment not found" });
+  }
+
+  // Two editors can load this shipment, both act on its version at the time
+  // they read it, and without a compare-and-swap the second write silently
+  // clobbers the first. A client-supplied expectedVersion lets a stale editor
+  // be rejected outright; every version-bumping write below also re-checks
+  // against the version this request has actually observed so far, so a
+  // concurrent write landing mid-request is caught even with no client version.
+  const staleShipmentResponse = () =>
+    NextResponse.json(
+      { error: "This shipment changed since it was loaded. Reload before saving again.", code: "STALE_SHIPMENT" },
+      { status: 409 }
+    );
+
+  if (typeof expectedVersion === "number" && expectedVersion !== shipment.version) {
+    return staleShipmentResponse();
+  }
+
+  let currentVersion = shipment.version;
+  async function applyVersionedShipmentUpdate(data: Prisma.ShipmentUpdateInput): Promise<boolean> {
+    const result = await db.shipment.updateMany({
+      where: { id, accountId: ctx.accountId, version: currentVersion },
+      data: { ...data, version: { increment: 1 } },
+    });
+    if (result.count === 0) return false;
+    currentVersion += 1;
+    return true;
   }
 
   // Handle Destination Country update. Validated against the ISO 3166-1
@@ -80,10 +108,9 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
         newValue: normalized,
         reason: "User manual update",
       });
-      await db.shipment.update({
-        where: { id },
-        data: { destinationCountry: normalized, version: { increment: 1 } },
-      });
+      if (!(await applyVersionedShipmentUpdate({ destinationCountry: normalized }))) {
+        return staleShipmentResponse();
+      }
     }
   }
 
@@ -100,10 +127,9 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       reason: "User manual update",
     });
 
-    await db.shipment.update({
-      where: { id },
-      data: { countryOfOrigin, version: { increment: 1 } },
-    });
+    if (!(await applyVersionedShipmentUpdate({ countryOfOrigin }))) {
+      return staleShipmentResponse();
+    }
 
     // Also update all line items for consistency if present
     await db.shipmentLineItem.updateMany({
@@ -140,10 +166,9 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       reason: "User manual update",
     });
 
-    await db.shipment.update({
-      where: { id },
-      data: { incoterm, version: { increment: 1 } },
-    });
+    if (!(await applyVersionedShipmentUpdate({ incoterm }))) {
+      return staleShipmentResponse();
+    }
 
     await FactService.record({
       shipmentId: id,
@@ -249,7 +274,9 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     }
 
     if (anyLineItemChanged) {
-      await db.shipment.update({ where: { id }, data: { version: { increment: 1 } } });
+      if (!(await applyVersionedShipmentUpdate({}))) {
+        return staleShipmentResponse();
+      }
     }
 
     // Trigger selective agent execution for HTS/CoO edits
