@@ -9,7 +9,7 @@ vi.mock("../../src/lib/db", () => {
   return {
     db: {
       shipment: {
-        findUnique: vi.fn(),
+        findFirst: vi.fn(),
         findMany: vi.fn(),
       },
       customsFiling: {
@@ -98,13 +98,31 @@ describe("Capability B — Reasonable Care Package Assembly Tests", () => {
       agentDecisions: [],
     };
 
-    vi.mocked(db.shipment.findUnique).mockResolvedValue(mockShipment as any);
+    vi.mocked(db.shipment.findFirst).mockResolvedValue(mockShipment as any);
 
-    const pkg = await assembleReasonableCarePackage("ship_1");
+    const pkg = await assembleReasonableCarePackage("acc_1", "ship_1");
     expect(pkg).not.toBeNull();
     expect(pkg!.completenessScore).toBeGreaterThan(0);
     expect(pkg!.sections.classification[0].htsCode).toBe("8471.30.0100");
     expect(pkg!.sections.documents[0].fileName).toBe("invoice.pdf");
+  });
+
+  it("scopes the shipment lookup to accountId, preventing cross-tenant access", async () => {
+    vi.mocked(db.shipment.findFirst).mockImplementation((async (args: any) => {
+      // Simulate real Prisma behavior: a shipment owned by acc_A is invisible
+      // to a query scoped to acc_B, even when the shipment id matches.
+      if (args.where.id === "ship_1" && args.where.accountId === "acc_A") {
+        return { id: "ship_1", accountId: "acc_A" } as any;
+      }
+      return null;
+    }) as any);
+
+    const crossTenantPkg = await assembleReasonableCarePackage("acc_B", "ship_1");
+    expect(crossTenantPkg).toBeNull();
+
+    expect(db.shipment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: "ship_1", accountId: "acc_B" }) })
+    );
   });
 });
 

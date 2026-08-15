@@ -87,7 +87,6 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
   const [bulkApproveLoading, setBulkApproveLoading] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalGroups(initialGroups);
   }, [initialGroups]);
 
@@ -155,7 +154,6 @@ export function ActionsClient({ groups: initialGroups, canWrite, canWaive, initi
 
   useEffect(() => {
     if (filteredGroups.length > 0 && !filteredGroups.some((g) => g.shipmentId === selectedShipmentId)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedShipmentId(filteredGroups[0].shipmentId);
     }
   }, [filteredGroups, selectedShipmentId]);
@@ -886,7 +884,10 @@ function DecisionBody({ item }: { item: Extract<ActionItem, { kind: "decision" }
     const primary = quals[0];
     if (primary?.countryOfOrigin) {
       const fta = !primary.ftaProgram || primary.ftaProgram === "NONE" || primary.ftaProgram === "UNDETERMINED"
-        ? "None" : primary.ftaProgram;
+        ? "None"
+        : primary.ftaProgram.endsWith("_CANDIDATE")
+        ? `${primary.ftaProgram.replace("_CANDIDATE", "")} (candidate — pending review)`
+        : primary.ftaProgram;
       return (
         <div className="space-y-1.5">
           <Row label="Country of Origin" value={primary.countryOfOrigin} highlight />

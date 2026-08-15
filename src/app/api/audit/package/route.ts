@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
-import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { assembleReasonableCarePackage } from "@/lib/audit/reasonableCarePackage";
 
@@ -12,7 +11,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "shipmentId is required" });
   }
 
-  const pkg = await assembleReasonableCarePackage(shipmentId);
+  const pkg = await assembleReasonableCarePackage(ctx.accountId, shipmentId);
   if (!pkg) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }
@@ -42,7 +41,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "shipmentId parameter is required" }, { status: 400 });
   }
 
-  const pkg = await assembleReasonableCarePackage(shipmentId);
+  const pkg = await assembleReasonableCarePackage(ctx.accountId, shipmentId);
   if (!pkg) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
   }

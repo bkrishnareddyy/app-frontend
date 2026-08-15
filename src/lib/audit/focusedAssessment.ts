@@ -114,7 +114,7 @@ export async function assembleFocusedAssessmentFile(
     : filings.slice(0, 5);
 
   for (const f of targetFilings) {
-    const pkg = await assembleReasonableCarePackage(f.shipmentId);
+    const pkg = await assembleReasonableCarePackage(accountId, f.shipmentId);
     if (pkg) {
       sampleEntries.push({
         entryNumber: f.entryNumber,
@@ -146,8 +146,8 @@ export async function assembleFocusedAssessmentFile(
   let addressStr = "";
 
   if (params.importerOfRecordId) {
-    const importer = await db.importerOfRecord.findUnique({
-      where: { id: params.importerOfRecordId },
+    const importer = await db.importerOfRecord.findFirst({
+      where: { id: params.importerOfRecordId, accountId },
     });
     if (importer) {
       importerName = importer.name;

@@ -21,7 +21,7 @@ export const GET = withAuthenticatedRoute<{ filingId: string }>(async ({ ctx, pa
   }
 
   // Get reasonable care package
-  const rcPackage = await assembleReasonableCarePackage(filing.shipmentId);
+  const rcPackage = await assembleReasonableCarePackage(ctx.accountId, filing.shipmentId);
 
   // Generate Focused Assessment covering the filing's creation period
   const periodFrom = new Date(filing.createdAt.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();

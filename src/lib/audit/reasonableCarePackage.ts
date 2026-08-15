@@ -81,10 +81,11 @@ export interface ReasonableCarePackage {
 
 /**
  * Pure reasonable care package assembler pulling real data from the database.
+ * Scoped to `accountId` so a shipment ID from another tenant can never resolve.
  */
-export async function assembleReasonableCarePackage(shipmentId: string): Promise<ReasonableCarePackage | null> {
-  const shipment = await db.shipment.findUnique({
-    where: { id: shipmentId },
+export async function assembleReasonableCarePackage(accountId: string, shipmentId: string): Promise<ReasonableCarePackage | null> {
+  const shipment = await db.shipment.findFirst({
+    where: { id: shipmentId, accountId },
     include: {
       importerOfRecord: true,
       lineItems: {
