@@ -34,16 +34,66 @@ vi.mock("../src/lib/db", () => ({
       create: vi.fn().mockImplementation(async ({ data }) => ({ id: `filing_${Date.now()}`, ...data })),
     },
     embargoRule: {
-      findMany: vi.fn().mockResolvedValue([
-        {
-          id: "er_kp",
-          countryCode: "KP",
-          countryName: "North Korea",
-          regime: "Comprehensive Sanctions",
-          restriction: "Comprehensive OFAC embargo.",
-          authority: "US OFAC / CBP",
-        },
-      ]),
+      // Mirrors Prisma's `where: { regime: { contains, mode: "insensitive" } }`
+      // so the UFLPA-specific repository query (forcedLaborRepository.ts) sees
+      // only the UFLPA-regime row, exactly like it would against a real DB.
+      findMany: vi.fn().mockImplementation((args?: { where?: { regime?: { contains?: string } } }) => {
+        const rows = [
+          {
+            id: "er_kp",
+            countryCode: "KP",
+            countryName: "North Korea",
+            regime: "Comprehensive Sanctions",
+            restriction: "Comprehensive OFAC embargo.",
+            authority: "US OFAC / CBP",
+          },
+          {
+            id: "er_uflpa_xj",
+            countryCode: "UFLPA_XINJIANG",
+            countryName: "China (Xinjiang)",
+            regime: "UFLPA Forced Labor",
+            restriction: "Rebuttable presumption of forced labor.",
+            authority: "US OFAC / CBP UFLPA",
+          },
+        ];
+        const contains = args?.where?.regime?.contains;
+        if (!contains) return Promise.resolve(rows);
+        return Promise.resolve(rows.filter((r) => r.regime.toLowerCase().includes(contains.toLowerCase())));
+      }),
+    },
+    screeningEntity: {
+      // Mirrors embargoRule's args-aware mock: filters by sourceList so
+      // Phase 2's End-User/Military-End-User checks can genuinely run
+      // (and resolve CLEAR) in tests that supply party names, without
+      // ever matching those parties by accident.
+      findMany: vi.fn().mockImplementation((args?: { where?: { sourceList?: string | { in?: string[] } } }) => {
+        const rows = [
+          { id: "se_uflpa", entityHash: "h_uflpa", entityType: "COMPANY", name: "Xinjiang Cotton Processing Co", alternateNames: [], address: null, city: null, country: "CN", nationalityCountry: null, programCodes: ["UFLPA"], remarks: null, sourceList: "UFLPA_ENTITY_LIST", publicationStatus: "PUBLISHED", publishedAt: new Date("2024-01-01"), supersededAt: null, sourcePublishedAt: new Date("2024-01-01"), createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01") },
+          { id: "se_entitylist", entityHash: "h_el", entityType: "COMPANY", name: "Restricted Import Consortium LLC", alternateNames: [], address: null, city: null, country: "CN", nationalityCountry: null, programCodes: ["ENTITY_LIST"], remarks: null, sourceList: "ENTITY_LIST", publicationStatus: "PUBLISHED", publishedAt: new Date("2024-01-01"), supersededAt: null, sourcePublishedAt: new Date("2024-01-01"), createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01") },
+          { id: "se_meu", entityHash: "h_meu", entityType: "COMPANY", name: "PLA Aviation Procurement Bureau", alternateNames: [], address: null, city: null, country: "CN", nationalityCountry: null, programCodes: ["MEU"], remarks: null, sourceList: "MEU_LIST", publicationStatus: "PUBLISHED", publishedAt: new Date("2024-01-01"), supersededAt: null, sourcePublishedAt: new Date("2024-01-01"), createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01") },
+        ];
+        const sl = args?.where?.sourceList;
+        if (!sl) return Promise.resolve(rows);
+        const wanted = typeof sl === "string" ? [sl] : sl.in ?? [];
+        return Promise.resolve(rows.filter((r) => wanted.includes(r.sourceList)));
+      }),
+    },
+    complianceKeywordRule: {
+      // Mirrors embargoRule's args-aware mock: filters by category so
+      // End-Use/Anti-Boycott/Military-End-Use checks can genuinely run
+      // (and resolve CLEAR) in tests that supply benign statement/document
+      // text, without ever matching that text by accident.
+      findMany: vi.fn().mockImplementation((args?: { where?: { category?: string | { in?: string[] } } }) => {
+        const rows = [
+          { id: "ck_nuclear", category: "END_USE_NUCLEAR", phrase: "uranium enrichment", matchType: "CONTAINS", citation: "15 CFR 744.2", severity: "CRITICAL", authority: "US BIS / Dept of Commerce", publicationStatus: "PUBLISHED", publishedAt: new Date("2024-01-01"), createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01") },
+          { id: "ck_military", category: "MILITARY_END_USE", phrase: "military aircraft maintenance", matchType: "CONTAINS", citation: "15 CFR 744.21", severity: "CRITICAL", authority: "US BIS / Dept of Commerce", publicationStatus: "PUBLISHED", publishedAt: new Date("2024-01-01"), createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01") },
+          { id: "ck_boycott", category: "ANTI_BOYCOTT_REQUEST", phrase: "goods not of Israeli origin", matchType: "CONTAINS", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS / Dept of Commerce", publicationStatus: "PUBLISHED", publishedAt: new Date("2024-01-01"), createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01") },
+        ];
+        const cat = args?.where?.category;
+        if (!cat) return Promise.resolve(rows);
+        const wanted = typeof cat === "string" ? [cat] : cat.in ?? [];
+        return Promise.resolve(rows.filter((r) => wanted.includes(r.category)));
+      }),
     },
     tradeBenchmark: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -229,22 +279,31 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
       shipFromCountry: "MX",
       lineItems: [{ lineNumber: 1, htsCode: "7318.15.2065", countryOfOrigin: "MX" }],
       supplierName: "Shenzhen Precision Hardware Corp",
+      // Benign text so Phase 2's End-Use/Anti-Boycott/Military-End-Use keyword
+      // checks genuinely run (against the mocked reference data) and resolve
+      // CLEAR, rather than SKIPPED for lack of input -- this test asserts a
+      // real, fully-screened clear result across every capability, not just UFLPA.
+      endUseStatement: "General industrial machinery parts for commercial assembly.",
+      documentNarrativeText: "Standard purchase order terms, no boycott-related language.",
     });
     expect(res.riskScore).toBe(0);
     expect(res.uflpaCleared).toBe(true);
-    expect(res.auditChecksRun).toBeGreaterThan(0);
+    // A genuine CLEAR (every screening capability ran and found nothing) does
+    // not fabricate a "passed" audit entry per line -- absence of a
+    // SCREENING_GAP finding is what proves every screening actually executed.
+    expect(res.auditResults.find((r) => r.category === "SCREENING_GAP")).toBeUndefined();
     expect(res.auditChecksPassed).toBe(res.auditChecksRun);
     expect(res.agentDecisionId).toBeDefined();
   });
 
-  it("Agent 7 (Compliance Audit): flags a sanctioned-origin line even when other lines are clean", async () => {
+  it("Agent 7 (Compliance Audit): flags a UFLPA-regime-origin line even when other lines are clean", async () => {
     const res = await ComplianceAuditAgent.execute({
       accountId: "acc_1",
       userId: "usr_1",
       shipmentId: "shp_1",
       lineItems: [
         { lineNumber: 1, htsCode: "7318.15.2065", countryOfOrigin: "MX" },
-        { lineNumber: 2, htsCode: "8481.80.5090", countryOfOrigin: "KP" },
+        { lineNumber: 2, htsCode: "8481.80.5090", countryOfOrigin: "China (Xinjiang)" },
       ],
     });
     expect(res.riskScore).toBeGreaterThan(0);
@@ -252,7 +311,21 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     expect(res.status).toBe("Review Required");
     const line2Finding = res.auditResults.find((r) => r.lineNumber === 2 && r.category === "UFLPA");
     expect(line2Finding?.passed).toBe(false);
-    expect(line2Finding?.details).toContain("North Korea");
+    expect(line2Finding?.details).toContain("China (Xinjiang)");
+  });
+
+  it("Agent 7 (Compliance Audit): does not mislabel a non-UFLPA comprehensive-sanctions origin as a UFLPA finding", async () => {
+    // Regression guard for a real bug: the old inline check matched a line's
+    // origin against every loaded EmbargoRule row (comprehensive sanctions
+    // included) under a rule literally named "UFLPA Forced Labor & Sanctions
+    // Country Check" -- a plain sanctions hit could be mislabeled as UFLPA.
+    const res = await ComplianceAuditAgent.execute({
+      accountId: "acc_1",
+      userId: "usr_1",
+      shipmentId: "shp_1",
+      lineItems: [{ lineNumber: 1, htsCode: "8481.80.5090", countryOfOrigin: "KP" }],
+    });
+    expect(res.auditResults.find((r) => r.lineNumber === 1 && r.category === "UFLPA")).toBeUndefined();
   });
 
   it("Agent 7 (Compliance Audit): flags a line missing HTS independently of other lines being fine", async () => {
@@ -278,7 +351,11 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
   it("Agent 7 (Compliance Audit): reports a screening gap rather than a false clear when no embargo rules are loaded", async () => {
     const { db } = await import("../src/lib/db");
     const findMany = db.embargoRule.findMany as unknown as ReturnType<typeof vi.fn>;
-    findMany.mockResolvedValueOnce([]);
+    // Two independent db.embargoRule.findMany calls happen per execution now
+    // (the general fetch, and forcedLaborRepository's UFLPA-regime-filtered
+    // fetch) -- queue an empty result for both, then fall back to the shared
+    // default mock implementation for any later test.
+    findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const res = await ComplianceAuditAgent.execute({
       accountId: "acc_1",
@@ -291,8 +368,11 @@ describe("Qubere 10 AI-Native Autonomous Agents & Architectural Patterns Test Su
     const gapFinding = res.auditResults.find((r) => r.category === "SCREENING_GAP");
     expect(gapFinding).toBeDefined();
     expect(gapFinding?.details).toContain("not been screened");
-    // With no rules loaded, no UFLPA match/no-match finding should be fabricated for the line.
-    expect(res.auditResults.find((r) => r.category === "UFLPA")).toBeUndefined();
+    // With no rules loaded, no UFLPA match/no-match finding should be
+    // fabricated for the line -- only an honest "did not run" gap signal.
+    const uflpaFinding = res.auditResults.find((r) => r.category === "UFLPA");
+    expect(uflpaFinding?.ruleId).toBe("RULE-SCREENING-GAP-04");
+    expect(uflpaFinding?.details).toContain("did not run");
   });
 
   it("Agent 8 (Filing Readiness): should verify Form 7501 fields and continuous bond status", async () => {
