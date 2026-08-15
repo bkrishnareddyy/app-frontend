@@ -13,6 +13,7 @@ const dbMock = {
   },
   shipmentDocument: {
     create: vi.fn(),
+    findMany: vi.fn(),
   },
   notification: {
     create: vi.fn(),
@@ -88,6 +89,7 @@ describe("inbound email worker", () => {
     dbMock.inboundAttachment.findUnique.mockResolvedValue(null);
     dbMock.inboundAttachment.upsert.mockImplementation(async ({ create }) => ({ id: "att_row_1", ...create }));
     dbMock.notification.findFirst.mockResolvedValue(null);
+    dbMock.shipmentDocument.findMany.mockResolvedValue([]);
     createAuditLogMock.mockResolvedValue(null);
   });
 

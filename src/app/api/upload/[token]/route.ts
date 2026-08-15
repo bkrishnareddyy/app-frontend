@@ -10,6 +10,7 @@ import { advanceDocumentProcessing } from "@/modules/documents/processing/advanc
 import { assertParseableFormat } from "@/modules/documents/processing/documentSource";
 import { isDocumentParserError } from "@/modules/documents/parser/contracts";
 import { screenUploadForMalware } from "@/modules/documents/processing/malwarePolicy";
+import { findCrossShipmentDuplicates } from "@/modules/documents/duplicateDetection";
 
 export const maxDuration = 60;
 
@@ -138,10 +139,18 @@ export async function POST(
     advanceDocumentProcessing({ reason: "upload.token" });
   }
 
+  const crossShipmentDuplicates = await findCrossShipmentDuplicates(
+    accountId,
+    storageResult.checksum,
+    shipmentId,
+    docRecord.id
+  );
+
   return NextResponse.json({
     status: "ACCEPTED",
     documentId: docRecord.id,
     recipientEmail,
     documentType,
+    crossShipmentDuplicates,
   }, { status: 202 });
 }

@@ -9,6 +9,14 @@ interface UploadFormProps {
   shipmentRef: string;
 }
 
+interface CrossShipmentDuplicate {
+  documentId: string;
+  shipmentId: string | null;
+  shipmentNumber: string | null;
+  fileName: string;
+  createdAt: string;
+}
+
 type Phase = "idle" | "uploading" | "done" | "error";
 
 export function UploadForm({ token, documentType, shipmentRef }: UploadFormProps) {
@@ -16,6 +24,7 @@ export function UploadForm({ token, documentType, shipmentRef }: UploadFormProps
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [duplicates, setDuplicates] = useState<CrossShipmentDuplicate[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (file: File) => setSelectedFile(file);
@@ -30,10 +39,11 @@ export function UploadForm({ token, documentType, shipmentRef }: UploadFormProps
 
     try {
       const res = await fetch(`/api/upload/${token}`, { method: "POST", body });
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
         throw new Error((json as { error?: string }).error || `Upload failed (${res.status})`);
       }
+      setDuplicates(Array.isArray(json.crossShipmentDuplicates) ? json.crossShipmentDuplicates : []);
       setPhase("done");
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Upload failed. Please try again.");
@@ -51,6 +61,16 @@ export function UploadForm({ token, documentType, shipmentRef }: UploadFormProps
             {documentType} for shipment {shipmentRef} has been received and is being processed.
           </p>
         </div>
+        {duplicates.length > 0 && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-left">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-800">
+              Heads up: a file with identical content was already submitted
+              {duplicates[0].shipmentNumber ? ` for shipment ${duplicates[0].shipmentNumber}` : ""}. If this was
+              sent by mistake, no action is needed — our team will review it.
+            </p>
+          </div>
+        )}
         <p className="text-xs text-gray-400">You may close this window.</p>
       </div>
     );

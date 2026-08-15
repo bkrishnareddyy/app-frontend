@@ -17,6 +17,7 @@ import { advanceDocumentProcessing } from "@/modules/documents/processing/advanc
 import { assertParseableFormat } from "@/modules/documents/processing/documentSource";
 import { isDocumentParserError } from "@/modules/documents/parser/contracts";
 import { screenUploadForMalware } from "@/modules/documents/processing/malwarePolicy";
+import { findCrossShipmentDuplicates } from "@/modules/documents/duplicateDetection";
 
 /**
  * Accepts a trade document and queues it for processing.
@@ -158,6 +159,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
         data: { accountId, shipmentId: targetShipmentId, fileName: file.name, ...documentFields },
       });
 
+  const crossShipmentDuplicates = await findCrossShipmentDuplicates(
+    accountId,
+    storageResult.checksum,
+    targetShipmentId,
+    docRecord.id
+  );
+
   await createAuditLog({
     accountId,
     userId,
@@ -177,6 +185,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       shipmentId: targetShipmentId,
       malwareScan: scan.verdict,
       parked: !targetShipmentId,
+      crossShipmentDuplicateCount: crossShipmentDuplicates.length,
     },
     correlationId,
     requestId,
@@ -193,6 +202,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       docType: resolvedDocType,
       message: "Document stored in document library without attachment. Attach to a shipment to run extraction.",
       requestId,
+      crossShipmentDuplicates,
     });
   }
 
@@ -284,6 +294,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       jobId: job.id,
       processingRunId: queued.runId,
       malwareScan: { verdict: scan.verdict, detail: scan.reason },
+      crossShipmentDuplicates,
     },
     { status: 202 }
   );
