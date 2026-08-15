@@ -20,6 +20,11 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
   if (!filing) {
     throw new Error(`Inbound response references unknown filingId "${header.filingId}" (messageId=${header.messageId}).`);
   }
+  if (filing.accountId !== header.customer.accountId) {
+    throw new Error(
+      `Inbound message accountId "${header.customer.accountId}" does not match filing "${filing.id}"'s accountId "${filing.accountId}" (messageId=${header.messageId}).`
+    );
+  }
 
   // Direct status mapping (simplified until proper state machine integration)
   const statusTransitionMap: Record<string, Parameters<typeof applyTransition>[1] | null> = {

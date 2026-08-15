@@ -164,7 +164,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(
         const healthStatus =
           totalScore >= 80 ? "Healthy" : totalScore >= 50 ? "At Risk" : "Critical";
         await db.shipment.update({ where: { id: shipmentId }, data: { readinessScore: totalScore, healthStatus } });
-        await recomputeShipmentDeadlines(shipmentId);
+        await recomputeShipmentDeadlines(shipmentId, ctx.accountId);
       }
 
       return NextResponse.json({

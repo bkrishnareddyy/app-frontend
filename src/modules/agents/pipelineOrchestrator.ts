@@ -394,7 +394,7 @@ export class PipelineOrchestrator {
       }
 
       case "Product Intelligence Agent": {
-        const context = await buildAgentContext(shipmentId);
+        const context = await buildAgentContext(shipmentId, accountId);
         const agentInput = {
           accountId,
           userId,
@@ -427,7 +427,7 @@ export class PipelineOrchestrator {
       }
 
       case "HTS Classification Agent": {
-        const context = await buildAgentContext(shipmentId);
+        const context = await buildAgentContext(shipmentId, accountId);
         const agentInput = {
           accountId,
           userId,
@@ -464,7 +464,7 @@ export class PipelineOrchestrator {
       }
 
       case "Origin Rules Agent": {
-        const context = await buildAgentContext(shipmentId);
+        const context = await buildAgentContext(shipmentId, accountId);
         const agentInput = {
           accountId,
           userId,
@@ -505,7 +505,7 @@ export class PipelineOrchestrator {
       }
 
       case "Valuation & Assists Agent": {
-        const context = await buildAgentContext(shipmentId);
+        const context = await buildAgentContext(shipmentId, accountId);
         const agentInput = {
           accountId,
           userId,
@@ -544,7 +544,7 @@ export class PipelineOrchestrator {
       }
 
       case "Compliance Audit Agent": {
-        const context = await buildAgentContext(shipmentId);
+        const context = await buildAgentContext(shipmentId, accountId);
         const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
         const logistics = latestTradeMetadata(context);
         const agentInput = {
@@ -606,7 +606,7 @@ export class PipelineOrchestrator {
       }
 
       case "Filing Readiness Agent": {
-        const context = await buildAgentContext(shipmentId);
+        const context = await buildAgentContext(shipmentId, accountId);
         const isHtsBlocked = context.lineItems.length === 0 || context.lineItems.every((li) => li.htsCode === "UNCLASSIFIABLE");
         const isOriginBlocked = !factValue(context, "countryOfOrigin");
         const logistics = latestTradeMetadata(context);
