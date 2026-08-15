@@ -132,7 +132,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
           where: { id: shipmentId },
           data: { readinessScore: totalScore, healthStatus },
         });
-        await recomputeShipmentDeadlines(shipmentId);
+        await recomputeShipmentDeadlines(shipmentId, ctx.accountId);
       }
     } else {
       // First document on this shipment — run the full pipeline so this doc

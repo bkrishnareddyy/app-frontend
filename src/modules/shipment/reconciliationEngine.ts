@@ -413,7 +413,7 @@ export class ReconciliationEngine {
     // Recompute statutory and commercial deadline clocks.
     // Fire-and-forget: a deadline failure must never block the reconciliation
     // result from returning — deadlines are advisory, not gating.
-    recomputeShipmentDeadlines(shipmentId).catch((err) =>
+    recomputeShipmentDeadlines(shipmentId, accountId).catch((err) =>
       console.error("[ReconciliationEngine] deadline recompute failed", { shipmentId, err })
     );
 

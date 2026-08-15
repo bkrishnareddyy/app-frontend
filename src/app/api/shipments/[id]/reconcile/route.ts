@@ -177,7 +177,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   });
 
   // E-4: Recompute compliance deadlines (updates Shipment.filingDeadline cache).
-  await recomputeShipmentDeadlines(id);
+  await recomputeShipmentDeadlines(id, ctx.accountId);
 
   // D-3: Auto-create/resolve ExceptionItem rows for missing required documents.
   const missingDocs = getMissingDocuments(

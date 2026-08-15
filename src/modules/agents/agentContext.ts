@@ -86,9 +86,9 @@ function parseTradeMetadata(extractedJson: string | null): Record<string, unknow
   }
 }
 
-export async function buildAgentContext(shipmentId: string): Promise<ShipmentAgentContext> {
+export async function buildAgentContext(shipmentId: string, accountId: string): Promise<ShipmentAgentContext> {
   const [shipment, factsByField, lineItems, documents, shipmentParties] = await Promise.all([
-    db.shipment.findUnique({ where: { id: shipmentId }, select: { accountId: true, countryOfExport: true } }),
+    db.shipment.findFirst({ where: { id: shipmentId, accountId }, select: { accountId: true, countryOfExport: true } }),
     FactService.latestByField(shipmentId),
     db.shipmentLineItem.findMany({ where: { shipmentId }, orderBy: { lineNumber: "asc" } }),
     db.shipmentDocument.findMany({ where: { shipmentId }, orderBy: { createdAt: "desc" } }),

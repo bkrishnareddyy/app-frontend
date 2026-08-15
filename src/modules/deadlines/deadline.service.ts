@@ -61,9 +61,9 @@ function ruleForType(type: DeadlineType) {
  * - SATISFIED / MISSED / WAIVED rows are left alone.
  * - After upsert, Shipment.filingDeadline is refreshed to min(OPEN dueAt).
  */
-export async function recomputeShipmentDeadlines(shipmentId: string): Promise<void> {
-  const shipment = await db.shipment.findUnique({
-    where: { id: shipmentId },
+export async function recomputeShipmentDeadlines(shipmentId: string, accountId: string): Promise<void> {
+  const shipment = await db.shipment.findFirst({
+    where: { id: shipmentId, accountId },
     include: {
       customsFilings: {
         orderBy: { createdAt: "desc" },
@@ -161,11 +161,12 @@ export async function recomputeShipmentDeadlines(shipmentId: string): Promise<vo
  */
 export async function satisfyDeadline(
   shipmentId: string,
+  accountId: string,
   type: DeadlineType,
   satisfiedBy: string
 ): Promise<void> {
   const deadline = await db.complianceDeadline.findFirst({
-    where: { shipmentId, type, status: DeadlineStatus.OPEN },
+    where: { shipmentId, accountId, type, status: DeadlineStatus.OPEN },
   });
 
   if (!deadline) return; // already satisfied or not yet computed
@@ -186,6 +187,7 @@ export async function satisfyDeadline(
   await db.exceptionItem.updateMany({
     where: {
       shipmentId,
+      accountId,
       code: deadlineExceptionCode(type),
       status: { not: "Resolved" },
     },
@@ -205,12 +207,13 @@ export async function satisfyDeadline(
 
 export async function waiveDeadline(
   shipmentId: string,
+  accountId: string,
   type: DeadlineType,
   reason: string,
   waivedBy: string
 ): Promise<void> {
   const deadline = await db.complianceDeadline.findFirst({
-    where: { shipmentId, type, status: DeadlineStatus.OPEN },
+    where: { shipmentId, accountId, type, status: DeadlineStatus.OPEN },
   });
 
   if (!deadline) return;

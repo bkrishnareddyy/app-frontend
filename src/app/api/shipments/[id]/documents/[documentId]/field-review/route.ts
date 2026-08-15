@@ -201,7 +201,7 @@ export const POST = withAuthenticatedRoute<{ id: string; documentId: string }>(a
 
         const healthStatus = totalScore >= 80 ? "Healthy" : totalScore >= 50 ? "At Risk" : "Critical";
         await db.shipment.update({ where: { id: shipmentId }, data: { readinessScore: totalScore, healthStatus } });
-        await recomputeShipmentDeadlines(shipmentId);
+        await recomputeShipmentDeadlines(shipmentId, ctx.accountId);
       } catch {
         // Non-fatal: reconciliation runs on next explicit trigger.
       }

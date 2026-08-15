@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from "vitest";
 // (no such field exists in the schema).
 
 const dbMock = {
-  shipment: { findUnique: vi.fn() },
+  shipment: { findFirst: vi.fn() },
   shipmentLineItem: { findMany: vi.fn() },
   shipmentDocument: { findMany: vi.fn() },
   shipmentParty: { findMany: vi.fn() },
@@ -21,7 +21,7 @@ vi.mock("@/modules/shipment/factService", () => ({
 const { buildAgentContext } = await import("@/modules/agents/agentContext");
 
 function baseMocks() {
-  dbMock.shipment.findUnique.mockResolvedValue({ accountId: "acct_1", countryOfExport: "US" });
+  dbMock.shipment.findFirst.mockResolvedValue({ accountId: "acct_1", countryOfExport: "US" });
   dbMock.shipmentLineItem.findMany.mockResolvedValue([]);
   dbMock.shipmentDocument.findMany.mockResolvedValue([]);
 }
@@ -36,7 +36,7 @@ describe("buildAgentContext parties", () => {
       },
     ]);
 
-    const context = await buildAgentContext("ship_1");
+    const context = await buildAgentContext("ship_1", "acct_1");
 
     expect(context.parties).toEqual([
       {
@@ -57,7 +57,7 @@ describe("buildAgentContext parties", () => {
       { role: "EXPORTER", legalEntity: { id: "le_1", country: "US", legalName: "Acme Exports", party: null } },
     ]);
 
-    const context = await buildAgentContext("ship_1");
+    const context = await buildAgentContext("ship_1", "acct_1");
 
     const shipTo = context.parties.find((p) => p.isShipTo);
     expect(shipTo?.partyId).toBe("le_2");
@@ -84,7 +84,7 @@ describe("buildAgentContext parties", () => {
       },
     ]);
 
-    const context = await buildAgentContext("ship_1");
+    const context = await buildAgentContext("ship_1", "acct_1");
 
     expect(context.parties[0].country).toBe("CU");
     expect(context.parties[0].isShipTo).toBe(true);
