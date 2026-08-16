@@ -544,7 +544,7 @@ export function ChatClient({ context }: ChatClientProps) {
   const [activeId, setActiveId] = useState<string>("");
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [navExpanded, setNavExpanded] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const pendingFile = pendingFiles[0] ?? null;
