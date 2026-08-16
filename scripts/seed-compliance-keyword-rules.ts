@@ -1,8 +1,9 @@
 /**
  * Seeds a starter set of ComplianceKeywordRule rows for End-Use Screening
  * (EAR Part 744.2/744.3/744.4 restricted end-uses), Military End-Use
- * Screening (EAR Part 744.21), and Anti-Boycott Screening (15 CFR 760.2
- * boycott-request language).
+ * Screening (EAR Part 744.21), Anti-Boycott Screening (15 CFR 760.2
+ * boycott-request language), and Restricted Party Screening's red-flag word
+ * check (15 CFR Part 732, Supp. No. 3 "Know Your Customer" red flags).
  *
  * There is no automated regulatory feed for this phrase data (unlike the
  * BIS CSL / OFAC SDN entity lists, which have real API/XML ingestion
@@ -67,6 +68,18 @@ const RULES: Array<{
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "vessel is eligible to enter Arab ports", citation: "15 CFR 760.2", severity: "MEDIUM", authority: "US BIS Office of Antiboycott Compliance" },
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "blacklisted by the Arab League", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "boycott of Israel", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
+
+  // ---- Restricted Party Screening: 15 CFR Part 732, Supp. No. 3 -- "Know Your Customer" red flags ----
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "reluctant to offer information about end use", citation: "15 CFR Part 732, Supp. No. 3", severity: "MEDIUM" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "unfamiliar with the product", citation: "15 CFR Part 732, Supp. No. 3", severity: "MEDIUM" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "freight forwarder listed as the ultimate consignee", citation: "15 CFR Part 732, Supp. No. 3", severity: "HIGH" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "vague delivery dates", citation: "15 CFR Part 732, Supp. No. 3", severity: "MEDIUM" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "willing to pay cash for a very expensive item", citation: "15 CFR Part 732, Supp. No. 3", severity: "HIGH" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "packing inconsistent with the stated method of shipment", citation: "15 CFR Part 732, Supp. No. 3", severity: "MEDIUM" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "order inconsistent with the needs of the purchaser's business", citation: "15 CFR Part 732, Supp. No. 3", severity: "HIGH" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "customer declines routine installation or training services", citation: "15 CFR Part 732, Supp. No. 3", severity: "MEDIUM" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "requests to omit shipping insurance", citation: "15 CFR Part 732, Supp. No. 3", severity: "MEDIUM" },
+  { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "transaction involves a country of diversion concern", citation: "15 CFR Part 732, Supp. No. 3", severity: "HIGH" },
 ];
 
 async function main() {

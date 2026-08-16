@@ -295,6 +295,24 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     category: "Compliance",
     defaultRoles: ALL_BUT_VIEWER,
   },
+  {
+    name: "compliance.restrictedParty.read",
+    description: "View Restricted / Denied Party Screening results and history.",
+    category: "Compliance",
+    defaultRoles: ["OWNER", "ADMIN", "MEMBER", "VIEWER"],
+  },
+  {
+    name: "compliance.restrictedParty.screen",
+    description: "Trigger a new Restricted / Denied Party Screening run.",
+    category: "Compliance",
+    defaultRoles: ALL_BUT_VIEWER,
+  },
+  {
+    name: "compliance.restrictedParty.dispose",
+    description: "Record a reviewer disposition (approve, dismiss, confirm) on a Restricted Party Screening hit.",
+    category: "Compliance",
+    defaultRoles: ADMIN_ONLY,
+  },
   // ─── Regulatory ─────────────────────────────────────────────────────────
   {
     name: "regulatory.read",

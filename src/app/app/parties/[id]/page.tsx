@@ -40,6 +40,9 @@ export default async function PartyDetailPage(props: {
   const mayEdit = writable && holdsPermission(context, "parties.edit");
   const mayApprove = writable && holdsPermission(context, "parties.review.approve");
   const mayVerifyRegistration = writable && holdsPermission(context, "parties.registration.verify");
+  const mayReadScreening = holdsPermission(context, "compliance.restrictedParty.read");
+  const mayScreen = writable && holdsPermission(context, "compliance.restrictedParty.screen");
+  const mayDisposeScreening = writable && holdsPermission(context, "compliance.restrictedParty.dispose");
 
   const status = partyStatusPresentation(party.status);
   const review = reviewStatusPresentation(party.reviewStatus);
@@ -122,6 +125,9 @@ export default async function PartyDetailPage(props: {
         party={party}
         mayEdit={mayEdit}
         mayVerifyRegistration={mayVerifyRegistration}
+        mayReadScreening={mayReadScreening}
+        mayScreen={mayScreen}
+        mayDisposeScreening={mayDisposeScreening}
         reviewHint={review.hint}
         activeNames={activeNames}
         activeIdentifiers={activeIdentifiers}

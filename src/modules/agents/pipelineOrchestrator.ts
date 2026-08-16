@@ -17,6 +17,7 @@ import { LineItemReconciler, lineItemFactField } from "@/modules/shipment/lineIt
 import { buildAgentContext, ShipmentAgentContext, factValue, latestTradeMetadata } from "./agentContext";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { captureShipmentOutputFacts } from "./outputCapture";
+import { persistComplianceScreeningFindings } from "@/modules/compliance/screeningFindings";
 import { PgQueue } from "@/lib/queue/pgQueue";
 
 /**
@@ -578,6 +579,9 @@ export class PipelineOrchestrator {
         };
         const output: ComplianceAuditOutput = await ComplianceAuditAgent.execute(agentInput);
         scratch.isComplianceBlocked = output.status === "BLOCKED_DEPENDENCY";
+        await persistComplianceScreeningFindings(accountId, shipmentId, output.auditResults).catch((err) => {
+          console.error("[PipelineOrchestrator] Failed to persist compliance screening findings:", err);
+        });
         await captureShipmentOutputFacts({
           shipmentId,
           documentId,

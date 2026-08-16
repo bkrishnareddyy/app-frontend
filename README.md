@@ -220,6 +220,42 @@ reconciliation is — `PipelineOrchestrator.processEvent({ triggerEvent:
 "RECONCILIATION_REQUESTED" })` — there is no separate rerun mechanism to keep
 in sync with the pipeline.
 
+### 12. Restricted/Denied-Party Screening & Compliance Workspace UI
+
+Restricted/Denied-Party Screening (`src/modules/agents/compliance/restrictedParty/`,
+see `docs/restricted-party-screening-implementation-report.md` for the full
+design) is a sixth deterministic screening module, in the same house style as
+Country Embargo/UFLPA/End-Use/End-User/Anti-Boycott/Military End-Use, closing
+the gap where `SDN`, `CONSOLIDATED_NON_SDN`, `DPL`, `ISN`, `SSI`, `FSE`, `PLC`,
+and `NS_MBS` `ScreeningEntity` rows were fully ingested but never screened by
+any pipeline module. It screens Party Master records (name + address + contact,
+each its own immutable pass) and shipment/line-level parties, using exact,
+raw-word, and a self-contained Double Metaphone phonetic shortlist feeding the
+existing `scoreDpsMatch` fuzzy scorer, plus an independent red-flag word check
+(`ComplianceKeywordRule`, `category: "RESTRICTED_PARTY_RED_FLAG"`). Every result
+is immutable; reviewer judgment (`APPROVED`/`FALSE_POSITIVE`/`BLOCKED`/etc.) is
+recorded separately on `RestrictedPartyDisposition`, 1:1 with the result, so a
+past HIT is never rewritten. Party Master keeps a satellite
+`PartyScreeningSummary` per party (current status, last result, staleness
+driven by identity-fact changes and reference-data republishes — no fixed TTL).
+
+It's wired into the `ComplianceAuditAgent` as a seventh concurrent check
+(`RESTRICTED_PARTY` / `PARTY_RED_FLAG` finding categories), exposed to external
+systems via `/api/v1/screening/restricted-party` and related party-history/
+disposition routes (API-key scoped, idempotent), and to the Copilot via
+`screenRestrictedParty` / `getRestrictedPartyScreeningDetails` /
+`getPartyRestrictedPartyScreeningHistory` tools in `complianceTools.ts`.
+
+Results surface in the app at `/app/compliance`, a two-tier tab workspace
+(`ComplianceWorkspaceClient.tsx`): top-level **Overview / Screening / Review
+Queue / Audit History** tabs, with **Screening** further split into per-module
+sub-tabs (the five existing embargo-family findings, plus a dedicated **Party
+Screening** sub-tab for this module's results) and on each party's own detail
+page. Deliberately not yet implemented: PEP screening, beneficial-ownership
+graphs, corporate registry ingestion, autonomous approval, and any fuzzy
+matching beyond the Double Metaphone shortlist — see `docs/party-master.md`
+and Section K of the implementation report for the full list of known gaps.
+
 ---
 
 ## 💰 AI Cost Controls
