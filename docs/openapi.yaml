@@ -123,6 +123,82 @@ components:
         - totalRefundClaimed
         - createdAt
       description: Duty drawback claim
+    RestrictedPartyMatchItem:
+      type: object
+      properties:
+        matchedName:
+          type: string
+        nameScore:
+          type: integer
+        matchMethod:
+          type: string
+          enum:
+            - EXACT
+            - RAW_WORD
+            - METAPHONE
+            - DOUBLE_METAPHONE
+            - COMBINED
+        sourceList:
+          type: string
+          description: e.g. SDN, CONSOLIDATED_NON_SDN, DPL, ISN, SSI, FSE, PLC, NS_MBS
+        programCodes:
+          type: array
+          items:
+            type: string
+        suppressedByApprovedParty:
+          type: boolean
+      required:
+        - matchedName
+        - nameScore
+        - matchMethod
+        - sourceList
+        - programCodes
+      description: A denial-order candidate match against a screened identity
+    RestrictedPartyRedFlagHitItem:
+      type: object
+      properties:
+        matchedWord:
+          type: string
+      required:
+        - matchedWord
+      description: A Know-Your-Customer red-flag phrase found in the screened identity
+    RestrictedPartyPassResult:
+      type: object
+      properties:
+        id:
+          type: string
+        passType:
+          type: string
+          enum:
+            - PARTY_NAME
+            - CONTACT_NAME
+        status:
+          type: string
+          enum:
+            - CLEAR
+            - HIT
+            - REVIEW_REQUIRED
+            - PARTIAL
+            - SKIPPED
+            - ERROR
+        hitCount:
+          type: integer
+        redFlagCount:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestrictedPartyMatchItem'
+        redFlagHits:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestrictedPartyRedFlagHitItem'
+      required:
+        - passType
+        - status
+        - hitCount
+        - redFlagCount
+      description: One immutable screening pass outcome (party-name and contact-name passes are always separate)
   parameters: {}
 paths:
   /api/shipments:
@@ -423,3 +499,234 @@ paths:
           description: Missing refunds.manage permission
         '404':
           description: Filing not found
+  /api/v1/screening/restricted-party:
+    post:
+      summary: Screen a party against restricted/denied-party lists
+      description: >-
+        Screens an ad-hoc identity (not a persisted Party Master record or shipment) against OFAC SDN/BIS DPL and
+        related denial-order lists, plus Know-Your-Customer red-flag words, and persists an immutable result. API-key
+        authenticated. Requires the compliance.restrictedParty.screen scope. Supports an Idempotency-Key header.
+      tags:
+        - Restricted Party Screening
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                externalReference:
+                  type: string
+                  description: Caller-supplied correlation token
+                party:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      minLength: 1
+                    address:
+                      type: string
+                    city:
+                      type: string
+                    country:
+                      type: string
+                    contactName:
+                      type: string
+                      description: Screened as an independent pass
+                  required:
+                    - name
+                threshold:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  description: Minimum fuzzy-match score for a HIT-tier match
+                addressThreshold:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                countryMatch:
+                  type: boolean
+                  description: Require country alignment on a match
+                redFlagCheck:
+                  type: boolean
+                  description: Default true
+              required:
+                - party
+      responses:
+        '200':
+          description: Screening completed and persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  correlationId:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RestrictedPartyPassResult'
+                  requestId:
+                    type: string
+                required:
+                  - success
+                  - correlationId
+                  - results
+                  - requestId
+        '401':
+          description: Missing or invalid API key
+        '403':
+          description: Key does not have compliance.restrictedParty.screen scope
+        '409':
+          description: Idempotency key conflict or a concurrent request is already processing
+        '429':
+          description: Rate limit exceeded
+  /api/v1/screening/restricted-party/{screeningId}:
+    get:
+      summary: Get one persisted restricted-party screening result
+      description: >-
+        Session-authenticated. Requires compliance.restrictedParty.read. A screeningId belonging to another account is
+        reported as not found.
+      tags:
+        - Restricted Party Screening
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: screeningId
+          in: path
+      responses:
+        '200':
+          description: Screening result with matches and red-flag hits
+        '404':
+          description: Screening result not found
+  /api/v1/screening/restricted-party/{screeningId}/disposition:
+    patch:
+      summary: Record a reviewer disposition on a screening result
+      description: >-
+        The immutable screening result is never changed -- a disposition is a separate, mutable reviewer judgment layer.
+        Session-authenticated. Requires compliance.restrictedParty.dispose (admin-only).
+      tags:
+        - Restricted Party Screening
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: screeningId
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - CONFIRMED_MATCH
+                    - FALSE_POSITIVE
+                    - APPROVED
+                    - BLOCKED
+                    - REQUEST_MORE_INFORMATION
+                notes:
+                  type: string
+              required:
+                - status
+      responses:
+        '200':
+          description: Disposition recorded
+        '403':
+          description: Missing compliance.restrictedParty.dispose permission
+        '404':
+          description: Screening result not found
+  /api/v1/parties/{partyId}/restricted-party-screening-history:
+    get:
+      summary: Get a Party Master record's restricted-party screening status and history
+      description: >-
+        Session-authenticated. Requires compliance.restrictedParty.read. A partyId belonging to another account is
+        reported as not found.
+      tags:
+        - Restricted Party Screening
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: partyId
+          in: path
+      responses:
+        '200':
+          description: Screening summary and up to the 50 most recent screening results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  summary:
+                    type: object
+                    nullable: true
+                    properties:
+                      screeningStatus:
+                        type: string
+                      lastScreenedAt:
+                        type: string
+                        nullable: true
+                    required:
+                      - screeningStatus
+                      - lastScreenedAt
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RestrictedPartyPassResult'
+                  requestId:
+                    type: string
+                required:
+                  - success
+                  - summary
+                  - results
+                  - requestId
+        '404':
+          description: Party not found
+  /api/v1/parties/{partyId}/restricted-party-screening/rescreen:
+    post:
+      summary: Re-screen a Party Master record's current identity
+      description: >-
+        Re-runs screening against the party's current-effective name/address/contact and upserts PartyScreeningSummary.
+        Session-authenticated. Requires compliance.restrictedParty.screen.
+      tags:
+        - Restricted Party Screening
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: partyId
+          in: path
+      responses:
+        '200':
+          description: Re-screening completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  overallStatus:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RestrictedPartyPassResult'
+                  requestId:
+                    type: string
+                required:
+                  - success
+                  - overallStatus
+                  - results
+                  - requestId
+        '404':
+          description: Party not found
+        '422':
+          description: Party has no active name to screen

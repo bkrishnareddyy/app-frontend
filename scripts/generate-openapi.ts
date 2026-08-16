@@ -75,6 +75,36 @@ const DrawbackClaim = registry.register(
   }).describe("Duty drawback claim")
 );
 
+const RestrictedPartyMatchItem = registry.register(
+  "RestrictedPartyMatchItem",
+  z.object({
+    matchedName: z.string(),
+    nameScore: z.number().int(),
+    matchMethod: z.enum(["EXACT", "RAW_WORD", "METAPHONE", "DOUBLE_METAPHONE", "COMBINED"]),
+    sourceList: z.string().describe("e.g. SDN, CONSOLIDATED_NON_SDN, DPL, ISN, SSI, FSE, PLC, NS_MBS"),
+    programCodes: z.array(z.string()),
+    suppressedByApprovedParty: z.boolean().optional(),
+  }).describe("A denial-order candidate match against a screened identity")
+);
+
+const RestrictedPartyRedFlagHitItem = registry.register(
+  "RestrictedPartyRedFlagHitItem",
+  z.object({ matchedWord: z.string() }).describe("A Know-Your-Customer red-flag phrase found in the screened identity")
+);
+
+const RestrictedPartyPassResult = registry.register(
+  "RestrictedPartyPassResult",
+  z.object({
+    id: z.string().optional(),
+    passType: z.enum(["PARTY_NAME", "CONTACT_NAME"]),
+    status: z.enum(["CLEAR", "HIT", "REVIEW_REQUIRED", "PARTIAL", "SKIPPED", "ERROR"]),
+    hitCount: z.number().int(),
+    redFlagCount: z.number().int(),
+    matches: z.array(RestrictedPartyMatchItem).optional(),
+    redFlagHits: z.array(RestrictedPartyRedFlagHitItem).optional(),
+  }).describe("One immutable screening pass outcome (party-name and contact-name passes are always separate)")
+);
+
 const PagedMeta = z.object({
   nextCursor: z.string().nullable(),
   hasMore: z.boolean(),
@@ -267,6 +297,159 @@ registry.registerPath({
     400: { description: "Missing or invalid correctedDutyAmount" },
     403: { description: "Missing refunds.manage permission" },
     404: { description: "Filing not found" },
+  },
+});
+
+// POST /api/v1/screening/restricted-party
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/screening/restricted-party",
+  summary: "Screen a party against restricted/denied-party lists",
+  description:
+    "Screens an ad-hoc identity (not a persisted Party Master record or shipment) against OFAC SDN/BIS DPL and related denial-order lists, plus Know-Your-Customer red-flag words, and persists an immutable result. API-key authenticated. Requires the compliance.restrictedParty.screen scope. Supports an Idempotency-Key header.",
+  tags: ["Restricted Party Screening"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            externalReference: z.string().optional().describe("Caller-supplied correlation token"),
+            party: z.object({
+              name: z.string().min(1),
+              address: z.string().optional(),
+              city: z.string().optional(),
+              country: z.string().optional(),
+              contactName: z.string().optional().describe("Screened as an independent pass"),
+            }),
+            threshold: z.number().int().min(0).max(100).optional().describe("Minimum fuzzy-match score for a HIT-tier match"),
+            addressThreshold: z.number().int().min(0).max(100).optional(),
+            countryMatch: z.boolean().optional().describe("Require country alignment on a match"),
+            redFlagCheck: z.boolean().optional().describe("Default true"),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Screening completed and persisted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.boolean(),
+            correlationId: z.string(),
+            results: z.array(RestrictedPartyPassResult),
+            requestId: z.string(),
+          }),
+        },
+      },
+    },
+    401: { description: "Missing or invalid API key" },
+    403: { description: "Key does not have compliance.restrictedParty.screen scope" },
+    409: { description: "Idempotency key conflict or a concurrent request is already processing" },
+    429: { description: "Rate limit exceeded" },
+  },
+});
+
+// GET /api/v1/screening/restricted-party/{screeningId}
+registry.registerPath({
+  method: "get",
+  path: "/api/v1/screening/restricted-party/{screeningId}",
+  summary: "Get one persisted restricted-party screening result",
+  description: "Session-authenticated. Requires compliance.restrictedParty.read. A screeningId belonging to another account is reported as not found.",
+  tags: ["Restricted Party Screening"],
+  request: {
+    params: z.object({ screeningId: z.string() }),
+  },
+  responses: {
+    200: { description: "Screening result with matches and red-flag hits" },
+    404: { description: "Screening result not found" },
+  },
+});
+
+// PATCH /api/v1/screening/restricted-party/{screeningId}/disposition
+registry.registerPath({
+  method: "patch",
+  path: "/api/v1/screening/restricted-party/{screeningId}/disposition",
+  summary: "Record a reviewer disposition on a screening result",
+  description:
+    "The immutable screening result is never changed -- a disposition is a separate, mutable reviewer judgment layer. Session-authenticated. Requires compliance.restrictedParty.dispose (admin-only).",
+  tags: ["Restricted Party Screening"],
+  request: {
+    params: z.object({ screeningId: z.string() }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            status: z.enum(["CONFIRMED_MATCH", "FALSE_POSITIVE", "APPROVED", "BLOCKED", "REQUEST_MORE_INFORMATION"]),
+            notes: z.string().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: "Disposition recorded" },
+    403: { description: "Missing compliance.restrictedParty.dispose permission" },
+    404: { description: "Screening result not found" },
+  },
+});
+
+// GET /api/v1/parties/{partyId}/restricted-party-screening-history
+registry.registerPath({
+  method: "get",
+  path: "/api/v1/parties/{partyId}/restricted-party-screening-history",
+  summary: "Get a Party Master record's restricted-party screening status and history",
+  description: "Session-authenticated. Requires compliance.restrictedParty.read. A partyId belonging to another account is reported as not found.",
+  tags: ["Restricted Party Screening"],
+  request: {
+    params: z.object({ partyId: z.string() }),
+  },
+  responses: {
+    200: {
+      description: "Screening summary and up to the 50 most recent screening results",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.boolean(),
+            summary: z.object({ screeningStatus: z.string(), lastScreenedAt: z.string().nullable() }).nullable(),
+            results: z.array(RestrictedPartyPassResult),
+            requestId: z.string(),
+          }),
+        },
+      },
+    },
+    404: { description: "Party not found" },
+  },
+});
+
+// POST /api/v1/parties/{partyId}/restricted-party-screening/rescreen
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/parties/{partyId}/restricted-party-screening/rescreen",
+  summary: "Re-screen a Party Master record's current identity",
+  description:
+    "Re-runs screening against the party's current-effective name/address/contact and upserts PartyScreeningSummary. Session-authenticated. Requires compliance.restrictedParty.screen.",
+  tags: ["Restricted Party Screening"],
+  request: {
+    params: z.object({ partyId: z.string() }),
+  },
+  responses: {
+    200: {
+      description: "Re-screening completed",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.boolean(),
+            overallStatus: z.string(),
+            results: z.array(RestrictedPartyPassResult),
+            requestId: z.string(),
+          }),
+        },
+      },
+    },
+    404: { description: "Party not found" },
+    422: { description: "Party has no active name to screen" },
   },
 });
 

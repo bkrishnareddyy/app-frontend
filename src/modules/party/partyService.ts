@@ -33,6 +33,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { DomainError } from "@/lib/api/error";
+import { markStaleIfChanged } from "@/modules/agents/compliance/restrictedParty/partyScreeningLifecycle";
 import { screenPartyName } from "@/lib/screening/dpsScreening";
 import { buildPartyOrderBy, buildPartyWhere, partySkip, type PartyQuery } from "./partyQuery";
 import {
@@ -343,6 +344,12 @@ async function withChangeDetection<T>(
     const before = await loadSnapshot(tx, actor.accountId, partyId);
 
     const result = await mutate(tx);
+
+    // Name/address/contact writes can invalidate a party's last Restricted
+    // Party Screening result -- checked on every mutation here (not just
+    // ones loadSnapshot's name/address diff catches) because PartyContact
+    // isn't part of that snapshot at all.
+    await markStaleIfChanged(tx, actor.accountId, partyId);
 
     const after = await loadSnapshot(tx, actor.accountId, partyId);
     const changes = detectPartyChanges(before, after);

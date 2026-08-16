@@ -30,7 +30,7 @@ body or parameter.
 ## Data model
 
 New tables, all in `prisma/migrations/20260812090000_global_party_master/`
-(written, not yet applied — see "Status of this work").
+(applied — see "Status of this work").
 
 | Table | Holds |
 | --- | --- |
@@ -248,16 +248,26 @@ for the person reading it, not a generic placeholder: "no external registry
 lookup is connected" and "this party has not been screened against any
 list," never "no matches found."
 
-Not implemented, by design: sanctions/PEP/denied-party screening, beneficial
-ownership graphs, corporate registry ingestion, autonomous party approval,
-ERP/CRM/TMS connectors, and vector-based or fuzzy name matching. The seams
-exist so these can arrive as providers later. The system says so out loud
-rather than presenting an unscreened party as a clean bill of health.
+**Update:** denied-party/restricted-party screening (`ScreeningProvider`'s
+intended purpose) has since been implemented as its own module — see
+`docs/restricted-party-screening-implementation-report.md` — rather than
+plugged into `partyIntelligence.ts`'s provider seam; it reads Party Master's
+current-effective name/address/contact directly
+(`getShipmentPartiesForScreening`, `rescreenParty`) and writes its own
+`PartyScreeningSummary`/`RestrictedPartyScreeningResult` tables. It surfaces
+in the UI as the "Party Screening" sub-tab of the Compliance Workspace
+(`/app/compliance?tab=screening`) and on the party detail page.
+
+Still not implemented, by design: PEP screening, beneficial ownership
+graphs, corporate registry ingestion, autonomous party approval, ERP/CRM/TMS
+connectors, and vector-based fuzzy name matching beyond the restricted-party
+module's own Double Metaphone shortlisting. The seams exist so these can
+arrive as providers later. The system says so out loud rather than
+presenting an unscreened party as a clean bill of health.
 
 ## Status of this work
 
-The migration in
-`prisma/migrations/20260812090000_global_party_master/` has been written and
-has **not** been applied to any database. Applying it (`prisma migrate
-deploy`) is a decision for whoever owns that environment, not something this
-change makes for them.
+The migration in `prisma/migrations/20260812090000_global_party_master/` has
+been applied — `Party`/`PartyName`/`PartyAddress`/`PartyContact`/
+`PartyIdentifier`/`PartyRegistration` and the rest of this domain's tables
+exist and hold data in the shared dev database.

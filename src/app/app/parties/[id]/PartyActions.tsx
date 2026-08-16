@@ -16,7 +16,7 @@ function useAction() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(url: string, method: "POST" | "DELETE", body?: unknown) {
+  async function run(url: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) {
     setBusy(true);
     setError(null);
     try {
@@ -882,6 +882,114 @@ export function RemoveRowButton({ url, label = "Remove" }: { url: string; label?
       </button>
       <ErrorNote message={error} />
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Restricted party screening
+// ---------------------------------------------------------------------------
+
+export function RescreenPartyButton({ partyId, onDone }: { partyId: string; onDone?: () => void }) {
+  const { busy, error, run } = useAction();
+  return (
+    <div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          const ok = await run(`/api/v1/parties/${partyId}/restricted-party-screening/rescreen`, "POST");
+          if (ok) onDone?.();
+        }}
+        className={primaryClass}
+      >
+        {busy ? "Screening…" : "Re-screen now"}
+      </button>
+      <ErrorNote message={error} />
+    </div>
+  );
+}
+
+export function RestrictedPartyDispositionForm({
+  screeningId,
+  currentStatus,
+  onDone,
+}: {
+  screeningId: string;
+  currentStatus: string | null;
+  onDone?: () => void;
+}) {
+  const { busy, error, run } = useAction();
+  const [status, setStatus] = useState("CONFIRMED_MATCH");
+  const [notes, setNotes] = useState("");
+  const [open, setOpen] = useState(false);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const ok = await run(`/api/v1/screening/restricted-party/${screeningId}/disposition`, "PATCH", {
+      status,
+      notes: notes.trim() === "" ? undefined : notes.trim(),
+    });
+    if (ok) {
+      setNotes("");
+      setOpen(false);
+      onDone?.();
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
+        {currentStatus === null ? "Record disposition" : "Change disposition"}
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-2 rounded-xl border border-border p-3 bg-surface-muted">
+      <div>
+        <label htmlFor={`disposition-status-${screeningId}`} className={labelClass}>
+          Disposition
+        </label>
+        <select
+          id={`disposition-status-${screeningId}`}
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className={`${inputClass} w-full bg-white`}
+        >
+          <option value="CONFIRMED_MATCH">Confirmed match</option>
+          <option value="FALSE_POSITIVE">False positive</option>
+          <option value="APPROVED">Approved</option>
+          <option value="BLOCKED">Blocked</option>
+          <option value="REQUEST_MORE_INFORMATION">Request more information</option>
+        </select>
+      </div>
+      <div>
+        <label htmlFor={`disposition-notes-${screeningId}`} className={labelClass}>
+          Notes
+        </label>
+        <input
+          id={`disposition-notes-${screeningId}`}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="What did you check? (optional)"
+          maxLength={2000}
+          className={`${inputClass} w-full`}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={busy} className={primaryClass}>
+          {busy ? "Saving…" : "Save disposition"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className={buttonClass}>
+          Cancel
+        </button>
+      </div>
+      <p className="text-xs text-[#6E6E73]">
+        This records a reviewer&apos;s judgment. The screening result itself does not change — a hit
+        stays a hit in history even after being dispositioned false positive.
+      </p>
+      <ErrorNote message={error} />
+    </form>
   );
 }
 

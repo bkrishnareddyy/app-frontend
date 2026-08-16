@@ -250,6 +250,80 @@ export function matchStatusPresentation(status: string): StatusPresentation {
   return MATCH_STATUS[status] ?? { label: status, tone: "neutral", hint: "" };
 }
 
+/**
+ * Restricted/denied-party screening status. HIT and REVIEW_REQUIRED are
+ * both worded as something for a person to look at, not a conclusion —
+ * only a disposition records a person's judgment. SKIPPED is never worded
+ * as if it were CLEAR: no reference data loaded is not the same as clean.
+ */
+const RESTRICTED_PARTY_SCREENING_STATUS: Record<string, StatusPresentation> = {
+  CLEAR: { label: "Clear", tone: "success", hint: "No match against the lists screened." },
+  HIT: {
+    label: "Hit",
+    tone: "danger",
+    hint: "Matched a denial-order list at or above the screening threshold. Needs a reviewer disposition.",
+  },
+  REVIEW_REQUIRED: {
+    label: "Review required",
+    tone: "warning",
+    hint: "A possible match scored below the hit threshold. Needs a reviewer to look before this is dismissed.",
+  },
+  PARTIAL: {
+    label: "Partial",
+    tone: "warning",
+    hint: "At least one match or red flag was found, but part of the screen could not complete.",
+  },
+  SKIPPED: {
+    label: "Skipped",
+    tone: "neutral",
+    hint: "No reference data was available to screen against. This is not the same as clear.",
+  },
+  ERROR: { label: "Error", tone: "danger", hint: "The screen could not complete." },
+  STALE: {
+    label: "Stale",
+    tone: "warning",
+    hint: "Identity data has changed since this party was last screened. Re-screen before relying on the last result.",
+  },
+};
+
+export function restrictedPartyScreeningStatusPresentation(status: string): StatusPresentation {
+  return RESTRICTED_PARTY_SCREENING_STATUS[status] ?? { label: status, tone: "neutral", hint: "" };
+}
+
+/**
+ * Reviewer disposition on a restricted-party screening result. The result
+ * itself never changes once written — a disposition is the only mutable
+ * judgment layer, so PENDING always means nobody has recorded one yet.
+ */
+const RESTRICTED_PARTY_DISPOSITION_STATUS: Record<string, StatusPresentation> = {
+  PENDING: { label: "Pending review", tone: "warning", hint: "No reviewer judgment recorded yet." },
+  CONFIRMED_MATCH: {
+    label: "Confirmed match",
+    tone: "danger",
+    hint: "A reviewer confirmed this is the party on the list.",
+  },
+  FALSE_POSITIVE: {
+    label: "False positive",
+    tone: "neutral",
+    hint: "A reviewer determined this is not the same party as the list entry.",
+  },
+  APPROVED: {
+    label: "Approved",
+    tone: "success",
+    hint: "A reviewer approved this party. Future screens will suppress this same list entry as a known false match.",
+  },
+  BLOCKED: { label: "Blocked", tone: "danger", hint: "A reviewer has blocked this party." },
+  REQUEST_MORE_INFORMATION: {
+    label: "More information requested",
+    tone: "info",
+    hint: "A reviewer needs more information before deciding.",
+  },
+};
+
+export function restrictedPartyDispositionStatusPresentation(status: string): StatusPresentation {
+  return RESTRICTED_PARTY_DISPOSITION_STATUS[status] ?? { label: status, tone: "neutral", hint: "" };
+}
+
 export const PARTY_TABS = [
   { id: "overview", label: "Overview" },
   { id: "names", label: "Names" },
@@ -260,6 +334,7 @@ export const PARTY_TABS = [
   { id: "roles", label: "Roles" },
   { id: "relationships", label: "Relationships" },
   { id: "evidence", label: "Evidence" },
+  { id: "screening", label: "Restricted party screening" },
   { id: "history", label: "History" },
 ] as const;
 

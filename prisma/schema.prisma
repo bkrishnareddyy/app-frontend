@@ -40,19 +40,19 @@ enum DocumentType {
 // ---------------------------------------------------------------------------
 
 enum DeadlineType {
-  ISF_10_2        // 24h before lading, ocean only
-  ENTRY_FILING    // 15 calendar days after arrival
-  ENTRY_SUMMARY   // 10 working days after release
-  DUTY_PAYMENT    // with summary, or PMS 15th working day following month
-  PMS_STATEMENT   // reserved — no trustworthy anchor yet
-  LAST_FREE_DAY   // carrier-set; deadlineClass = COMMERCIAL
-  PSC_WINDOW      // reserved — no ACE/ABI feed
-  LIQUIDATION     // reserved — no ACE/ABI feed
-  PROTEST_WINDOW  // 180 calendar days from liquidation date
+  ISF_10_2 // 24h before lading, ocean only
+  ENTRY_FILING // 15 calendar days after arrival
+  ENTRY_SUMMARY // 10 working days after release
+  DUTY_PAYMENT // with summary, or PMS 15th working day following month
+  PMS_STATEMENT // reserved — no trustworthy anchor yet
+  LAST_FREE_DAY // carrier-set; deadlineClass = COMMERCIAL
+  PSC_WINDOW // reserved — no ACE/ABI feed
+  LIQUIDATION // reserved — no ACE/ABI feed
+  PROTEST_WINDOW // 180 calendar days from liquidation date
   CIT_APPEAL_WINDOW // 180 days from CBP denial or deemed-denial
-  DEEMED_DENIAL   // protest filed + 2 years
-  CF28_RESPONSE   // reserved — no CBP notice ingestion
-  CF29_RESPONSE   // reserved — no CBP notice ingestion
+  DEEMED_DENIAL // protest filed + 2 years
+  CF28_RESPONSE // reserved — no CBP notice ingestion
+  CF29_RESPONSE // reserved — no CBP notice ingestion
 }
 
 enum DeadlineAnchor {
@@ -91,60 +91,60 @@ model Account {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  memberships                AccountMembership[]
-  roles                      Role[]
-  invitations                Invitation[]
-  auditLogs                  AuditLog[]
-  idempotencyRecords         IdempotencyRecord[]
-  shipments                  Shipment[]
-  shipmentDocuments          ShipmentDocument[]
-  shipmentLineItems          ShipmentLineItem[]
-  agentDecisions             AgentDecision[]
-  customsFilings             CustomsFiling[]
-  customsResponses           CustomsResponse[]
-  importersOfRecord          ImporterOfRecord[]
-  bonds                      Bond[]
-  powersOfAttorney           PowerOfAttorney[]
-  exceptionItems             ExceptionItem[]
-  fieldApprovals             FieldApproval[]
-  landedCostScenarios        LandedCostScenario[]
-  refundOpportunities        RefundOpportunity[]
-  postSummaryCorrections     PostSummaryCorrection[]
-  protests                   Protest[]
-  exportShipments            ExportShipment[]
-  exportDocuments            ExportDocument[]
-  exportLineItems            ExportLineItem[]
-  drawbackClaims             DrawbackClaim[]
-  complianceAuditRecords     ComplianceAuditRecord[]
-  reconciliationIssues       ReconciliationIssue[]
-  canonicalProducts          CanonicalProduct[]
-  complianceFindings         ComplianceFinding[]
-  supplierRiskScores         SupplierRiskScore[]
-  brokerMetrics              BrokerMetrics[]
-  valuationAssistsRecords    ValuationAssistsRecord[]
-  auditTimelines             AuditTimeline[]
-  screeningLogs              ScreeningLog[]
-  agentExecutionLogs         AgentExecutionLog[]
-  agentExecutionRecords      AgentExecutionRecord[]
-  shipmentStateRecords       ShipmentStateRecord[]
-  pipelineJobs               PipelineJob[]
-  classificationCases          ClassificationCase[]
-  classificationChangeImpacts  ClassificationChangeImpact[]
-  caseDocuments                CaseDocument[]
-  clients                    Client[]
-  legalEntities              LegalEntity[]
-  shipmentSequences          ShipmentSequence[]
-  documentParseVersions      DocumentParseVersion[]
-  inboundSenderRoutes        InboundSenderRoute[]
-  inboundEmails              InboundEmail[]
-  documentShipmentCandidates DocumentShipmentCandidate[]
-  notifications              Notification[]
-  complianceDeadlines        ComplianceDeadline[]
-  aiUsageWindows             AiUsageWindow[]
-  controlEvidence            ControlEvidence[]
-  assistantChatSessions      AssistantChatSession[]
+  memberships                 AccountMembership[]
+  roles                       Role[]
+  invitations                 Invitation[]
+  auditLogs                   AuditLog[]
+  idempotencyRecords          IdempotencyRecord[]
+  shipments                   Shipment[]
+  shipmentDocuments           ShipmentDocument[]
+  shipmentLineItems           ShipmentLineItem[]
+  agentDecisions              AgentDecision[]
+  customsFilings              CustomsFiling[]
+  customsResponses            CustomsResponse[]
+  importersOfRecord           ImporterOfRecord[]
+  bonds                       Bond[]
+  powersOfAttorney            PowerOfAttorney[]
+  exceptionItems              ExceptionItem[]
+  fieldApprovals              FieldApproval[]
+  landedCostScenarios         LandedCostScenario[]
+  refundOpportunities         RefundOpportunity[]
+  postSummaryCorrections      PostSummaryCorrection[]
+  protests                    Protest[]
+  exportShipments             ExportShipment[]
+  exportDocuments             ExportDocument[]
+  exportLineItems             ExportLineItem[]
+  drawbackClaims              DrawbackClaim[]
+  complianceAuditRecords      ComplianceAuditRecord[]
+  reconciliationIssues        ReconciliationIssue[]
+  canonicalProducts           CanonicalProduct[]
+  complianceFindings          ComplianceFinding[]
+  supplierRiskScores          SupplierRiskScore[]
+  brokerMetrics               BrokerMetrics[]
+  valuationAssistsRecords     ValuationAssistsRecord[]
+  auditTimelines              AuditTimeline[]
+  screeningLogs               ScreeningLog[]
+  agentExecutionLogs          AgentExecutionLog[]
+  agentExecutionRecords       AgentExecutionRecord[]
+  shipmentStateRecords        ShipmentStateRecord[]
+  pipelineJobs                PipelineJob[]
+  classificationCases         ClassificationCase[]
+  classificationChangeImpacts ClassificationChangeImpact[]
+  caseDocuments               CaseDocument[]
+  clients                     Client[]
+  legalEntities               LegalEntity[]
+  shipmentSequences           ShipmentSequence[]
+  documentParseVersions       DocumentParseVersion[]
+  inboundSenderRoutes         InboundSenderRoute[]
+  inboundEmails               InboundEmail[]
+  documentShipmentCandidates  DocumentShipmentCandidate[]
+  notifications               Notification[]
+  complianceDeadlines         ComplianceDeadline[]
+  aiUsageWindows              AiUsageWindow[]
+  controlEvidence             ControlEvidence[]
+  assistantChatSessions       AssistantChatSession[]
   filingMessages              FilingMessage[]
-  agentPolicyConfigs         AgentPolicyConfig[]
+  agentPolicyConfigs          AgentPolicyConfig[]
 
   webhooks AccountWebhook[]
   apiKeys  AccountApiKey[]
@@ -180,6 +180,11 @@ model Account {
   embargoConfig       AccountEmbargoConfig?
   embargoUsageHeaders EmbargoUsageHeader[]
   embargoUsageLines   EmbargoUsageLine[]
+
+  restrictedPartyScreeningResults RestrictedPartyScreeningResult[]
+  restrictedPartyDispositions     RestrictedPartyDisposition[]
+  partyScreeningSummaries         PartyScreeningSummary[]
+  complianceScreeningFindings     ComplianceScreeningFinding[]
 
   @@index([type])
   @@index([slug])
@@ -438,23 +443,25 @@ model Shipment {
   masterShipment   Shipment?  @relation("MasterHouseRelation", fields: [masterShipmentId], references: [id], onDelete: SetNull)
   houseShipments   Shipment[] @relation("MasterHouseRelation")
 
-  documents                   ShipmentDocument[]
-  lineItems                   ShipmentLineItem[]
-  agentDecisions              AgentDecision[]
-  customsFilings              CustomsFiling[]
-  exceptionItems              ExceptionItem[]
-  regulatoryUpdateImpacts     RegulatoryUpdateImpact[]
-  classificationChangeImpacts ClassificationChangeImpact[]
-  reconciliationIssues        ReconciliationIssue[]
-  pipelineJobs                PipelineJob[]
-  facts                       Fact[]
-  shipmentParties             ShipmentParty[]
-  changeEvents                ShipmentChangeEvent[]
-  eventLogs                   ShipmentEventLog[]
-  agentExecutionRecords       AgentExecutionRecord[]
-  fieldApprovals              FieldApproval[]
-  documentCandidates          DocumentShipmentCandidate[]
-  complianceDeadlines         ComplianceDeadline[]
+  documents                       ShipmentDocument[]
+  lineItems                       ShipmentLineItem[]
+  agentDecisions                  AgentDecision[]
+  customsFilings                  CustomsFiling[]
+  exceptionItems                  ExceptionItem[]
+  regulatoryUpdateImpacts         RegulatoryUpdateImpact[]
+  classificationChangeImpacts     ClassificationChangeImpact[]
+  reconciliationIssues            ReconciliationIssue[]
+  pipelineJobs                    PipelineJob[]
+  facts                           Fact[]
+  shipmentParties                 ShipmentParty[]
+  changeEvents                    ShipmentChangeEvent[]
+  eventLogs                       ShipmentEventLog[]
+  agentExecutionRecords           AgentExecutionRecord[]
+  fieldApprovals                  FieldApproval[]
+  documentCandidates              DocumentShipmentCandidate[]
+  complianceDeadlines             ComplianceDeadline[]
+  restrictedPartyScreeningResults RestrictedPartyScreeningResult[]
+  complianceScreeningFindings     ComplianceScreeningFinding[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -748,9 +755,10 @@ model ShipmentLineItem {
   sourceSystem String? // e.g. "SAP", "CargoWise"
   sourceId     String? // external identifier for this record in the source system
 
-  origins         OriginDetermination[]
-  drawbackMatches DrawbackMatch[]
-  pgaRequirements PgaRequirement[]
+  origins                         OriginDetermination[]
+  drawbackMatches                 DrawbackMatch[]
+  pgaRequirements                 PgaRequirement[]
+  restrictedPartyScreeningResults RestrictedPartyScreeningResult[]
 
   @@index([shipmentId])
   @@index([accountId])
@@ -865,49 +873,49 @@ model CustomsFiling {
   bondId             String?
   bond               Bond?             @relation(fields: [bondId], references: [id], onDelete: SetNull)
   entryNumber        String // internal reference until the authority assigns its own; see authorityReference on CustomsResponse
-  
+
   // ========================================================================
   // NEW MULTI-COUNTRY FIELDS (replaces US-centric entryType + authority)
   // ========================================================================
-  
+
   /// Transaction type (IMPORT, EXPORT, NCTS, etc.) - replaces US entry type concept
-  transactionTypeId  String?
-  transactionType    FilingTransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
-  
+  transactionTypeId String?
+  transactionType   FilingTransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
+
   /// ISO 3166-1 alpha-2 country code (NL, IE, FR, IN, US, etc.)
   /// Replaces the authority field which was storing authority names
-  country            String?
-  
+  country String?
+
   /// Country-specific procedure code (e.g., "5100" for NL NCTS, "4000" for IN Import)
   /// Together with country, uniquely identifies the customs procedure
-  procedureCode      String?
-  
+  procedureCode String?
+
   // ========================================================================
   // LEGACY FIELDS (kept temporarily for backwards compatibility)
   // TODO: Remove after data migration
   // ========================================================================
-  
+
   /// @deprecated Use transactionTypeId instead. US-centric field from entryType.ts
-  entryType          String?
-  
+  entryType String?
+
   /// @deprecated Use country instead. Was storing authority display names like "CBP"
-  authority          String?
-  
+  authority String?
+
   // ========================================================================
-  
-  filingType         String
-  filingStatus       String            @default("Draft") // Draft, Preparing, ValidationFailed, ReadyForBrokerReview, BrokerApproved, TransmissionPending, Transmitted, Accepted, Rejected, DocumentsRequested, CustomsHold, Released, Cancelled, Closed, Simulation
-  paymentStatus      String            @default("Pending") // Pending, Paid, Deferred
-  totalValue         Decimal? // null until calculated from line items
-  totalDuties        Decimal? // null until calculated
-  totalTaxes         Decimal? // null until calculated
-  totalAmount        Decimal? // null until calculated
-  dutyBreakdown      Json? // Array of itemized duty fee objects
-  version            Int               @default(1)
-  submittedAt        DateTime? // null until actually transmitted
-  releasedAt         DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+
+  filingType    String
+  filingStatus  String    @default("Draft") // Draft, Preparing, ValidationFailed, ReadyForBrokerReview, BrokerApproved, TransmissionPending, Transmitted, Accepted, Rejected, DocumentsRequested, CustomsHold, Released, Cancelled, Closed, Simulation
+  paymentStatus String    @default("Pending") // Pending, Paid, Deferred
+  totalValue    Decimal? // null until calculated from line items
+  totalDuties   Decimal? // null until calculated
+  totalTaxes    Decimal? // null until calculated
+  totalAmount   Decimal? // null until calculated
+  dutyBreakdown Json? // Array of itemized duty fee objects
+  version       Int       @default(1)
+  submittedAt   DateTime? // null until actually transmitted
+  releasedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   // Maker/checker segregation of duties: the user who prepared the filing
   // (preparedByUserId, stamped at POST /api/filing) must differ from whoever
@@ -919,12 +927,12 @@ model CustomsFiling {
   approvedByUserId    String?
   transmittedByUserId String?
 
-  responses              CustomsResponse[]
-  exceptionItems         ExceptionItem[]
-  refundOpportunities    RefundOpportunity[]
-  postSummaryCorrections PostSummaryCorrection[]
-  protestEntries         ProtestEntry[]
-  complianceAuditRecords ComplianceAuditRecord[]
+  responses                   CustomsResponse[]
+  exceptionItems              ExceptionItem[]
+  refundOpportunities         RefundOpportunity[]
+  postSummaryCorrections      PostSummaryCorrection[]
+  protestEntries              ProtestEntry[]
+  complianceAuditRecords      ComplianceAuditRecord[]
   complianceFindings          ComplianceFinding[]
   classificationChangeImpacts ClassificationChangeImpact[]
   valuationAssistsRecord      ValuationAssistsRecord?
@@ -1118,36 +1126,36 @@ model PostSummaryCorrection {
   originalDutyAmount  Decimal
   correctedDutyAmount Decimal
   refundAmount        Decimal
-  dutyDelta           Decimal?           // correctedDutyAmount - originalDutyAmount; positive = owe more, negative = refund
-  interestEstimate    Decimal?           // pre-computed interest if duty delta is positive
+  dutyDelta           Decimal? // correctedDutyAmount - originalDutyAmount; positive = owe more, negative = refund
+  interestEstimate    Decimal? // pre-computed interest if duty delta is positive
 
   // Correction detail
-  legalBasis          String?            // Broker's stated legal/regulatory basis
-  correctedHtsCode    String?            // For CLASSIFICATION_CORRECTION
-  correctedValue      Decimal?           // For VALUE_CORRECTION
-  correctedQuantity   Decimal?           // For QUANTITY_CORRECTION
-  lineItemsAffected   Json?              // [{lineItemId, field, originalValue, correctedValue}]
-  notes               String?            // Internal broker notes
+  legalBasis        String? // Broker's stated legal/regulatory basis
+  correctedHtsCode  String? // For CLASSIFICATION_CORRECTION
+  correctedValue    Decimal? // For VALUE_CORRECTION
+  correctedQuantity Decimal? // For QUANTITY_CORRECTION
+  lineItemsAffected Json? // [{lineItemId, field, originalValue, correctedValue}]
+  notes             String? // Internal broker notes
 
   // Status: Draft | READY_FOR_REVIEW | SUBMITTED | ACE_ACCEPTED | ACE_REJECTED | WITHDRAWN
-  status              String             @default("Draft")
-  cbpResponseCode     String?            @default("PSC_ACK")
-  aceConfirmationNumber String?          // ACE acknowledgment reference
+  status                String  @default("Draft")
+  cbpResponseCode       String? @default("PSC_ACK")
+  aceConfirmationNumber String? // ACE acknowledgment reference
 
-  filedAt             DateTime?
-  withdrawnAt         DateTime?
-  withdrawnByUserId   String?
-  reviewedAt          DateTime?
-  reviewedByUserId    String?
+  filedAt           DateTime?
+  withdrawnAt       DateTime?
+  withdrawnByUserId String?
+  reviewedAt        DateTime?
+  reviewedByUserId  String?
 
-  createdByUserId     String?
-  createdByUser       User?              @relation("PSCCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  createdByUserId String?
+  createdByUser   User?    @relation("PSCCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  linkedProtests      Protest[]
+  linkedProtests Protest[]
 
-  Attachments         PscAttachment[]
+  Attachments PscAttachment[]
 
   @@index([accountId])
   @@index([originalFilingId])
@@ -1155,7 +1163,7 @@ model PostSummaryCorrection {
 }
 
 model PscAttachment {
-  id               String               @id @default(cuid())
+  id               String                @id @default(cuid())
   pscId            String
   psc              PostSummaryCorrection @relation(fields: [pscId], references: [id], onDelete: Cascade)
   fileName         String
@@ -1164,72 +1172,71 @@ model PscAttachment {
   storageKey       String
   label            String?
   uploadedByUserId String
-  uploadedAt       DateTime             @default(now())
+  uploadedAt       DateTime              @default(now())
 
   @@index([pscId])
 }
 
-
 // ─── Protests ───────────────────────────────────────────────────────────────
 
 model Protest {
-  id                       String   @id @default(cuid())
-  accountId                String
-  account                  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   // Liquidation anchor — protest window starts from liquidationDate
-  liquidationDate          DateTime
-  protestDeadline          DateTime // liquidationDate + 180 days (computed, stored for querying)
+  liquidationDate DateTime
+  protestDeadline DateTime // liquidationDate + 180 days (computed, stored for querying)
 
   // Legal grounds
-  groundsCode              String   // CLASSIFICATION | VALUATION | ORIGIN | RATE_OF_DUTY | LIQUIDATION_ERRORS | EXCLUSION_ELIGIBILITY | DRAWBACK_DENIAL | OTHER
-  groundsNarrative         String   // Full written legal basis (required, min 100 chars before filing)
-  statuteCitation          String?  // e.g. "19 U.S.C. § 1514(a)(2)"
-  rulingReference          String?  // e.g. "NY N123456"
+  groundsCode      String // CLASSIFICATION | VALUATION | ORIGIN | RATE_OF_DUTY | LIQUIDATION_ERRORS | EXCLUSION_ELIGIBILITY | DRAWBACK_DENIAL | OTHER
+  groundsNarrative String // Full written legal basis (required, min 100 chars before filing)
+  statuteCitation  String? // e.g. "19 U.S.C. § 1514(a)(2)"
+  rulingReference  String? // e.g. "NY N123456"
 
   // Financial claim
-  claimAmount              Decimal
-  interestClaimed          Boolean  @default(false)
+  claimAmount     Decimal
+  interestClaimed Boolean @default(false)
 
   // Power of Attorney
-  powerOfAttorneyVerified  Boolean  @default(false)
-  poaExpiresAt             DateTime?
+  powerOfAttorneyVerified Boolean   @default(false)
+  poaExpiresAt            DateTime?
 
   // Further Review of Protest
-  furtherReviewRequested   Boolean  @default(false)
-  frpJustification         String?
+  furtherReviewRequested Boolean @default(false)
+  frpJustification       String?
 
   // CBP response
-  protestNumber            String?  // CBP-assigned protest number
-  cbpDecisionDate          DateTime?
-  cbpDecisionNarrative     String?
+  protestNumber        String? // CBP-assigned protest number
+  cbpDecisionDate      DateTime?
+  cbpDecisionNarrative String?
 
   // Deemed-denial tracking (protest filed + 2 years)
-  deemedDeniedAt           DateTime?
+  deemedDeniedAt DateTime?
 
   // CIT appeal tracking
-  citAppealDeadline        DateTime? // cbpDecisionDate or deemedDeniedAt + 180 days
-  citAppealFiledAt         DateTime?
-  citCaseNumber            String?
+  citAppealDeadline DateTime? // cbpDecisionDate or deemedDeniedAt + 180 days
+  citAppealFiledAt  DateTime?
+  citCaseNumber     String?
 
   // Link to a related PSC (pre-liquidation attempt, if any)
-  linkedPscId              String?
-  linkedPsc                PostSummaryCorrection? @relation(fields: [linkedPscId], references: [id], onDelete: SetNull)
+  linkedPscId String?
+  linkedPsc   PostSummaryCorrection? @relation(fields: [linkedPscId], references: [id], onDelete: SetNull)
 
   // Status: DRAFT | READY_FOR_FILING | FILED | FURTHER_REVIEW_REQUESTED | PENDING_CBP | APPROVED | DENIED | DEEMED_DENIED | APPEALED_CIT | WITHDRAWN
-  status                   String   @default("DRAFT")
+  status String @default("DRAFT")
 
-  filedAt                  DateTime?
-  withdrawnAt              DateTime?
-  withdrawnByUserId        String?
+  filedAt           DateTime?
+  withdrawnAt       DateTime?
+  withdrawnByUserId String?
 
-  createdByUserId          String?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  protestEntries           ProtestEntry[]
-  Attachments              ProtestAttachment[]
-  Notes                    ProtestNote[]
+  protestEntries ProtestEntry[]
+  Attachments    ProtestAttachment[]
+  Notes          ProtestNote[]
 
   @@index([accountId])
   @@index([status])
@@ -1237,17 +1244,17 @@ model Protest {
 }
 
 model ProtestEntry {
-  id              String        @id @default(cuid())
-  protestId       String
-  protest         Protest       @relation(fields: [protestId], references: [id], onDelete: Cascade)
-  filingId        String
-  filing          CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
+  id        String        @id @default(cuid())
+  protestId String
+  protest   Protest       @relation(fields: [protestId], references: [id], onDelete: Cascade)
+  filingId  String
+  filing    CustomsFiling @relation(fields: [filingId], references: [id], onDelete: Cascade)
 
   // Denormalized for performance
   entryNumber     String
   liquidationDate DateTime
   dutyAssessed    Decimal
-  dutyContested   Decimal       // portion being protested
+  dutyContested   Decimal // portion being protested
 
   @@index([protestId])
   @@index([filingId])
@@ -1261,7 +1268,7 @@ model ProtestAttachment {
   fileType         String
   fileSize         Int
   storageKey       String
-  label            String?  // e.g. "CBP Form 19", "Classification Ruling"
+  label            String? // e.g. "CBP Form 19", "Classification Ruling"
   uploadedByUserId String
   uploadedAt       DateTime @default(now())
 
@@ -3663,6 +3670,9 @@ model Party {
   relationshipsFrom PartyRelationship[]     @relation("PartyRelationshipFrom")
   relationshipsTo   PartyRelationship[]     @relation("PartyRelationshipTo")
 
+  restrictedPartyScreeningResults RestrictedPartyScreeningResult[]
+  screeningSummary                PartyScreeningSummary?
+
   /// Postgres treats NULLs as distinct, so any number of parties may have no
   /// internal code while no two may share one.
   @@unique([accountId, internalPartyCode])
@@ -4238,11 +4248,10 @@ model FilingActionDataRequirement {
   procedureCode String // or "*"
   messageName   String // or "*"
   action        String // a FilingMessageActionCatalog code, e.g. "CANCELLATION" | "AMENDMENT"
-  fields        Json   // Array<{ key, label, type, required, source, helpText? }>
+  fields        Json // Array<{ key, label, type, required, source, helpText? }>
 
   @@unique([country, procedureCode, messageName, action])
 }
-
 
 // ============================================================================
 // NEW MULTI-COUNTRY FILING CONFIGURATION (Redesigned)
@@ -4296,15 +4305,15 @@ model FilingActionCatalog {
 /// Replaces the old FilingProcedureMapping which was US-centric (entryType-based).
 /// Example: (NL, NCTS, 5100, IE015) means Netherlands NCTS procedure 5100 uses message IE015.
 model FilingProcedureConfig {
-  id                String                 @id @default(cuid())
+  id                String                @id @default(cuid())
   transactionTypeId String
-  transactionType   FilingTransactionType  @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
-  country           String                 // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
-  procedureCode     String                 // Country-specific procedure code (5100, 4000, etc.)
-  messageName       String                 // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
-  isActive          Boolean                @default(true)
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  transactionType   FilingTransactionType @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
+  country           String // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
+  procedureCode     String // Country-specific procedure code (5100, 4000, etc.)
+  messageName       String // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
+  isActive          Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
   createdBy         String?
   updatedBy         String?
 
@@ -4318,10 +4327,10 @@ model FilingProcedureConfig {
 /// Example: (NL, 5100, AMENDMENT, IE013) means Amendment action sends IE013 message.
 model FilingActionMessageMapping {
   id            String   @id @default(cuid())
-  country       String   // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
-  procedureCode String   // Country-specific procedure code
-  action        String   // Action code from FilingActionCatalog (SUBMIT, AMENDMENT, CANCELLATION)
-  messageName   String   // Outbound message name to send (IE015, IE013, IE014, etc.)
+  country       String // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
+  procedureCode String // Country-specific procedure code
+  action        String // Action code from FilingActionCatalog (SUBMIT, AMENDMENT, CANCELLATION)
+  messageName   String // Outbound message name to send (IE015, IE013, IE014, etc.)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -4341,10 +4350,10 @@ model FilingActionMessageMapping {
 /// Cancellation actions are available but Resubmit is not allowed.
 model FilingActionConfiguration {
   id               String   @id @default(cuid())
-  country          String   // ISO 3166-1 alpha-2
-  procedureCode    String   // Country-specific procedure code
-  messageName      String   // REQUEST message that was sent (IE015, IE013, ICEGATE_BOE, etc.)
-  status           String   // Response status received (TRANSMITTED, ACCEPTED, REJECTED, PENDING, etc.)
+  country          String // ISO 3166-1 alpha-2
+  procedureCode    String // Country-specific procedure code
+  messageName      String // REQUEST message that was sent (IE015, IE013, ICEGATE_BOE, etc.)
+  status           String // Response status received (TRANSMITTED, ACCEPTED, REJECTED, PENDING, etc.)
   availableActions String[] // Array of action codes that are available (AMENDMENT, CANCELLATION, etc.)
   allowSubmit      Boolean  @default(false) // Whether original declaration can be resubmitted
   isActive         Boolean  @default(true)
@@ -4536,6 +4545,8 @@ model ScreeningEntity {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  restrictedPartyMatches RestrictedPartyMatch[]
+
   @@index([name])
   @@index([sourceList])
   @@index([publicationStatus])
@@ -4559,8 +4570,263 @@ model ComplianceKeywordRule {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  restrictedPartyRedFlagHits RestrictedPartyRedFlagHit[]
+
   @@index([category])
   @@index([publicationStatus])
+}
+
+// ---------------------------------------------------------------------------
+// RESTRICTED / DENIED-PARTY SCREENING
+// ---------------------------------------------------------------------------
+
+enum RestrictedPartyScreeningSource {
+  PARTY_MASTER
+  SHIPMENT
+  LINE
+  PUBLIC_API
+  COPILOT
+  MANUAL
+}
+
+enum RestrictedPartyScreeningStatus {
+  CLEAR
+  HIT
+  REVIEW_REQUIRED
+  PARTIAL
+  SKIPPED
+  ERROR
+  STALE
+}
+
+enum RestrictedPartyPassType {
+  PARTY_NAME
+  CONTACT_NAME
+}
+
+enum RestrictedPartyMatchMethod {
+  EXACT
+  RAW_WORD
+  METAPHONE
+  DOUBLE_METAPHONE
+  COMBINED
+}
+
+enum RestrictedPartyDispositionStatus {
+  PENDING
+  CONFIRMED_MATCH
+  FALSE_POSITIVE
+  APPROVED
+  BLOCKED
+  REQUEST_MORE_INFORMATION
+}
+
+/// One immutable row per screened identity per run (party-name pass and,
+/// if present, a separate contact-name pass — never merged). A party
+/// appearing at both transaction and line level is screened once per
+/// context, not deduplicated.
+model RestrictedPartyScreeningResult {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  correlationId String // groups every row from one logical screening invocation
+
+  source RestrictedPartyScreeningSource
+
+  shipmentId String?
+  shipment   Shipment? @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  lineItemId String?
+  lineItem   ShipmentLineItem? @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+
+  partyId String?
+  party   Party?  @relation(fields: [partyId], references: [id], onDelete: SetNull)
+
+  externalReference String? // caller-supplied correlation token (legacy userDefined)
+
+  passType RestrictedPartyPassType
+
+  screenedName    String
+  screenedAddress String?
+  screenedCity    String?
+  screenedCountry String?
+
+  nameThreshold        Int
+  addressThreshold     Int?
+  countryMatchRequired Boolean
+  redFlagCheckEnabled  Boolean
+
+  status RestrictedPartyScreeningStatus
+
+  hitCount     Int @default(0)
+  redFlagCount Int @default(0)
+
+  errorCode    String?
+  errorMessage String?
+
+  screeningInputHash String // sha256(normalized inputs + effective thresholds)
+
+  screeningDate       DateTime @default(now())
+  screeningDurationMs Int?
+
+  matches     RestrictedPartyMatch[]
+  redFlagHits RestrictedPartyRedFlagHit[]
+  disposition RestrictedPartyDisposition?
+
+  /// Back-relation for PartyScreeningSummary.lastScreeningResult — a result
+  /// can be "current" for at most one Party Master summary.
+  currentForPartySummary PartyScreeningSummary?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, screeningDate])
+  @@index([accountId, partyId])
+  @@index([accountId, shipmentId])
+  @@index([accountId, lineItemId])
+  @@index([accountId, status])
+  @@index([correlationId])
+  @@index([screeningInputHash])
+}
+
+/// One denial-order candidate match. Immutable — corrections are recorded
+/// as a RestrictedPartyDisposition, never by editing/deleting this row.
+model RestrictedPartyMatch {
+  id       String                         @id @default(cuid())
+  resultId String
+  result   RestrictedPartyScreeningResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  sequence Int // ordinal within the result
+
+  screeningEntityId String
+  screeningEntity   ScreeningEntity @relation(fields: [screeningEntityId], references: [id], onDelete: Cascade)
+
+  matchedName    String
+  matchedAddress String?
+
+  nameScore    Int
+  addressScore Int?
+
+  matchMethod RestrictedPartyMatchMethod
+
+  countryMatch Boolean?
+
+  sourceList   String // copied from ScreeningEntity at match time
+  entityType   String
+  programCodes String[]
+
+  denialType String? // PARTIAL — no source field backs this yet
+  agency     String?
+  citation   String?
+
+  suppressedByApprovedParty Boolean @default(false)
+  suppressingDispositionId  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([resultId])
+  @@index([screeningEntityId])
+}
+
+/// Independent red-flag word hits — additive to, never merged with,
+/// denial-order matches.
+model RestrictedPartyRedFlagHit {
+  id       String                         @id @default(cuid())
+  resultId String
+  result   RestrictedPartyScreeningResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  keywordRuleId String?
+  keywordRule   ComplianceKeywordRule? @relation(fields: [keywordRuleId], references: [id], onDelete: SetNull)
+
+  matchedWord String
+
+  createdAt DateTime @default(now())
+
+  @@index([resultId])
+}
+
+/// Mutable reviewer judgment, 1:1 with an immutable result. A result that
+/// was HIT stays HIT in history even after being dispositioned
+/// FALSE_POSITIVE — this is the only place human judgment is recorded.
+model RestrictedPartyDisposition {
+  id       String                         @id @default(cuid())
+  resultId String                         @unique
+  result   RestrictedPartyScreeningResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  status RestrictedPartyDispositionStatus @default(PENDING)
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  notes            String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])
+}
+
+/// Party Master's current RPS state — a 1:1 satellite kept off Party
+/// itself so ingestion-triggered bulk staleness never touches Party's
+/// migration surface or its existing indexes.
+model PartyScreeningSummary {
+  id      String @id @default(cuid())
+  partyId String @unique
+  party   Party  @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  screeningStatus RestrictedPartyScreeningStatus
+
+  lastScreenedAt        DateTime?
+  lastScreeningResultId String?                         @unique
+  lastScreeningResult   RestrictedPartyScreeningResult? @relation(fields: [lastScreeningResultId], references: [id], onDelete: SetNull)
+
+  currentInputHash String? // recomputed on every identity-fact write; mismatch -> STALE
+
+  screeningValidUntil DateTime? // no fixed TTL policy exists yet — unused until one is designed
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([accountId, screeningStatus])
+}
+
+/// Generic, append-only compliance screening finding — one row per failing
+/// AuditCheckResult produced by ComplianceAuditAgent for the five screening
+/// categories that have no dedicated result table of their own (Country
+/// Embargo, Forced Labor/UFLPA, End-Use/End-User, Military End-Use/End-User,
+/// Anti-Boycott). Restricted Party / Party Red Flag findings are excluded —
+/// those already have a richer, immutable home in RestrictedPartyScreeningResult
+/// and are never duplicated here. Never updated in place except to resolve;
+/// a re-run that still fails creates a new row rather than reviving this one.
+model ComplianceScreeningFinding {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  lineNumber Int?
+
+  category String // COUNTRY_EMBARGO | UFLPA | END_USE_RESTRICTION | END_USER_RESTRICTION | ANTI_BOYCOTT | MILITARY_END_USE | MILITARY_END_USER | SCREENING_GAP
+  ruleId   String
+  ruleName String
+  severity String // LOW | MEDIUM | HIGH | CRITICAL
+  details  String @db.Text
+
+  status     String    @default("OPEN") // OPEN | RESOLVED
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, category, createdAt])
+  @@index([accountId, status])
+  @@index([shipmentId])
 }
 
 /// CBP ACE 4-digit port codes — reference table for pre-filing validation.

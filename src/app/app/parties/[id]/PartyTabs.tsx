@@ -14,6 +14,8 @@ import {
   partyKindLabel,
   registrationStatusPresentation,
   relationshipTypeLabel,
+  restrictedPartyDispositionStatusPresentation,
+  restrictedPartyScreeningStatusPresentation,
   revalidationPresentation,
   roleTypeLabel,
   significancePresentation,
@@ -31,6 +33,8 @@ import {
   AddSiteForm,
   RegistrationReviewActions,
   RemoveRowButton,
+  RescreenPartyButton,
+  RestrictedPartyDispositionForm,
 } from "./PartyActions";
 
 const cellClass = "px-3 py-3 align-top";
@@ -59,12 +63,57 @@ interface HistoryEvent {
   impactFlags: string[];
 }
 
+interface ScreeningSummary {
+  screeningStatus: string;
+  lastScreenedAt: string | null;
+}
+
+interface ScreeningMatch {
+  id: string;
+  matchedName: string;
+  matchedAddress: string | null;
+  nameScore: number;
+  matchMethod: string;
+  sourceList: string;
+  entityType: string;
+  suppressedByApprovedParty: boolean;
+}
+
+interface ScreeningRedFlagHit {
+  id: string;
+  matchedWord: string;
+}
+
+interface ScreeningDisposition {
+  status: string;
+  reviewedByUserId: string | null;
+  reviewedAt: string | null;
+  notes: string | null;
+}
+
+interface ScreeningResult {
+  id: string;
+  passType: string;
+  screenedName: string;
+  status: string;
+  hitCount: number;
+  redFlagCount: number;
+  screeningDate: string;
+  errorMessage: string | null;
+  matches: ScreeningMatch[];
+  redFlagHits: ScreeningRedFlagHit[];
+  disposition: ScreeningDisposition | null;
+}
+
 export function PartyTabs({
   partyId,
   initialTab,
   party,
   mayEdit,
   mayVerifyRegistration,
+  mayReadScreening,
+  mayScreen,
+  mayDisposeScreening,
   reviewHint,
   activeNames,
   activeIdentifiers,
@@ -81,6 +130,9 @@ export function PartyTabs({
   party: PartyDetail;
   mayEdit: boolean;
   mayVerifyRegistration: boolean;
+  mayReadScreening: boolean;
+  mayScreen: boolean;
+  mayDisposeScreening: boolean;
   reviewHint: string;
   activeNames: PartyDetail["names"];
   activeIdentifiers: PartyDetail["identifiers"];
@@ -98,6 +150,11 @@ export function PartyTabs({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyRequestedRef = useRef(false);
+  const [screeningSummary, setScreeningSummary] = useState<ScreeningSummary | null>(null);
+  const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([]);
+  const [screeningLoading, setScreeningLoading] = useState(false);
+  const [screeningError, setScreeningError] = useState<string | null>(null);
+  const screeningRequestedRef = useRef(false);
 
   function selectTab(next: PartyTabId) {
     setTab(next);
@@ -119,6 +176,29 @@ export function PartyTabs({
       .catch(() => setHistoryError("History could not be loaded."))
       .finally(() => setHistoryLoading(false));
   }, [tab, partyId]);
+
+  function loadScreeningHistory() {
+    setScreeningLoading(true);
+    setScreeningError(null);
+    fetch(`/api/v1/parties/${partyId}/restricted-party-screening-history`)
+      .then((response) => {
+        if (!response.ok) throw new Error("screening history request failed");
+        return response.json();
+      })
+      .then((body) => {
+        setScreeningSummary(body.summary ?? null);
+        setScreeningResults(Array.isArray(body.results) ? body.results : []);
+      })
+      .catch(() => setScreeningError("Screening history could not be loaded."))
+      .finally(() => setScreeningLoading(false));
+  }
+
+  useEffect(() => {
+    if (tab !== "screening" || screeningRequestedRef.current || !mayReadScreening) return;
+    screeningRequestedRef.current = true;
+    loadScreeningHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, partyId, mayReadScreening]);
 
   return (
     <>
@@ -713,6 +793,196 @@ export function PartyTabs({
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {tab === "screening" && (
+        <div className="space-y-4">
+          {!mayReadScreening ? (
+            <div className="rounded-2xl bg-white border border-border p-5">
+              <p className="text-sm text-[#6E6E73]">
+                Viewing restricted-party screening needs compliance.restrictedParty.read.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-2xl bg-white border border-border p-5 space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-sm font-bold text-ink">Screening status</h2>
+                    {screeningSummary === null ? (
+                      <p className="text-sm text-[#6E6E73] mt-1">
+                        This party has never been screened against restricted/denied-party lists.
+                      </p>
+                    ) : (
+                      (() => {
+                        const presentation = restrictedPartyScreeningStatusPresentation(
+                          screeningSummary.screeningStatus
+                        );
+                        return (
+                          <div className="mt-1 space-y-1">
+                            <Badge variant={presentation.tone}>{presentation.label}</Badge>
+                            {presentation.hint !== "" && (
+                              <p className="text-xs text-[#6E6E73] max-w-xl">{presentation.hint}</p>
+                            )}
+                            <p className="text-xs text-[#6E6E73]">
+                              Last screened{" "}
+                              {screeningSummary.lastScreenedAt === null
+                                ? "never"
+                                : displayDate(screeningSummary.lastScreenedAt)}
+                            </p>
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                  {mayScreen && (
+                    <RescreenPartyButton partyId={partyId} onDone={loadScreeningHistory} />
+                  )}
+                </div>
+                {!mayScreen && (
+                  <p className="text-xs text-[#6E6E73]">
+                    Screening this party needs compliance.restrictedParty.screen.
+                  </p>
+                )}
+                <p className="text-xs text-[#6E6E73]">
+                  Screens this party&apos;s current active name, address, and contact against
+                  denial-order lists and red-flag words. A name match and a contact-name match are
+                  screened and reported independently.
+                </p>
+              </div>
+
+              {screeningError && (
+                <p role="alert" className="text-sm text-red-700">
+                  {screeningError}
+                </p>
+              )}
+
+              <div className="space-y-3">
+                {screeningLoading ? (
+                  <div className="rounded-2xl bg-white border border-border p-5">
+                    <p className="text-sm text-[#6E6E73]">Loading…</p>
+                  </div>
+                ) : screeningResults.length === 0 ? (
+                  <div className="rounded-2xl bg-white border border-border p-5">
+                    <p className="text-sm text-[#6E6E73]">No screening history yet.</p>
+                  </div>
+                ) : (
+                  screeningResults.map((result) => {
+                    const statusPresentation = restrictedPartyScreeningStatusPresentation(result.status);
+                    return (
+                      <div key={result.id} className="rounded-2xl bg-white border border-border p-5 space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-ink">
+                              {result.passType === "CONTACT_NAME" ? "Contact name pass" : "Party name pass"}
+                              <span className="ml-2 font-normal text-[#6E6E73]">
+                                &ldquo;{result.screenedName}&rdquo;
+                              </span>
+                            </p>
+                            <p className="text-xs text-[#6E6E73] mt-1">
+                              {displayDate(result.screeningDate)}
+                            </p>
+                          </div>
+                          <Badge variant={statusPresentation.tone}>{statusPresentation.label}</Badge>
+                        </div>
+                        {statusPresentation.hint !== "" && (
+                          <p className="text-xs text-[#6E6E73]">{statusPresentation.hint}</p>
+                        )}
+                        {result.errorMessage !== null && (
+                          <p className="text-xs text-red-700">{result.errorMessage}</p>
+                        )}
+
+                        {result.matches.length > 0 && (
+                          <div className="rounded-xl border border-border overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr>
+                                  <th className={headClass}>Matched name</th>
+                                  <th className={headClass}>List</th>
+                                  <th className={headClass}>Score</th>
+                                  <th className={headClass}>Method</th>
+                                  <th className={headClass} />
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border">
+                                {result.matches.map((match) => (
+                                  <tr key={match.id}>
+                                    <td className={`${cellClass} text-ink`}>
+                                      {match.matchedName}
+                                      {match.matchedAddress !== null && (
+                                        <span className="block text-xs text-[#6E6E73]">
+                                          {match.matchedAddress}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className={`${cellClass} text-[#6E6E73]`}>{match.sourceList}</td>
+                                    <td className={`${cellClass} text-[#6E6E73]`}>{match.nameScore}</td>
+                                    <td className={`${cellClass} text-[#6E6E73]`}>{match.matchMethod}</td>
+                                    <td className={cellClass}>
+                                      {match.suppressedByApprovedParty && (
+                                        <Badge variant="neutral">Suppressed — prior approval</Badge>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {result.redFlagHits.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1">
+                              Red flag words
+                            </p>
+                            <p className="text-sm text-ink">
+                              {result.redFlagHits.map((hit) => hit.matchedWord).join(", ")}
+                            </p>
+                          </div>
+                        )}
+
+                        {(result.matches.length > 0 || result.redFlagHits.length > 0) && (
+                          <div className="pt-2 border-t border-border space-y-2">
+                            {result.disposition !== null &&
+                              (() => {
+                                const dispositionPresentation = restrictedPartyDispositionStatusPresentation(
+                                  result.disposition.status
+                                );
+                                return (
+                                  <div className="space-y-1">
+                                    <Badge variant={dispositionPresentation.tone}>
+                                      {dispositionPresentation.label}
+                                    </Badge>
+                                    {dispositionPresentation.hint !== "" && (
+                                      <p className="text-xs text-[#6E6E73]">{dispositionPresentation.hint}</p>
+                                    )}
+                                    {result.disposition.notes !== null && (
+                                      <p className="text-xs text-[#6E6E73]">{result.disposition.notes}</p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            {mayDisposeScreening ? (
+                              <RestrictedPartyDispositionForm
+                                screeningId={result.id}
+                                currentStatus={result.disposition?.status ?? null}
+                                onDone={loadScreeningHistory}
+                              />
+                            ) : (
+                              <p className="text-xs text-[#6E6E73]">
+                                Recording a disposition needs compliance.restrictedParty.dispose.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -23,6 +23,8 @@ import { runAntiBoycottScreening } from "./compliance/antiBoycott/antiBoycottScr
 import type { AntiBoycottScreeningResult } from "./compliance/antiBoycott/types";
 import { runMilitaryEndUseScreening } from "./compliance/militaryEndUse/militaryEndUseScreening";
 import type { MilitaryEndUseScreeningResult } from "./compliance/militaryEndUse/types";
+import { runRestrictedPartyScreeningForShipment } from "./compliance/restrictedParty/shipmentScreening";
+import type { RestrictedPartyShipmentScreeningResult } from "./compliance/restrictedParty/shipmentScreening";
 
 export interface AuditCheckResult {
   ruleId: string;
@@ -40,7 +42,9 @@ export interface AuditCheckResult {
     | "END_USER_RESTRICTION"
     | "ANTI_BOYCOTT"
     | "MILITARY_END_USE"
-    | "MILITARY_END_USER";
+    | "MILITARY_END_USER"
+    | "RESTRICTED_PARTY"
+    | "PARTY_RED_FLAG";
   passed: boolean;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   details: string;
@@ -122,6 +126,7 @@ export interface ComplianceAuditOutput {
   endUserScreening?: EndUserScreeningResult;
   antiBoycottScreening?: AntiBoycottScreeningResult;
   militaryEndUseScreening?: MilitaryEndUseScreeningResult;
+  restrictedPartyScreening?: RestrictedPartyShipmentScreeningResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -496,16 +501,16 @@ export class ComplianceAuditAgent {
       }
     }
 
-    // ---- End-Use / End-User / Anti-Boycott / Military End-Use Screening ----
-    // These four are independent of one another (no shared data dependency),
-    // so they run concurrently rather than as four sequential round-trips.
+    // ---- End-Use / End-User / Anti-Boycott / Military End-Use / Restricted-Party Screening ----
+    // These five are independent of one another (no shared data dependency),
+    // so they run concurrently rather than as five sequential round-trips.
     const endUserEntityNames = [
       input.exporterName ? { role: "Exporter", name: input.exporterName } : null,
       input.supplierName ? { role: "Supplier/Manufacturer", name: input.supplierName } : null,
       input.importerName ? { role: "Importer", name: input.importerName } : null,
     ].filter((n): n is { role: string; name: string } => n !== null);
 
-    const [endUseScreening, endUserScreening, antiBoycottScreening, militaryEndUseScreening] = await Promise.all([
+    const [endUseScreening, endUserScreening, antiBoycottScreening, militaryEndUseScreening, restrictedPartyScreening] = await Promise.all([
       runEndUseScreening({
         accountId: input.accountId,
         shipmentId: input.shipmentId,
@@ -542,6 +547,10 @@ export class ComplianceAuditAgent {
         screeningDate: new Date(),
       }).catch((err) => {
         debugError = logAgentError("Compliance Agent", input.shipmentId, "runMilitaryEndUseScreening", err);
+        return undefined;
+      }),
+      runRestrictedPartyScreeningForShipment(input.accountId, input.shipmentId).catch((err) => {
+        debugError = logAgentError("Compliance Agent", input.shipmentId, "runRestrictedPartyScreeningForShipment", err);
         return undefined;
       }),
     ]);
@@ -684,6 +693,50 @@ export class ComplianceAuditAgent {
       }
     }
 
+    // ---- Restricted / Denied-Party Screening (deterministic; see compliance/restrictedParty/) ----
+    if (restrictedPartyScreening) {
+      if (restrictedPartyScreening.status === "SKIPPED") {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-14",
+          ruleName: "Restricted Party Screening Availability",
+          category: "RESTRICTED_PARTY",
+          passed: false,
+          severity: "MEDIUM",
+          details: `Restricted Party Screening did not run: ${restrictedPartyScreening.skipped.map((s) => s.reason).join(" ") || "no reference data loaded"}. This is not a CLEAR result.`,
+        });
+      }
+      for (const hit of restrictedPartyScreening.hits) {
+        auditResults.push({
+          ruleId: "RULE-RESTRICTED-PARTY-01",
+          ruleName: "Restricted / Denied Party List Check",
+          category: "RESTRICTED_PARTY",
+          passed: false,
+          severity: "CRITICAL",
+          details: hit.reason,
+        });
+      }
+      for (const redFlag of restrictedPartyScreening.redFlagHits) {
+        auditResults.push({
+          ruleId: "RULE-PARTY-RED-FLAG-01",
+          ruleName: "Restricted Party Red-Flag Word Check",
+          category: "PARTY_RED_FLAG",
+          passed: false,
+          severity: "HIGH",
+          details: redFlag.reason,
+        });
+      }
+      if (restrictedPartyScreening.errors.length > 0) {
+        auditResults.push({
+          ruleId: "RULE-SCREENING-GAP-15",
+          ruleName: "Restricted Party Screening Completeness",
+          category: "RESTRICTED_PARTY",
+          passed: false,
+          severity: "MEDIUM",
+          details: `Restricted Party Screening encountered ${restrictedPartyScreening.errors.length} error(s) -- some checks did not complete.`,
+        });
+      }
+    }
+
     // Optional, best-effort valuation/origin sanity check against benchmark data.
     const uniqueHts = Array.from(new Set(lineItems.map((li) => li.htsCode).filter((h): h is string => Boolean(h) && !isBlockedHtsCode(h))));
     for (const hts of uniqueHts) {
@@ -738,6 +791,7 @@ export class ComplianceAuditAgent {
     const endUserScreeningRan = endUserScreening && endUserScreening.status !== "SKIPPED" ? 1 : 0;
     const antiBoycottScreeningRan = antiBoycottScreening && antiBoycottScreening.status !== "SKIPPED" ? 1 : 0;
     const militaryEndUseScreeningRan = militaryEndUseScreening && militaryEndUseScreening.status !== "SKIPPED" ? 1 : 0;
+    const restrictedPartyScreeningRan = restrictedPartyScreening && restrictedPartyScreening.status !== "SKIPPED" ? 1 : 0;
     const confidence = Math.round(
       ((originCoverage +
         htsCoverage +
@@ -747,8 +801,9 @@ export class ComplianceAuditAgent {
         endUseScreeningRan +
         endUserScreeningRan +
         antiBoycottScreeningRan +
-        militaryEndUseScreeningRan) /
-        9) *
+        militaryEndUseScreeningRan +
+        restrictedPartyScreeningRan) /
+        10) *
         100
     );
     const auditChecksRun = auditResults.length;
@@ -792,6 +847,7 @@ export class ComplianceAuditAgent {
           endUserScreeningStatus: endUserScreening?.status ?? null,
           antiBoycottScreeningStatus: antiBoycottScreening?.status ?? null,
           militaryEndUseScreeningStatus: militaryEndUseScreening?.status ?? null,
+          restrictedPartyScreeningStatus: restrictedPartyScreening?.status ?? null,
         };
 
         const prompt = `${SYNTHESIS_SYSTEM_PROMPT}\n\nEVIDENCE:\n${JSON.stringify(evidence, null, 2)}`;
@@ -859,6 +915,7 @@ export class ComplianceAuditAgent {
             ...(endUserScreening ? ["BIS Entity List / Unverified List Reference Table (ScreeningEntity)"] : []),
             ...(antiBoycottScreening ? ["Anti-Boycott Country Flag (countries) + Keyword Reference Table (ComplianceKeywordRule)"] : []),
             ...(militaryEndUseScreening ? ["Military End-Use Keyword Reference Table + Military End User (MEU) List (ComplianceKeywordRule / ScreeningEntity)"] : []),
+            ...(restrictedPartyScreening ? ["Restricted / Denied Party List Reference Table + Red-Flag Word Reference Table (ScreeningEntity / ComplianceKeywordRule)"] : []),
           ],
           regulations: [
             "19 CFR § 141.86",
@@ -866,6 +923,9 @@ export class ComplianceAuditAgent {
             "19 CFR Part 159 (ADD/CVD)",
             "15 CFR Part 744 (End-Use / End-User / Military End-Use Controls)",
             "15 CFR Part 760 (Anti-Boycott Regulations)",
+            "31 CFR Part 501 (OFAC Reporting, Procedures and Penalties Regulations)",
+            "15 CFR Part 764 (Enforcement -- Denial Orders)",
+            "15 CFR Part 732, Supp. No. 3 (Know Your Customer Guidance)",
           ],
           modelVersion: aiProvider.includes("Gemini") ? aiModel("compliance-audit") : null,
           promptVersion: aiProvider.includes("Gemini") ? hashPromptVersion(SYNTHESIS_SYSTEM_PROMPT) : null,
@@ -881,6 +941,7 @@ export class ComplianceAuditAgent {
             endUserScreening,
             antiBoycottScreening,
             militaryEndUseScreening,
+            restrictedPartyScreening,
           } as unknown as Prisma.InputJsonValue,
         },
       });
@@ -933,6 +994,7 @@ export class ComplianceAuditAgent {
       endUserScreening,
       antiBoycottScreening,
       militaryEndUseScreening,
+      restrictedPartyScreening,
     };
   }
 }
