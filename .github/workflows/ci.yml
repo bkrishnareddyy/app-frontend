@@ -14,6 +14,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/qubere_test
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/qubere_test
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/qubere_shadow
       NEXTAUTH_SECRET: ci-secret
       NEXTAUTH_URL: http://localhost:3000
 
@@ -26,7 +27,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d qubere_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -45,8 +46,38 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run Prisma migrations
+      - name: Run Prisma migrations from scratch
         run: npx prisma migrate deploy
+
+      - name: Verify migrations are replay-safe
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
+
+      - name: Generate Prisma schema drift SQL
+        run: |
+          PGPASSWORD=postgres createdb -h localhost -U postgres qubere_shadow
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --script > prisma-drift.sql
+
+      - name: Upload Prisma schema drift SQL
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-schema-drift
+          path: prisma-drift.sql
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Verify Prisma schema matches migration history
+        run: |
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --exit-code
 
       - name: TypeScript compile
         run: npx tsc --noEmit
@@ -55,7 +86,18 @@ jobs:
         run: npm run lint
 
       - name: Unit tests
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.log
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: OpenAPI generation must not error
         run: npm run openapi

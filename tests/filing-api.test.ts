@@ -20,19 +20,20 @@ const dbMock = {
   htsNode: {
     findMany: vi.fn(),
   },
-  // Duty rates are read only from the currently published release, so the
-  // engine resolves that release before looking up any node.
   htsRelease: {
     findFirst: vi.fn(),
   },
   shipmentParty: {
     findFirst: vi.fn(),
   },
-  filingProcedureMapping: {
-    findMany: vi.fn(),
+  filingTransactionType: {
+    findUnique: vi.fn(),
   },
-  filingMessageCatalog: {
-    findMany: vi.fn(),
+  filingActionMessageMapping: {
+    findUnique: vi.fn(),
+  },
+  filingProcedureConfig: {
+    findUnique: vi.fn(),
   },
   filingSchemaVersion: {
     findFirst: vi.fn(),
@@ -49,7 +50,6 @@ vi.mock("@/lib/db", () => ({ db: dbMock }));
 
 const { FilingService } = await import("@/modules/filings/filing.service");
 
-/** A line item shaped as the transmit path reads it. */
 function lineItem(overrides: Record<string, unknown> = {}) {
   return {
     id: "li_1",
@@ -61,7 +61,6 @@ function lineItem(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** An ingested HTS node carrying one published General rate. */
 function htsNode(generalRate: string) {
   return {
     htsNumberNormalized: "8481805090",
@@ -76,22 +75,23 @@ function filingRecord(lineItems: unknown[]) {
     entryNumber: "5901-26-004872",
     entryType: "01",
     filingStatus: "BrokerApproved",
+    shipmentId: "shp_1",
+    country: "US",
+    procedureCode: "CBP_7501",
+    transactionType: { code: "IMPORT" },
     shipment: { id: "shp_1", destinationCountry: "US", lineItems, documents: [] },
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // A published release exists in every case here; the "no published release"
-  // path is covered in duty-rate-release-scope.test.ts.
   dbMock.htsRelease.findFirst.mockResolvedValue({ id: "rel_published" });
   dbMock.shipmentParty.findFirst.mockResolvedValue(null);
-  dbMock.filingProcedureMapping.findMany.mockResolvedValue([
-    { id: "fpm_1", entryType: "01", country: "*", procedureCode: "CBP_7501" },
-  ]);
-  dbMock.filingMessageCatalog.findMany.mockResolvedValue([
-    { id: "fmc_1", action: "*", country: "*", procedureCode: "*", format: "CBP_ACE_ABI_501", engine: "CBP_ABI" },
-  ]);
+  dbMock.filingTransactionType.findUnique.mockResolvedValue({ id: "tx_import", code: "IMPORT", isActive: true });
+  // Legacy US filings legitimately use resolveMessageContext's documented
+  // fallback when the newer action mapping has not been configured yet.
+  dbMock.filingActionMessageMapping.findUnique.mockResolvedValue(null);
+  dbMock.filingProcedureConfig.findUnique.mockResolvedValue(null);
   dbMock.filingSchemaVersion.findFirst.mockResolvedValue({
     id: "v1",
     schemaType: "FILING_REQUEST_DECLARATION",
@@ -114,7 +114,6 @@ describe("FilingService.transmitFiling: duty completeness", () => {
     dbMock.customsFiling.findFirst.mockResolvedValue(
       filingRecord([lineItem(), lineItem({ id: "li_2", htsCode: "9999.99.9999" })])
     );
-    // Only the first code resolves, so the second line is unrated.
     dbMock.htsNode.findMany.mockResolvedValue([htsNode("2.8%")]);
 
     await expect(FilingService.transmitFiling("acc_1", "user_1", "fil_1")).rejects.toThrow(

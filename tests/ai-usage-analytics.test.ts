@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /**
  * The platform-admin "Agents" analytics screen reads two existing tables and
@@ -33,6 +33,10 @@ beforeEach(() => {
   dbMock.auditLog.findMany.mockResolvedValue([]);
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("getAiUsageAnalytics", () => {
   it("lists every known surface, including ones with no recorded usage", async () => {
     dbMock.aiUsageWindow.groupBy.mockImplementation(async ({ by }: { by: string[] }) => {
@@ -53,6 +57,9 @@ describe("getAiUsageAnalytics", () => {
   });
 
   it("fills every day in the range with zero when a day has no usage row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 7, 14, 12, 0, 0)));
+
     dbMock.aiUsageWindow.groupBy.mockImplementation(async ({ by }: { by: string[] }) => {
       if (by[0] === "windowStart") {
         return [

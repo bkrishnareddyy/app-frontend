@@ -6,8 +6,8 @@ import {
   loadAndMapParty,
   mapProcedurecode,
   mapLineItemToGoodsItem,
+  mapDocumentType,
   buildInternalData,
-  getDefaultCurrency,
 } from "./fieldMappers";
 
 export interface BuildImportDeclarationParams {
@@ -20,9 +20,16 @@ export interface BuildImportDeclarationParams {
   registrationNumber?: string | null;
 }
 
-export async function buildImportDeclaration(params: BuildImportDeclarationParams): Promise<Record<string, any>> {
+/**
+ * Builds a complete Import Declaration following the ImportDeclaration.schema.json structure.
+ * Commercial invoice values remain in their original currency; the tariff result carries
+ * the converted customs-value amounts used for duty calculation.
+ */
+export async function buildImportDeclaration(
+  params: BuildImportDeclarationParams
+): Promise<Record<string, any>> {
   const { filingId, shipmentId, snapshotData, tariff, localReferenceNumber, registrationNumber } = params;
-  const { shipment, lineItems, documents } = snapshotData;
+  const { shipment, lineItems, documents, currency } = snapshotData;
 
   const [declarant, importer, exporter] = await Promise.all([
     loadAndMapParty(shipmentId, "DECLARANT"),
@@ -39,8 +46,9 @@ export async function buildImportDeclaration(params: BuildImportDeclarationParam
   });
 
   const totalInvoiceAmount = lineItems.reduce((sum, item) => sum + item.totalValue, 0);
-  const supportingDocuments = documents?.map((doc) => ({
-    Type: doc.docType || "999",
+
+  const supportingDocuments = documents?.map(doc => ({
+    Type: mapDocumentType(doc.docType),
     ReferenceNumber: doc.id,
     Name: doc.fileName,
   })) || [];
@@ -52,32 +60,60 @@ export async function buildImportDeclaration(params: BuildImportDeclarationParam
         EntryNumber: snapshotData.filingHeader.entryNumber,
         DeclarationNumber: shipment.shipmentNumber,
         RegistrationNumber: registrationNumber || undefined,
+
         FunctionCode: "9",
         KindOfDeclaration: "IM",
         MessageRole: "EDI",
-        Procedure: mapProcedurecode(snapshotData.filingHeader.entryType, (shipment as any).destinationCountry, "import"),
+
+        Procedure: mapProcedurecode(
+          snapshotData.filingHeader.entryType,
+          shipment.destinationCountry,
+          "import"
+        ),
+
         InvoiceAmount: totalInvoiceAmount,
-        InvoiceCurrency: getDefaultCurrency((shipment as any).destinationCountry || undefined),
+        InvoiceCurrency: currency.commercialCurrency,
         GoodsItemQuantity: lineItems.length,
+
         DeclarantStatus: "2",
         Declarant: declarant,
         Importer: importer,
         Exporter: exporter,
+
         GoodsShipment: {
           Consignment: {
-            TransportMeans: (shipment as any).transportMode ? { ModeCode: mapTransportMode((shipment as any).transportMode) } : undefined,
-            Carrier: shipment.carrierName ? { Name: shipment.carrierName } : undefined,
+            TransportMeans: shipment.transportMode ? {
+              ModeCode: mapTransportMode(shipment.transportMode),
+            } : undefined,
+            Carrier: shipment.carrierName ? {
+              Name: shipment.carrierName,
+            } : undefined,
             ArrivalTransportMeans: {
-              LocationOfGoods: shipment.portOfEntry ? { Name: shipment.portOfEntry } : undefined,
-              ArrivalDate: formatIsoDate((shipment as any).arrivalDate || (shipment as any).estimatedArrival),
+              LocationOfGoods: shipment.portOfEntry ? {
+                Name: shipment.portOfEntry,
+              } : undefined,
+              ArrivalDate: formatIsoDate(shipment.arrivalDate || shipment.estimatedArrival),
             },
-            DeliveryTerms: shipment.incoterm ? { Code: shipment.incoterm } : undefined,
+            DeliveryTerms: shipment.incoterm ? {
+              Code: shipment.incoterm,
+            } : undefined,
             GoodsItem: goodsItems,
           },
         },
+
         SupportingDocuments: supportingDocuments.length > 0 ? supportingDocuments : undefined,
-        ValuationAdjustment: { AdditionCode: "1" },
-        InternalData: buildInternalData(shipmentId, filingId, (shipment as any).status, (shipment as any).currentStage),
+
+        ValuationAdjustment: {
+          AdditionCode: "1",
+        },
+
+        InternalData: buildInternalData(
+          shipmentId,
+          filingId,
+          shipment.status,
+          shipment.currentStage ?? undefined
+        ),
+
         Response: {},
       },
     },
