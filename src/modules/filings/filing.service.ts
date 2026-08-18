@@ -6,16 +6,14 @@ import { resolveMessageContext } from "@/lib/canonicalMessaging/resolveMessageCo
 import { PgCanonicalMessagePublisher } from "@/lib/canonicalMessaging/publisher";
 import { getActiveSchemaVersion } from "@/lib/canonicalMessaging/schemaValidator";
 import { buildActionExtensions } from "@/lib/canonicalMessaging/actionDataRequirements";
-import type { 
-  CanonicalCustomsDeclaration, 
-  CanonicalFilingRequestData, 
-  CanonicalMessage, 
+import type {
+  CanonicalFilingRequestData,
+  CanonicalMessage,
   FilingMessageAction,
-  DeclarationData 
+  DeclarationData,
 } from "@/lib/canonicalMessaging/types";
 import { randomUUID } from "crypto";
 
-/** Shape frozen into FilingSnapshot.snapshotData at transmission. */
 export type FilingSnapshotData = {
   shipment: {
     id: string;
@@ -56,43 +54,32 @@ export type FilingSnapshotData = {
   };
 };
 
+function withActionExtensions(declaration: DeclarationData, extensions: Record<string, unknown>): DeclarationData {
+  if (Object.keys(extensions).length === 0) return declaration;
+  const current = declaration as Record<string, any>;
+  return {
+    ...current,
+    extensions: {
+      ...(current.extensions && typeof current.extensions === "object" ? current.extensions : {}),
+      ...extensions,
+    },
+  };
+}
+
 export class FilingService {
   static async transmitFiling(accountId: string, userId: string, filingId: string) {
     return FilingService.buildSnapshotAndPublish(accountId, filingId, "SUBMIT", "transmit.send", undefined, userId);
   }
 
-  /**
-   * Rebuilds the declaration from the shipment's *current* data (post-edit)
-   * and publishes a RESUBMIT message referencing the filing's last outbound
-   * message. Only legal from ValidationFailed/Rejected/DocumentsRequested --
-   * see the `resubmit` transition added to filingStateMachine.ts for this.
-   */
   static async resubmitFiling(accountId: string, userId: string, filingId: string) {
     const priorMessage = await db.filingMessage.findFirst({
       where: { filingId, accountId, direction: "OUTBOUND" },
       orderBy: { createdAt: "desc" },
     });
-    if (!priorMessage) {
-      throw new Error("Cannot resubmit: no prior outbound message found for this filing.");
-    }
-    return FilingService.buildSnapshotAndPublish(accountId, filingId, "RESUBMIT", "resubmit", priorMessage.messageId);
+    if (!priorMessage) throw new Error("Cannot resubmit: no prior outbound message found for this filing.");
+    return FilingService.buildSnapshotAndPublish(accountId, filingId, "RESUBMIT", "resubmit", priorMessage.messageId, userId);
   }
 
-  /**
-   * Publishes a CANCELLATION message referencing the filing's last outbound
-   * message, reusing its already-transmitted declaration rather than
-   * rebuilding one -- a cancellation declares "cancel that specific
-   * declaration," not a fresh snapshot of current (possibly since-changed)
-   * shipment data.
-   *
-   * Applies `cancel.request` immediately (-> CancellationRequested) --
-   * sending the message is itself a visible operator action, not something
-   * that should leave filingStatus looking untouched until a response
-   * happens to arrive. The confirmed `cbp.cancel` (-> Cancelled) only fires
-   * once the response actually does, via FilingResponseStatusMapping.
-   * Which statuses offer this action at all is FilingChildActionRule's job
-   * (see resolveChildActions()), not this method's.
-   */
   static async cancelFiling(
     accountId: string,
     userId: string,
@@ -101,10 +88,7 @@ export class FilingService {
   ) {
     const filing = await db.customsFiling.findFirst({
       where: { id: filingId, accountId },
-      include: { 
-        shipment: true,
-        transactionType: true, // NEW: Include transaction type relation
-      },
+      include: { shipment: true, transactionType: true },
     });
     if (!filing) throw new Error("NOT_FOUND");
 
@@ -112,9 +96,7 @@ export class FilingService {
       where: { filingId, accountId, direction: "OUTBOUND" },
       orderBy: { createdAt: "desc" },
     });
-    if (!priorMessage) {
-      throw new Error("Cannot cancel: no prior outbound message found for this filing.");
-    }
+    if (!priorMessage) throw new Error("Cannot cancel: no prior outbound message found for this filing.");
 
     let nextStatus: string;
     try {
@@ -126,41 +108,31 @@ export class FilingService {
 
     const priorEnvelope = priorMessage.envelope as unknown as CanonicalMessage<CanonicalFilingRequestData>;
     const declaration = priorEnvelope.data.declaration;
-
-    // TODO: MULTI-COUNTRY MIGRATION - Handle both old and new field structure
-    // For backwards compatibility during migration
     const context = await resolveMessageContext(
       {
-        transactionType: filing.transactionType?.code || "IMPORT", // TODO: Remove fallback
-        procedureCode: filing.procedureCode || filing.entryType || "01", // TODO: Remove fallbacks
-        country: filing.country || filing.shipment.destinationCountry || "US", // TODO: Remove fallbacks
+        transactionType: filing.transactionType?.code || "IMPORT",
+        procedureCode: filing.procedureCode || filing.entryType || "01",
+        country: filing.country || filing.shipment?.destinationCountry || "US",
       },
       "CANCELLATION"
     );
 
-    // Whatever this (country, procedure, action) needs beyond the reused
-    // declaration -- e.g. a German NCTS guarantee reference. Never a branch
-    // on country here: FilingActionDataRequirement decides what's needed,
-    // this method only asks for it. Attached to the declaration's own
-    // extensions bucket, not invented as a new envelope concept.
     const extensions = await buildActionExtensions(
       { country: context.country, procedureCode: context.procedure, messageName: context.messageName },
       "CANCELLATION",
       { filing, shipment: filing.shipment, declaration },
       promptedValues
     );
-    const declarationWithExtensions: CanonicalCustomsDeclaration =
-      Object.keys(extensions).length > 0 ? { ...declaration, extensions: { ...declaration.extensions, ...extensions } } : declaration;
+    const declarationWithExtensions = withActionExtensions(declaration, extensions);
 
     const message = await FilingService.buildMessage(
       accountId,
       filingId,
-      filing.authority || "Customs", // Multi-country migration: authority is now nullable
+      filing.authority || "Customs",
       context,
       declarationWithExtensions,
       priorMessage.messageId
     );
-    // Multi-country migration: queueName removed from context, using default queue
     await new PgCanonicalMessagePublisher().publish("filing-outbound-queue", message);
 
     const updatedFiling = await db.customsFiling.update({
@@ -168,6 +140,7 @@ export class FilingService {
       data: { filingStatus: nextStatus },
     });
 
+    void userId;
     return { filing: updatedFiling, messageId: message.header.messageId };
   }
 
@@ -191,10 +164,6 @@ export class FilingService {
         country: context.country,
         authority,
         dateTime: new Date().toISOString(),
-        // Reflects whichever FILING_REQUEST_DECLARATION version is actually
-        // ACTIVE right now, not a value frozen at the time this code was
-        // written -- a schema promotion (see seedSchemas()) must not leave
-        // every subsequently published message claiming a stale version.
         schemaVersion: await getActiveSchemaVersion("FILING_REQUEST_DECLARATION"),
         senderSystem: "QUBERE",
       },
@@ -202,12 +171,6 @@ export class FilingService {
     };
   }
 
-  /**
-   * Shared by transmitFiling (action SUBMIT) and resubmitFiling (action
-   * RESUBMIT): validates line items are rated, rebuilds and persists a fresh
-   * FilingSnapshot from the shipment's current data, builds the canonical
-   * declaration, publishes, and applies the given FilingTransition.
-   */
   private static async buildSnapshotAndPublish(
     accountId: string,
     filingId: string,
@@ -220,154 +183,108 @@ export class FilingService {
       where: { id: filingId, accountId },
       include: {
         shipment: { include: { documents: true, lineItems: true } },
-        transactionType: true, // NEW: Include transaction type relation
+        transactionType: true,
       },
     });
+    if (!filing) throw new Error("NOT_FOUND");
 
-    if (!filing) {
-      throw new Error("NOT_FOUND");
-    }
-
-    // Check if this is a standalone filing
     const isStandalone = !filing.shipmentId;
-
-    // The old guard only rejected two hardcoded statuses, so a Cancelled,
-    // Rejected or unvalidated filing could still be transmitted.
     let nextStatus: string;
     try {
       nextStatus = applyTransition(filing.filingStatus, transition);
     } catch (error) {
-      if (error instanceof FilingTransitionError) {
-        throw new Error(error.message);
-      }
+      if (error instanceof FilingTransitionError) throw new Error(error.message);
       throw error;
     }
 
-    let declaration: any;
+    let declaration: DeclarationData;
     let snapshotData: FilingSnapshotData | null = null;
 
     if (isStandalone) {
-      // For standalone filings, use the declarationData stored in dutyBreakdown
       const storedData = filing.dutyBreakdown as any;
-      if (!storedData?.declarationDraft) {
-        throw new Error("Cannot submit standalone filing without declaration data.");
-      }
-      
-      // Wrap the declaration data in correct schema structure if needed
-      const transactionType = filing.transactionType?.code || "IMPORT";
-      declaration = wrapDeclarationData(storedData.declarationDraft, transactionType);
-      
-      // No snapshot needed for standalone - declaration is already built
-      // Just update filing status and publish message
+      if (!storedData?.declarationDraft) throw new Error("Cannot submit standalone filing without declaration data.");
+      declaration = wrapDeclarationData(storedData.declarationDraft, filing.transactionType?.code || "IMPORT");
     } else {
-      // Shipment-based filing - existing logic
-      if (!filing.shipment?.lineItems || filing.shipment.lineItems.length === 0) {
+      const shipment = filing.shipment;
+      if (!shipment || shipment.lineItems.length === 0) {
         throw new Error("Cannot submit entry filing without line items.");
       }
 
-    // MULTI-COUNTRY FIX: Only calculate US-specific duties for US filings
-    // Other countries have different duty structures (EU VAT, India IGST, etc.)
-    const country = (filing.country || filing.shipment.destinationCountry || "US").toUpperCase();
-    
-    let tariff: TariffEngineResult;
-    
-    if (country === "US") {
-      // US-specific duty calculation (Section 301, 232, MPF, HMF)
-      tariff = computeFilingTariff(
-        filing.shipment.lineItems,
-        await loadHtsCodesMap(filing.shipment.lineItems)
-      );
+      const country = (filing.country || shipment.destinationCountry || "US").toUpperCase();
+      let tariff: TariffEngineResult;
 
-      if (tariff.unratedLineCount > 0) {
-        throw new Error(
-          `Cannot transmit: ${tariff.unratedLineCount} of ${filing.shipment.lineItems.length} line(s) have no published duty rate, so the declared duty would understate the amount owed.`
-        );
+      if (country === "US") {
+        tariff = computeFilingTariff(shipment.lineItems, await loadHtsCodesMap(shipment.lineItems));
+        if (tariff.unratedLineCount > 0) {
+          throw new Error(`Cannot transmit: ${tariff.unratedLineCount} of ${shipment.lineItems.length} line(s) have no published duty rate, so the declared duty would understate the amount owed.`);
+        }
+      } else {
+        const totalValue = shipment.lineItems.reduce((sum, item) => sum + Number(item.totalValue || 0), 0);
+        tariff = {
+          totalCustomsValue: totalValue,
+          totalDuty: 0,
+          totalTaxes: 0,
+          totalFees: 0,
+          totalAmount: totalValue,
+          unratedLineCount: 0,
+          dutyBreakdown: [],
+          lineResults: shipment.lineItems.map((item) => ({
+            customsValue: Number(item.totalValue || 0),
+            baseDutyRate: null,
+            baseDutyAmount: 0,
+            section301Rate: 0,
+            section301Amount: 0,
+            section232Rate: 0,
+            section232Amount: 0,
+            totalDutyAmount: 0,
+            mpfAmount: 0,
+            hmfAmount: 0,
+            totalFeesAmount: 0,
+            totalAmount: Number(item.totalValue || 0),
+          })),
+        };
       }
-    } else {
-      // Non-US countries: Skip US-specific duty calculation
-      // Duties are calculated by destination country's customs system
-      // TODO: Implement country-specific duty calculation for EU, India, etc.
-      const totalValue = filing.shipment.lineItems.reduce(
-        (sum, item) => sum + Number(item.totalValue || 0), 
-        0
-      );
-      
-      tariff = {
-        totalCustomsValue: totalValue,
-        totalDuty: 0, // TODO: Implement country-specific duty calculation
-        totalTaxes: 0, // TODO: VAT for EU, IGST for India, etc.
-        totalFees: 0, // No US fees for non-US countries
-        totalAmount: totalValue,
-        unratedLineCount: 0,
-        dutyBreakdown: [], // No US fees for non-US countries
-        lineResults: filing.shipment.lineItems.map(item => ({
-          customsValue: Number(item.totalValue || 0),
-          baseDutyRate: null,
-          baseDutyAmount: 0,
-          section301Rate: 0,
-          section301Amount: 0,
-          section232Rate: 0,
-          section232Amount: 0,
-          totalDutyAmount: 0,
-          mpfAmount: 0,
-          hmfAmount: 0,
-          totalFeesAmount: 0,
-          totalAmount: Number(item.totalValue || 0)
-        }))
-      };
-      
-      console.log(`[Filing] Skipped US duty calculation for ${country} filing. Duties will be calculated by destination customs.`);
-    }
 
       snapshotData = {
-      shipment: {
-        id: filing.shipment.id,
-        shipmentNumber: filing.shipment.shipmentNumber,
-        importerName: filing.shipment.importerName,
-        portOfEntry: filing.shipment.portOfEntry,
-        carrierName: filing.shipment.carrierName,
-        incoterm: filing.shipment.incoterm,
-        entryType: filing.shipment.entryType,
-      },
-      lineItems: filing.shipment.lineItems.map(item => ({
-        id: item.id,
-        lineNumber: item.lineNumber,
-        description: item.description,
-        quantity: Number(item.quantity),
-        unitPrice: Number(item.unitPrice),
-        totalValue: Number(item.totalValue),
-        htsCode: item.htsCode,
-        countryOfOrigin: item.countryOfOrigin,
-      })),
-      documents: filing.shipment.documents.map(doc => ({
-        id: doc.id,
-        fileName: doc.fileName,
-        docType: doc.docType,
-      })),
-      filingHeader: {
-        entryNumber: filing.entryNumber,
-        entryType: filing.entryType || "01", // Multi-country migration: entryType is now nullable
-        totalValue: Number(filing.totalValue),
-        totalDuties: Number(filing.totalDuties),
-        totalTaxes: Number(filing.totalTaxes),
-        totalAmount: Number(filing.totalAmount),
-      },
-      metadata: {
-        generator: "Qubere Compliance Snapshot Engine",
-        version: filing.version,
-        timestamp: new Date().toISOString(),
-      }
-    };
-    
-      // FilingSnapshot.filingId is unique (one snapshot per filing, "current
-      // effective state"), so a resubmit updates it rather than creating a
-      // second row. The full history of what was actually sent at each point in
-      // time still lives in FilingMessage.envelope, one immutable row per
-      // message -- this snapshot is deliberately "latest," not an archive.
-      const hasSection301 = tariff.lineResults.some((r) => r.section301Amount > 0);
-      const htsCodesMapForSnapshot = await loadHtsCodesMap(filing.shipment.lineItems);
+        shipment: {
+          id: shipment.id,
+          shipmentNumber: shipment.shipmentNumber,
+          importerName: shipment.importerName,
+          portOfEntry: shipment.portOfEntry,
+          carrierName: shipment.carrierName,
+          incoterm: shipment.incoterm,
+          entryType: shipment.entryType,
+        },
+        lineItems: shipment.lineItems.map((item) => ({
+          id: item.id,
+          lineNumber: item.lineNumber,
+          description: item.description,
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.unitPrice),
+          totalValue: Number(item.totalValue),
+          htsCode: item.htsCode,
+          countryOfOrigin: item.countryOfOrigin,
+        })),
+        documents: shipment.documents.map((doc) => ({ id: doc.id, fileName: doc.fileName, docType: doc.docType })),
+        filingHeader: {
+          entryNumber: filing.entryNumber,
+          entryType: filing.entryType || "01",
+          totalValue: Number(filing.totalValue),
+          totalDuties: Number(filing.totalDuties),
+          totalTaxes: Number(filing.totalTaxes),
+          totalAmount: Number(filing.totalAmount),
+        },
+        metadata: {
+          generator: "Qubere Compliance Snapshot Engine",
+          version: filing.version,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      const hasSection301 = tariff.lineResults.some((result) => result.section301Amount > 0);
+      const htsCodesMapForSnapshot = await loadHtsCodesMap(shipment.lineItems);
       const section301List = hasSection301
-        ? (filing.shipment.lineItems
+        ? (shipment.lineItems
             .map((item) => (item.htsCode ? htsCodesMapForSnapshot[item.htsCode]?.section301Tranche : null))
             .find(Boolean) ?? null)
         : null;
@@ -378,15 +295,10 @@ export class FilingService {
         create: { filingId, snapshotData: snapshotData as any, hasSection301, section301List },
       });
 
-      // Build the canonical (country-agnostic) declaration and hand it to the
-      // third-party filing service via the outbound queue. No CBP response
-      // exists yet at this point -- it arrives later, asynchronously, and is
-      // applied by the inbound consumer (see canonicalMessaging/inboundConsumer.ts).
-      // This function intentionally does not return a response/transmissionResult.
       declaration = await buildCanonicalDeclaration({
         accountId,
         filingId,
-        shipmentId: filing.shipment.id,
+        shipmentId: shipment.id,
         snapshotData,
         tariff,
         localReferenceNumber: filing.localReferenceNumber,
@@ -394,25 +306,24 @@ export class FilingService {
       });
     }
 
-    // Message building and publishing (shared for both standalone and shipment-based)
-    // TODO: MULTI-COUNTRY MIGRATION - Handle both old and new field structure
-    // For backwards compatibility during migration
     const context = await resolveMessageContext(
       {
-        transactionType: filing.transactionType?.code || "IMPORT", // TODO: Remove fallback
-        procedureCode: filing.procedureCode || filing.entryType || "01", // TODO: Remove fallbacks
-        country: filing.country || (isStandalone ? "US" : filing.shipment?.destinationCountry) || "US", // TODO: Remove fallbacks
+        transactionType: filing.transactionType?.code || "IMPORT",
+        procedureCode: filing.procedureCode || filing.entryType || "01",
+        country: filing.country || filing.shipment?.destinationCountry || "US",
       },
       action
     );
 
-    const message = await FilingService.buildMessage(accountId, filingId, filing.authority || "Customs", context, declaration, priorMessageId);
-
-    // TODO: MULTI-COUNTRY MIGRATION - queueName removed from context
-    // For now, use a default queue. Proper implementation should use
-    // environment-specific queue configuration
-    const queueName = "filing-outbound-queue"; // TODO: Configure properly
-    await new PgCanonicalMessagePublisher().publish(queueName, message);
+    const message = await FilingService.buildMessage(
+      accountId,
+      filingId,
+      filing.authority || "Customs",
+      context,
+      declaration,
+      priorMessageId
+    );
+    await new PgCanonicalMessagePublisher().publish("filing-outbound-queue", message);
 
     const updatedFiling = await db.customsFiling.update({
       where: { id: filingId },
