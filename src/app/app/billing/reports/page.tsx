@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getAccountContext, hasPermission } from "@/lib/auth";
@@ -40,6 +41,42 @@ export default async function BillingReportsPage() {
     const margin = rev > 0 ? (profit / rev) * 100 : 0;
     return { client, rev, cost, profit, margin, shipmentCount: client.shipments.length };
   });
+
+  // Service-level economics: group ShipmentCharge by rateRule.serviceCode
+  const serviceCharges = await db.shipmentCharge.findMany({
+    where: { accountId: ctx.accountId, status: { notIn: ["VOIDED", "REVERSED"] } },
+    select: {
+      grossAmount: true,
+      netAmount: true,
+      usageEventId: true,
+      rateRule: { select: { serviceCode: true, lineItemName: true } },
+    },
+  });
+
+  const serviceCostsByEventId = canViewCost
+    ? await db.shipmentCost.findMany({
+        where: { accountId: ctx.accountId, usageEventId: { not: null } },
+        select: { usageEventId: true, amount: true },
+      })
+    : [];
+  const costByEvent = new Map<string, number>();
+  for (const sc of serviceCostsByEventId) {
+    if (sc.usageEventId) costByEvent.set(sc.usageEventId, (costByEvent.get(sc.usageEventId) ?? 0) + Number(sc.amount));
+  }
+
+  const serviceMap = new Map<string, { serviceCode: string; label: string; charges: number; revenue: number; cost: number }>();
+  for (const charge of serviceCharges) {
+    const code = charge.rateRule?.serviceCode ?? "UNCLASSIFIED";
+    const label = charge.rateRule?.lineItemName ?? code;
+    const existing = serviceMap.get(code) ?? { serviceCode: code, label, charges: 0, revenue: 0, cost: 0 };
+    existing.charges += 1;
+    existing.revenue += Number(charge.netAmount);
+    if (charge.usageEventId) existing.cost += costByEvent.get(charge.usageEventId) ?? 0;
+    serviceMap.set(code, existing);
+  }
+  const serviceMetrics = Array.from(serviceMap.values())
+    .map((s) => ({ ...s, margin: s.revenue > 0 ? ((s.revenue - s.cost) / s.revenue) * 100 : null }))
+    .sort((a, b) => b.revenue - a.revenue);
 
   const agentUsageEvents = await db.usageEvent.findMany({
     where: { accountId: ctx.accountId, automated: true, sourceAgent: { not: null } },
@@ -95,6 +132,50 @@ export default async function BillingReportsPage() {
         </div>
       </div>
 
+      {/* Service-level economics (Capability B) */}
+      <div className="space-y-4">
+        <h3 className="text-base font-bold text-ink">Service-Level Economics</h3>
+        <div className="rounded-2xl bg-white border border-[#E5E5EA] overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-ink">
+            <thead className="bg-[#F5F5F7] text-ink-muted uppercase text-xs tracking-wider border-b border-[#E5E5EA]">
+              <tr>
+                <th className="px-5 py-3">Service</th>
+                <th className="px-5 py-3">Code</th>
+                <th className="px-5 py-3">Charges</th>
+                <th className="px-5 py-3">Revenue</th>
+                {canViewCost && <><th className="px-5 py-3">Cost</th><th className="px-5 py-3">Margin %</th></>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E5E5EA] text-xs font-mono">
+              {serviceMetrics.length === 0 ? (
+                <tr><td colSpan={canViewCost ? 6 : 4} className="px-5 py-8 text-center text-ink-muted font-sans">No service charge data yet.</td></tr>
+              ) : serviceMetrics.map((s) => (
+                <tr key={s.serviceCode} className="hover:bg-[#F9F9FB] transition-colors">
+                  <td className="px-5 py-4 font-sans font-semibold text-ink">{s.label}</td>
+                  <td className="px-5 py-4 text-ink-muted">{s.serviceCode}</td>
+                  <td className="px-5 py-4">{s.charges}</td>
+                  <td className="px-5 py-4 text-emerald-600 font-semibold">${s.revenue.toFixed(2)}</td>
+                  {canViewCost && (
+                    <>
+                      <td className="px-5 py-4 text-ink-muted">${s.cost.toFixed(2)}</td>
+                      <td className="px-5 py-4 font-sans">
+                        {s.margin !== null ? (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            s.margin >= 50 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : s.margin >= 20 ? "bg-amber-50 text-amber-700 border border-amber-200"
+                            : "bg-rose-50 text-rose-700 border border-rose-200"
+                          }`}>{s.margin.toFixed(1)}%</span>
+                        ) : "—"}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="space-y-4">
         <h3 className="text-base font-bold text-ink">Client Profitability Matrix</h3>
         <div className="rounded-2xl bg-white border border-[#E5E5EA] overflow-hidden shadow-sm">
@@ -112,6 +193,16 @@ export default async function BillingReportsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+      {/* Link to broker workload report */}
+      <div className="p-5 rounded-2xl bg-white border border-[#E5E5EA] shadow-sm flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-ink">Operational Workload & Automation Opportunity</h3>
+          <p className="text-xs text-ink-muted mt-0.5">Manual review activity by staff member — where can automation reduce broker burden?</p>
+        </div>
+        <Link href="/app/billing/reports/brokers" className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand hover:bg-brand-hover text-white transition-colors shadow-sm">
+          View Workload Report →
+        </Link>
       </div>
     </div>
   );

@@ -43,18 +43,27 @@ export default async function InvoicesPage() {
             <tbody className="divide-y divide-[#E5E5EA] font-mono text-xs">
               {invoices.length === 0 ? (
                 <tr><td colSpan={8} className="px-5 py-8 text-center text-ink-muted text-sm font-sans">No invoices generated yet.</td></tr>
-              ) : invoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-[#F9F9FB] transition-colors">
-                  <td className="px-5 py-4 font-bold text-ink font-sans">{inv.invoiceNumber}</td>
-                  <td className="px-5 py-4 font-sans text-ink">{inv.client?.name ?? "Client Account"}</td>
-                  <td className="px-5 py-4 text-ink-muted">{new Date(inv.issueDate).toLocaleDateString()}</td>
-                  <td className="px-5 py-4 text-ink-muted">{new Date(inv.dueDate).toLocaleDateString()}</td>
-                  <td className="px-5 py-4 text-ink font-semibold">${Number(inv.totalAmount).toFixed(2)}</td>
-                  <td className="px-5 py-4 text-emerald-600">${Number(inv.paidAmount).toFixed(2)}</td>
-                  <td className="px-5 py-4 text-brand font-semibold">${Number(inv.balanceDue).toFixed(2)}</td>
-                  <td className="px-5 py-4 font-sans"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${inv.status === "PAID" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : inv.status === "DRAFT" ? "bg-slate-100 text-slate-500 border border-slate-200" : "bg-blue-50 text-brand border border-blue-200"}`}>{inv.status}</span></td>
-                </tr>
-              ))}
+              ) : invoices.map((inv) => {
+                const isOverdue = (inv.status === "SENT" || inv.status === "PARTIALLY_PAID") && new Date(inv.dueDate) < new Date() && Number(inv.balanceDue) > 0;
+                const displayStatus = isOverdue ? "OVERDUE" : inv.status;
+                const statusBadge = displayStatus === "PAID" ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : displayStatus === "OVERDUE" ? "bg-rose-50 text-rose-700 border border-rose-200"
+                  : displayStatus === "DRAFT" ? "bg-slate-100 text-slate-500 border border-slate-200"
+                  : displayStatus === "VOID" ? "bg-slate-100 text-slate-400 border border-slate-200"
+                  : "bg-blue-50 text-brand border border-blue-200";
+                return (
+                  <tr key={inv.id} className="hover:bg-[#F9F9FB] transition-colors cursor-pointer">
+                    <td className="px-5 py-4 font-bold text-ink font-sans"><Link href={`/app/billing/invoices/${inv.id}`} className="hover:text-brand">{inv.invoiceNumber}</Link></td>
+                    <td className="px-5 py-4 font-sans text-ink">{inv.client?.name ?? "Client Account"}</td>
+                    <td className="px-5 py-4 text-ink-muted">{new Date(inv.issueDate).toLocaleDateString()}</td>
+                    <td className="px-5 py-4 text-ink-muted">{new Date(inv.dueDate).toLocaleDateString()}</td>
+                    <td className="px-5 py-4 text-ink font-semibold">${Number(inv.totalAmount).toFixed(2)}</td>
+                    <td className="px-5 py-4 text-emerald-600">${Number(inv.paidAmount).toFixed(2)}</td>
+                    <td className="px-5 py-4 text-brand font-semibold">${Number(inv.balanceDue).toFixed(2)}</td>
+                    <td className="px-5 py-4 font-sans"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadge}`}>{displayStatus}</span></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
