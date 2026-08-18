@@ -3,7 +3,7 @@
 // Fuzzy-matches transaction party names against the BIS Entity List /
 // Unverified List. Status derivation mirrors forcedLaborScreening.ts's
 // entity-list check.
-import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/dpsScreening";
+import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/fuzzyMatch";
 import { getEndUserEntityList } from "./endUserRepository";
 import type { EndUserScreeningInput, EndUserScreeningResult, EndUserHit, EndUserSkip, EndUserError } from "./types";
 

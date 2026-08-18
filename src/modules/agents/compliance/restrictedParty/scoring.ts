@@ -1,12 +1,12 @@
 // Restricted / Denied-Party Screening -- scoring.
 //
-// Wraps scoreDpsMatch (src/lib/screening/dpsScreening.ts, the codebase's one
+// Wraps scoreDpsMatch (src/lib/screening/fuzzyMatch.ts, the codebase's one
 // deterministic fuzzy scorer, already reused unmodified by
 // forcedLaborScreening.ts/endUserScreening.ts) with stop-word-stripped
 // inputs, an optional separate address-score gate, and an optional
 // country-match gate. Never produces a candidate below REVIEW_FLOOR_SCORE --
 // that is discarded as noise, not surfaced as a low-confidence match.
-import { scoreDpsMatch } from "@/lib/screening/dpsScreening";
+import { scoreDpsMatch } from "@/lib/screening/fuzzyMatch";
 import { normalizeForMatching } from "./normalize";
 import { REVIEW_FLOOR_SCORE } from "./types";
 import type { RestrictedPartyMatchCandidate, RestrictedPartyMatchMethod } from "./types";

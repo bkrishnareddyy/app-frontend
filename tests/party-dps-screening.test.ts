@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/dpsScreening";
+import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/fuzzyMatch";
 import {
   detectPartyChanges,
   revalidationSignals,

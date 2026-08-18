@@ -7,7 +7,7 @@
 // countryEmbargoScreening.ts: HIT-only -> HIT, HIT+ERROR -> PARTIAL,
 // ERROR-only -> ERROR, no checks ran at all -> SKIPPED, otherwise CLEAR.
 import { screenValue } from "@/lib/screening/embargoMatch";
-import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/dpsScreening";
+import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/fuzzyMatch";
 import { getUflpaCountryRules, getUflpaEntityList } from "./forcedLaborRepository";
 import type {
   ForcedLaborScreeningInput,

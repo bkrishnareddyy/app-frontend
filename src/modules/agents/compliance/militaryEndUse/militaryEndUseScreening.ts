@@ -5,7 +5,7 @@
 // forcedLaborScreening.ts: HIT-only -> HIT, HIT+ERROR -> PARTIAL, ERROR-only
 // -> ERROR, no checks ran at all -> SKIPPED, otherwise CLEAR.
 import { screenText } from "@/lib/screening/keywordMatch";
-import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/dpsScreening";
+import { scoreDpsMatch, scoreToMatchStatus } from "@/lib/screening/fuzzyMatch";
 import { getMilitaryEndUseKeywordRules, getMilitaryEndUserList } from "./militaryEndUseRepository";
 import type {
   MilitaryEndUseScreeningInput,

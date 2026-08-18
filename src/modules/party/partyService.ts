@@ -33,8 +33,11 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { DomainError } from "@/lib/api/error";
-import { markStaleIfChanged } from "@/modules/agents/compliance/restrictedParty/partyScreeningLifecycle";
-import { screenPartyName } from "@/lib/screening/dpsScreening";
+import {
+  markStaleIfChanged,
+  rescreenParty,
+  PartyHasNoActiveNameError,
+} from "@/modules/agents/compliance/restrictedParty/partyScreeningLifecycle";
 import { buildPartyOrderBy, buildPartyWhere, partySkip, type PartyQuery } from "./partyQuery";
 import {
   detectPartyChanges,
@@ -677,51 +680,33 @@ export async function createParty(actor: PartyActor, input: CreatePartyInput): P
     requestId: actor.requestId ?? null,
   });
 
-  // DPS screening on every new party creation. INDETERMINATE means no list is
-  // loaded; the compliance team must screen manually. BLOCKED/FLAGGED opens an
-  // exception so the party cannot slip through unreviewed.
-  const primaryName = input.names.find((n) => n.isPrimary) ?? input.names[0];
-  if (primaryName) {
-    const screening = await screenPartyName(actor.accountId, primaryName.rawName, input.partyKind ?? "ORGANIZATION");
+  // Restricted/Denied-Party Screening on every new party creation, against
+  // the identity just created. createPartySchema requires at least one name,
+  // so PartyHasNoActiveNameError isn't expected here -- guarded anyway since
+  // rescreenParty's own contract allows it.
+  try {
+    const { overallStatus, results } = await rescreenParty(actor.accountId, party.id);
 
-    if (screening.matchStatus === "BLOCKED" || screening.matchStatus === "FLAGGED") {
-      const severity = screening.matchStatus === "BLOCKED" ? "Critical" : "High";
-      const description =
-        screening.matchStatus === "BLOCKED"
-          ? `Party "${primaryName.rawName}" matched denied-party list entry "${screening.matchedParty}" (score: ${screening.matchScore}/100, source: ${screening.listSource ?? "unknown"}). Do not ship until cleared by compliance.`
-          : `Party "${primaryName.rawName}" is a possible match for denied-party list entry "${screening.matchedParty}" (score: ${screening.matchScore}/100, source: ${screening.listSource ?? "unknown"}). Manual compliance review required.`;
-
-      await db.exceptionItem.create({
-        data: {
-          accountId: actor.accountId,
-          category: "COMPLIANCE",
-          type: "compliance_flag",
-          severity,
-          description,
-          status: "Open",
-          blocking: screening.matchStatus === "BLOCKED",
-          requiredAction: "Perform manual denied-party screening before using this party on a shipment.",
-          sourceAgent: "DPS Screening",
-        },
-      });
-
-      await createAuditLog({
-        accountId: actor.accountId,
-        userId: actor.userId,
-        action: AuditAction.PARTY_SCREENED,
-        entity: "Party",
-        entityId: party.id,
-        source: "UI",
-        metadata: {
-          partyName: primaryName.rawName,
-          matchStatus: screening.matchStatus,
-          matchScore: screening.matchScore,
-          matchedParty: screening.matchedParty,
-          screeningLogId: screening.logId,
-        },
-        requestId: actor.requestId ?? null,
-      });
-    }
+    await createAuditLog({
+      accountId: actor.accountId,
+      userId: actor.userId,
+      action: AuditAction.PARTY_SCREENED,
+      entity: "Party",
+      entityId: party.id,
+      source: "UI",
+      metadata: {
+        overallStatus,
+        passes: results.map((r) => ({
+          passType: r.passType,
+          status: r.status,
+          hitCount: r.hitCount,
+          redFlagCount: r.redFlagCount,
+        })),
+      },
+      requestId: actor.requestId ?? null,
+    });
+  } catch (error) {
+    if (!(error instanceof PartyHasNoActiveNameError)) throw error;
   }
 
   const detail = await getParty(actor, party.id);
@@ -780,6 +765,36 @@ export async function updateParty(
     },
     requestId: actor.requestId ?? null,
   });
+
+  // Restricted/Denied-Party Screening runs against the party's current
+  // identity on every update, so a screening result never sits stale behind
+  // an edit that only touched core fields. A party can lose its last active
+  // name through other write paths, so PartyHasNoActiveNameError is expected
+  // here and simply skips screening rather than failing the update.
+  try {
+    const { overallStatus, results } = await rescreenParty(actor.accountId, partyId);
+
+    await createAuditLog({
+      accountId: actor.accountId,
+      userId: actor.userId,
+      action: AuditAction.PARTY_SCREENED,
+      entity: "Party",
+      entityId: partyId,
+      source: "UI",
+      metadata: {
+        overallStatus,
+        passes: results.map((r) => ({
+          passType: r.passType,
+          status: r.status,
+          hitCount: r.hitCount,
+          redFlagCount: r.redFlagCount,
+        })),
+      },
+      requestId: actor.requestId ?? null,
+    });
+  } catch (error) {
+    if (!(error instanceof PartyHasNoActiveNameError)) throw error;
+  }
 
   const detail = await getParty(actor, partyId);
   if (detail === null) throw new PartyNotFoundError(partyId);
