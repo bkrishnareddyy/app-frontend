@@ -1,8 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { getAccountContext } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
+import { getAccountContext, hasPermission } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
@@ -27,9 +26,9 @@ export interface CreateRateCardInput {
 export async function createRateCardAction(input: CreateRateCardInput) {
   const context = await getAccountContext();
   if (!context) throw new Error("Unauthorized: Account context required");
-
-  const allowed = await hasPermission(context, "billing.ratecard.manage");
-  if (!allowed) throw new Error("Forbidden: billing.ratecard.manage permission required");
+  if (!(await hasPermission("billing.ratecard.manage"))) {
+    throw new Error("Forbidden: billing.ratecard.manage permission required");
+  }
 
   if (!input.name.trim()) throw new Error("Rate card name is required");
   if (!input.lineItems.length) throw new Error("At least one rate-card line item is required");
@@ -45,8 +44,6 @@ export async function createRateCardAction(input: CreateRateCardInput) {
       });
     }
 
-    // New cards start as DRAFT. Activation is a separate audited lifecycle action;
-    // this prevents an upload/create operation from silently changing live pricing.
     return tx.rateCard.create({
       data: {
         accountId: context.accountId,
