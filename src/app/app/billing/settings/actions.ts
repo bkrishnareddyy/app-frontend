@@ -14,7 +14,11 @@ function readNonNegative(formData: FormData, name: string) {
 export async function saveCostProfileAction(formData: FormData) {
   const ctx = await getAccountContext();
   if (!ctx) throw new Error("Unauthorized");
-  if (!(await hasPermission("billing.cost.view"))) throw new Error("Forbidden: billing cost permission required");
+  // Cost visibility is intentionally distinct from cost-model administration.
+  // billing.ratecard.manage is the current Billing Admin configuration gate.
+  if (!(await hasPermission("billing.ratecard.manage"))) {
+    throw new Error("Forbidden: Billing Admin permission required to edit cost settings");
+  }
 
   const loadedLaborRate = readNonNegative(formData, "loadedLaborRate");
   const aiTokenRate = readNonNegative(formData, "aiTokenRate");
