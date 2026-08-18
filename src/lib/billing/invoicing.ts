@@ -13,42 +13,49 @@ export interface CreateInvoiceInput {
 export async function createInvoiceFromCharges(input: CreateInvoiceInput) {
   if (!input.chargeIds.length) throw new Error("At least one charge is required");
 
+  const uniqueChargeIds = [...new Set(input.chargeIds)];
   const charges = await db.shipmentCharge.findMany({
     where: {
-      id: { in: input.chargeIds },
+      id: { in: uniqueChargeIds },
       accountId: input.accountId,
       invoiceLineId: null,
       status: "RATED",
       shipment: {
+        accountId: input.accountId,
         clientId: input.clientId,
-        ...(input.importerId ? { importerId: input.importerId } : {}),
+        ...(input.importerId ? { importerOfRecordId: input.importerId } : {}),
       },
     },
   });
 
-  if (charges.length !== new Set(input.chargeIds).size) {
+  if (charges.length !== uniqueChargeIds.length) {
     throw new Error("One or more selected charges are invalid, already invoiced, or belong to another client/account");
   }
 
   return db.$transaction(async (tx) => {
-    // Re-check inside the transaction to prevent concurrent invoice creation from
-    // attaching the same charge to two invoices.
     const lockedCharges = await tx.shipmentCharge.findMany({
       where: {
-        id: { in: input.chargeIds },
+        id: { in: uniqueChargeIds },
         accountId: input.accountId,
         invoiceLineId: null,
         status: "RATED",
+        shipment: {
+          accountId: input.accountId,
+          clientId: input.clientId,
+          ...(input.importerId ? { importerOfRecordId: input.importerId } : {}),
+        },
       },
     });
-    if (lockedCharges.length !== charges.length) throw new Error("Selected charges changed while the invoice was being created");
+    if (lockedCharges.length !== uniqueChargeIds.length) {
+      throw new Error("Selected charges changed while the invoice was being created");
+    }
 
     const count = await tx.invoice.count({ where: { accountId: input.accountId } });
     const yearMonth = new Date().toISOString().slice(0, 7).replace("-", "");
     const invoiceNumber = `INV-${yearMonth}-${String(count + 1).padStart(5, "0")}`;
 
-    const subtotal = charges.reduce((sum, c) => sum + Number(c.grossAmount), 0);
-    const totalDiscounts = charges.reduce((sum, c) => sum + Number(c.discountAmount), 0);
+    const subtotal = lockedCharges.reduce((sum, c) => sum + Number(c.grossAmount), 0);
+    const totalDiscounts = lockedCharges.reduce((sum, c) => sum + Number(c.discountAmount), 0);
     const totalAmount = subtotal - totalDiscounts;
 
     const invoice = await tx.invoice.create({
@@ -68,8 +75,8 @@ export async function createInvoiceFromCharges(input: CreateInvoiceInput) {
       },
     });
 
-    const groupedCharges = new Map<string, typeof charges>();
-    for (const charge of charges) {
+    const groupedCharges = new Map<string, typeof lockedCharges>();
+    for (const charge of lockedCharges) {
       const existing = groupedCharges.get(charge.description) ?? [];
       groupedCharges.set(charge.description, [...existing, charge]);
     }
@@ -78,10 +85,12 @@ export async function createInvoiceFromCharges(input: CreateInvoiceInput) {
       const lineQty = chargeList.reduce((sum, c) => sum + Number(c.quantity), 0);
       const lineAmount = chargeList.reduce((sum, c) => sum + Number(c.netAmount), 0);
       const firstCharge = chargeList[0];
+      const shipmentIds = [...new Set(chargeList.map((c) => c.shipmentId))];
 
       const line = await tx.invoiceLine.create({
         data: {
           invoiceId: invoice.id,
+          shipmentId: shipmentIds.length === 1 ? shipmentIds[0] : null,
           description,
           quantity: new Prisma.Decimal(lineQty),
           unitPrice: firstCharge.unitPrice,
@@ -89,10 +98,18 @@ export async function createInvoiceFromCharges(input: CreateInvoiceInput) {
         },
       });
 
-      await tx.shipmentCharge.updateMany({
-        where: { id: { in: chargeList.map((c) => c.id) }, accountId: input.accountId, invoiceLineId: null },
+      const result = await tx.shipmentCharge.updateMany({
+        where: {
+          id: { in: chargeList.map((c) => c.id) },
+          accountId: input.accountId,
+          invoiceLineId: null,
+          status: "RATED",
+        },
         data: { invoiceLineId: line.id, status: "INVOICED" },
       });
+      if (result.count !== chargeList.length) {
+        throw new Error("A selected charge was invoiced concurrently; invoice creation was rolled back");
+      }
     }
 
     return invoice;
@@ -107,7 +124,9 @@ export async function recordInvoicePayment(params: {
   referenceNo?: string;
   notes?: string;
 }) {
-  if (!Number.isFinite(params.amount) || params.amount <= 0) throw new Error("Payment amount must be greater than zero");
+  if (!Number.isFinite(params.amount) || params.amount <= 0) {
+    throw new Error("Payment amount must be greater than zero");
+  }
 
   return db.$transaction(async (tx) => {
     const invoice = await tx.invoice.findFirst({
@@ -116,7 +135,9 @@ export async function recordInvoicePayment(params: {
     if (!invoice) throw new Error("Invoice not found");
 
     const paymentAmount = new Prisma.Decimal(params.amount);
-    if (paymentAmount.gt(invoice.balanceDue)) throw new Error("Payment cannot exceed the outstanding invoice balance");
+    if (paymentAmount.gt(invoice.balanceDue)) {
+      throw new Error("Payment cannot exceed the outstanding invoice balance");
+    }
 
     const newPaid = invoice.paidAmount.add(paymentAmount);
     const newBalance = invoice.totalAmount.sub(newPaid);
