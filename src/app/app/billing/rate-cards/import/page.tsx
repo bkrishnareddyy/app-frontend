@@ -159,11 +159,11 @@ export default function ImportRateCardPage() {
           <div className="w-12 h-12 rounded-full bg-blue-50 text-brand flex items-center justify-center mx-auto text-xl font-bold border border-blue-100">↑</div>
           <div>
             <h3 className="text-base font-bold text-ink">Select Customer Rate Card</h3>
-            <p className="text-xs text-ink-muted mt-1">CSV is fully supported in this build. XLSX is intentionally blocked until the spreadsheet parser dependency is installed.</p>
+            <p className="text-xs text-ink-muted mt-1">CSV (.csv) and Excel (.xlsx, .xls) files are supported. Only the first sheet of a spreadsheet is imported. Maximum 5 MB, 250 preview rows.</p>
           </div>
-          <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" id="rate-card-upload" disabled={loading} />
+          <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} className="hidden" id="rate-card-upload" disabled={loading} />
           <label htmlFor="rate-card-upload" className="inline-block px-4 py-2 rounded-lg text-xs font-semibold bg-brand hover:bg-brand-hover text-white cursor-pointer transition-colors shadow-sm">
-            {loading ? "Parsing..." : "Browse CSV File"}
+            {loading ? "Parsing..." : "Browse File"}
           </label>
         </div>
       )}

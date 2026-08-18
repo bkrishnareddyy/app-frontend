@@ -39,6 +39,7 @@ export async function getShipmentFinancialSummary(shipmentId: string): Promise<S
         include: { adjustments: true, invoiceLine: { include: { invoice: true } } },
       },
       shipmentCosts: true,
+      lineItems: { select: { dutyStack: true } },
     },
   });
 
@@ -88,14 +89,28 @@ export async function getShipmentFinancialSummary(shipmentId: string): Promise<S
   const grossProfit = netRevenue - totalCost;
   const grossMarginPct = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
 
-  // Customs Pass-Through Economics (Extracted from shipment metadata/facts)
+  // Read persisted per-line-item duty stacks. Duty components sum correctly across
+  // line items. MPF/HMF sum here is a per-line approximation — the entry-level
+  // MPF is calculated on aggregate customs value with a single min/max clamp;
+  // summing per-line values overstates when MPF hits its min clamp on individual
+  // low-value lines. Use filing-level computeFilingTariff for precise totals.
+  let duty = 0;
+  let mpf = 0;
+  let hmf = 0;
+  for (const li of shipment.lineItems) {
+    const stack = li.dutyStack as Record<string, unknown> | null;
+    if (!stack) continue;
+    duty += Number(stack.total ?? 0);
+    mpf += Number(stack.mpf ?? 0);
+    hmf += Number(stack.hmf ?? 0);
+  }
   const customsEconomics = {
-    duty: 0,
-    mpf: 0,
-    hmf: 0,
+    duty,
+    mpf,
+    hmf,
     taxes: 0,
     otherFees: 0,
-    totalPassThrough: 0,
+    totalPassThrough: duty + mpf + hmf,
   };
 
   return {

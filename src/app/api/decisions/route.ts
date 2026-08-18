@@ -23,6 +23,7 @@ import {
 } from "@/modules/decisions/reviewAuthority";
 import { buildEditUpdate, readEditableValue } from "@/modules/decisions/editableFields";
 import { MemoryExtractorWorker } from "@/modules/memory";
+import { recordUsageEvent } from "@/lib/billing/telemetry";
 
 const REVIEWER_SELECT = {
   firstName: true,
@@ -446,6 +447,35 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       status: newStatus,
       reviewedByUserId: ctx.userId,
     }).catch((err) => console.error("[webhook] Failed to dispatch decision.approved:", err));
+  }
+
+  // Billing: emit usage event for HTS manual review (non-blocking, must never fail the route)
+  if (decision.agentName?.includes("HTS")) {
+    db.shipment
+      .findUnique({
+        where: { id: decision.shipmentId },
+        select: { clientId: true, importerOfRecordId: true },
+      })
+      .then((shipment) =>
+        recordUsageEvent({
+          accountId: ctx.accountId,
+          eventCode: "HTS_MANUAL_REVIEW_COMPLETED",
+          shipmentId: decision.shipmentId,
+          clientId: shipment?.clientId ?? undefined,
+          importerId: shipment?.importerOfRecordId ?? undefined,
+          userId: ctx.userId,
+          sourceFunction: "POST /api/decisions",
+          sourceAgent: decision.agentName ?? undefined,
+          quantity: 1,
+          success: action === "APPROVE",
+          automated: false,
+          // processingDuration intentionally omitted — no client-side timer exists yet.
+          // costingEngine will log UNTRACKED_LABOR_DURATION exception (by design).
+          idempotencyKey: `billing:decision:${decisionId}:${action}`,
+          metadata: { overridesClassification, action },
+        })
+      )
+      .catch((err) => console.error("[decisions/route] Billing emission failed:", err));
   }
 
   // Trigger Account Memory extraction asynchronously (non-blocking)

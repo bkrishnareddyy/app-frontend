@@ -28,6 +28,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
   const bodyVal = await parseAndValidateBody(req, classifySchema, requestId);
   if ("response" in bodyVal) return bodyVal.response;
 
+  // The production classification path runs through PipelineOrchestrator, which
+  // now emits HTS_CLASSIFICATION_COMPLETED with idempotencyKey billing:<runId>:<agentName>.
+  // This route uses a different key scheme so the two paths cannot double-count.
   if (process.env.ENABLE_LEGACY_CLASSIFICATION_MOCK !== "true") {
     return buildErrorResponse(
       503,

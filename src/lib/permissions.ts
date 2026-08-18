@@ -452,10 +452,68 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
   },
   {
     name: "billing.ratecard.manage",
-    description: "Create, upload, edit, map, activate, and retire rate cards.",
+    description: "Legacy umbrella for rate card management — superseded by the specific billing.ratecard.* codes. Kept so existing role grants remain valid during migration.",
     category: "Billing",
     defaultRoles: ["OWNER", "ADMIN"],
   },
+  // Rate card granular split (supersede billing.ratecard.manage)
+  {
+    name: "billing.ratecard.view",
+    description: "View rate cards, versions, and line-item rules.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  {
+    name: "billing.ratecard.create",
+    description: "Create new rate cards and new versions of existing ones.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.ratecard.upload",
+    description: "Import rate cards from CSV or XLSX files.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.ratecard.edit",
+    description: "Edit line-item rules on DRAFT rate card versions.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.ratecard.activate",
+    description: "Activate a DRAFT rate card version, making it the live pricing for its client/importer.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.ratecard.retire",
+    description: "Retire a rate card, preventing it from being used for new charges.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  // Capability mappings
+  {
+    name: "billing.mapping.view",
+    description: "View event-to-rate-rule capability mappings.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  {
+    name: "billing.mapping.edit",
+    description: "Create and update event-to-rate-rule capability mappings.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  // Usage ledger
+  {
+    name: "billing.usage.view",
+    description: "View the usage event ledger and per-event billing traces.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  // Charge adjustments (granular split of billing.charge.adjust)
   {
     name: "billing.charge.adjust",
     description: "Apply discounts, credits, waivers, and manual price adjustments.",
@@ -463,11 +521,85 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     defaultRoles: ["OWNER", "ADMIN", "BROKER"],
   },
   {
-    name: "billing.invoice.manage",
-    description: "Create, edit, approve, send, export, and void invoices.",
+    name: "billing.charge.view",
+    description: "View individual shipment charges and their adjustment history.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  {
+    name: "billing.charge.waive",
+    description: "Waive a charge entirely (higher-privilege than a discount — requires its own auditable grant per §20).",
     category: "Billing",
     defaultRoles: ["OWNER", "ADMIN"],
   },
+  {
+    name: "billing.discount.create",
+    description: "Apply a discount to a shipment charge.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  {
+    name: "billing.discount.approve",
+    description: "Approve a discount above the standard threshold.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.credit.create",
+    description: "Apply a credit against a shipment charge.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  {
+    name: "billing.credit.approve",
+    description: "Approve a credit above the standard threshold.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  // Invoice granular split (supersede billing.invoice.manage)
+  {
+    name: "billing.invoice.manage",
+    description: "Legacy umbrella for invoice management — superseded by the specific billing.invoice.* codes. Kept so existing role grants remain valid during migration.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.invoice.view",
+    description: "View invoices and their line-item detail.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  {
+    name: "billing.invoice.create",
+    description: "Create draft invoices and submit them for approval.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.invoice.edit",
+    description: "Edit draft invoices before submission.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.invoice.approve",
+    description: "Approve a submitted invoice for sending.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.invoice.send",
+    description: "Mark an approved invoice as sent to the customer.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.invoice.void",
+    description: "Void an invoice and unlock its charges for re-invoicing.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  // Payments
   {
     name: "billing.payment.record",
     description: "Record customer payments and update receivables balances.",
@@ -475,8 +607,40 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     defaultRoles: ["OWNER", "ADMIN"],
   },
   {
+    name: "billing.payment.view",
+    description: "View payment history without the ability to record new payments.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  // Reports
+  {
     name: "billing.reports.view",
     description: "Access unit economics, leakage, and profitability reports.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.report.export",
+    description: "Export billing reports and invoices to PDF, CSV, or XLSX.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  // Settings and admin
+  {
+    name: "billing.settings.manage",
+    description: "Manage billing cost profiles and engine settings.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.permissions.manage",
+    description: "Manage which roles can access billing features (effectively alias for admin role management).",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.audit.view",
+    description: "View the billing audit trail and exception log.",
     category: "Billing",
     defaultRoles: ["OWNER", "ADMIN"],
   },
