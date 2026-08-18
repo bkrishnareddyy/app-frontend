@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { DEFAULT_BILLING_EVENT_DEFINITIONS } from "@/lib/billing/constants";
+import { saveRateRuleMappingsAction } from "../../actions";
 
 interface RuleItem {
   id: string;
@@ -14,11 +15,12 @@ interface RuleItem {
 export function MappingClient({ rules }: { rules: RuleItem[] }) {
   const [ruleMappings, setRuleMappings] = useState<Record<string, string[]>>(() => {
     const initial: Record<string, string[]> = {};
-    for (const r of rules) {
-      initial[r.id] = r.mappedEvents.length > 0 ? r.mappedEvents : [DEFAULT_BILLING_EVENT_DEFINITIONS[0].eventCode];
-    }
+    for (const r of rules) initial[r.id] = r.mappedEvents;
     return initial;
   });
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const toggleEventMapping = (ruleId: string, eventCode: string) => {
     const current = ruleMappings[ruleId] ?? [];
@@ -26,6 +28,22 @@ export function MappingClient({ rules }: { rules: RuleItem[] }) {
       setRuleMappings({ ...ruleMappings, [ruleId]: current.filter((c) => c !== eventCode) });
     } else {
       setRuleMappings({ ...ruleMappings, [ruleId]: [...current, eventCode] });
+    }
+  };
+
+  const saveMappings = async () => {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      for (const rule of rules) {
+        await saveRateRuleMappingsAction(rule.id, ruleMappings[rule.id] ?? []);
+      }
+      setMessage("Capability mappings saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save capability mappings.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -50,7 +68,7 @@ export function MappingClient({ rules }: { rules: RuleItem[] }) {
 
             <div className="space-y-2">
               <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wider">
-                Select Qubere Platform APIs / Capabilities that trigger this customer charge:
+                Select Qubere platform APIs / capabilities that trigger this customer charge:
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -85,13 +103,17 @@ export function MappingClient({ rules }: { rules: RuleItem[] }) {
         );
       })}
 
+      {message && <div className="text-xs font-semibold text-emerald-700">{message}</div>}
+      {error && <div className="text-xs font-semibold text-rose-700">{error}</div>}
+
       <div className="pt-4 border-t border-[#E5E5EA] flex justify-end">
         <button
           type="button"
-          onClick={() => alert("Capability mappings saved successfully!")}
-          className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand hover:bg-brand-hover text-white transition-colors shadow-sm"
+          onClick={saveMappings}
+          disabled={saving}
+          className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand hover:bg-brand-hover text-white transition-colors shadow-sm disabled:opacity-50"
         >
-          Save Platform Capability Mappings
+          {saving ? "Saving..." : "Save Platform Capability Mappings"}
         </button>
       </div>
     </div>
