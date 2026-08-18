@@ -22,6 +22,11 @@ ALTER TABLE "RegulatoryUpdate"
 ALTER TABLE "RegulatoryUpdate"
   ADD COLUMN IF NOT EXISTS "metadata" JSONB;
 
+-- Filing configuration stores the resolved canonical message name on the filing
+-- so snapshots/responses can reproduce the exact authority message that was used.
+ALTER TABLE "CustomsFiling"
+  ADD COLUMN IF NOT EXISTS "messageName" TEXT;
+
 CREATE UNIQUE INDEX IF NOT EXISTS "RegulatoryUpdate_documentNumber_key"
   ON "RegulatoryUpdate"("documentNumber");
 
