@@ -6,6 +6,7 @@ import { resolveChildActions } from "@/lib/canonicalMessaging/childActionRules";
 import { canTransition } from "@/modules/filings/filingStateMachine";
 import type { CanonicalMessageHeader } from "@/lib/canonicalMessaging/types";
 import { FilingDetailClient } from "./FilingDetailClient";
+import { FilingCurrencyPanel } from "./FilingCurrencyPanel";
 
 export default async function CustomsFilingDetailPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -29,9 +30,6 @@ export default async function CustomsFilingDetailPage(props: { params: Promise<{
 
   if (!filing) notFound();
 
-  // Check if this is a standalone filing (no shipment)
-  const isStandalone = !filing.shipmentId;
-
   const latestMessage = filing.filingMessages[filing.filingMessages.length - 1] ?? null;
   const latestHeader = latestMessage
     ? (latestMessage.envelope as unknown as { header: CanonicalMessageHeader }).header
@@ -52,33 +50,38 @@ export default async function CustomsFilingDetailPage(props: { params: Promise<{
   const canApprove = canTransition(filing.filingStatus, "broker.approve");
   const canTransmit = canTransition(filing.filingStatus, "transmit.send");
   const canResubmit = canTransition(filing.filingStatus, "resubmit");
-  // The table decides which statuses offer CANCEL; whether a message
-  // actually exists to cancel is a fact about this filing, not a rule --
-  // reused from FilingService.cancelFiling()'s own precondition.
   const hasOutboundMessage = filing.filingMessages.some((m) => m.direction === "OUTBOUND");
   const childActions = resolvedChildActions.filter((action) => action !== "CANCEL" || hasOutboundMessage);
+
+  const financialData = filing.dutyBreakdown;
+  const dutyFees = Array.isArray(financialData)
+    ? financialData
+    : financialData && typeof financialData === "object" && Array.isArray((financialData as any).fees)
+    ? (financialData as any).fees
+    : [];
 
   const filingProps = {
     id: filing.id,
     entryNumber: filing.entryNumber,
     localReferenceNumber: filing.localReferenceNumber,
     registrationNumber: filing.registrationNumber,
-    entryType: filing.entryType ?? null, // Multi-country migration: entryType is now nullable
+    entryType: filing.entryType ?? null,
     filingType: filing.filingType,
     filingStatus: filing.filingStatus,
     paymentStatus: filing.paymentStatus,
-    authority: filing.authority ?? null, // Multi-country migration: authority is now nullable
-    country: filing.country ?? null, // Multi-country support
-    procedureCode: filing.procedureCode ?? null, // Procedure code for standalone filings
-    messageName: filing.messageName ?? latestMessage?.messageName ?? null, // Message name from filing or latest message
+    authority: filing.authority ?? null,
+    country: filing.country ?? null,
+    procedureCode: filing.procedureCode ?? null,
+    messageName: filing.messageName ?? latestMessage?.messageName ?? null,
     totalValue: filing.totalValue === null ? null : Number(filing.totalValue),
     totalDuties: filing.totalDuties === null ? null : Number(filing.totalDuties),
     totalTaxes: filing.totalTaxes === null ? null : Number(filing.totalTaxes),
     totalAmount: filing.totalAmount === null ? null : Number(filing.totalAmount),
-    dutyBreakdown: (filing.dutyBreakdown as { feeName: string; amount: number; rate: string }[] | null) ?? [],
-    declarationDraft: filing.shipmentId === null && filing.dutyBreakdown 
-      ? (filing.dutyBreakdown as any)?.declarationDraft ?? null
-      : null, // For standalone filings, extract declarationDraft
+    dutyBreakdown: dutyFees as { feeName: string; amount: number; rate: string }[],
+    declarationDraft:
+      filing.shipmentId === null && filing.dutyBreakdown
+        ? (filing.dutyBreakdown as any)?.declarationDraft ?? null
+        : null,
     submittedAt: filing.submittedAt ? filing.submittedAt.toISOString() : null,
     releasedAt: filing.releasedAt ? filing.releasedAt.toISOString() : null,
     createdAt: filing.createdAt.toISOString(),
@@ -144,7 +147,7 @@ export default async function CustomsFilingDetailPage(props: { params: Promise<{
   }));
 
   const auditLogs = await db.auditLog.findMany({
-    where: { entity: "CustomsFiling", entityId: filing.id },
+    where: { accountId: context.accountId, entity: "CustomsFiling", entityId: filing.id },
     orderBy: { createdAt: "asc" },
   });
 
@@ -157,20 +160,23 @@ export default async function CustomsFilingDetailPage(props: { params: Promise<{
   }));
 
   return (
-    <FilingDetailClient
-      filing={filingProps}
-      shipment={shipmentProps}
-      lineItems={lineItemProps}
-      documents={documentProps}
-      responses={responseProps}
-      messages={messageProps}
-      auditLogs={auditLogProps}
-      allowUpdates={allowUpdates}
-      canValidate={canValidate}
-      canApprove={canApprove}
-      canTransmit={canTransmit}
-      canResubmit={canResubmit}
-      childActions={childActions}
-    />
+    <div className="space-y-6">
+      <FilingCurrencyPanel filingId={filing.id} />
+      <FilingDetailClient
+        filing={filingProps}
+        shipment={shipmentProps}
+        lineItems={lineItemProps}
+        documents={documentProps}
+        responses={responseProps}
+        messages={messageProps}
+        auditLogs={auditLogProps}
+        allowUpdates={allowUpdates}
+        canValidate={canValidate}
+        canApprove={canApprove}
+        canTransmit={canTransmit}
+        canResubmit={canResubmit}
+        childActions={childActions}
+      />
+    </div>
   );
 }
