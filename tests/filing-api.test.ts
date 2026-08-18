@@ -76,6 +76,7 @@ function filingRecord(lineItems: unknown[]) {
     entryNumber: "5901-26-004872",
     entryType: "01",
     filingStatus: "BrokerApproved",
+    shipmentId: "shp_1",
     shipment: { id: "shp_1", destinationCountry: "US", lineItems, documents: [] },
   };
 }
