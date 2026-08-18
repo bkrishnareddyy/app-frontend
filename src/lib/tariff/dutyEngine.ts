@@ -265,6 +265,117 @@ export async function resolveSection232ForHtsCode(
   return { applicable: true, additionalRate: match.baseRatePct, status: "EVALUATED_APPLICABLE" };
 }
 
+/**
+ * Antidumping/countervailing duty, resolved from the real ingested
+ * AdcvdOrder/AdCvdCompanyRate tables -- previously AdCvdCompanyRate had zero
+ * read call sites in duty calculation at all, so the tradeRateReviewService
+ * governance gate (PENDING -> APPROVED) had no computational effect: a
+ * platform admin approving a company rate did nothing to any filing's duty.
+ *
+ * AD and CVD orders are distinguished by the case number's Commerce prefix
+ * (A-### for antidumping, C-### for countervailing -- the real convention
+ * used by ACCESS/Federal Register case numbers, not an internal invention).
+ * A case whose HTS/country scope matches this line but has no APPROVED
+ * company rate yet is REVIEW_REQUIRED, not "not applicable" -- an
+ * unreviewed rate must never silently compute as 0% duty.
+ */
+export function classifyAdCvdCaseType(caseNumber: string): "ANTIDUMPING" | "COUNTERVAILING" | null {
+  if (/^A-/i.test(caseNumber)) return "ANTIDUMPING";
+  if (/^C-/i.test(caseNumber)) return "COUNTERVAILING";
+  return null;
+}
+
+export interface AdCvdResolution {
+  antidumpingRate: number | null;
+  antidumpingStatus: TradeMeasureEvaluationStatus;
+  countervailingRate: number | null;
+  countervailingStatus: TradeMeasureEvaluationStatus;
+}
+
+export async function resolveAdCvdForHtsCode(
+  htsCode: string,
+  countryOfOrigin?: string | null,
+  manufacturer?: string | null,
+  exporter?: string | null
+): Promise<AdCvdResolution> {
+  const empty: AdCvdResolution = {
+    antidumpingRate: null,
+    antidumpingStatus: "NOT_EVALUATED",
+    countervailingRate: null,
+    countervailingStatus: "NOT_EVALUATED",
+  };
+
+  const normalized = htsCode.replace(/[^0-9]/g, "");
+  const country = countryOfOrigin?.toUpperCase() || null;
+  if (!normalized || !country) return empty;
+
+  const { db } = await import("@/lib/db");
+  const activeOrders = await db.adcvdOrder.findMany({ where: { status: "ACTIVE" } });
+
+  // Order scope language is often written against 6- or 8-digit HTS headings
+  // (the product scope is legally defined by description, not stat-suffix
+  // precision), so a scope entry shorter than the line's 10-digit code is
+  // matched as a prefix, not just by exact-string equality.
+  const matchingOrders = activeOrders.filter(
+    (o) =>
+      o.respondentCountries.some((c) => c.toUpperCase() === country) &&
+      o.htsCodesInScope.some((c) => {
+        const scopeDigits = c.replace(/[^0-9]/g, "");
+        return scopeDigits.length > 0 && normalized.startsWith(scopeDigits);
+      })
+  );
+  if (matchingOrders.length === 0) return empty;
+
+  const manufacturerNorm = manufacturer?.trim().toLowerCase() || null;
+  const exporterNorm = exporter?.trim().toLowerCase() || null;
+
+  const resolveForType = async (
+    type: "ANTIDUMPING" | "COUNTERVAILING"
+  ): Promise<{ rate: number | null; status: TradeMeasureEvaluationStatus }> => {
+    const caseNumbers = matchingOrders
+      .filter((o) => classifyAdCvdCaseType(o.caseNumber) === type)
+      .map((o) => o.caseNumber);
+    if (caseNumbers.length === 0) return { rate: null, status: "NOT_EVALUATED" };
+
+    const rates = await db.adCvdCompanyRate.findMany({
+      where: { caseNumber: { in: caseNumbers } },
+      orderBy: { effectiveDate: "desc" },
+    });
+
+    // A case's respondentCountries can span more than one country (rare, but
+    // real -- e.g. combined-country orders); company rates are still filed
+    // per-country, so scope to this line's country when the rate specifies one.
+    const scoped = rates.filter((r) => !r.countryOfOrigin || r.countryOfOrigin.toUpperCase() === country);
+    if (scoped.length === 0) return { rate: null, status: "DATA_UNAVAILABLE" };
+
+    const approved = scoped.filter((r) => r.reviewStatus === "APPROVED");
+    if (approved.length === 0) return { rate: null, status: "REVIEW_REQUIRED" };
+
+    const exact = approved.find(
+      (r) =>
+        r.isSeparateRate &&
+        r.depositRatePct != null &&
+        (r.manufacturerName.trim().toLowerCase() === manufacturerNorm ||
+          (exporterNorm && r.exporterName?.trim().toLowerCase() === exporterNorm))
+    );
+    if (exact) return { rate: exact.depositRatePct as number, status: "EVALUATED_APPLICABLE" };
+
+    const allOthers = approved.find((r) => r.allOthersRatePct != null);
+    if (allOthers) return { rate: allOthers.allOthersRatePct as number, status: "EVALUATED_APPLICABLE" };
+
+    return { rate: null, status: "REVIEW_REQUIRED" };
+  };
+
+  const [ad, cvd] = await Promise.all([resolveForType("ANTIDUMPING"), resolveForType("COUNTERVAILING")]);
+
+  return {
+    antidumpingRate: ad.rate,
+    antidumpingStatus: ad.status,
+    countervailingRate: cvd.rate,
+    countervailingStatus: cvd.status,
+  };
+}
+
 export async function loadHtsCodesMap(
   lineItems: Array<TariffLineInput>,
   country: string = "US"
@@ -325,43 +436,65 @@ export async function loadHtsCodesMap(
       sec301Exclusion = sec301Rate.exclusion;
     }
 
-    // Resolve AD/CVD rates with "most specific wins" logic
-    let adRate: number | null = null;
-    let cvdRate: number | null = null;
+    // Resolve AD/CVD rates: governed AdCvdCompanyRate (APPROVED only) takes
+    // precedence when a matching order is in scope for this code/country --
+    // that's the whole point of the review gate having computational effect.
+    // Only when no order is in scope at all do we fall back to the older,
+    // ungoverned node.dutyRates-sourced rate (e.g. demo/seed data flows).
+    const adcvd = await resolveAdCvdForHtsCode(code, lineCountry ?? null, matchingLine?.manufacturer ?? null);
 
-    const adRates = node?.dutyRates.filter(
-      (r) => r.rateType === "ANTIDUMPING" || r.rateColumn === "AD_CVD" && r.programCode?.includes("AD")
-    ) ?? [];
+    let adRate = adcvd.antidumpingRate;
+    let adStatus = adcvd.antidumpingStatus;
+    let cvdRate = adcvd.countervailingRate;
+    let cvdStatus = adcvd.countervailingStatus;
 
-    const cvdRates = node?.dutyRates.filter(
-      (r) => r.rateType === "COUNTERVAILING" || r.rateColumn === "AD_CVD" && r.programCode?.includes("CVD")
-    ) ?? [];
+    if (adStatus === "NOT_EVALUATED" || cvdStatus === "NOT_EVALUATED") {
+      const adRates = node?.dutyRates.filter(
+        (r) => r.rateType === "ANTIDUMPING" || r.rateColumn === "AD_CVD" && r.programCode?.includes("AD")
+      ) ?? [];
 
-    const resolveMostSpecific = (rates: typeof adRates) => {
-      if (rates.length === 0) return null;
-      // 1. Exact manufacturer + country match
-      const exact = rates.find(
-        (r) =>
-          r.manufacturer?.trim().toLowerCase() === lineManufacturer &&
-          r.countryOfOrigin?.toUpperCase() === lineCountry
-      );
-      if (exact) return exact.adValoremPercent ?? (exact.rawRateText ? parseFloat(exact.rawRateText) : null);
+      const cvdRates = node?.dutyRates.filter(
+        (r) => r.rateType === "COUNTERVAILING" || r.rateColumn === "AD_CVD" && r.programCode?.includes("CVD")
+      ) ?? [];
 
-      // 2. Country match with wildcard or null manufacturer
-      const countryMatch = rates.find(
-        (r) =>
-          r.countryOfOrigin?.toUpperCase() === lineCountry &&
-          (!r.manufacturer || r.manufacturer === "*")
-      );
-      if (countryMatch) return countryMatch.adValoremPercent ?? (countryMatch.rawRateText ? parseFloat(countryMatch.rawRateText) : null);
+      const resolveMostSpecific = (rates: typeof adRates) => {
+        if (rates.length === 0) return null;
+        // 1. Exact manufacturer + country match
+        const exact = rates.find(
+          (r) =>
+            r.manufacturer?.trim().toLowerCase() === lineManufacturer &&
+            r.countryOfOrigin?.toUpperCase() === lineCountry
+        );
+        if (exact) return exact.adValoremPercent ?? (exact.rawRateText ? parseFloat(exact.rawRateText) : null);
 
-      // 3. Fallback to first matched rate for node
-      const fallback = rates[0];
-      return fallback?.adValoremPercent ?? (fallback?.rawRateText ? parseFloat(fallback.rawRateText) : null);
-    };
+        // 2. Country match with wildcard or null manufacturer
+        const countryMatch = rates.find(
+          (r) =>
+            r.countryOfOrigin?.toUpperCase() === lineCountry &&
+            (!r.manufacturer || r.manufacturer === "*")
+        );
+        if (countryMatch) return countryMatch.adValoremPercent ?? (countryMatch.rawRateText ? parseFloat(countryMatch.rawRateText) : null);
 
-    adRate = resolveMostSpecific(adRates);
-    cvdRate = resolveMostSpecific(cvdRates);
+        // 3. Fallback to first matched rate for node
+        const fallback = rates[0];
+        return fallback?.adValoremPercent ?? (fallback?.rawRateText ? parseFloat(fallback.rawRateText) : null);
+      };
+
+      if (adStatus === "NOT_EVALUATED") {
+        const nodeAdRate = resolveMostSpecific(adRates);
+        if (nodeAdRate != null) {
+          adRate = nodeAdRate;
+          adStatus = "EVALUATED_APPLICABLE";
+        }
+      }
+      if (cvdStatus === "NOT_EVALUATED") {
+        const nodeCvdRate = resolveMostSpecific(cvdRates);
+        if (nodeCvdRate != null) {
+          cvdRate = nodeCvdRate;
+          cvdStatus = "EVALUATED_APPLICABLE";
+        }
+      }
+    }
 
     const section232 = await resolveSection232ForHtsCode(code, lineCountry ?? null);
 
@@ -377,9 +510,9 @@ export async function loadHtsCodesMap(
       section232AdditionalRate: section232.additionalRate,
       section232Status: section232.status,
       antidumpingRate: adRate,
-      antidumpingStatus: adRate != null ? "EVALUATED_APPLICABLE" : "NOT_EVALUATED",
+      antidumpingStatus: adStatus,
       countervailingRate: cvdRate,
-      countervailingStatus: cvdRate != null ? "EVALUATED_APPLICABLE" : "NOT_EVALUATED",
+      countervailingStatus: cvdStatus,
     };
   }
   return map;
