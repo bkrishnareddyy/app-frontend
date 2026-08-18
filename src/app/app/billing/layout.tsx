@@ -1,6 +1,8 @@
 import React from "react";
 import Link from "next/link";
 import { headers } from "next/headers";
+import { DollarSign } from "lucide-react";
+import { PanelHeading } from "@/components/PanelHeading";
 
 export default async function BillingLayout({
   children,
@@ -22,27 +24,19 @@ export default async function BillingLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 space-y-6">
+    <div className="space-y-8 max-w-6xl mx-auto p-2 sm:p-4">
       {/* Workspace Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-4 gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              Commercial Engine
-            </span>
-            <span className="text-xs text-slate-400">Qubere v2.4</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white mt-1">
-            Billing, Costing & Profitability Workspace
-          </h1>
-          <p className="text-sm text-slate-400">
-            Real-time usage metering, 3-layer shipment economics, rate cards, and revenue leakage detection.
-          </p>
-        </div>
+      <div className="border-b border-[#E5E5EA] pb-6">
+        <PanelHeading
+          icon={DollarSign}
+          badge="Billing, Costing & Unit Economics"
+          title="Billing Workspace"
+          subtitle="Real-time usage metering, 3-layer shipment unit economics, rate cards, and automated revenue leakage detection."
+        />
       </div>
 
       {/* Primary Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 overflow-x-auto pb-2 scrollbar-none">
+      <div className="flex items-center gap-1.5 border-b border-[#E5E5EA] pb-3 overflow-x-auto scrollbar-none">
         {tabs.map((tab) => {
           const isActive =
             tab.href === "/app/billing"
@@ -52,10 +46,10 @@ export default async function BillingLayout({
             <Link
               key={tab.href}
               href={tab.href}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 whitespace-nowrap ${
                 isActive
-                  ? "bg-slate-800 text-white border border-slate-700 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                  ? "bg-white text-ink shadow-sm border border-[#E5E5EA]"
+                  : "text-ink-muted hover:text-ink hover:bg-slate-100/60"
               }`}
             >
               {tab.name}

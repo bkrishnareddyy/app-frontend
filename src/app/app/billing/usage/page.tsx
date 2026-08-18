@@ -19,16 +19,16 @@ export default async function UsageLedgerPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-white">Usage Event Ledger</h2>
-        <p className="text-sm text-slate-400">
+        <h2 className="text-xl font-bold text-ink">Usage Event Ledger</h2>
+        <p className="text-sm text-ink-muted">
           Immutable telemetry of all operational work events emitted across Qubere services.
         </p>
       </div>
 
-      <div className="rounded-xl bg-slate-900/60 border border-slate-800 overflow-hidden shadow-sm">
+      <div className="rounded-2xl bg-white border border-[#E5E5EA] overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="bg-slate-950/60 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800">
+          <table className="w-full text-left text-sm text-ink">
+            <thead className="bg-[#F5F5F7] text-ink-muted uppercase text-xs tracking-wider border-b border-[#E5E5EA]">
               <tr>
                 <th className="px-5 py-3">Timestamp</th>
                 <th className="px-5 py-3">Event Code & Definition</th>
@@ -40,10 +40,10 @@ export default async function UsageLedgerPage() {
                 <th className="px-5 py-3">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
+            <tbody className="divide-y divide-[#E5E5EA] font-mono text-xs">
               {events.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-slate-500 text-sm font-sans">
+                  <td colSpan={8} className="px-5 py-8 text-center text-ink-muted text-sm font-sans">
                     No usage events recorded yet. Operational activities will automatically emit telemetry.
                   </td>
                 </tr>
@@ -52,38 +52,38 @@ export default async function UsageLedgerPage() {
                   const charge = event.charges[0];
                   const costSum = event.costs.reduce((acc, c) => acc + Number(c.amount), 0);
                   return (
-                    <tr key={event.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="px-5 py-4 text-slate-400">
+                    <tr key={event.id} className="hover:bg-[#F9F9FB] transition-colors">
+                      <td className="px-5 py-4 text-ink-muted">
                         {new Date(event.occurredAt).toLocaleString()}
                       </td>
                       <td className="px-5 py-4">
-                        <div className="font-semibold text-white font-sans">
+                        <div className="font-bold text-ink font-sans">
                           {event.eventDefinition?.name ?? event.eventCode}
                         </div>
-                        <div className="text-[10px] text-slate-500">{event.eventCode}</div>
+                        <div className="text-[10px] text-ink-muted">{event.eventCode}</div>
                       </td>
-                      <td className="px-5 py-4 text-slate-300 font-sans">
+                      <td className="px-5 py-4 text-ink font-sans">
                         <div>{event.shipment?.shipmentNumber ?? "N/A"}</div>
-                        <div className="text-xs text-slate-500">{event.client?.name ?? "Brokerage"}</div>
+                        <div className="text-xs text-ink-muted">{event.client?.name ?? "Brokerage"}</div>
                       </td>
-                      <td className="px-5 py-4 text-slate-300">
+                      <td className="px-5 py-4 text-ink">
                         {Number(event.quantity)} {event.unit}
                       </td>
-                      <td className="px-5 py-4 text-slate-400">
+                      <td className="px-5 py-4 text-ink-muted">
                         {event.sourceFunction}
                       </td>
-                      <td className="px-5 py-4 text-emerald-400 font-semibold">
+                      <td className="px-5 py-4 text-emerald-600 font-semibold">
                         {charge ? `$${Number(charge.netAmount).toFixed(2)}` : "Unrated"}
                       </td>
-                      <td className="px-5 py-4 text-slate-400">
+                      <td className="px-5 py-4 text-ink-muted">
                         ${costSum.toFixed(2)}
                       </td>
                       <td className="px-5 py-4 font-sans">
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                             event.success
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                              : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-rose-50 text-rose-700 border border-rose-200"
                           }`}
                         >
                           {event.success ? "SUCCESS" : "FAILED"}

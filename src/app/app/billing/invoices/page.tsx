@@ -19,23 +19,23 @@ export default async function InvoicesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white">Invoices & Accounts Receivable</h2>
-          <p className="text-sm text-slate-400">
+          <h2 className="text-xl font-bold text-ink">Invoices & Accounts Receivable</h2>
+          <p className="text-sm text-ink-muted">
             Generate, approve, send customer invoices, and record incoming payments.
           </p>
         </div>
         <Link
           href="/app/billing/invoices/create"
-          className="px-4 py-2 rounded-md text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors shadow-sm"
+          className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand hover:bg-brand-hover text-white transition-colors shadow-sm"
         >
           + Create New Invoice
         </Link>
       </div>
 
-      <div className="rounded-xl bg-slate-900/60 border border-slate-800 overflow-hidden shadow-sm">
+      <div className="rounded-2xl bg-white border border-[#E5E5EA] overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="bg-slate-950/60 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800">
+          <table className="w-full text-left text-sm text-ink">
+            <thead className="bg-[#F5F5F7] text-ink-muted uppercase text-xs tracking-wider border-b border-[#E5E5EA]">
               <tr>
                 <th className="px-5 py-3">Invoice #</th>
                 <th className="px-5 py-3">Client</th>
@@ -47,45 +47,45 @@ export default async function InvoicesPage() {
                 <th className="px-5 py-3">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
+            <tbody className="divide-y divide-[#E5E5EA] font-mono text-xs">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-slate-500 text-sm font-sans">
+                  <td colSpan={8} className="px-5 py-8 text-center text-ink-muted text-sm font-sans">
                     No invoices generated yet. Click "+ Create New Invoice" to convert unbilled charges.
                   </td>
                 </tr>
               ) : (
                 invoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="px-5 py-4 font-semibold text-white font-sans">
+                  <tr key={inv.id} className="hover:bg-[#F9F9FB] transition-colors">
+                    <td className="px-5 py-4 font-bold text-ink font-sans">
                       {inv.invoiceNumber}
                     </td>
-                    <td className="px-5 py-4 font-sans text-slate-300">
+                    <td className="px-5 py-4 font-sans text-ink">
                       {inv.client?.name ?? "Client Account"}
                     </td>
-                    <td className="px-5 py-4 text-slate-400">
+                    <td className="px-5 py-4 text-ink-muted">
                       {new Date(inv.issueDate).toLocaleDateString()}
                     </td>
-                    <td className="px-5 py-4 text-slate-400">
+                    <td className="px-5 py-4 text-ink-muted">
                       {new Date(inv.dueDate).toLocaleDateString()}
                     </td>
-                    <td className="px-5 py-4 text-slate-200 font-semibold">
+                    <td className="px-5 py-4 text-ink font-semibold">
                       ${Number(inv.totalAmount).toFixed(2)}
                     </td>
-                    <td className="px-5 py-4 text-emerald-400">
+                    <td className="px-5 py-4 text-emerald-600">
                       ${Number(inv.paidAmount).toFixed(2)}
                     </td>
-                    <td className="px-5 py-4 text-blue-400 font-semibold">
+                    <td className="px-5 py-4 text-brand font-semibold">
                       ${Number(inv.balanceDue).toFixed(2)}
                     </td>
                     <td className="px-5 py-4 font-sans">
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                           inv.status === "PAID"
-                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                             : inv.status === "DRAFT"
-                            ? "bg-slate-800 text-slate-400 border border-slate-700"
-                            : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                            ? "bg-slate-100 text-slate-500 border border-slate-200"
+                            : "bg-blue-50 text-brand border border-blue-200"
                         }`}
                       >
                         {inv.status}
