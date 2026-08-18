@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
@@ -8,6 +9,11 @@ export interface CreateInvoiceInput {
   dueDate: Date;
   chargeIds: string[];
   notes?: string;
+}
+
+function generateInvoiceNumber() {
+  const yearMonth = new Date().toISOString().slice(0, 7).replace("-", "");
+  return `INV-${yearMonth}-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 }
 
 export async function createInvoiceFromCharges(input: CreateInvoiceInput) {
@@ -50,10 +56,6 @@ export async function createInvoiceFromCharges(input: CreateInvoiceInput) {
       throw new Error("Selected charges changed while the invoice was being created");
     }
 
-    const count = await tx.invoice.count({ where: { accountId: input.accountId } });
-    const yearMonth = new Date().toISOString().slice(0, 7).replace("-", "");
-    const invoiceNumber = `INV-${yearMonth}-${String(count + 1).padStart(5, "0")}`;
-
     const subtotal = lockedCharges.reduce((sum, c) => sum + Number(c.grossAmount), 0);
     const totalDiscounts = lockedCharges.reduce((sum, c) => sum + Number(c.discountAmount), 0);
     const totalAmount = subtotal - totalDiscounts;
@@ -63,7 +65,7 @@ export async function createInvoiceFromCharges(input: CreateInvoiceInput) {
         accountId: input.accountId,
         clientId: input.clientId,
         importerId: input.importerId,
-        invoiceNumber,
+        invoiceNumber: generateInvoiceNumber(),
         status: "DRAFT",
         dueDate: input.dueDate,
         subtotal: new Prisma.Decimal(subtotal),
@@ -129,15 +131,11 @@ export async function recordInvoicePayment(params: {
   }
 
   return db.$transaction(async (tx) => {
-    const invoice = await tx.invoice.findFirst({
-      where: { id: params.invoiceId, accountId: params.accountId },
-    });
+    const invoice = await tx.invoice.findFirst({ where: { id: params.invoiceId, accountId: params.accountId } });
     if (!invoice) throw new Error("Invoice not found");
 
     const paymentAmount = new Prisma.Decimal(params.amount);
-    if (paymentAmount.gt(invoice.balanceDue)) {
-      throw new Error("Payment cannot exceed the outstanding invoice balance");
-    }
+    if (paymentAmount.gt(invoice.balanceDue)) throw new Error("Payment cannot exceed the outstanding invoice balance");
 
     const newPaid = invoice.paidAmount.add(paymentAmount);
     const newBalance = invoice.totalAmount.sub(newPaid);
@@ -158,7 +156,6 @@ export async function recordInvoicePayment(params: {
       where: { id: params.invoiceId },
       data: { paidAmount: newPaid, balanceDue: newBalance, status: newStatus },
     });
-
     return payment;
   });
 }
