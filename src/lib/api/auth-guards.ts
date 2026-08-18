@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { AccountContext, getAccountContext, hasPermission } from "@/lib/auth";
-import { runWithDataMode } from "@/lib/db";
+import { runWithAccountId, runWithDataMode } from "@/lib/db";
 import { buildErrorResponse, generateRequestId, handleApiError } from "./error";
 import { canWrite, READ_ONLY_MESSAGE } from "./write-access";
 
@@ -138,10 +138,14 @@ export function withAuthenticatedRoute<TParams = Record<string, never>>(
       }
       if (typeof runner === "function") {
         return await runner(ctx!.dataMode, async () => {
-          return await handler({ req, ctx: ctx!, requestId, params });
+          return await runWithAccountId(ctx!.accountId, async () => {
+            return await handler({ req, ctx: ctx!, requestId, params });
+          });
         });
       }
-      return await handler({ req, ctx: ctx!, requestId, params });
+      return await runWithAccountId(ctx!.accountId, async () => {
+        return await handler({ req, ctx: ctx!, requestId, params });
+      });
     } catch (error) {
       return handleApiError(error, requestId);
     }

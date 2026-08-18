@@ -1,5 +1,5 @@
 import { inngest } from "../client";
-import { db } from "@/lib/db";
+import { db, runWithAccountId } from "@/lib/db";
 import { computeAnalyticsMetrics } from "@/lib/analytics/metricComputer";
 
 export async function executeDailyWorkMetricSnapshot() {
@@ -8,24 +8,26 @@ export async function executeDailyWorkMetricSnapshot() {
   let createdCount = 0;
 
   for (const account of accounts) {
-    const metrics = await computeAnalyticsMetrics(account.id);
+    await runWithAccountId(account.id, async () => {
+      const metrics = await computeAnalyticsMetrics(account.id);
 
-    await db.workMetricSnapshot.create({
-      data: {
-        accountId: account.id,
-        date: today,
-        period: "DAILY",
-        cyclTimeMedianHours: metrics.cyclTimeMedianHours,
-        firstPassRate: metrics.firstPassRate,
-        exceptionAgeAvgHours: metrics.exceptionAgeAvgHours,
-        touchRate: metrics.touchRate,
-        dutyPerEntry: metrics.dutyPerEntry,
-        openExceptions: metrics.openExceptions,
-        filedEntries: metrics.filedEntries,
-        pscCount: metrics.pscCount,
-      },
+      await db.workMetricSnapshot.create({
+        data: {
+          accountId: account.id,
+          date: today,
+          period: "DAILY",
+          cyclTimeMedianHours: metrics.cyclTimeMedianHours,
+          firstPassRate: metrics.firstPassRate,
+          exceptionAgeAvgHours: metrics.exceptionAgeAvgHours,
+          touchRate: metrics.touchRate,
+          dutyPerEntry: metrics.dutyPerEntry,
+          openExceptions: metrics.openExceptions,
+          filedEntries: metrics.filedEntries,
+          pscCount: metrics.pscCount,
+        },
+      });
+      createdCount++;
     });
-    createdCount++;
   }
 
   return { createdCount };
