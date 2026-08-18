@@ -13,9 +13,7 @@ const MAX_PREVIEW_ROWS = 250;
 async function requireRateCardAdmin() {
   const ctx = await getAccountContext();
   if (!ctx) throw new Error("Unauthorized: Account context required");
-  if (!(await hasPermission("billing.ratecard.manage"))) {
-    throw new Error("Forbidden: billing.ratecard.manage permission required");
-  }
+  if (!(await hasPermission("billing.ratecard.manage"))) throw new Error("Forbidden: billing.ratecard.manage permission required");
   return ctx;
 }
 
@@ -27,19 +25,10 @@ export async function parseRateCardUploadAction(formData: FormData) {
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("Rate-card uploads are limited to 5 MB");
 
   const lowerName = file.name.toLowerCase();
-  if (!lowerName.endsWith(".csv")) {
-    throw new Error("CSV import is supported now. XLSX requires the spreadsheet parser dependency and is not enabled yet.");
-  }
+  if (!lowerName.endsWith(".csv")) throw new Error("CSV import is supported now. XLSX requires the spreadsheet parser dependency and is not enabled yet.");
 
   const text = await file.text();
-  const records = parse(text, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-    bom: true,
-    relax_column_count: true,
-  }) as Record<string, string>[];
-
+  const records = parse(text, { columns: true, skip_empty_lines: true, trim: true, bom: true, relax_column_count: true }) as Record<string, string>[];
   if (!records.length) throw new Error("No data rows were found in the uploaded CSV");
   const headers = Object.keys(records[0] ?? {}).filter(Boolean);
   if (!headers.length) throw new Error("The uploaded CSV does not contain a header row");
@@ -48,9 +37,7 @@ export async function parseRateCardUploadAction(formData: FormData) {
     fileName: file.name,
     headers,
     rowCount: records.length,
-    rows: records.slice(0, MAX_PREVIEW_ROWS).map((row) =>
-      Object.fromEntries(headers.map((header) => [header, String(row[header] ?? "")]))
-    ),
+    rows: records.slice(0, MAX_PREVIEW_ROWS).map((row) => Object.fromEntries(headers.map((header) => [header, String(row[header] ?? "")]))),
     truncated: records.length > MAX_PREVIEW_ROWS,
   };
 }
@@ -77,22 +64,18 @@ export async function createImportedRateCardAction(input: {
   const ctx = await requireRateCardAdmin();
   if (!input.name.trim()) throw new Error("Rate card name is required");
   if (!input.lines.length) throw new Error("At least one imported rate-card line is required");
-  if (input.lines.some((line) => !line.lineItemName.trim() || !line.eventCode)) {
-    throw new Error("Every imported line must have a description and mapped billing event");
-  }
-  if (input.lines.some((line) => !Number.isFinite(line.rate) || line.rate < 0)) {
-    throw new Error("Imported rates must be valid non-negative numbers");
-  }
+  if (input.lines.some((line) => !line.lineItemName.trim() || !line.eventCode)) throw new Error("Every imported line must have a description and mapped billing event");
+  if (input.lines.some((line) => !Number.isFinite(line.rate) || line.rate < 0)) throw new Error("Imported rates must be valid non-negative numbers");
 
   await seedBillingEventDefinitions(ctx.accountId);
   const eventCodes = [...new Set(input.lines.map((line) => line.eventCode))];
   const definitions = await db.billingEventDefinition.findMany({
-    where: { accountId: ctx.accountId, eventCode: { in: eventCodes } },
+    where: { eventCode: { in: eventCodes } },
     select: { id: true, eventCode: true },
   });
   const definitionByCode = new Map(definitions.map((definition) => [definition.eventCode, definition.id]));
   const missing = eventCodes.filter((code) => !definitionByCode.has(code));
-  if (missing.length) throw new Error(`Billing event definitions unavailable for this account: ${missing.join(", ")}`);
+  if (missing.length) throw new Error(`Billing event definitions unavailable in the platform catalog: ${missing.join(", ")}`);
 
   const rateCard = await db.rateCard.create({
     data: {
@@ -120,9 +103,7 @@ export async function createImportedRateCardAction(input: {
               currency: input.currency || "USD",
               includedQuantity: Math.max(0, Math.floor(line.includedQuantity ?? 0)),
               isBillable: true,
-              capabilityMappings: {
-                create: [{ eventDefId: definitionByCode.get(line.eventCode)! }],
-              },
+              capabilityMappings: { create: [{ eventDefId: definitionByCode.get(line.eventCode)! }] },
             })),
           },
         }],
