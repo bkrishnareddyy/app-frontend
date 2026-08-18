@@ -1,7 +1,9 @@
 import React from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { getAccountContext, hasPermission } from "@/lib/auth";
+import { activateRateCardAction } from "../../actions";
 import { MappingClient } from "./MappingClient";
 
 export const revalidate = 0;
@@ -11,10 +13,13 @@ export default async function RateCardDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const ctx = await getAccountContext();
+  if (!ctx) redirect("/sign-in");
+  if (!(await hasPermission("billing.ratecard.manage"))) redirect("/app/billing");
 
-  const rateCard = await db.rateCard.findUnique({
-    where: { id },
+  const { id } = await params;
+  const rateCard = await db.rateCard.findFirst({
+    where: { id, accountId: ctx.accountId },
     include: {
       client: { select: { name: true } },
       importer: { select: { name: true } },
@@ -33,12 +38,10 @@ export default async function RateCardDetailPage({
     },
   });
 
-  if (!rateCard) {
-    notFound();
-  }
+  if (!rateCard) notFound();
 
-  const activeVersion = rateCard.versions[0];
-  const formattedRules = (activeVersion?.rules ?? []).map((r) => ({
+  const latestVersion = rateCard.versions[0];
+  const formattedRules = (latestVersion?.rules ?? []).map((r) => ({
     id: r.id,
     lineItemName: r.lineItemName,
     pricingModel: r.pricingModel,
@@ -48,7 +51,6 @@ export default async function RateCardDetailPage({
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Header Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -61,7 +63,7 @@ export default async function RateCardDetailPage({
             >
               {rateCard.status}
             </span>
-            <span className="text-xs text-ink-muted">Version v{rateCard.currentVersion}</span>
+            <span className="text-xs text-ink-muted">Version v{latestVersion?.version ?? rateCard.currentVersion}</span>
           </div>
           <h2 className="text-xl font-bold text-ink mt-1">{rateCard.name}</h2>
           <p className="text-sm text-ink-muted">
@@ -70,6 +72,16 @@ export default async function RateCardDetailPage({
         </div>
 
         <div className="flex items-center gap-3">
+          {rateCard.status !== "ACTIVE" && (
+            <form action={activateRateCardAction.bind(null, rateCard.id)}>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm"
+              >
+                Activate Rate Card
+              </button>
+            </form>
+          )}
           <Link
             href="/app/billing/rate-cards"
             className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors"
@@ -79,12 +91,11 @@ export default async function RateCardDetailPage({
         </div>
       </div>
 
-      {/* Interactive Platform API & Capability Mapping */}
       <div className="p-6 rounded-2xl bg-white border border-[#E5E5EA] shadow-sm space-y-6">
         <div>
           <h3 className="text-base font-bold text-ink">Rate Card Line-Item to Platform API Capability Mapping</h3>
           <p className="text-xs text-ink-muted mt-1">
-            Link commercial customer line items to stable Qubere platform billing event codes emitted by API endpoints, AI agents, and broker workflows.
+            Link commercial customer line items to stable Qubere platform billing event codes emitted by API endpoints, AI agents, and broker workflows. Save mappings before activating a draft rate card.
           </p>
         </div>
 
