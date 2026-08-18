@@ -28,28 +28,29 @@ export interface AnalyticsMetrics {
 /**
  * Operations metrics computer from real database records.
  * When clientId is supplied only shipments/filings belonging to that client are counted.
+ * Standalone filings are valid, but shipment-derived metrics exclude them because they
+ * have no shipment lifecycle start time.
  */
 export async function computeAnalyticsMetrics(
   accountId: string,
   clientId?: string
 ): Promise<AnalyticsMetrics> {
-  const _shipmentFilter = { accountId, ...(clientId ? { clientId } : {}) };
   const filingFilter = {
     accountId,
     ...(clientId ? { shipment: { clientId } } : {}),
   };
 
-  // 1. Cycle Time Median
   const terminalStatuses = ["Transmitted", "Accepted", "Released", "Closed"];
   const terminalFilings = await db.customsFiling.findMany({
     where: { ...filingFilter, filingStatus: { in: terminalStatuses } },
     include: { shipment: true },
   });
 
-  const cycleTimes = terminalFilings.map((f) => {
+  const cycleTimes = terminalFilings.flatMap((f) => {
+    if (!f.shipment) return [];
     const start = new Date(f.shipment.createdAt).getTime();
     const end = new Date(f.updatedAt).getTime();
-    return Math.max(0, (end - start) / (1000 * 60 * 60));
+    return [Math.max(0, (end - start) / (1000 * 60 * 60))];
   });
 
   let cyclTimeMedianHours: number | null = null;
@@ -60,7 +61,6 @@ export async function computeAnalyticsMetrics(
       cycleTimes.length % 2 !== 0 ? cycleTimes[mid] : (cycleTimes[mid - 1] + cycleTimes[mid]) / 2;
   }
 
-  // 2. First Pass Rate
   const submittedFilings = await db.customsFiling.findMany({
     where: { ...filingFilter, submittedAt: { not: null } },
     include: { responses: true },
@@ -70,13 +70,9 @@ export async function computeAnalyticsMetrics(
   const acceptedFirstPass = submittedFilings.filter(
     (f) => !f.responses.some((r) => r.status === "REJECTED" || r.status === "Rejected")
   ).length;
-
-  // Null (not a fabricated 100%) until at least one filing has actually been
-  // submitted — "no data" and "perfect first-pass rate" are not the same claim.
   const firstPassRate =
     totalSubmitted > 0 ? Math.round((acceptedFirstPass / totalSubmitted) * 100) : null;
 
-  // 3. Exception Age Average & Buckets
   const openExceptionsList = await db.exceptionItem.findMany({
     where: {
       accountId,
@@ -116,7 +112,6 @@ export async function computeAnalyticsMetrics(
     }
   }
 
-  // 4. Touch Rate (account-wide; per-client breakdown not meaningful here)
   const fields = await db.extractionField.findMany({
     where: {
       document: {
@@ -130,7 +125,6 @@ export async function computeAnalyticsMetrics(
   const humanCorrected = fields.filter((f) => f.source === "HUMAN_CORRECTION").length;
   const touchRate = totalFields > 0 ? Math.round((humanCorrected / totalFields) * 100) : null;
 
-  // 5. Duty Per Entry
   const terminalFilingsWithValue = await db.customsFiling.findMany({
     where: { ...filingFilter, filingStatus: { in: terminalStatuses }, totalDuties: { not: null } },
   });
@@ -144,7 +138,6 @@ export async function computeAnalyticsMetrics(
       ? totalDutiesSum.dividedBy(terminalFilingsWithValue.length).toNumber()
       : null;
 
-  // 6. Counts
   const openExceptions = openExceptionsList.length;
   const filedEntries = terminalFilings.length;
   const pscCount = await db.postSummaryCorrection.count({ where: { accountId } });
