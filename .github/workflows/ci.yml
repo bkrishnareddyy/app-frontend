@@ -59,7 +59,7 @@ jobs:
           PGPASSWORD=postgres createdb -h localhost -U postgres qubere_shadow
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
-            --to-schema prisma/schema.prisma \
+            --to-schema-datamodel prisma/schema.prisma \
             --shadow-database-url "$SHADOW_DATABASE_URL" \
             --exit-code
 
