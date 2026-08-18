@@ -10,7 +10,7 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
 
   // This suite runs against a real Postgres, so the hooks and tests need more
   // than the default 10s/5s budgets for their round trips.
-  const DB_TIMEOUT = 30_000;
+  const DB_TIMEOUT = 60_000;
 
   const TEST_HTS_CODE = "8481.80.5090";
   const TEST_HTS_NORMALIZED = "8481805090";

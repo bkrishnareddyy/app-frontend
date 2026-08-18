@@ -50,7 +50,7 @@
 - `mapProcedureCode()` - Map entry type to country-specific procedure
 - `mapDocumentType()` - Map document types to standard codes
 - `calculateUnitPrice()` - Calculate unit price from total/quantity
-- `getDefaultCurrency()` - Get currency by country code
+- `getDefaultCurrency()` - Get currency by country code (fallback only; the real currency comes from `Shipment.invoiceCurrency` when captured, converted to USD by `ExchangeRateService` — see `src/modules/fx/exchangeRateService.ts`)
 - `mapLineItemToGoodsItem()` - Map ShipmentLineItem to GoodsItem schema
 - `buildInternalData()` - Build internal tracking data
 

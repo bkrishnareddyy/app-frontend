@@ -386,7 +386,7 @@ const message = await FilingService.buildMessage(
 - MessageRole
 - GoodsItemQuantity ✅ (Can calculate from lineItems.length)
 - InvoiceAmount ✅ (Exists as totalValue)
-- InvoiceCurrency ❌ (Not captured)
+- InvoiceCurrency ✅ (Captured as `Shipment.invoiceCurrency`, extracted from invoice documents via `pipelineOrchestrator.ts`)
 - Procedure / SubProcedure ✅ (Exists at message level, not in declaration)
 
 **Extended Party Information**:
@@ -414,7 +414,7 @@ const message = await FilingService.buildMessage(
 - Preference (GSP, FTA) ❌
 
 **Valuation Extended**:
-- Currency conversion ❌
+- Currency conversion ✅ (`src/modules/fx/exchangeRateService.ts` resolves `invoiceCurrency` → USD from CurrencyFreaks-ingested rates, applied in `filing.service.ts` and the product valuation endpoint; resolved as of the shipment's `ladingDate` per 19 CFR 159.34, falling back to the current rate only when `ladingDate` is missing)
 - Valuation adjustments (freight, insurance, royalties) ❌
 - Transaction nature code ❌
 
@@ -488,7 +488,7 @@ Parse and handle comprehensive response structures
 | **Party Info** | Name, country, taxId | EORI, VAT, address, contact, roles | Missing 80% |
 | **Transport** | Carrier, port | Mode, vessel, voyage, containers, seals | Missing 90% |
 | **Line Items** | Basic (description, HS6, qty, value) | Extended (measures, packaging, docs, valuation adjustments) | Missing 70% |
-| **Valuation** | Method, total | Currency, adjustments, transaction nature | Missing 60% |
+| **Valuation** | Method, total, currency (converted to USD) | Adjustments, transaction nature | Missing 40% |
 | **Compliance** | None | Licenses, permits, preferences, warehouse | Missing 100% |
 | **Response** | Simple status | Canonical + country-specific + detailed errors | Missing 95% |
 | **Transaction Types** | Generic | Import/Export specific structures | No separation |

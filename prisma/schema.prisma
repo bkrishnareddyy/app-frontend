@@ -426,6 +426,11 @@ model Shipment {
   carrierName        String?
   countryOfExport    String?
   countryOfOrigin    String?
+  // ISO 4217 currency the commercial invoice/line items are denominated in.
+  // Defaults to USD; set from document extraction when a non-USD invoice is
+  // detected. Duty/valuation computation converts to USD via ExchangeRate
+  // before any customs-value math -- see resolveExchangeRate().
+  invoiceCurrency    String?           @default("USD")
   // ISO 3166-1 alpha-2 country this shipment is being imported INTO, distinct
   // from countryOfExport/countryOfOrigin above. Human-entered at creation --
   // this is what the shipment's canonical filing declaration is filed against,
@@ -892,13 +897,13 @@ model CustomsFiling {
   bondId             String?
   bond               Bond?             @relation(fields: [bondId], references: [id], onDelete: SetNull)
   entryNumber        String // internal reference until the authority assigns its own; see authorityReference on CustomsResponse
-  
+
   /// Local Reference Number - User-provided reference for this filing (mandatory)
   localReferenceNumber String?
-  
+
   /// Registration Number - User-provided registration/license number
   registrationNumber String?
-  
+
   // ========================================================================
   // NEW MULTI-COUNTRY FIELDS (replaces US-centric entryType + authority)
   // ========================================================================
@@ -914,11 +919,11 @@ model CustomsFiling {
   /// Country-specific procedure code (e.g., "5100" for NL NCTS, "4000" for IN Import)
   /// Together with country, uniquely identifies the customs procedure
   procedureCode String?
-  
+
   /// Message name selected for this filing (e.g., "IE015", "IE501")
   /// Used to determine which canonical message schema to use for transmission
   messageName String?
-  
+
   // ========================================================================
   // LEGACY FIELDS (kept temporarily for backwards compatibility)
   // TODO: Remove after data migration
@@ -1072,6 +1077,24 @@ model AdcvdOrder {
   updatedAt           DateTime @updatedAt
 
   @@index([status])
+}
+
+// Currency exchange rates used to convert non-USD invoice/line-item values to
+// USD before customs valuation/duty calculation. Refreshed via a scheduled
+// ingestion job (no review/approval gate -- unlike AdCvdCompanyRate, these are
+// a direct machine-readable API response with no judgment call involved).
+// Rows are never deleted; a refresh flips the prior isCurrent row to false and
+// inserts a new one, preserving history for audit.
+model ExchangeRate {
+  id           String   @id @default(cuid())
+  currencyCode String // ISO 4217, e.g. "EUR", "GBP", "CNY"
+  rateToUsd    Decimal  @db.Decimal(18, 8) // 1 unit of currencyCode = rateToUsd USD
+  fetchedAt    DateTime @default(now())
+  isCurrent    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([currencyCode, isCurrent])
+  @@index([currencyCode, fetchedAt])
 }
 
 model LandedCostScenario {
@@ -4293,28 +4316,28 @@ model FilingActionDataRequirement {
 /// Stores complete field configuration as JSON - ONE ROW PER CONFIGURATION
 /// Each configuration is uniquely identified by country + procedure + message + messageType + transactionType
 model FilingUIConfig {
-  id              String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Configuration identifier (unique combination)
-  country         String   // ISO code (NL, IE, FR, etc.)
-  procedureCode   String   // e.g., H1, H4, H7
-  messageName     String   // e.g., IE501, IE503, IE015
-  messageType     String   // "request" or "response"
-  transactionType String   @default("import") // "import" or "export"
-  
+  country         String // ISO code (NL, IE, FR, etc.)
+  procedureCode   String // e.g., H1, H4, H7
+  messageName     String // e.g., IE501, IE503, IE015
+  messageType     String // "request" or "response"
+  transactionType String @default("import") // "import" or "export"
+
   // Complete field configuration stored as JSON
   // Structure: { fields: [{ fieldPath, fieldLabel, fieldType, section, displayOrder, ... }] }
-  configData      Json     // All field configurations in one JSON object
-  
+  configData Json // All field configurations in one JSON object
+
   // Metadata
-  version         Int      @default(1) // Configuration version for tracking changes
-  description     String?  // Optional description of what this config is for
-  isActive        Boolean  @default(true) // Whether this config is currently active
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdBy       String?
-  updatedBy       String?
+  version     Int     @default(1) // Configuration version for tracking changes
+  description String? // Optional description of what this config is for
+  isActive    Boolean @default(true) // Whether this config is currently active
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
 
   @@unique([country, procedureCode, messageName, messageType, transactionType])
   @@index([country, procedureCode, messageName, messageType, transactionType])
@@ -4324,31 +4347,30 @@ model FilingUIConfig {
 /// Master data source catalog for dropdown/lookup fields
 /// Defines available master data tables and their query configuration
 model FilingMasterDataSource {
-  id              String   @id @default(cuid())
-  sourceName      String   @unique // e.g., "Country", "Currency", "Incoterm", "HSCode"
-  sourceType      String   // "table" | "enum" | "api" | "static"
-  
+  id         String @id @default(cuid())
+  sourceName String @unique // e.g., "Country", "Currency", "Incoterm", "HSCode"
+  sourceType String // "table" | "enum" | "api" | "static"
+
   // For table-based sources
-  tableName       String?  // Prisma model name
-  valueField      String?  // Field to use as option value
-  labelField      String?  // Field to use as option label
-  
+  tableName  String? // Prisma model name
+  valueField String? // Field to use as option value
+  labelField String? // Field to use as option label
+
   // For static/enum sources
-  staticOptions   Json?    // Array of { value, label } objects
-  
+  staticOptions Json? // Array of { value, label } objects
+
   // API configuration
-  apiEndpoint     String?  // API endpoint for dynamic lookups
-  apiMethod       String   @default("GET")
-  
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdBy       String?
-  updatedBy       String?
+  apiEndpoint String? // API endpoint for dynamic lookups
+  apiMethod   String  @default("GET")
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
 
   @@index([sourceName])
 }
-
 
 // ============================================================================
 // NEW MULTI-COUNTRY FILING CONFIGURATION (Redesigned)
@@ -4402,18 +4424,18 @@ model FilingActionCatalog {
 /// Replaces the old FilingProcedureMapping which was US-centric (entryType-based).
 /// Example: (NL, NCTS, 5100, IE015) means Netherlands NCTS procedure 5100 uses message IE015.
 model FilingProcedureConfig {
-  id                String                @id @default(cuid())
-  transactionTypeId String
-  transactionType   FilingTransactionType  @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
-  country           String                 // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
-  procedureCode     String                 // Country-specific procedure code (5100, 4000, etc.)
-  messageName       String                 // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
+  id                 String                @id @default(cuid())
+  transactionTypeId  String
+  transactionType    FilingTransactionType @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
+  country            String // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
+  procedureCode      String // Country-specific procedure code (5100, 4000, etc.)
+  messageName        String // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
   canCreateNewFiling Boolean               @default(true) // If true, can be used for new declaration; if false, only for amendments/cancellations/etc.
-  isActive          Boolean                @default(true)
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  createdBy         String?
-  updatedBy         String?
+  isActive           Boolean               @default(true)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  createdBy          String?
+  updatedBy          String?
 
   @@unique([country, procedureCode, messageName])
   @@index([country, procedureCode])
@@ -5203,17 +5225,17 @@ enum RateCardStatus {
 }
 
 model BillingEventDefinition {
-  id           String               @id @default(cuid())
-  accountId    String
-  account      Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  eventCode    String               @unique
-  name         String
-  description  String?
-  category     BillingEventCategory
-  defaultUnit  String               @default("count")
-  isBillable   Boolean              @default(true)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id          String               @id @default(cuid())
+  accountId   String
+  account     Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  eventCode   String               @unique
+  name        String
+  description String?
+  category    BillingEventCategory
+  defaultUnit String               @default("count")
+  isBillable  Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   usageEvents           UsageEvent[]
   rateRuleCapabilityMap RateRuleCapabilityMapping[]
@@ -5544,26 +5566,26 @@ enum AccountMemorySourceType {
 }
 
 model AccountMemory {
-  id                  String                   @id @default(cuid())
-  accountId           String
-  account             Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  type                AccountMemoryType
-  subjectType         AccountMemorySubjectType
-  subjectId           String?
-  content             String
-  confidence          Float                    @default(1.0)
-  validFrom           DateTime                 @default(now())
-  validUntil          DateTime?
-  sourceType          AccountMemorySourceType
-  sourceId            String?
+  id                 String                   @id @default(cuid())
+  accountId          String
+  account            Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type               AccountMemoryType
+  subjectType        AccountMemorySubjectType
+  subjectId          String?
+  content            String
+  confidence         Float                    @default(1.0)
+  validFrom          DateTime                 @default(now())
+  validUntil         DateTime?
+  sourceType         AccountMemorySourceType
+  sourceId           String?
   supersedesMemoryId String?
-  supersedesMemory    AccountMemory?           @relation("MemorySupersession", fields: [supersedesMemoryId], references: [id], onDelete: SetNull)
-  supersededBy        AccountMemory[]          @relation("MemorySupersession")
-  embedding           Float[]                  @default([])
-  searchVector        String?
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  evidence            MemoryEvidence[]
+  supersedesMemory   AccountMemory?           @relation("MemorySupersession", fields: [supersedesMemoryId], references: [id], onDelete: SetNull)
+  supersededBy       AccountMemory[]          @relation("MemorySupersession")
+  embedding          Float[]                  @default([])
+  searchVector       String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  evidence           MemoryEvidence[]
 
   @@index([accountId])
   @@index([accountId, type])
@@ -5586,4 +5608,3 @@ model MemoryEvidence {
   @@index([accountId])
   @@index([memoryId])
 }
-

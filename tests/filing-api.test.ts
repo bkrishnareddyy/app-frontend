@@ -40,6 +40,15 @@ const dbMock = {
   filingMessage: {
     create: vi.fn(),
   },
+  filingTransactionType: {
+    findUnique: vi.fn(),
+  },
+  filingActionMessageMapping: {
+    findUnique: vi.fn(),
+  },
+  filingProcedureConfig: {
+    findUnique: vi.fn(),
+  },
   section232Rate: {
     findMany: vi.fn().mockResolvedValue([]),
   },
@@ -73,6 +82,7 @@ function filingRecord(lineItems: unknown[]) {
   return {
     id: "fil_1",
     accountId: "acc_1",
+    shipmentId: "shp_1",
     entryNumber: "5901-26-004872",
     entryType: "01",
     filingStatus: "BrokerApproved",
@@ -99,6 +109,11 @@ beforeEach(() => {
     status: "ACTIVE",
     schemaJson: { type: "object" },
   });
+  dbMock.filingTransactionType.findUnique.mockResolvedValue({ code: "IMPORT", isActive: true });
+  // No FilingActionMessageMapping/FilingProcedureConfig fixtures here -- resolveMessageContext
+  // falls back to the legacy US CBP_ENTRY_7501 message for unmigrated US filings (see stderr warning).
+  dbMock.filingActionMessageMapping.findUnique.mockResolvedValue(null);
+  dbMock.filingProcedureConfig.findUnique.mockResolvedValue(null);
   dbMock.customsFiling.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: "fil_1",
     ...data,

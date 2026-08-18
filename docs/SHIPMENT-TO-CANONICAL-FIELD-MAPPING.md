@@ -81,7 +81,7 @@ This document defines the complete field mappings from the `Shipment` table and 
 | Shipment Field | Import Schema Path | Transformation | Notes |
 |---------------|-------------------|----------------|-------|
 | `lineItems.sum(totalValue)` | `GoodsDeclaration.InvoiceAmount` | Sum all line items | Total invoice value |
-| - | `GoodsDeclaration.InvoiceCurrency` | Default: "USD" | Or from shipment config |
+| `invoiceCurrency` | `GoodsDeclaration.InvoiceCurrency` | Direct; defaults to "USD" if null | Sourced from `Shipment.invoiceCurrency` (captured from invoice OCR); underlying financial fields are converted to USD via `ExchangeRateService.resolveExchangeRate()` before valuation/duty calculation |
 | `lineItems.length` | `GoodsDeclaration.GoodsItemQuantity` | Count | Number of line items |
 
 ### Party Mappings
@@ -228,7 +228,7 @@ These values are required by schemas but not present in Shipment:
 | `FunctionCode` | "9" | Original declaration |
 | `MessageRole` | "EDI" | Electronic submission |
 | `DeclarantStatus` | "2" | Representative acting on behalf |
-| `InvoiceCurrency` | "USD" | Override per shipment if needed |
+| `InvoiceCurrency` | "USD" | Used only when `Shipment.invoiceCurrency` is null; otherwise the real captured currency is used and converted via `ExchangeRateService` |
 | `ValuationMethodCode` | "1" | Transaction value (WTO Method 1) |
 
 ### Country-Specific
@@ -363,7 +363,7 @@ export async function buildImportDeclaration(
         Procedure: mapProcedure(shipment.entryType, shipment.destinationCountry),
         
         // Financial
-        InvoiceAmount: tariff.totalCustomsValue,
+        InvoiceAmount: tariff.totalCustomsValue, // already converted to USD by ExchangeRateService before this point
         InvoiceCurrency: "USD",
         GoodsItemQuantity: goodsItems.length,
         
@@ -436,7 +436,7 @@ For country-specific fields not derivable from shipment:
 ### External Data Sources
 
 Some fields may come from external systems:
-- Currency exchange rates
+- Currency exchange rates ✅ (implemented — `src/modules/fx/exchangeRateService.ts` ingests daily rates from CurrencyFreaks via the `fx-rate-refresh` cron; see `prisma/schema.prisma`'s `ExchangeRate` model)
 - Tariff classifications (HTS codes)
 - Duty calculations
 - Port/location codes

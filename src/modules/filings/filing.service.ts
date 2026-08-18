@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { computeFilingTariff, loadHtsCodesMap, type TariffEngineResult } from "@/lib/tariff/dutyEngine";
+import { ExchangeRateService } from "@/modules/fx/exchangeRateService";
 import { applyTransition, FilingTransitionError } from "./filingStateMachine";
 import { buildCanonicalDeclaration, wrapDeclarationData } from "@/lib/canonicalMessaging/declarationBuilder";
 import { resolveMessageContext } from "@/lib/canonicalMessaging/resolveMessageContext";
@@ -25,6 +26,13 @@ export type FilingSnapshotData = {
     carrierName: string | null;
     incoterm: string | null;
     entryType: string | null;
+  };
+  /** Invoice currency and the USD rate actually applied at transmission time, for audit -- independent of what ExchangeRate looks like later. */
+  currency: {
+    invoiceCurrency: string;
+    rateToUsd: number;
+    /** Date the rate was resolved as-of (shipment's ladingDate), or null if resolved to the current rate for lack of a ladingDate. */
+    rateAsOfDate: string | null;
   };
   lineItems: Array<{
     id: string;
@@ -268,13 +276,35 @@ export class FilingService {
     // MULTI-COUNTRY FIX: Only calculate US-specific duties for US filings
     // Other countries have different duty structures (EU VAT, India IGST, etc.)
     const country = (filing.country || filing.shipment.destinationCountry || "US").toUpperCase();
-    
+
+    // Convert invoice-currency line values to USD before any customs-value
+    // math. dutyEngine/valuationEngine stay USD-only -- conversion happens
+    // once here, at the call site, rather than threading a currency param
+    // through the engines.
+    //
+    // Resolved as of the shipment's date of export (ladingDate, the
+    // on-board/ETD date -- the closest field to what 19 CFR 159.34 means by
+    // "date of export"), not today's rate, so duty reflects the rate that
+    // was actually in effect when the goods shipped. If ladingDate hasn't
+    // been captured yet, falls back to the current rate rather than blocking
+    // the filing -- that's a missing-data gap, not the same as a date that's
+    // genuinely older than any rate this service has ever ingested.
+    const invoiceCurrency = filing.shipment.invoiceCurrency || "USD";
+    const rateToUsd = (
+      await ExchangeRateService.resolveExchangeRate(invoiceCurrency, filing.shipment.ladingDate ?? undefined)
+    ).toNumber();
+    const usdLineItems = filing.shipment.lineItems.map((item) => ({
+      ...item,
+      unitPrice: item.unitPrice != null ? Number(item.unitPrice) * rateToUsd : item.unitPrice,
+      totalValue: item.totalValue != null ? Number(item.totalValue) * rateToUsd : item.totalValue,
+    }));
+
     let tariff: TariffEngineResult;
-    
+
     if (country === "US") {
       // US-specific duty calculation (Section 301, 232, MPF, HMF)
       tariff = computeFilingTariff(
-        filing.shipment.lineItems,
+        usdLineItems,
         await loadHtsCodesMap(filing.shipment.lineItems)
       );
 
@@ -287,11 +317,11 @@ export class FilingService {
       // Non-US countries: Skip US-specific duty calculation
       // Duties are calculated by destination country's customs system
       // TODO: Implement country-specific duty calculation for EU, India, etc.
-      const totalValue = filing.shipment.lineItems.reduce(
-        (sum, item) => sum + Number(item.totalValue || 0), 
+      const totalValue = usdLineItems.reduce(
+        (sum, item) => sum + Number(item.totalValue || 0),
         0
       );
-      
+
       tariff = {
         totalCustomsValue: totalValue,
         totalDuty: 0, // TODO: Implement country-specific duty calculation
@@ -300,7 +330,7 @@ export class FilingService {
         totalAmount: totalValue,
         unratedLineCount: 0,
         dutyBreakdown: [], // No US fees for non-US countries
-        lineResults: filing.shipment.lineItems.map(item => ({
+        lineResults: usdLineItems.map(item => ({
           customsValue: Number(item.totalValue || 0),
           baseDutyRate: null,
           baseDutyAmount: 0,
@@ -315,11 +345,11 @@ export class FilingService {
           totalAmount: Number(item.totalValue || 0)
         }))
       };
-      
+
       console.log(`[Filing] Skipped US duty calculation for ${country} filing. Duties will be calculated by destination customs.`);
     }
 
-      snapshotData: FilingSnapshotData = {
+      snapshotData = {
       shipment: {
         id: filing.shipment.id,
         shipmentNumber: filing.shipment.shipmentNumber,
@@ -329,7 +359,12 @@ export class FilingService {
         incoterm: filing.shipment.incoterm,
         entryType: filing.shipment.entryType,
       },
-      lineItems: filing.shipment.lineItems.map(item => ({
+      currency: {
+        invoiceCurrency,
+        rateToUsd,
+        rateAsOfDate: filing.shipment.ladingDate?.toISOString() ?? null,
+      },
+      lineItems: usdLineItems.map(item => ({
         id: item.id,
         lineNumber: item.lineNumber,
         description: item.description,
