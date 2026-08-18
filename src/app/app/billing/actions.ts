@@ -2,6 +2,8 @@
 
 import { db } from "@/lib/db";
 import { getAccountContext } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { createAuditLog } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
 export interface CreateRateCardInput {
@@ -24,36 +26,44 @@ export interface CreateRateCardInput {
 
 export async function createRateCardAction(input: CreateRateCardInput) {
   const context = await getAccountContext();
-  if (!context) {
-    throw new Error("Unauthorized: Account context required");
+  if (!context) throw new Error("Unauthorized: Account context required");
+
+  const allowed = await hasPermission(context, "billing.ratecard.manage");
+  if (!allowed) throw new Error("Forbidden: billing.ratecard.manage permission required");
+
+  if (!input.name.trim()) throw new Error("Rate card name is required");
+  if (!input.lineItems.length) throw new Error("At least one rate-card line item is required");
+  if (input.lineItems.some((item) => !Number.isFinite(item.rate) || item.rate < 0)) {
+    throw new Error("Rate-card rates must be valid non-negative numbers");
   }
 
-  // If set as default, unset existing default rate cards for this account
-  if (input.isDefault) {
-    await db.rateCard.updateMany({
-      where: { accountId: context.accountId, isDefault: true },
-      data: { isDefault: false },
-    });
-  }
+  const rateCard = await db.$transaction(async (tx) => {
+    if (input.isDefault) {
+      await tx.rateCard.updateMany({
+        where: { accountId: context.accountId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
 
-  const rateCard = await db.rateCard.create({
-    data: {
-      accountId: context.accountId,
-      clientId: input.clientId || null,
-      importerId: input.importerId || null,
-      name: input.name,
-      code: input.code || null,
-      description: input.description || null,
-      currency: input.currency || "USD",
-      isDefault: input.isDefault ?? false,
-      currentVersion: 1,
-      status: "ACTIVE",
-      versions: {
-        create: [
-          {
+    // New cards start as DRAFT. Activation is a separate audited lifecycle action;
+    // this prevents an upload/create operation from silently changing live pricing.
+    return tx.rateCard.create({
+      data: {
+        accountId: context.accountId,
+        clientId: input.clientId || null,
+        importerId: input.importerId || null,
+        name: input.name.trim(),
+        code: input.code || null,
+        description: input.description || null,
+        currency: input.currency || "USD",
+        isDefault: input.isDefault ?? false,
+        currentVersion: 1,
+        status: "DRAFT",
+        versions: {
+          create: [{
             version: 1,
             effectiveDate: new Date(),
-            status: "ACTIVE",
+            status: "DRAFT",
             rules: {
               create: input.lineItems.map((item) => ({
                 lineItemName: item.lineItemName,
@@ -66,10 +76,19 @@ export async function createRateCardAction(input: CreateRateCardInput) {
                 isBillable: true,
               })),
             },
-          },
-        ],
+          }],
+        },
       },
-    },
+    });
+  });
+
+  await createAuditLog({
+    accountId: context.accountId,
+    userId: context.userId,
+    action: "billing.ratecard.create",
+    entity: "RateCard",
+    entityId: rateCard.id,
+    metadata: { name: rateCard.name, version: 1, status: "DRAFT" },
   });
 
   revalidatePath("/app/billing/rate-cards");
