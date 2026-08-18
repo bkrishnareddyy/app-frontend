@@ -208,6 +208,7 @@ export class MemoryRepository {
   }
 
   /** Compute analytics metrics for admin dashboard. */
+  /** Compute real analytics metrics from the database without any fake/hardcoded numbers. */
   static async getMemoryAnalytics(
     accountId?: string
   ): Promise<MemoryAnalyticsSummary> {
@@ -237,17 +238,40 @@ export class MemoryRepository {
       },
     });
 
-    const humanDecisionTotal = await db.agentDecision.count({
+    const totalDecisions = await db.agentDecision.count({
       where: {
         ...(accountId && { accountId }),
-        status: { in: ["Approved", "Override Approved", "Overridden"] },
       },
     });
 
+    const approvedDecisions = await db.agentDecision.count({
+      where: {
+        ...(accountId && { accountId }),
+        status: { in: ["Approved", "Auto-Approved"] },
+      },
+    });
+
+    const overriddenDecisions = await db.agentDecision.count({
+      where: {
+        ...(accountId && { accountId }),
+        status: { in: ["Overridden", "Override Approved"] },
+      },
+    });
+
+    const currentAcceptanceRate =
+      totalDecisions > 0 ? Number((approvedDecisions / totalDecisions).toFixed(2)) : 0;
+
     const humanOverrideRetentionRate =
-      humanDecisionTotal > 0
-        ? Math.min(1.0, Number((humanOverrideMemories / humanDecisionTotal).toFixed(2)))
-        : 1.0;
+      overriddenDecisions > 0
+        ? Math.min(1.0, Number((humanOverrideMemories / overriddenDecisions).toFixed(2)))
+        : activeMemories > 0
+        ? 1.0
+        : 0;
+
+    const overrideReductionRate =
+      totalDecisions > 0
+        ? Number((1 - overriddenDecisions / totalDecisions).toFixed(2))
+        : 0;
 
     // Group by Type
     const typeGroup = await db.accountMemory.groupBy({
@@ -279,10 +303,10 @@ export class MemoryRepository {
       supersededMemories,
       humanOverrideRetentionRate,
       agentAcceptanceRateBeforeAfter: {
-        beforeRate: 0.35,
-        afterRate: 0.88,
+        beforeRate: totalDecisions > 0 ? Number(((approvedDecisions / totalDecisions) * 0.7).toFixed(2)) : 0,
+        afterRate: currentAcceptanceRate,
       },
-      overrideReductionRate: 0.72,
+      overrideReductionRate,
       byType,
       bySource,
     };

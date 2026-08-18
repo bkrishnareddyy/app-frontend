@@ -152,19 +152,62 @@ describe("Account Institutional Memory Engine Suite", () => {
     });
   });
 
-  describe("3. Account Isolation & Context Building", () => {
-    it("should build task-specific context tailored to HTS vs Origin vs Valuation", async () => {
-      const context = await AccountContextBuilder.build({
+  describe("3. Account Isolation & Context Building Across All Agents", () => {
+    it("should build task-specific context tailored to HTS, Origin, Valuation, and Filing agents", async () => {
+      const htsContext = await AccountContextBuilder.build({
         accountId: "acct-acme",
         task: "HTS_CLASSIFICATION",
         productDescription: "Custom circuit board assembly",
         partNumber: "PCB-9001",
       });
+      expect(htsContext.formattedText).toContain("ACCOUNT HISTORICAL CONTEXT (HTS_CLASSIFICATION)");
 
-      expect(context.accountId).toBe("acct-acme");
-      expect(context.task).toBe("HTS_CLASSIFICATION");
-      expect(typeof context.formattedText).toBe("string");
-      expect(context.formattedText).toContain("ACCOUNT HISTORICAL CONTEXT (HTS_CLASSIFICATION)");
+      const originContext = await AccountContextBuilder.build({
+        accountId: "acct-acme",
+        task: "ORIGIN_DETERMINATION",
+        supplierName: "Acme Industrial Taiwan Ltd",
+      });
+      expect(originContext.formattedText).toContain("ACCOUNT HISTORICAL CONTEXT (ORIGIN_DETERMINATION)");
+
+      const valuationContext = await AccountContextBuilder.build({
+        accountId: "acct-acme",
+        task: "VALUATION",
+      });
+      expect(valuationContext.formattedText).toContain("ACCOUNT HISTORICAL CONTEXT (VALUATION)");
+
+      const filingContext = await AccountContextBuilder.build({
+        accountId: "acct-acme",
+        task: "FILING",
+      });
+      expect(filingContext.formattedText).toContain("ACCOUNT HISTORICAL CONTEXT (FILING)");
+    });
+
+    it("should strictly enforce account isolation: Account A memories are NEVER returned to Account B", async () => {
+      // Create memory for Account A
+      const memA = await MemoryExtractorWorker.processEvent({
+        accountId: "ACCOUNT_ALPHA",
+        sourceType: "HUMAN_DECISION",
+        sourceId: "dec-alpha-1",
+        task: "HTS_CLASSIFICATION",
+        proposedHtsCode: "8471.49.0000",
+        productDescription: "Confidential Alpha Hardware Component",
+        actionType: "HUMAN_DECISION",
+      });
+
+      expect(memA).not.toBeNull();
+      expect(memA?.accountId).toBe("ACCOUNT_ALPHA");
+
+      // Query for Account B using the exact same query terms
+      const contextB = await AccountContextBuilder.build({
+        accountId: "ACCOUNT_BETA",
+        task: "HTS_CLASSIFICATION",
+        productDescription: "Confidential Alpha Hardware Component",
+      });
+
+      expect(contextB.accountId).toBe("ACCOUNT_BETA");
+      // Account B must find 0 memories from Account A
+      expect(contextB.memories.length).toBe(0);
+      expect(contextB.memories.some((m) => m.accountId === "ACCOUNT_ALPHA")).toBe(false);
     });
   });
 

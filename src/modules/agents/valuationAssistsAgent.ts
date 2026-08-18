@@ -50,8 +50,22 @@ export interface ValuationAssistsOutput {
   debugError?: string;
 }
 
+import { AccountContextBuilder } from "@/modules/memory";
+
 export class ValuationAssistsAgent {
   static async execute(input: ValuationAssistsInput): Promise<ValuationAssistsOutput> {
+    let accountContextPrompt = "";
+    try {
+      const accountContext = await AccountContextBuilder.build({
+        accountId: input.accountId,
+        task: "VALUATION",
+        shipmentId: input.shipmentId,
+      });
+      accountContextPrompt = accountContext.formattedText;
+    } catch (err) {
+      // Non-blocking fallback
+    }
+
     // Deterministic arithmetic per 19 U.S.C. § 1401a — no LLM is called.
     const aiProvider = "Deterministic Valuation Calculator (19 U.S.C. § 1401a)";
     let debugError: string | undefined = undefined;
