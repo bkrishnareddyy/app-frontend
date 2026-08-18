@@ -26,7 +26,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ error: "No customs filing found to audit" });
   }
 
-  const lineItems = filing.shipment.lineItems;
+  const lineItems = filing.shipment?.lineItems ?? [];
   const snapshotData = filing.snapshot?.snapshotData as Record<string, unknown> | null;
 
   // Resolve the HTS code from the snapshot (what was filed) vs. the current classification
@@ -38,7 +38,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   // Resolve final invoice value via reconciliation records (if any)
   const invoiceReconciliation = await db.reconciliationIssue.findFirst({
-    where: { shipmentId: filing.shipmentId, field: { contains: "value" } },
+    where: { shipmentId: filing.shipmentId ?? undefined, field: { contains: "value" } },
     orderBy: { createdAt: "desc" },
   });
   const finalInvoiceValue = invoiceReconciliation?.actualValue

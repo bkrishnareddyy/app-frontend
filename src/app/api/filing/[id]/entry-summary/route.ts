@@ -30,7 +30,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
     return NextResponse.json({ error: "Filing not found" }, { status: 404 });
   }
 
-  const lineItems = filing.shipment.lineItems;
+  const lineItems = filing.shipment?.lineItems ?? [];
 
   // Fetch approved classification decisions for each line item's product.
   // Joins: ShipmentLineItem.productId → ProductClassification (status=APPROVED)
@@ -94,14 +94,14 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
     id: filing.id,
     entryNumber: filing.entryNumber,
     entryType: filing.entryType,
-    importerName: filing.importerOfRecord?.name ?? filing.shipment.importerName,
+    importerName: filing.importerOfRecord?.name ?? filing.shipment?.importerName ?? "Unknown Importer",
     importerCbpNumber: filing.importerOfRecord?.cbpImporterNumber ?? null,
     importerOfRecordId: filing.importerOfRecordId ?? null,
     bondNumber: filing.bond?.bondNumber ?? null,
     bondId: filing.bondId ?? null,
-    portOfEntry: filing.shipment.portOfEntry,
-    countryOfExport: filing.shipment.countryOfExport,
-    carrierName: filing.shipment.carrierName,
+    portOfEntry: filing.shipment?.portOfEntry ?? null,
+    countryOfExport: filing.shipment?.countryOfExport ?? null,
+    carrierName: filing.shipment?.carrierName ?? null,
   };
 
   const form7501 = buildForm7501(filingHeaderInput, lineItemInputs, htsReleaseId);
@@ -127,11 +127,11 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
       formType: "CBP Form 7501 (Entry Summary)",
       entryNumber: filing.entryNumber,
       entryType: filing.entryType,
-      importerOfRecord: filing.importerOfRecord?.name ?? filing.shipment.importerName,
+      importerOfRecord: filing.importerOfRecord?.name ?? filing.shipment?.importerName ?? "Unknown Importer",
       importerNumber: filing.importerOfRecord?.cbpImporterNumber ?? null,
       bondNumber: filing.bond?.bondNumber ?? null,
-      portOfEntry: filing.shipment.portOfEntry,
-      countryOfExport: filing.shipment.countryOfExport,
+      portOfEntry: filing.shipment?.portOfEntry ?? null,
+      countryOfExport: filing.shipment?.countryOfExport ?? null,
       totalCustomsValue: form7501.totalEnteredValue.value,
       totalDutiesPaid: form7501.totalDuty.value,
       totalAmountPaid: filing.totalAmount,

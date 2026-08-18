@@ -562,7 +562,8 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
       { key: "updatedBy", label: "Updated By", type: "text" },
     ],
     list: async () => {
-      const rows = await db.filingUIConfig.findMany({
+      const model = (db as any).filingUiConfig || (db as any).filingUIConfig;
+      const rows = await model.findMany({
         where: { isActive: true },
         orderBy: [
           { country: "asc" },
@@ -574,7 +575,7 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
       });
       
       // Transform rows to include totalFields from configData
-      return rows.map(row => ({
+      return rows.map((row: any) => ({
         id: row.id,
         country: row.country,
         procedureCode: row.procedureCode,
@@ -590,37 +591,46 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
         updatedBy: row.updatedBy,
       }));
     },
-    create: (data) => wrapPrismaErrors(() => db.filingUIConfig.create({ 
-      data: {
-        country: String(data.country || ""),
-        procedureCode: String(data.procedureCode || ""),
-        messageName: String(data.messageName || ""),
-        messageType: String(data.messageType || "request"),
-        transactionType: String(data.transactionType || "import"),
-        configData: data.configData || { fields: [], totalFields: 0, sections: [] },
-        version: Number(data.version || 1),
-        description: data.description ? String(data.description) : null,
-        isActive: data.isActive !== false,
-        createdBy: data.createdBy ? String(data.createdBy) : 'system',
-        updatedBy: data.updatedBy ? String(data.updatedBy) : 'system',
-      } 
-    })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingUIConfig.update({ 
-      where: { id }, 
-      data: {
-        country: data.country ? String(data.country) : undefined,
-        procedureCode: data.procedureCode ? String(data.procedureCode) : undefined,
-        messageName: data.messageName ? String(data.messageName) : undefined,
-        messageType: data.messageType ? String(data.messageType) : undefined,
-        transactionType: data.transactionType ? String(data.transactionType) : undefined,
-        configData: data.configData || undefined,
-        version: data.version !== undefined ? Number(data.version) : undefined,
-        description: data.description !== undefined ? String(data.description) : undefined,
-        isActive: data.isActive !== undefined ? Boolean(data.isActive) : undefined,
-        updatedBy: data.updatedBy ? String(data.updatedBy) : undefined,
-      } 
-    })),
-    remove: (id) => wrapPrismaErrors(() => db.filingUIConfig.delete({ where: { id } })).then(() => undefined),
+    create: (data) => wrapPrismaErrors(() => {
+      const model = (db as any).filingUiConfig || (db as any).filingUIConfig;
+      return model.create({ 
+        data: {
+          country: String(data.country || ""),
+          procedureCode: String(data.procedureCode || ""),
+          messageName: String(data.messageName || ""),
+          messageType: String(data.messageType || "request"),
+          transactionType: String(data.transactionType || "import"),
+          configData: data.configData || { fields: [], totalFields: 0, sections: [] },
+          version: Number(data.version || 1),
+          description: data.description ? String(data.description) : null,
+          isActive: data.isActive !== false,
+          createdBy: data.createdBy ? String(data.createdBy) : 'system',
+          updatedBy: data.updatedBy ? String(data.updatedBy) : 'system',
+        } 
+      });
+    }),
+    update: (id, data) => wrapPrismaErrors(() => {
+      const model = (db as any).filingUiConfig || (db as any).filingUIConfig;
+      return model.update({ 
+        where: { id }, 
+        data: {
+          country: data.country ? String(data.country) : undefined,
+          procedureCode: data.procedureCode ? String(data.procedureCode) : undefined,
+          messageName: data.messageName ? String(data.messageName) : undefined,
+          messageType: data.messageType ? String(data.messageType) : undefined,
+          transactionType: data.transactionType ? String(data.transactionType) : undefined,
+          configData: data.configData || undefined,
+          version: data.version !== undefined ? Number(data.version) : undefined,
+          description: data.description !== undefined ? String(data.description) : undefined,
+          isActive: data.isActive !== undefined ? Boolean(data.isActive) : undefined,
+          updatedBy: data.updatedBy ? String(data.updatedBy) : undefined,
+        } 
+      });
+    }),
+    remove: (id) => wrapPrismaErrors(() => {
+      const model = (db as any).filingUiConfig || (db as any).filingUIConfig;
+      return model.delete({ where: { id } });
+    }).then(() => undefined),
     createSchema: z.object({
       country: z.string(),
       procedureCode: z.string(),
@@ -670,37 +680,47 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
       { key: "isActive", label: "Active", type: "boolean" },
     ],
     list: async () => {
-      const rows = await db.filingMasterDataSource.findMany({
+      const model = (db as any).filingMasterDataSource;
+      const rows = await model.findMany({
         orderBy: { sourceName: "asc" },
       });
       return rows;
     },
-    create: (data) => wrapPrismaErrors(() => db.filingMasterDataSource.create({ 
-      data: {
-        sourceName: String(data.sourceName || ""),
-        sourceType: String(data.sourceType || "static"),
-        tableName: data.tableName ? String(data.tableName) : null,
-        valueField: data.valueField ? String(data.valueField) : null,
-        labelField: data.labelField ? String(data.labelField) : null,
-        apiEndpoint: data.apiEndpoint ? String(data.apiEndpoint) : null,
-        apiMethod: String(data.apiMethod || "GET"),
-        isActive: data.isActive !== false,
-      } 
-    })),
-    update: (id, data) => wrapPrismaErrors(() => db.filingMasterDataSource.update({ 
-      where: { id }, 
-      data: {
-        sourceName: data.sourceName ? String(data.sourceName) : undefined,
-        sourceType: data.sourceType ? String(data.sourceType) : undefined,
-        tableName: data.tableName !== undefined ? (data.tableName ? String(data.tableName) : null) : undefined,
-        valueField: data.valueField !== undefined ? (data.valueField ? String(data.valueField) : null) : undefined,
-        labelField: data.labelField !== undefined ? (data.labelField ? String(data.labelField) : null) : undefined,
-        apiEndpoint: data.apiEndpoint !== undefined ? (data.apiEndpoint ? String(data.apiEndpoint) : null) : undefined,
-        apiMethod: data.apiMethod ? String(data.apiMethod) : undefined,
-        isActive: data.isActive !== undefined ? Boolean(data.isActive) : undefined,
-      } 
-    })),
-    remove: (id) => wrapPrismaErrors(() => db.filingMasterDataSource.delete({ where: { id } })).then(() => undefined),
+    create: (data) => wrapPrismaErrors(() => {
+      const model = (db as any).filingMasterDataSource;
+      return model.create({ 
+        data: {
+          sourceName: String(data.sourceName || ""),
+          sourceType: String(data.sourceType || "static"),
+          tableName: data.tableName ? String(data.tableName) : null,
+          valueField: data.valueField ? String(data.valueField) : null,
+          labelField: data.labelField ? String(data.labelField) : null,
+          apiEndpoint: data.apiEndpoint ? String(data.apiEndpoint) : null,
+          apiMethod: String(data.apiMethod || "GET"),
+          isActive: data.isActive !== false,
+        } 
+      });
+    }),
+    update: (id, data) => wrapPrismaErrors(() => {
+      const model = (db as any).filingMasterDataSource;
+      return model.update({ 
+        where: { id }, 
+        data: {
+          sourceName: data.sourceName ? String(data.sourceName) : undefined,
+          sourceType: data.sourceType ? String(data.sourceType) : undefined,
+          tableName: data.tableName !== undefined ? (data.tableName ? String(data.tableName) : null) : undefined,
+          valueField: data.valueField !== undefined ? (data.valueField ? String(data.valueField) : null) : undefined,
+          labelField: data.labelField !== undefined ? (data.labelField ? String(data.labelField) : null) : undefined,
+          apiEndpoint: data.apiEndpoint !== undefined ? (data.apiEndpoint ? String(data.apiEndpoint) : null) : undefined,
+          apiMethod: data.apiMethod ? String(data.apiMethod) : undefined,
+          isActive: data.isActive !== undefined ? Boolean(data.isActive) : undefined,
+        } 
+      });
+    }),
+    remove: (id) => wrapPrismaErrors(() => {
+      const model = (db as any).filingMasterDataSource;
+      return model.delete({ where: { id } });
+    }).then(() => undefined),
     createSchema: z.object({
       sourceName: z.string(),
       sourceType: z.enum(["table", "enum", "api", "static"]),

@@ -46,12 +46,16 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     where: {
       accountId: ctx.accountId,
       id: { not: filing.id },
-      shipment: {
-        OR: [
-          { importerName: filing.shipment.importerName },
-          { portOfEntry: filing.shipment.portOfEntry },
-        ],
-      },
+      ...(filing.shipment
+        ? {
+            shipment: {
+              OR: [
+                { importerName: filing.shipment.importerName },
+                { portOfEntry: filing.shipment.portOfEntry },
+              ],
+            },
+          }
+        : {}),
     },
     take: 5,
     select: {
@@ -85,18 +89,18 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   const snapshot = filing.snapshot
     ? (filing.snapshot.snapshotData as unknown as FilingSnapshotData)
     : null;
-  const lineItems = snapshot ? (snapshot.lineItems ?? []) : (filing.shipment.lineItems ?? []);
+  const lineItems = snapshot ? (snapshot.lineItems ?? []) : (filing.shipment?.lineItems ?? []);
   // Country of origin is a line-item attribute, not a shipment one: there is no
   // Shipment.countryOfOrigin column and the snapshot never carried one.
   const primaryCOO =
-    lineItems[0]?.countryOfOrigin ?? (snapshot ? null : filing.shipment.countryOfExport) ?? null;
+    lineItems[0]?.countryOfOrigin ?? (snapshot ? null : filing.shipment?.countryOfExport) ?? null;
   const primaryHTS = lineItems[0]?.htsCode ?? null;
 
   // Standardized Duty Breakdown computed via Tariff Engine
   const tariffResult = computeFilingTariff(lineItems, await loadHtsCodesMap(lineItems));
   const dutyBreakdown = filing.dutyBreakdown ?? tariffResult.dutyBreakdown;
 
-  const documents = filing.shipment.documents.map((doc) => ({
+  const documents = (filing.shipment?.documents ?? []).map((doc) => ({
     id: doc.id,
     docType: doc.docType,
     fileName: doc.fileName,
@@ -117,63 +121,53 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
 
   // Classification confidence is not part of the snapshot, so it cannot be
   // reported for a filing served from one.
-  const primaryConfidence = snapshot ? null : (filing.shipment.lineItems[0]?.htsConfidence ?? null);
+  const primaryConfidence = snapshot ? null : (filing.shipment?.lineItems[0]?.htsConfidence ?? null);
   const aiInsights = [
     primaryHTS === null
       ? "No HTS code has been assigned to the entry line items."
       : `HTS code ${primaryHTS} evaluated for entry line items.`,
     primaryConfidence === null
-      ? "Product classification confidence has not been calculated."
-      : `Product classification model confidence is ${primaryConfidence}%.`,
-    filing.totalDuties === null
-      ? "Duty has not been calculated for this entry."
-      : `Duty assessed at $${Number(filing.totalDuties).toFixed(2)} matching predicted tariff calculations.`,
+      ? "Model confidence is not recorded for this entry."
+      : `Classification model confidence score: ${primaryConfidence}%.`,
   ];
 
-  // Evidence is only ever what the classifier actually recorded.
-  const htsRecommendation = {
-    htsCode: primaryHTS,
-    confidence: primaryConfidence === null ? null : `${primaryConfidence}%`,
-    evidence: [] as string[],
-  };
+  const htsRecommendation =
+    primaryHTS === null
+      ? null
+      : {
+          code: primaryHTS,
+          confidence: primaryConfidence,
+          dutyRate: tariffResult.dutyBreakdown[0]?.dutyRate ?? null,
+          source: "HTS Master Release 2026",
+        };
 
-  // Only timestamps that were actually recorded. The previous version
-  // synthesised events at createdAt + 2/5/15 minutes and attributed them to a
-  // "Customs Specialist" and "CBP ACE", then labelled the result immutable.
   const timeline = [
-    { event: "Filing created", timestamp: filing.createdAt, source: "System" },
+    { stage: "Created", date: filing.createdAt.toISOString(), status: "Completed" },
     ...(filing.submittedAt
-      ? [{ event: "Transmitted to CBP", timestamp: filing.submittedAt, source: "ABI Interface" }]
-      : []),
-    ...filing.responses.map((resp) => ({
-      event: resp.title,
-      timestamp: resp.receivedAt,
-      source: "CBP",
-    })),
+      ? [{ stage: "Submitted to CBP", date: filing.submittedAt.toISOString(), status: "Completed" }]
+      : [{ stage: "Submitted to CBP", date: null, status: "Pending" }]),
     ...(filing.releasedAt
-      ? [{ event: "Customs released", timestamp: filing.releasedAt, source: "CBP" }]
-      : []),
-  ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      ? [{ stage: "CBP Release", date: filing.releasedAt.toISOString(), status: "Completed" }]
+      : [{ stage: "CBP Release", date: null, status: "Pending" }]),
+  ];
 
   const detailedFiling = {
     id: filing.id,
-    shipmentId: filing.shipmentId,
     entryNumber: filing.entryNumber,
-    entryType: filing.entryType,
-    filingType: filing.filingType,
+    status: filing.filingStatus,
     filingStatus: filing.filingStatus,
     paymentStatus: filing.paymentStatus,
     authority: filing.authority,
 
     // Summary
-    importerOfRecord: snapshot ? snapshot.shipment.importerName : filing.shipment.importerName,
-    portOfEntry: snapshot ? (snapshot.shipment.portOfEntry ?? null) : (filing.shipment.portOfEntry ?? null),
+    importerOfRecord: snapshot ? snapshot.shipment.importerName : (filing.shipment?.importerName ?? "Unknown Importer"),
+    portOfEntry: snapshot ? (snapshot.shipment.portOfEntry ?? null) : (filing.shipment?.portOfEntry ?? null),
     modeOfTransport: null,
-    carrier: snapshot ? (snapshot.shipment.carrierName ?? null) : (filing.shipment.carrierName ?? null),
+    carrier: snapshot ? (snapshot.shipment.carrierName ?? null) : (filing.shipment?.carrierName ?? null),
     containerCount: null,
     countryOfOrigin: primaryCOO,
     supplier: null,
-    shipmentReference: snapshot ? snapshot.shipment.shipmentNumber : filing.shipment.shipmentNumber,
+    shipmentReference: snapshot ? snapshot.shipment.shipmentNumber : (filing.shipment?.shipmentNumber ?? "N/A"),
 
     // Financial Breakdown
     totalCustomsValue: snapshot
@@ -206,8 +200,8 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     auditTrail,
 
     // Risk & Confidence
-    aiRiskScore: filing.shipment.riskScore,
-    readinessScore: filing.shipment.readinessScore,
+    aiRiskScore: filing.shipment?.riskScore ?? null,
+    readinessScore: filing.shipment?.readinessScore ?? null,
 
     submittedAt: filing.submittedAt,
     releasedAt: filing.releasedAt,

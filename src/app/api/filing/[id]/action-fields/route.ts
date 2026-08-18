@@ -39,7 +39,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
     { 
       transactionType: filing.transactionType?.code || "IMPORT",
       procedureCode: filing.procedureCode || filing.entryType || "01",
-      country: filing.country || filing.shipment.destinationCountry || "US"
+      country: filing.country || filing.shipment?.destinationCountry || "US"
     },
     action
   );

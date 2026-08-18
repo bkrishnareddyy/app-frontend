@@ -77,14 +77,14 @@ export async function buildImportDeclaration(
         // Procedure
         Procedure: mapProcedurecode(
           snapshotData.filingHeader.entryType,
-          shipment.destinationCountry,
+          (shipment as any).destinationCountry,
           "import"
         ),
         // SubProcedure: undefined,  // Country-specific, configured per procedure
 
         // Financial Summary
         InvoiceAmount: totalInvoiceAmount,
-        InvoiceCurrency: getDefaultCurrency(shipment.destinationCountry || undefined),
+        InvoiceCurrency: getDefaultCurrency((shipment as any).destinationCountry || undefined),
         GoodsItemQuantity: lineItems.length,
 
         // Declarant (person/company filing)
@@ -101,8 +101,8 @@ export async function buildImportDeclaration(
         GoodsShipment: {
           Consignment: {
             // Transport Means
-            TransportMeans: shipment.transportMode ? {
-              ModeCode: mapTransportMode(shipment.transportMode),
+            TransportMeans: (shipment as any).transportMode ? {
+              ModeCode: mapTransportMode((shipment as any).transportMode),
             } : undefined,
 
             // Carrier Information
@@ -115,7 +115,7 @@ export async function buildImportDeclaration(
               LocationOfGoods: shipment.portOfEntry ? {
                 Name: shipment.portOfEntry,
               } : undefined,
-              ArrivalDate: formatIsoDate(shipment.arrivalDate || shipment.estimatedArrival),
+              ArrivalDate: formatIsoDate((shipment as any).arrivalDate || (shipment as any).estimatedArrival),
             },
 
             // Delivery Terms (Incoterm)
@@ -143,8 +143,8 @@ export async function buildImportDeclaration(
         InternalData: buildInternalData(
           shipmentId,
           filingId,
-          shipment.status,
-          shipment.currentStage
+          (shipment as any).status,
+          (shipment as any).currentStage
         ),
 
         // Response Section (empty for outbound request)

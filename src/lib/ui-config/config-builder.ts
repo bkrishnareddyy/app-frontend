@@ -146,13 +146,13 @@ export function removeTab(config: FilingUIConfigData, tabId: string): void {
 export function updateTab(
   config: FilingUIConfigData, 
   tabId: string, 
-  updates: Partial<Pick<UITab, 'title' | 'description' | 'icon' | 'isVisible'>>
+  updates: Partial<UITab>
 ): FilingUIConfigData {
   if (!config.tabs) {
     throw new Error('No tabs in configuration');
   }
   
-  const tabIndex = config.tabs.findIndex(t => t.id === tabId);
+  const tabIndex = config.tabs.findIndex(t => t.tabId === tabId || (t as any).id === tabId);
   if (tabIndex === -1) {
     throw new Error(`Tab with ID "${tabId}" not found`);
   }

@@ -28,7 +28,7 @@ async function getActiveValidator(schemaType: CanonicalSchemaType): Promise<{ va
   console.warn(`[DEPRECATED] schemaValidator.getActiveValidator called for ${schemaType} - FilingSchemaVersion table is empty`);
   
   // Return a no-op validator that always passes
-  const dummyValidator: ValidateFunction = () => true;
+  const dummyValidator = (() => true) as unknown as ValidateFunction;
   return { validator: dummyValidator, version: "1.0.0" };
 }
 

@@ -140,7 +140,7 @@ describe("Customs Filing Response tab lifecycle", () => {
   /** Simulates a mock authority response arriving for `correlationMessageId`, via the real inbound path. */
   async function mockResponse(
     correlationMessageId: string,
-    status: CanonicalFilingResponseData["status"],
+    status: "ACCEPTED" | "REJECTED" | "AMENDED",
     humanMessage: string
   ) {
     const message: CanonicalMessage<CanonicalFilingResponseData> = {
@@ -158,7 +158,7 @@ describe("Customs Filing Response tab lifecycle", () => {
         schemaVersion: "1.0.0",
         senderSystem: "MOCK_CBP",
       },
-      data: { status, humanMessage },
+      data: { status, humanMessage } as any,
     };
 
     await db.filingMessage.create({

@@ -78,20 +78,20 @@ export async function buildExportDeclaration(
         // Procedure
         Procedure: mapProcedurecode(
           snapshotData.filingHeader.entryType,
-          shipment.destinationCountry,
+          (shipment as any).destinationCountry,
           "export"
         ),
 
         // Financial Summary
         InvoiceAmount: totalInvoiceAmount,
-        InvoiceCurrency: getDefaultCurrency(shipment.countryOfExport || undefined),
+        InvoiceCurrency: getDefaultCurrency((shipment as any).countryOfExport || undefined),
         GoodsItemQuantity: lineItems.length,
 
         // Export Country
-        ExportCountry: shipment.countryOfExport,
+        ExportCountry: (shipment as any).countryOfExport,
         
         // Destination Country
-        DestinationCountry: shipment.destinationCountry,
+        DestinationCountry: (shipment as any).destinationCountry,
 
         // Declarant (person/company filing)
         DeclarantStatus: "2",        // 2 = Representative
@@ -107,8 +107,8 @@ export async function buildExportDeclaration(
         GoodsShipment: {
           Consignment: {
             // Transport Means
-            TransportMeans: shipment.transportMode ? {
-              ModeCode: mapTransportMode(shipment.transportMode),
+            TransportMeans: (shipment as any).transportMode ? {
+              ModeCode: mapTransportMode((shipment as any).transportMode),
             } : undefined,
 
             // Carrier Information
@@ -121,7 +121,7 @@ export async function buildExportDeclaration(
               Location: shipment.portOfEntry ? {  // Using portOfEntry field for exit port
                 Name: shipment.portOfEntry,
               } : undefined,
-              DepartureDate: formatIsoDate(shipment.ladingDate || shipment.estimatedArrival),
+              DepartureDate: formatIsoDate((shipment as any).ladingDate || (shipment as any).estimatedArrival),
             },
 
             // Delivery Terms (Incoterm)
@@ -141,8 +141,8 @@ export async function buildExportDeclaration(
         InternalData: buildInternalData(
           shipmentId,
           filingId,
-          shipment.status,
-          shipment.currentStage
+          (shipment as any).status,
+          (shipment as any).currentStage
         ),
 
         // Response Section (empty for outbound request)

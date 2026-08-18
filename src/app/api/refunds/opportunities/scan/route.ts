@@ -36,7 +36,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   }
 
   // Load HTS duty rates from the database for all line items across all filings
-  const allLineItems = filings.flatMap((f) => f.shipment.lineItems).map((item) => ({
+  const allLineItems = filings.flatMap((f) => f.shipment?.lineItems ?? []).map((item) => ({
     htsCode: item.htsCode,
     countryOfOrigin: item.countryOfOrigin,
   }));
@@ -50,7 +50,7 @@ export const POST = withAuthenticatedRoute(async ({ ctx, requestId }) => {
   const opportunitiesCreated = [];
 
   for (const filing of filings) {
-    for (const item of filing.shipment.lineItems) {
+    for (const item of (filing.shipment?.lineItems ?? [])) {
       if (!item.htsCode) continue;
 
       const htsRateInput = htsCodesMap[item.htsCode];

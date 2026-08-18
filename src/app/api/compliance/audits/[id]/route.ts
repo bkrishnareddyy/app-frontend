@@ -36,12 +36,12 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     generatedAt: auditRecord.runAt,
     auditor: auditRecord.runByAgentName,
     entryNumber: auditRecord.filing.entryNumber,
-    importerName: auditRecord.filing.shipment.importerName,
+    importerName: auditRecord.filing.shipment?.importerName ?? "Unknown Importer",
     overallResult: auditRecord.overallResult,
     riskScore: auditRecord.riskScore,
     checklistItems: auditRecord.checklistItems,
-    lineItemsVerifiedCount: auditRecord.filing.shipment.lineItems.length,
-    documentsVerifiedCount: auditRecord.filing.shipment.documents.length,
+    lineItemsVerifiedCount: auditRecord.filing.shipment?.lineItems.length ?? 0,
+    documentsVerifiedCount: auditRecord.filing.shipment?.documents.length ?? 0,
     filing: auditRecord.filing,
   };
 

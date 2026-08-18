@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Extract full configData structure
-    const configData = config.configData as FilingUIConfigData;
+    const configData = config.configData as unknown as FilingUIConfigData;
     
     // Backward compatibility: if no proper structure, return legacy format
     if (!configData.version || !configData.layout) {
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       
       // Sort fields within each section by displayOrder
       Object.keys(sections).forEach(section => {
-        sections[section].sort((a, b) => a.displayOrder - b.displayOrder);
+        sections[section].sort((a: any, b: any) => a.displayOrder - b.displayOrder);
       });
       
       return NextResponse.json({

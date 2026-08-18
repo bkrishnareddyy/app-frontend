@@ -21,11 +21,10 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
   });
 
   if (!filing) {
-    return buildErrorResponse({ message: "Filing not found", code: "NOT_FOUND" }, 404, requestId);
+    return buildErrorResponse(404, "NOT_FOUND", "Filing not found", undefined, requestId);
   }
 
   // Declaration data is stored in dutyBreakdown as a temporary solution
-  // In production, you might want a dedicated declarationData JSON field
   let declarationData = (filing.dutyBreakdown as any)?.declarationDraft || null;
   
   // Unwrap Import/ExportDeclaration for client consumption
@@ -48,7 +47,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const body = await req.json().catch(() => null);
   if (!body || !body.declarationData) {
-    return buildErrorResponse({ message: "declarationData is required", code: "INVALID_INPUT" }, 400, requestId);
+    return buildErrorResponse(400, "INVALID_INPUT", "declarationData is required", undefined, requestId);
   }
 
   const filing = await db.customsFiling.findFirst({
@@ -57,18 +56,17 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   });
 
   if (!filing) {
-    return buildErrorResponse({ message: "Filing not found", code: "NOT_FOUND" }, 404, requestId);
+    return buildErrorResponse(404, "NOT_FOUND", "Filing not found", undefined, requestId);
   }
+
+  const txType = typeof filing.transactionType === "string" ? filing.transactionType : "IMPORT";
 
   // Wrap the declaration data with proper Import/ExportDeclaration wrapper
   const wrappedDeclaration = wrapDeclarationData(
     body.declarationData,
-    filing.transactionType || 'IMPORT',
-    filing.country || 'US'
+    txType
   );
 
-  // Store declaration data in dutyBreakdown with a special key
-  // This is a temporary solution - in production, consider adding a dedicated field
   const existingDutyData = (filing.dutyBreakdown as any) || {};
   const updatedDutyBreakdown = {
     ...existingDutyData,
@@ -85,14 +83,14 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
-    action: AuditAction.UPDATE,
+    action: AuditAction.FILING_UPDATED,
     entity: "CustomsFiling",
     entityId: filing.id,
     metadata: {
       description: `Saved declaration draft for filing ${filing.entryNumber}`,
-      fields: ['declarationData'],
+      fields: ["declarationData"],
     },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, declarationData: wrappedDeclaration });
 });

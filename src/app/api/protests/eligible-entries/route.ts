@@ -60,7 +60,7 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       return {
         id: f.id,
         entryNumber: f.entryNumber,
-        shipmentNumber: f.shipment.shipmentNumber,
+        shipmentNumber: f.shipment?.shipmentNumber ?? "N/A",
         importerName: f.importerOfRecord?.name ?? null,
         filingStatus: f.filingStatus,
         totalDuties: f.totalDuties,

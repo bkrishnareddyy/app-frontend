@@ -99,7 +99,7 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
   });
 
   // Task B-2 & D-6: Actions on filing acceptance
-  if (newFilingStatus === "Accepted" || data.status === "ACCEPTED") {
+  if (newFilingStatus === "Accepted" || (data as any).status === "ACCEPTED") {
     // 1. Create DrawbackLots from accepted filing (Task B-2)
     try {
       await DrawbackService.createDrawbackLotsFromFiling(filing.id);
@@ -113,7 +113,7 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
       const pscDueDate = new Date(anchorDate.getTime() + 300 * 24 * 60 * 60 * 1000); // 300 days
 
       const existingDeadline = await db.complianceDeadline.findFirst({
-        where: { accountId: filing.accountId, shipmentId: filing.shipmentId, type: "PSC_WINDOW" },
+        where: { accountId: filing.accountId, shipmentId: filing.shipmentId ?? undefined, type: "PSC_WINDOW" },
       });
 
       if (!existingDeadline) {
@@ -138,7 +138,7 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
   }
 
   // Task D-6: Create an ExceptionItem when a filing is rejected by authority
-  if (data.status === "REJECTED") {
+  if ((data as any).status === "REJECTED") {
     await db.exceptionItem.create({
       data: {
         accountId: filing.accountId,
@@ -147,7 +147,7 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
         category: "FILING",
         type: "compliance_flag",
         severity: "High",
-        description: data.humanMessage ?? `Customs filing ${filing.entryNumber} was rejected by authority.`,
+        description: (data as any).humanMessage ?? `Customs filing ${filing.entryNumber} was rejected by authority.`,
         status: "Open",
         blocking: true,
         requiredAction: "Review filing rejection codes and resubmit declaration.",
