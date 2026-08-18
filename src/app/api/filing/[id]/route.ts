@@ -137,7 +137,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
       : {
           code: primaryHTS,
           confidence: primaryConfidence,
-          dutyRate: tariffResult.dutyBreakdown[0]?.dutyRate ?? null,
+          dutyRate: tariffResult.dutyBreakdown[0]?.rate ?? null,
           source: "HTS Master Release 2026",
         };
 
