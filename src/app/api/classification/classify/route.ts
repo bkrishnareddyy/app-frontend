@@ -4,6 +4,7 @@ import { buildErrorResponse, errorMessage } from "@/lib/api/error";
 import { parseAndValidateBody } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog } from "@/lib/audit";
+import { db } from "@/lib/db";
 import { recordUsageEvent } from "@/lib/billing/telemetry";
 import { ClassificationService } from "@/modules/classification/classification.service";
 import { z } from "zod";
@@ -51,46 +52,47 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
       metadata: { description: bodyVal.data.productDescription, status: result.status },
     });
 
-    // Billing telemetry is distinct from the audit log: this records the
-    // economically meaningful completed capability and lets the rating engine
-    // create a real-time shipment charge when a mapped rate rule exists.
     if (bodyVal.data.shipmentId) {
-      const shipment = await (await import("@/lib/db")).db.shipment.findFirst({
-        where: { id: bodyVal.data.shipmentId, accountId: ctx.accountId },
-        select: { id: true, clientId: true, importerId: true },
-      });
-
-      if (shipment) {
-        await recordUsageEvent({
-          accountId: ctx.accountId,
-          eventCode: "HTS_CLASSIFICATION_COMPLETED",
-          clientId: shipment.clientId ?? undefined,
-          importerId: shipment.importerId ?? undefined,
-          shipmentId: shipment.id,
-          userId: ctx.userId,
-          quantity: 1,
-          unit: "classification",
-          sourceFunction: "ClassificationService.classifyProduct",
-          sourceApi: "/api/classification/classify",
-          sourceAgent: "HTS Classification Agent",
-          success: true,
-          automated: true,
-          processingDuration: Date.now() - startedAt,
-          idempotencyKey: `billing:classification:${idempotencyKey ?? requestId}`,
-          metadata: { htsCode: result.proposedClassification?.htsCode, status: result.status },
+      try {
+        const shipment = await db.shipment.findFirst({
+          where: { id: bodyVal.data.shipmentId, accountId: ctx.accountId },
+          select: { id: true, clientId: true, importerOfRecordId: true },
         });
+
+        if (shipment) {
+          await recordUsageEvent({
+            accountId: ctx.accountId,
+            eventCode: "HTS_CLASSIFICATION_COMPLETED",
+            clientId: shipment.clientId ?? undefined,
+            importerId: shipment.importerOfRecordId ?? undefined,
+            shipmentId: shipment.id,
+            userId: ctx.userId,
+            quantity: 1,
+            unit: "classification",
+            sourceFunction: "ClassificationService.classifyProduct",
+            sourceApi: "/api/classification/classify",
+            sourceAgent: "HTS Classification Agent",
+            success: true,
+            automated: true,
+            processingDuration: Date.now() - startedAt,
+            idempotencyKey: `billing:classification:${idempotencyKey ?? requestId}`,
+            metadata: { htsCode: result.proposedClassification?.htsCode, status: result.status },
+          });
+        }
+      } catch (billingError) {
+        // Billing observability must not turn a successful operational result into
+        // a failed classification response. Revenue-leakage monitoring can surface
+        // telemetry failures separately.
+        console.error("Failed to record classification billing usage", billingError);
       }
     }
 
     const responsePayload = { ...result, requestId };
-
     if (idempotencyKey) {
       await persistIdempotency(ctx.accountId, idempotencyKey, requestHash ?? "", 200, responsePayload);
     }
-
     return NextResponse.json(responsePayload);
   } catch (error: unknown) {
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Classification failed", undefined, requestId);
   }
-
 }, { permission: "classification.create", write: true });
