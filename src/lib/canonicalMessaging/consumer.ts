@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { validateAgainstActiveSchema, SchemaValidationError } from "./schemaValidator";
+import { extractCanonicalResponseStatus } from "./responseStatus";
 import type { CanonicalFilingResponseData, CanonicalMessage } from "./types";
 
 export interface CanonicalMessageConsumer {
@@ -9,19 +10,10 @@ export interface CanonicalMessageConsumer {
   ): Promise<void>;
 }
 
-// Matches PipelineJob's stale-claim window in pgQueue.ts.
-
 /**
- * Postgres-backed consumer. We only ever consume INBOUND messages -- the
- * third party consumes the outbound side, that's their infrastructure, not
- * ours. Claims one row at a time via FOR UPDATE SKIP LOCKED (same pattern as
- * PgQueue.dequeueNextJob), validates it against the active
- * FILING_RESPONSE_DATA schema, and hands it to the caller's handler.
- * A message that fails validation is marked FAILED, not silently dropped or
- * coerced -- see quarantine note in the design doc.
+ * Postgres-backed consumer for pending inbound canonical filing responses.
  */
 export class PgCanonicalMessageConsumer implements CanonicalMessageConsumer {
-  /** Claims and processes exactly one pending INBOUND message, if any. Returns whether one was found. */
   async processOne(
     handler: (message: CanonicalMessage<CanonicalFilingResponseData>) => Promise<void>
   ): Promise<boolean> {
@@ -52,7 +44,11 @@ export class PgCanonicalMessageConsumer implements CanonicalMessageConsumer {
 
       await db.filingMessage.update({
         where: { id: row.id },
-        data: { queueStatus: "PROCESSED", processedAt: new Date(), status: message.data.status },
+        data: {
+          queueStatus: "PROCESSED",
+          processedAt: new Date(),
+          status: extractCanonicalResponseStatus(message.data),
+        },
       });
     } catch (err) {
       const errorMessage = err instanceof SchemaValidationError ? err.message : err instanceof Error ? err.message : String(err);
@@ -70,21 +66,13 @@ export class PgCanonicalMessageConsumer implements CanonicalMessageConsumer {
     return true;
   }
 
-  /**
-   * Polls until no message is found, then returns. A caller that wants a
-   * long-running worker (see scripts/customs-filing-inbound-worker.ts) loops
-   * this with a sleep between empty polls; kept separate from that loop so
-   * processOne() is independently testable and callable from an API route
-   * for on-demand draining in local dev.
-   */
   async consume(
     queueName: string,
     handler: (message: CanonicalMessage<CanonicalFilingResponseData>) => Promise<void>
   ): Promise<void> {
-    void queueName; // routing hint for a real broker adapter; the Postgres adapter claims by direction only.
-     
+    void queueName;
     while (await this.processOne(handler)) {
-      // drain everything currently pending
+      // drain currently pending messages
     }
   }
 }
