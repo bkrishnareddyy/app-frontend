@@ -27,6 +27,19 @@ ALTER TABLE "RegulatoryUpdate"
 ALTER TABLE "CustomsFiling"
   ADD COLUMN IF NOT EXISTS "messageName" TEXT;
 
+-- Document ordering was added to the Prisma model after the original document
+-- table migration. Null preserves the historical createdAt ordering behavior.
+ALTER TABLE "ShipmentDocument"
+  ADD COLUMN IF NOT EXISTS "displayOrder" INTEGER;
+
+-- FilingSnapshot persists Section 301 facts as part of the immutable filing
+-- snapshot. These fields already exist in the Prisma model and service layer.
+ALTER TABLE "FilingSnapshot"
+  ADD COLUMN IF NOT EXISTS "hasSection301" BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE "FilingSnapshot"
+  ADD COLUMN IF NOT EXISTS "section301List" TEXT;
+
 CREATE UNIQUE INDEX IF NOT EXISTS "RegulatoryUpdate_documentNumber_key"
   ON "RegulatoryUpdate"("documentNumber");
 
