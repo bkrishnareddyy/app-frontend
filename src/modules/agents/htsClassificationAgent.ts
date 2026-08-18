@@ -10,6 +10,7 @@ import { HtsNodeRepository } from "@/repositories/htsNodeRepository";
 import { applyAutoApprovalPolicy, getAgentPolicyConfig } from "@/modules/decisions/autoApprovalPolicy";
 import { matchPartMaster } from "@/modules/product/partMasterMatch";
 import { CrossIngestionService } from "@/modules/regulatory/crossIngestionService";
+import { AccountContextBuilder } from "@/modules/memory";
 
 // Real, ingested HTS Master Release data (29k+ classifiable nodes, 50k+
 // parsed duty rate rows) -- looks up the General column rate for a
@@ -259,6 +260,21 @@ export class HTSClassificationAgent {
               .join("\n")
           : "No DB candidates found.";
 
+      // Retrieve Account Institutional Memory context for this account/product
+      let accountContextPrompt = "";
+      try {
+        const accountContext = await AccountContextBuilder.build({
+          accountId: input.accountId,
+          task: "HTS_CLASSIFICATION",
+          shipmentId: input.shipmentId,
+          partNumber: item.partNumber ?? undefined,
+          productDescription: item.rawDescription,
+        });
+        accountContextPrompt = accountContext.formattedText;
+      } catch (err) {
+        // Non-blocking fallback
+      }
+
       // Try real Gemini call
       let htsResult: HtsModelResult | null = null;
       let modelVersionUsed: string | null = null;
@@ -278,6 +294,7 @@ ${item.carbonContentPercentage != null ? `Carbon Content: ${item.carbonContentPe
 ${item.casNumber ? `CAS Number: "${item.casNumber}"` : ""}
 ${input.countryOfOrigin ? `Country of Origin (from shipment context): "${input.countryOfOrigin}"` : ""}
 
+${accountContextPrompt ? `${accountContextPrompt}\n` : ""}
 DB Candidate HTS codes (use as reference, override if wrong):
 ${candidateContext}`;
 

@@ -159,6 +159,9 @@ model Account {
   webhooks AccountWebhook[]
   apiKeys  AccountApiKey[]
 
+  accountMemories AccountMemory[]
+  memoryEvidence  MemoryEvidence[]
+
   workMetricSnapshots   WorkMetricSnapshot[]
   drawbackLots          DrawbackLot[]
   drawbackClaimSequence DrawbackClaimSequence?
@@ -5440,5 +5443,75 @@ model BillingException {
   @@index([accountId])
   @@index([status])
   @@index([type])
+}
+
+enum AccountMemoryType {
+  FACT
+  PREFERENCE
+  PROCEDURE
+  DECISION
+  EXCEPTION
+  PATTERN
+}
+
+enum AccountMemorySubjectType {
+  PRODUCT
+  SUPPLIER
+  CLASSIFICATION
+  ORIGIN
+  VALUATION
+  FILING
+  SHIPMENT
+}
+
+enum AccountMemorySourceType {
+  HUMAN_DECISION
+  FILING_OUTCOME
+  VERIFIED_DOCUMENT
+  AGENT_INFERENCE
+}
+
+model AccountMemory {
+  id                  String                   @id @default(cuid())
+  accountId           String
+  account             Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type                AccountMemoryType
+  subjectType         AccountMemorySubjectType
+  subjectId           String?
+  content             String
+  confidence          Float                    @default(1.0)
+  validFrom           DateTime                 @default(now())
+  validUntil          DateTime?
+  sourceType          AccountMemorySourceType
+  sourceId            String?
+  supersedesMemoryId String?
+  supersedesMemory    AccountMemory?           @relation("MemorySupersession", fields: [supersedesMemoryId], references: [id], onDelete: SetNull)
+  supersededBy        AccountMemory[]          @relation("MemorySupersession")
+  embedding           Float[]                  @default([])
+  searchVector        String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  evidence            MemoryEvidence[]
+
+  @@index([accountId])
+  @@index([accountId, type])
+  @@index([accountId, subjectType, subjectId])
+  @@index([supersedesMemoryId])
+}
+
+model MemoryEvidence {
+  id         String                  @id @default(cuid())
+  accountId  String
+  account    Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  memoryId   String
+  memory     AccountMemory           @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  sourceType AccountMemorySourceType
+  sourceId   String?
+  excerpt    String
+  confidence Float                   @default(1.0)
+  createdAt  DateTime                @default(now())
+
+  @@index([accountId])
+  @@index([memoryId])
 }
 

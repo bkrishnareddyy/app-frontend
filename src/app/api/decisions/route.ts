@@ -22,6 +22,7 @@ import {
   reviewerIdentity,
 } from "@/modules/decisions/reviewAuthority";
 import { buildEditUpdate, readEditableValue } from "@/modules/decisions/editableFields";
+import { MemoryExtractorWorker } from "@/modules/memory";
 
 const REVIEWER_SELECT = {
   firstName: true,
@@ -446,6 +447,27 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       reviewedByUserId: ctx.userId,
     }).catch((err) => console.error("[webhook] Failed to dispatch decision.approved:", err));
   }
+
+  // Trigger Account Memory extraction asynchronously (non-blocking)
+  MemoryExtractorWorker.processEvent({
+    accountId: ctx.accountId,
+    sourceType: "HUMAN_DECISION",
+    sourceId: decisionId,
+    task: decision.agentName?.includes("HTS")
+      ? "HTS_CLASSIFICATION"
+      : decision.agentName?.includes("Origin")
+      ? "ORIGIN_DETERMINATION"
+      : decision.agentName?.includes("Valuation")
+      ? "VALUATION"
+      : "FILING",
+    decisionSummary: decision.decisionSummary,
+    proposedHtsCode: decision.proposedHtsCode || undefined,
+    productDescription: decision.proposedDescription || undefined,
+    humanNotes: rationale || undefined,
+    actionType: overridesClassification ? "APPROVE_OVERRIDE" : "HUMAN_DECISION",
+  }).catch((err) => {
+    console.error("[decisions/route] Async memory extraction failed:", err);
+  });
 
   return NextResponse.json({
     decision: updatedDecision,
