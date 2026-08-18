@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 export const revalidate = 0;
 
 export default async function BillingReportsPage() {
+  // Query real client profitability from DB
   const clients = await db.client.findMany({
     take: 20,
     select: {
@@ -31,19 +32,47 @@ export default async function BillingReportsPage() {
     return { client, rev, cost, profit, margin, shipmentCount: client.shipments.length };
   });
 
-  const agentMetrics = [
-    { agent: "Document Intelligence Agent", executions: 1420, cost: 28.40, revenue: 3550.00, escalationRate: "1.8%" },
-    { agent: "HTS Classification Agent", executions: 3820, cost: 114.60, revenue: 15280.00, escalationRate: "4.2%" },
-    { agent: "PGA Validation Agent", executions: 640, cost: 19.20, revenue: 22400.00, escalationRate: "2.1%" },
-    { agent: "Filing Readiness Agent", executions: 980, cost: 24.50, revenue: 9800.00, escalationRate: "0.5%" },
-  ];
+  // Query real AI Agent ROI metrics from UsageEvent and ShipmentCost
+  const agentUsageEvents = await db.usageEvent.findMany({
+    where: { automated: true, sourceAgent: { not: null } },
+    include: {
+      charges: { select: { netAmount: true } },
+      costs: { select: { amount: true } },
+    },
+  });
+
+  const agentGroups = new Map<
+    string,
+    { agent: string; executions: number; cost: number; revenue: number; failed: number }
+  >();
+
+  for (const ev of agentUsageEvents) {
+    const agentName = ev.sourceAgent ?? "AI Agent";
+    const current = agentGroups.get(agentName) ?? {
+      agent: agentName,
+      executions: 0,
+      cost: 0,
+      revenue: 0,
+      failed: 0,
+    };
+
+    current.executions += 1;
+    if (!ev.success) current.failed += 1;
+
+    for (const c of ev.charges) current.revenue += Number(c.netAmount);
+    for (const cs of ev.costs) current.cost += Number(cs.amount);
+
+    agentGroups.set(agentName, current);
+  }
+
+  const agentMetrics = Array.from(agentGroups.values());
 
   return (
     <div className="space-y-8">
       <div>
         <h2 className="text-xl font-bold text-ink">Profitability & Unit Economics Analytics</h2>
         <p className="text-sm text-ink-muted">
-          Client-level margins, AI Agent ROI, and broker productivity economics.
+          Client-level margins, AI Agent ROI, and broker productivity economics derived from real operational telemetry.
         </p>
       </div>
 
@@ -58,24 +87,33 @@ export default async function BillingReportsPage() {
                 <th className="px-5 py-3">Executions</th>
                 <th className="px-5 py-3">Internal Tech Cost</th>
                 <th className="px-5 py-3">Customer Revenue</th>
-                <th className="px-5 py-3">Human Escalation Rate</th>
+                <th className="px-5 py-3">Failure / Escalation Rate</th>
                 <th className="px-5 py-3">ROI Ratio</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5EA] text-xs font-mono">
-              {agentMetrics.map((ag) => {
-                const roi = (ag.revenue / ag.cost).toFixed(1);
-                return (
-                  <tr key={ag.agent} className="hover:bg-[#F9F9FB] transition-colors">
-                    <td className="px-5 py-4 font-bold text-ink font-sans">{ag.agent}</td>
-                    <td className="px-5 py-4">{ag.executions.toLocaleString()}</td>
-                    <td className="px-5 py-4 text-ink-muted">${ag.cost.toFixed(2)}</td>
-                    <td className="px-5 py-4 text-emerald-600 font-semibold">${ag.revenue.toFixed(2)}</td>
-                    <td className="px-5 py-4 font-sans text-ink">{ag.escalationRate}</td>
-                    <td className="px-5 py-4 text-purple-700 font-bold">{roi}x</td>
-                  </tr>
-                );
-              })}
+              {agentMetrics.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-ink-muted font-sans">
+                    No automated AI agent executions recorded yet. Agent ROI metrics will accumulate automatically as agents process work.
+                  </td>
+                </tr>
+              ) : (
+                agentMetrics.map((ag) => {
+                  const roi = ag.cost > 0 ? (ag.revenue / ag.cost).toFixed(1) : "N/A";
+                  const failRate = ((ag.failed / ag.executions) * 100).toFixed(1);
+                  return (
+                    <tr key={ag.agent} className="hover:bg-[#F9F9FB] transition-colors">
+                      <td className="px-5 py-4 font-bold text-ink font-sans">{ag.agent}</td>
+                      <td className="px-5 py-4">{ag.executions.toLocaleString()}</td>
+                      <td className="px-5 py-4 text-ink-muted">${ag.cost.toFixed(2)}</td>
+                      <td className="px-5 py-4 text-emerald-600 font-semibold">${ag.revenue.toFixed(2)}</td>
+                      <td className="px-5 py-4 font-sans text-ink">{failRate}%</td>
+                      <td className="px-5 py-4 text-purple-700 font-bold">{roi !== "N/A" ? `${roi}x` : "∞"}</td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

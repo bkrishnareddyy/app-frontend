@@ -1,16 +1,10 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
-/** Default fallback internal cost profile values */
-export const DEFAULT_COST_PROFILE = {
-  loadedLaborRate: 72.00,       // $72/hr default loaded broker rate
-  aiTokenRate: 0.00015,         // $0.00015 per 1k tokens
-  ocrPageRate: 0.05,            // $0.05 per OCR page
-  aceTransmissionFee: 0.25,     // $0.25 per ACE submission
-};
-
 /**
  * Calculates internal technology and labor cost for a given usage event.
+ * STRICT POLICY: NO fake fallback values or arbitrary default durations/token estimates.
+ * If cost parameters or telemetry metadata are missing, logs a BillingException.
  */
 export async function calculateAndRecordEventCost(usageEventId: string) {
   const usageEvent = await db.usageEvent.findUnique({
@@ -21,55 +15,91 @@ export async function calculateAndRecordEventCost(usageEventId: string) {
     return null;
   }
 
-  // Retrieve account cost profile or default fallback
+  // Retrieve account cost profile
   const costProfile = await db.costProfile.findFirst({
     where: { accountId: usageEvent.accountId },
     orderBy: { createdAt: "desc" },
   });
 
-  const laborRate = costProfile ? Number(costProfile.loadedLaborRate) : DEFAULT_COST_PROFILE.loadedLaborRate;
-  const aiRate = costProfile ? Number(costProfile.aiTokenRate) : DEFAULT_COST_PROFILE.aiTokenRate;
-  const ocrRate = costProfile ? Number(costProfile.ocrPageRate) : DEFAULT_COST_PROFILE.ocrPageRate;
-  const aceFee = costProfile ? Number(costProfile.aceTransmissionFee) : DEFAULT_COST_PROFILE.aceTransmissionFee;
+  if (!costProfile) {
+    // Strictly log a BillingException instead of fabricating costs from hardcoded fallbacks
+    await db.billingException.create({
+      data: {
+        accountId: usageEvent.accountId,
+        type: "MISSING_COST_PROFILE",
+        severity: "HIGH",
+        status: "OPEN",
+        description: `No active CostProfile found for Account ${usageEvent.accountId}. Internal cost calculation skipped for Event ${usageEvent.eventCode}.`,
+        shipmentId: usageEvent.shipmentId,
+        clientId: usageEvent.clientId,
+        usageEventId: usageEvent.id,
+      },
+    });
+    return null;
+  }
+
+  const laborRate = Number(costProfile.loadedLaborRate);
+  const aiRate = Number(costProfile.aiTokenRate);
+  const ocrRate = Number(costProfile.ocrPageRate);
+  const aceFee = Number(costProfile.aceTransmissionFee);
 
   const metadata = (usageEvent.metadata as Record<string, unknown>) ?? {};
 
-  // 1. Labor Cost (if manual work or human review duration is present)
+  // 1. Labor Cost Calculation (Strictly uses actual recorded processingDuration)
   if (!usageEvent.automated || usageEvent.userId || usageEvent.processingDuration) {
-    const durationSec = usageEvent.processingDuration ? Math.round(usageEvent.processingDuration / 1000) : 300; // default 5 mins if unspecified manual work
-    const laborCostAmount = (durationSec / 3600) * laborRate;
+    if (usageEvent.processingDuration && usageEvent.processingDuration > 0) {
+      const durationSec = Math.round(usageEvent.processingDuration / 1000);
+      const laborCostAmount = (durationSec / 3600) * laborRate;
 
-    await db.shipmentCost.create({
-      data: {
-        accountId: usageEvent.accountId,
-        shipmentId: usageEvent.shipmentId,
-        usageEventId: usageEvent.id,
-        costType: "LABOR",
-        description: `Broker Loaded Labor (${Math.round(durationSec / 60)} min @ $${laborRate}/hr)`,
-        amount: new Prisma.Decimal(laborCostAmount),
-        currency: "USD",
-        userId: usageEvent.userId,
-        durationSec,
-      },
-    });
+      await db.shipmentCost.create({
+        data: {
+          accountId: usageEvent.accountId,
+          shipmentId: usageEvent.shipmentId,
+          usageEventId: usageEvent.id,
+          costType: "LABOR",
+          description: `Broker Loaded Labor (${Math.round(durationSec / 60)} min @ $${laborRate.toFixed(2)}/hr)`,
+          amount: new Prisma.Decimal(laborCostAmount),
+          currency: "USD",
+          userId: usageEvent.userId,
+          durationSec,
+        },
+      });
+    } else {
+      // Log exception for manual intervention lacking duration tracking
+      await db.billingException.create({
+        data: {
+          accountId: usageEvent.accountId,
+          type: "UNTRACKED_LABOR_DURATION",
+          severity: "MEDIUM",
+          status: "OPEN",
+          description: `Manual intervention for Event ${usageEvent.eventCode} has no recorded processing duration.`,
+          shipmentId: usageEvent.shipmentId,
+          clientId: usageEvent.clientId,
+          usageEventId: usageEvent.id,
+        },
+      });
+    }
   }
 
-  // 2. Tech Cost (AI Tokens / OCR Pages / ACE Transmissions)
+  // 2. Technology Cost Calculation (Strictly uses actual recorded telemetry)
   let techCostAmount = 0;
-  let techDescription = "Internal Automation Processing";
+  let techDescription = "";
 
   if (usageEvent.eventCode === "DOCUMENT_PROCESSED") {
     const pageCount = Number(usageEvent.quantity);
-    techCostAmount = pageCount * ocrRate;
-    techDescription = `OCR & Ingestion (${pageCount} pages @ $${ocrRate}/page)`;
+    if (pageCount > 0) {
+      techCostAmount = pageCount * ocrRate;
+      techDescription = `OCR Ingestion (${pageCount} pages @ $${ocrRate.toFixed(2)}/page)`;
+    }
   } else if (usageEvent.eventCode === "ACE_FILING_TRANSMITTED") {
     techCostAmount = aceFee;
-    techDescription = `ACE EDI Gateway Fee ($${aceFee}/transmission)`;
-  } else if (usageEvent.automated) {
-    // Standard AI LLM token usage cost estimation
-    const totalTokens = Number(metadata.tokenCount ?? 2500);
-    techCostAmount = (totalTokens / 1000) * aiRate;
-    techDescription = `AI Model Inference (${totalTokens} tokens @ $${aiRate}/1k tokens)`;
+    techDescription = `ACE EDI Gateway Fee ($${aceFee.toFixed(2)}/transmission)`;
+  } else if (usageEvent.automated && metadata.tokenCount) {
+    const tokenCount = Number(metadata.tokenCount);
+    if (tokenCount > 0) {
+      techCostAmount = (tokenCount / 1000) * aiRate;
+      techDescription = `AI Model Inference (${tokenCount} tokens @ $${aiRate.toFixed(6)}/1k tokens)`;
+    }
   }
 
   if (techCostAmount > 0) {

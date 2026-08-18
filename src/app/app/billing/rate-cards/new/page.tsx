@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createRateCardAction } from "../../actions";
 
 interface LineItemForm {
   lineItemName: string;
@@ -22,6 +23,8 @@ export default function CreateRateCardPage() {
   const [currency, setCurrency] = useState("USD");
   const [isDefault, setIsDefault] = useState(false);
   const [description, setDescription] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [lineItems, setLineItems] = useState<LineItemForm[]>([
     {
@@ -66,13 +69,50 @@ export default function CreateRateCardPage() {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
-  const handleSave = async () => {
-    // Navigate back to Rate Cards list upon save
-    router.push("/app/billing/rate-cards");
+  const updateLineItem = (index: number, field: keyof LineItemForm, value: any) => {
+    const updated = [...lineItems];
+    updated[index] = { ...updated[index], [field]: value };
+    setLineItems(updated);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setErrorMessage("Please enter a Rate Card Name.");
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage("");
+
+    try {
+      await createRateCardAction({
+        name,
+        code,
+        currency,
+        isDefault,
+        description,
+        lineItems: lineItems.map((item) => ({
+          lineItemName: item.lineItemName,
+          serviceCode: item.serviceCode,
+          pricingModel: item.pricingModel,
+          unit: item.unit,
+          rate: Number(item.rate),
+          includedQuantity: Number(item.includedQuantity),
+        })),
+      });
+
+      router.push("/app/billing/rate-cards");
+      router.refresh();
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to save rate card.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <form onSubmit={handleSave} className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-ink">Manual Rate Card Builder</h2>
@@ -88,6 +128,12 @@ export default function CreateRateCardPage() {
         </Link>
       </div>
 
+      {errorMessage && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
+          {errorMessage}
+        </div>
+      )}
+
       {/* Rate Card Metadata Box */}
       <div className="p-6 rounded-2xl bg-white border border-[#E5E5EA] shadow-sm space-y-6">
         <h3 className="text-base font-bold text-ink border-b border-[#E5E5EA] pb-3">
@@ -101,6 +147,7 @@ export default function CreateRateCardPage() {
             </label>
             <input
               type="text"
+              required
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Acme Manufacturing 2026 Rate Card"
@@ -200,7 +247,8 @@ export default function CreateRateCardPage() {
                   <label className="text-[11px] font-semibold text-ink-muted">Customer Description</label>
                   <input
                     type="text"
-                    defaultValue={item.lineItemName}
+                    value={item.lineItemName}
+                    onChange={(e) => updateLineItem(idx, "lineItemName", e.target.value)}
                     className="w-full px-3 py-1.5 rounded-lg bg-white border border-[#E5E5EA] text-xs text-ink focus:outline-none focus:border-brand"
                   />
                 </div>
@@ -208,7 +256,8 @@ export default function CreateRateCardPage() {
                 <div>
                   <label className="text-[11px] font-semibold text-ink-muted">Pricing Model</label>
                   <select
-                    defaultValue={item.pricingModel}
+                    value={item.pricingModel}
+                    onChange={(e) => updateLineItem(idx, "pricingModel", e.target.value)}
                     className="w-full px-3 py-1.5 rounded-lg bg-white border border-[#E5E5EA] text-xs text-ink focus:outline-none focus:border-brand"
                   >
                     <option value="PER_ENTRY">Per Entry</option>
@@ -225,7 +274,8 @@ export default function CreateRateCardPage() {
                   <input
                     type="number"
                     step="0.01"
-                    defaultValue={item.rate}
+                    value={item.rate}
+                    onChange={(e) => updateLineItem(idx, "rate", e.target.value)}
                     className="w-full px-3 py-1.5 rounded-lg bg-white border border-[#E5E5EA] text-xs text-ink font-mono focus:outline-none focus:border-brand"
                   />
                 </div>
@@ -234,7 +284,8 @@ export default function CreateRateCardPage() {
                   <label className="text-[11px] font-semibold text-ink-muted">Included Qty</label>
                   <input
                     type="number"
-                    defaultValue={item.includedQuantity}
+                    value={item.includedQuantity}
+                    onChange={(e) => updateLineItem(idx, "includedQuantity", e.target.value)}
                     className="w-full px-3 py-1.5 rounded-lg bg-white border border-[#E5E5EA] text-xs text-ink font-mono focus:outline-none focus:border-brand"
                   />
                 </div>
@@ -251,14 +302,14 @@ export default function CreateRateCardPage() {
             Cancel
           </Link>
           <button
-            type="button"
-            onClick={handleSave}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand hover:bg-brand-hover text-white transition-colors shadow-sm"
+            type="submit"
+            disabled={isSaving}
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand hover:bg-brand-hover text-white transition-colors shadow-sm disabled:opacity-50"
           >
-            Save Draft & Activate Rate Card v1
+            {isSaving ? "Saving Rate Card..." : "Save & Activate Rate Card v1"}
           </button>
         </div>
       </div>
-    </div>
+    </form>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { DEFAULT_BILLING_EVENT_DEFINITIONS } from "@/lib/billing/telemetry";
+import { DEFAULT_BILLING_EVENT_DEFINITIONS } from "@/lib/billing/constants";
 
 interface RuleItem {
   id: string;

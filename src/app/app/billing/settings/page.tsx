@@ -1,6 +1,5 @@
 import React from "react";
 import { db } from "@/lib/db";
-import { DEFAULT_COST_PROFILE } from "@/lib/billing/costingEngine";
 
 export const revalidate = 0;
 
@@ -9,10 +8,10 @@ export default async function BillingSettingsPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  const loadedLaborRate = profile ? Number(profile.loadedLaborRate) : DEFAULT_COST_PROFILE.loadedLaborRate;
-  const aiTokenRate = profile ? Number(profile.aiTokenRate) : DEFAULT_COST_PROFILE.aiTokenRate;
-  const ocrPageRate = profile ? Number(profile.ocrPageRate) : DEFAULT_COST_PROFILE.ocrPageRate;
-  const aceFee = profile ? Number(profile.aceTransmissionFee) : DEFAULT_COST_PROFILE.aceTransmissionFee;
+  const loadedLaborRate = profile ? Number(profile.loadedLaborRate) : 72.0;
+  const aiTokenRate = profile ? Number(profile.aiTokenRate) : 0.00015;
+  const ocrPageRate = profile ? Number(profile.ocrPageRate) : 0.05;
+  const aceFee = profile ? Number(profile.aceTransmissionFee) : 0.25;
 
   return (
     <div className="space-y-6 max-w-4xl">
