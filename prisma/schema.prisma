@@ -4664,7 +4664,7 @@ model ComplianceKeywordRule {
   citation          String?
   severity          String    @default("HIGH") // LOW | MEDIUM | HIGH | CRITICAL
   authority         String    @default("US BIS / Dept of Commerce")
-  publicationStatus String    @default("DRAFT") // DRAFT | PUBLISHED | SUPERSEDED
+  publicationStatus String    @default("DRAFT") // DRAFT | PUBLISHED | SUPERSEDED | REJECTED
   publishedAt       DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
