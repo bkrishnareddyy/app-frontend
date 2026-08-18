@@ -1,172 +1,29 @@
--- CreateEnum
-CREATE TYPE "PricingModel" AS ENUM ('PER_TRANSACTION', 'PER_UNIT', 'PER_SHIPMENT', 'PER_ENTRY', 'PER_DOCUMENT', 'PER_API_EVENT', 'PER_SUCCESSFUL_OUTCOME', 'FLAT_FEE', 'TIERED', 'TIME_BASED', 'PERCENTAGE_BASED', 'BUNDLED', 'CONDITIONAL');
+-- Creates billing tables and adds columns not covered by
+-- 20260818195000_align_prisma_schema_core. Enums (PricingModel, ChargeStatus,
+-- etc.) and the common ALTER TABLE / DROP CONSTRAINT / AlterEnum blocks are
+-- already handled by 20260818195000 which runs before this migration.
 
--- CreateEnum
-CREATE TYPE "ChargeStatus" AS ENUM ('PENDING', 'RATED', 'REVIEWED', 'APPROVED', 'INVOICED', 'PAID', 'WAIVED', 'CREDITED', 'DISPUTED', 'WRITTEN_OFF', 'REVERSED', 'VOIDED');
-
--- CreateEnum
-CREATE TYPE "InvoiceStatus" AS ENUM ('DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'VOID', 'DISPUTED', 'CREDITED');
-
--- CreateEnum
-CREATE TYPE "RateCardStatus" AS ENUM ('DRAFT', 'ACTIVE', 'RETIRED');
-
--- CreateEnum
-CREATE TYPE "AccountMemoryType" AS ENUM ('FACT', 'PREFERENCE', 'PROCEDURE', 'DECISION', 'EXCEPTION', 'PATTERN');
-
--- CreateEnum
-CREATE TYPE "AccountMemorySubjectType" AS ENUM ('PRODUCT', 'SUPPLIER', 'CLASSIFICATION', 'ORIGIN', 'VALUATION', 'FILING', 'SHIPMENT');
-
--- CreateEnum
-CREATE TYPE "AccountMemorySourceType" AS ENUM ('HUMAN_DECISION', 'FILING_OUTCOME', 'VERIFIED_DOCUMENT', 'AGENT_INFERENCE');
-
--- AlterEnum
-BEGIN;
-CREATE TYPE "DeadlineType_new" AS ENUM ('ISF_10_2', 'ENTRY_FILING', 'ENTRY_SUMMARY', 'DUTY_PAYMENT', 'PMS_STATEMENT', 'LAST_FREE_DAY', 'PSC_WINDOW', 'LIQUIDATION', 'PROTEST_WINDOW', 'CIT_APPEAL_WINDOW', 'DEEMED_DENIAL', 'CF28_RESPONSE', 'CF29_RESPONSE');
-ALTER TABLE "ComplianceDeadline" ALTER COLUMN "type" TYPE "DeadlineType_new" USING ("type"::text::"DeadlineType_new");
-ALTER TYPE "DeadlineType" RENAME TO "DeadlineType_old";
-ALTER TYPE "DeadlineType_new" RENAME TO "DeadlineType";
-DROP TYPE "public"."DeadlineType_old";
-COMMIT;
-
--- DropForeignKey
-ALTER TABLE "AccountMembership" DROP CONSTRAINT "AccountMembership_roleId_fkey";
-
--- DropForeignKey
-ALTER TABLE "Protest" DROP CONSTRAINT "Protest_accountId_fkey";
-
--- DropForeignKey
-ALTER TABLE "Protest" DROP CONSTRAINT "Protest_linkedPscId_fkey";
-
--- DropForeignKey
-ALTER TABLE "ProtestAttachment" DROP CONSTRAINT "ProtestAttachment_protestId_fkey";
-
--- DropForeignKey
-ALTER TABLE "ProtestEntry" DROP CONSTRAINT "ProtestEntry_filingId_fkey";
-
--- DropForeignKey
-ALTER TABLE "ProtestEntry" DROP CONSTRAINT "ProtestEntry_protestId_fkey";
-
--- DropForeignKey
-ALTER TABLE "ProtestNote" DROP CONSTRAINT "ProtestNote_protestId_fkey";
-
--- DropForeignKey
-ALTER TABLE "PscAttachment" DROP CONSTRAINT "PscAttachment_pscId_fkey";
-
--- DropForeignKey
-ALTER TABLE "ShipmentDocument" DROP CONSTRAINT "ShipmentDocument_shipmentId_fkey";
-
--- DropIndex
-DROP INDEX "AdCvdCompanyRate_countryOfOrigin_idx";
+-- AlterTable (unique to this migration — not in 20260818195000)
+ALTER TABLE "CustomsFiling" ADD COLUMN "messageName" TEXT;
 
 -- AlterTable
-ALTER TABLE "AccountMembership" DROP COLUMN "roleId";
+ALTER TABLE "FilingSnapshot" ADD COLUMN "hasSection301" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "section301List" TEXT;
 
 -- AlterTable
-ALTER TABLE "AcePortCode" ALTER COLUMN "transportModes" DROP DEFAULT;
+ALTER TABLE "HtsDutyRate" ADD COLUMN "exclusion" BOOLEAN NOT NULL DEFAULT false;
 
 -- AlterTable
-ALTER TABLE "AgentPolicyConfig" ADD COLUMN     "minimumReviewerRole" TEXT DEFAULT 'SPECIALIST',
-ADD COLUMN     "policyType" TEXT NOT NULL DEFAULT 'THRESHOLD',
-ADD COLUMN     "requireHumanApproval" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "RegulatoryUpdate" ADD COLUMN "documentNumber" TEXT,
+ADD COLUMN "metadata" JSONB;
 
 -- AlterTable
-ALTER TABLE "AuditLog" ADD COLUMN     "source" TEXT NOT NULL DEFAULT 'UI';
+ALTER TABLE "Shipment" ADD COLUMN "countryOfOrigin" TEXT,
+ADD COLUMN "masterShipmentId" TEXT,
+ADD COLUMN "scenarioId" TEXT;
 
 -- AlterTable
-ALTER TABLE "CustomsFiling" ADD COLUMN     "messageName" TEXT,
-ALTER COLUMN "shipmentId" DROP NOT NULL;
-
--- AlterTable
-ALTER TABLE "DeniedPartyWatchlist" ADD COLUMN     "listVersion" TEXT,
-ADD COLUMN     "publishDate" TIMESTAMP(3);
-
--- AlterTable
-ALTER TABLE "DocumentShipmentCandidate" ADD COLUMN     "confidenceScore" DOUBLE PRECISION NOT NULL DEFAULT 1.0;
-
--- AlterTable
-ALTER TABLE "ExceptionItem" ADD COLUMN     "blocking" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "category" TEXT,
-ADD COLUMN     "code" TEXT,
-ADD COLUMN     "requiredAction" TEXT,
-ADD COLUMN     "resolvedBy" TEXT,
-ADD COLUMN     "sourceAgent" TEXT;
-
--- AlterTable
-ALTER TABLE "FilingSnapshot" ADD COLUMN     "hasSection301" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "section301List" TEXT;
-
--- AlterTable
-ALTER TABLE "HtsDutyRate" ADD COLUMN     "caseNumber" TEXT,
-ADD COLUMN     "countryOfOrigin" TEXT,
-ADD COLUMN     "exclusion" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "manufacturer" TEXT,
-ADD COLUMN     "trancheId" TEXT;
-
--- AlterTable
-ALTER TABLE "LandedCostScenario" ADD COLUMN     "htsReleaseId" TEXT,
-ADD COLUMN     "manufacturer" TEXT,
-ADD COLUMN     "tradeAgreementClaim" TEXT;
-
--- AlterTable
-ALTER TABLE "LandedCostScenarioLineItem" ADD COLUMN     "dutyStack" JSONB,
-ADD COLUMN     "manufacturer" TEXT,
-ADD COLUMN     "tradeAgreementClaim" TEXT;
-
--- AlterTable
-ALTER TABLE "Party" ADD COLUMN     "clientId" TEXT;
-
--- AlterTable
-ALTER TABLE "PostSummaryCorrection" ALTER COLUMN "dutyDelta" SET DATA TYPE DECIMAL(65,30),
-ALTER COLUMN "interestEstimate" SET DATA TYPE DECIMAL(65,30),
-ALTER COLUMN "correctedValue" SET DATA TYPE DECIMAL(65,30),
-ALTER COLUMN "correctedQuantity" SET DATA TYPE DECIMAL(65,30);
-
--- AlterTable
-ALTER TABLE "Product" ADD COLUMN     "clientId" TEXT;
-
--- AlterTable
-ALTER TABLE "Protest" ALTER COLUMN "claimAmount" SET DATA TYPE DECIMAL(65,30),
-ALTER COLUMN "updatedAt" DROP DEFAULT;
-
--- AlterTable
-ALTER TABLE "ProtestEntry" ALTER COLUMN "dutyAssessed" SET DATA TYPE DECIMAL(65,30),
-ALTER COLUMN "dutyContested" SET DATA TYPE DECIMAL(65,30);
-
--- AlterTable
-ALTER TABLE "ReconciliationIssue" ADD COLUMN     "issueType" TEXT NOT NULL DEFAULT 'DOCUMENT_CONFLICT',
-ADD COLUMN     "note" TEXT,
-ADD COLUMN     "resolution" TEXT,
-ADD COLUMN     "resolvedByUserId" TEXT,
-ADD COLUMN     "resolvedByUserName" TEXT;
-
--- AlterTable
-ALTER TABLE "RefundOpportunity" ALTER COLUMN "estimatedRefundAmount" DROP NOT NULL;
-
--- AlterTable
-ALTER TABLE "RegulatoryUpdate" ADD COLUMN     "documentNumber" TEXT,
-ADD COLUMN     "metadata" JSONB;
-
--- AlterTable
-ALTER TABLE "ScreeningEntity" ALTER COLUMN "alternateNames" DROP DEFAULT,
-ALTER COLUMN "programCodes" DROP DEFAULT;
-
--- AlterTable
-ALTER TABLE "ScreeningLog" ADD COLUMN     "listVersion" TEXT,
-ADD COLUMN     "publishDate" TIMESTAMP(3);
-
--- AlterTable
-ALTER TABLE "Shipment" ADD COLUMN     "countryOfOrigin" TEXT,
-ADD COLUMN     "masterShipmentId" TEXT,
-ADD COLUMN     "scenarioId" TEXT;
-
--- AlterTable
-ALTER TABLE "ShipmentDocument" ADD COLUMN     "displayOrder" INTEGER,
-ADD COLUMN     "extractedJson" TEXT,
-ADD COLUMN     "rawContent" TEXT,
-ALTER COLUMN "shipmentId" DROP NOT NULL;
-
--- AlterTable
-ALTER TABLE "ShipmentLineItem" ADD COLUMN     "dutyStack" JSONB;
+ALTER TABLE "ShipmentDocument" ADD COLUMN "displayOrder" INTEGER;
 
 -- CreateTable
 CREATE TABLE "AdcvdOrder" (
@@ -950,4 +807,3 @@ ALTER INDEX "FilingActionConfiguration_country_procedureCode_messageName_s_k" RE
 
 -- RenameIndex
 ALTER INDEX "WtoTariffRate_reporterIso2_partnerIso2_hsCode6_tariffYear_rateT" RENAME TO "WtoTariffRate_reporterIso2_partnerIso2_hsCode6_tariffYear_r_key";
-
