@@ -67,7 +67,7 @@ export default async function BillingReportsPage() {
     <div className="space-y-8">
       <div>
         <h2 className="text-xl font-bold text-ink">Profitability & Unit Economics Analytics</h2>
-        <p className="text-sm text-ink-muted">Client-level and AI-agent economics derived only from this brokerage account's operational telemetry.</p>
+        <p className="text-sm text-ink-muted">Client-level and AI-agent economics derived only from this brokerage account&apos;s operational telemetry.</p>
       </div>
 
       <div className="space-y-4">

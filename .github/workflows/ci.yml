@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    name: Test, lint, openapi
+    name: Typecheck, lint, test, build
     runs-on: ubuntu-latest
 
     env:
@@ -48,6 +48,9 @@ jobs:
       - name: Run Prisma migrations
         run: npx prisma migrate deploy
 
+      - name: TypeScript compile
+        run: npx tsc --noEmit
+
       - name: Lint
         run: npm run lint
 
@@ -56,3 +59,6 @@ jobs:
 
       - name: OpenAPI generation must not error
         run: npm run openapi
+
+      - name: Production build
+        run: npm run build

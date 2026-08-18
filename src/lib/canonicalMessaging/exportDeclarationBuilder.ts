@@ -1,8 +1,6 @@
-import { db } from "@/lib/db";
 import type { FilingSnapshotData } from "@/modules/filings/filing.service";
 import type { TariffEngineResult } from "@/lib/tariff/dutyEngine";
 import {
-  splitHsCode,
   mapTransportMode,
   formatIsoDate,
   loadAndMapParty,
@@ -22,130 +20,64 @@ export interface BuildExportDeclarationParams {
   registrationNumber?: string | null;
 }
 
-/**
- * Builds a complete Export Declaration following the ExportDeclaration.schema.json structure.
- * Maps all available Shipment fields to their canonical schema equivalents.
- */
-export async function buildExportDeclaration(
-  params: BuildExportDeclarationParams
-): Promise<Record<string, any>> {
-  const { accountId, filingId, shipmentId, snapshotData, tariff, localReferenceNumber, registrationNumber } = params;
+export async function buildExportDeclaration(params: BuildExportDeclarationParams): Promise<Record<string, any>> {
+  const { filingId, shipmentId, snapshotData, tariff, localReferenceNumber, registrationNumber } = params;
   const { shipment, lineItems, documents } = snapshotData;
 
-  // Load parties (different roles for export)
   const [declarant, exporter, consignee] = await Promise.all([
     loadAndMapParty(shipmentId, "DECLARANT"),
     loadAndMapParty(shipmentId, "EXPORTER"),
-    loadAndMapParty(shipmentId, "CONSIGNEE") || loadAndMapParty(shipmentId, "IMPORTER_OF_RECORD"), // Fallback
+    loadAndMapParty(shipmentId, "CONSIGNEE"),
   ]);
 
-  // Map line items with tariff results
   const goodsItems = lineItems.map((item, idx) => {
     const lineResult = tariff.lineResults?.[idx];
     return mapLineItemToGoodsItem(item, lineResult ? {
       customsValue: lineResult.customsValue,
-      dutyAmount: lineResult.dutyAmount,
+      dutyAmount: lineResult.totalDutyAmount,
     } : undefined);
   });
 
-  // Calculate totals
   const totalInvoiceAmount = lineItems.reduce((sum, item) => sum + item.totalValue, 0);
-
-  // Map documents
-  const supportingDocuments = documents?.map(doc => ({
-    Type: doc.documentType || "999",
-    ReferenceNumber: doc.documentNumber || doc.id,
-    Date: formatIsoDate(doc.documentDate),
+  const supportingDocuments = documents?.map((doc) => ({
+    Type: doc.docType || "999",
+    ReferenceNumber: doc.id,
     Name: doc.fileName,
   })) || [];
 
-  // Build the ExportDeclaration
   return {
     ExportDeclaration: {
       GoodsDeclaration: {
-        // Reference Numbers
-        ReferenceNumber: localReferenceNumber || filingId,  // User-provided local reference or filing ID
-        EntryNumber: snapshotData.filingHeader.entryNumber,  // Customs entry number
+        ReferenceNumber: localReferenceNumber || filingId,
+        EntryNumber: snapshotData.filingHeader.entryNumber,
         DeclarationNumber: shipment.shipmentNumber,
-        RegistrationNumber: registrationNumber || undefined,  // User-provided registration number
-
-        // Area Code (Export-specific)
-        AreaCode: "EX",              // EX = Export
-
-        // Function & Message Control
-        FunctionCode: "9",           // 9 = Original declaration
-
-        // Procedure
-        Procedure: mapProcedurecode(
-          snapshotData.filingHeader.entryType,
-          (shipment as any).destinationCountry,
-          "export"
-        ),
-
-        // Financial Summary
+        RegistrationNumber: registrationNumber || undefined,
+        AreaCode: "EX",
+        FunctionCode: "9",
+        Procedure: mapProcedurecode(snapshotData.filingHeader.entryType, (shipment as any).destinationCountry, "export"),
         InvoiceAmount: totalInvoiceAmount,
         InvoiceCurrency: getDefaultCurrency((shipment as any).countryOfExport || undefined),
         GoodsItemQuantity: lineItems.length,
-
-        // Export Country
         ExportCountry: (shipment as any).countryOfExport,
-        
-        // Destination Country
         DestinationCountry: (shipment as any).destinationCountry,
-
-        // Declarant (person/company filing)
-        DeclarantStatus: "2",        // 2 = Representative
+        DeclarantStatus: "2",
         Declarant: declarant,
-
-        // Parties - Exporter
         Exporter: exporter,
-
-        // Parties - Consignee (foreign buyer)
         Consignee: consignee,
-
-        // Goods Shipment - Main Container
         GoodsShipment: {
           Consignment: {
-            // Transport Means
-            TransportMeans: (shipment as any).transportMode ? {
-              ModeCode: mapTransportMode((shipment as any).transportMode),
-            } : undefined,
-
-            // Carrier Information
-            Carrier: shipment.carrierName ? {
-              Name: shipment.carrierName,
-            } : undefined,
-
-            // Departure Details (Exit port for exports)
+            TransportMeans: (shipment as any).transportMode ? { ModeCode: mapTransportMode((shipment as any).transportMode) } : undefined,
+            Carrier: shipment.carrierName ? { Name: shipment.carrierName } : undefined,
             DepartureTransportMeans: {
-              Location: shipment.portOfEntry ? {  // Using portOfEntry field for exit port
-                Name: shipment.portOfEntry,
-              } : undefined,
+              Location: shipment.portOfEntry ? { Name: shipment.portOfEntry } : undefined,
               DepartureDate: formatIsoDate((shipment as any).ladingDate || (shipment as any).estimatedArrival),
             },
-
-            // Delivery Terms (Incoterm)
-            DeliveryTerms: shipment.incoterm ? {
-              Code: shipment.incoterm,
-            } : undefined,
-
-            // Line Items (Goods Items)
+            DeliveryTerms: shipment.incoterm ? { Code: shipment.incoterm } : undefined,
             GoodsItem: goodsItems,
           },
         },
-
-        // Supporting Documents
         SupportingDocuments: supportingDocuments.length > 0 ? supportingDocuments : undefined,
-
-        // Internal Data (Qubere-specific tracking)
-        InternalData: buildInternalData(
-          shipmentId,
-          filingId,
-          (shipment as any).status,
-          (shipment as any).currentStage
-        ),
-
-        // Response Section (empty for outbound request)
+        InternalData: buildInternalData(shipmentId, filingId, (shipment as any).status, (shipment as any).currentStage),
         Response: {},
       },
     },
