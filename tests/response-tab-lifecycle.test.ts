@@ -140,7 +140,7 @@ describe("Customs Filing Response tab lifecycle", () => {
   /** Simulates a mock authority response arriving for `correlationMessageId`, via the real inbound path. */
   async function mockResponse(
     correlationMessageId: string,
-    status: "ACCEPTED" | "REJECTED" | "AMENDED",
+    status: "ACCEPTED" | "REJECTED" | "AMENDED" | "CANCELLED",
     humanMessage: string
   ) {
     const message: CanonicalMessage<CanonicalFilingResponseData> = {
