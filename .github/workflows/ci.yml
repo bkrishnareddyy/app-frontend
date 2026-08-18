@@ -45,8 +45,13 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run Prisma migrations
+      - name: Run Prisma migrations from scratch
         run: npx prisma migrate deploy
+
+      - name: Verify migrations are replay-safe
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
 
       - name: TypeScript compile
         run: npx tsc --noEmit
