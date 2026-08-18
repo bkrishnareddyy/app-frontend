@@ -27,7 +27,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d qubere_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -86,7 +86,18 @@ jobs:
         run: npm run lint
 
       - name: Unit tests
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.log
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: OpenAPI generation must not error
         run: npm run openapi
