@@ -72,6 +72,13 @@ export const DEFAULT_BILLING_EVENT_DEFINITIONS: readonly BillingEventDefItem[] =
     defaultUnit: "filing",
   },
   {
+    eventCode: "RECONCILIATION_COMPLETED",
+    name: "Shipment Reconciliation Completed",
+    description: "Cross-document shipment reconciliation completed and exceptions refreshed",
+    category: "RECONCILIATION",
+    defaultUnit: "shipment",
+  },
+  {
     eventCode: "RECONCILIATION_ENTRY_PREPARED",
     name: "Reconciliation Entry Preparation",
     description: "Reconciliation entry flag assembly and filing prep",
