@@ -8,11 +8,7 @@ import { MappingClient } from "./MappingClient";
 
 export const revalidate = 0;
 
-export default async function RateCardDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function RateCardDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAccountContext();
   if (!ctx) redirect("/sign-in");
   if (!(await hasPermission("billing.ratecard.manage"))) redirect("/app/billing");
@@ -25,21 +21,13 @@ export default async function RateCardDetailPage({
       importer: { select: { name: true } },
       versions: {
         orderBy: { version: "desc" },
-        include: {
-          rules: {
-            include: {
-              capabilityMappings: {
-                include: { eventDefinition: true },
-              },
-            },
-          },
-        },
+        include: { rules: { include: { capabilityMappings: { include: { eventDefinition: true } } } } },
       },
     },
   });
 
   if (!rateCard) notFound();
-
+  const rateCardId = rateCard.id;
   const latestVersion = rateCard.versions[0];
   const formattedRules = (latestVersion?.rules ?? []).map((r) => ({
     id: r.id,
@@ -51,7 +39,7 @@ export default async function RateCardDetailPage({
 
   async function activateCurrentRateCard() {
     "use server";
-    await activateRateCardAction(rateCard.id);
+    await activateRateCardAction(rateCardId);
   }
 
   return (
@@ -59,51 +47,25 @@ export default async function RateCardDetailPage({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span
-              className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
-                rateCard.status === "ACTIVE"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-amber-50 text-amber-800 border border-amber-200"
-              }`}
-            >
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${rateCard.status === "ACTIVE" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
               {rateCard.status}
             </span>
             <span className="text-xs text-ink-muted">Version v{latestVersion?.version ?? rateCard.currentVersion}</span>
           </div>
           <h2 className="text-xl font-bold text-ink mt-1">{rateCard.name}</h2>
-          <p className="text-sm text-ink-muted">
-            Scope: {rateCard.client?.name ?? rateCard.importer?.name ?? "Brokerage Default"} | Currency: {rateCard.currency}
-          </p>
+          <p className="text-sm text-ink-muted">Scope: {rateCard.client?.name ?? rateCard.importer?.name ?? "Brokerage Default"} | Currency: {rateCard.currency}</p>
         </div>
-
         <div className="flex items-center gap-3">
-          {rateCard.status !== "ACTIVE" && (
-            <form action={activateCurrentRateCard}>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm"
-              >
-                Activate Rate Card
-              </button>
-            </form>
-          )}
-          <Link
-            href="/app/billing/rate-cards"
-            className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors"
-          >
-            ← Back to Rate Cards
-          </Link>
+          {rateCard.status !== "ACTIVE" && <form action={activateCurrentRateCard}><button type="submit" className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm">Activate Rate Card</button></form>}
+          <Link href="/app/billing/rate-cards" className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors">← Back to Rate Cards</Link>
         </div>
       </div>
 
       <div className="p-6 rounded-2xl bg-white border border-[#E5E5EA] shadow-sm space-y-6">
         <div>
           <h3 className="text-base font-bold text-ink">Rate Card Line-Item to Platform API Capability Mapping</h3>
-          <p className="text-xs text-ink-muted mt-1">
-            Link commercial customer line items to stable Qubere platform billing event codes emitted by API endpoints, AI agents, and broker workflows. Save mappings before activating a draft rate card.
-          </p>
+          <p className="text-xs text-ink-muted mt-1">Link commercial customer line items to stable Qubere platform billing event codes emitted by API endpoints, AI agents, and broker workflows. Save mappings before activating a draft rate card.</p>
         </div>
-
         <MappingClient rules={formattedRules} />
       </div>
     </div>
