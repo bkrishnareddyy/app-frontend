@@ -56,22 +56,19 @@ export interface AddTabOptions extends Partial<UITab> {
   title?: string;
 }
 
-function tabIdOf(tab: UITab): string | undefined {
-  return tab.tabId ?? tab.id;
+function tabIdOf(tab: UITab): string {
+  return tab.tabId;
 }
 
-function sectionIdOf(section: UISection): string | undefined {
-  return section.sectionId ?? section.id;
+function sectionIdOf(section: UISection): string {
+  return section.sectionId;
 }
 
-/** Add a tab and return a fresh config object for React callers. */
 export function addTab(config: FilingUIConfigData, options: AddTabOptions): FilingUIConfigData {
   if (!config.tabs) config.tabs = [];
   const tabId = options.tabId ?? options.id;
   if (!tabId) throw new Error("Tab ID is required");
-  if (config.tabs.some((tab) => tabIdOf(tab) === tabId)) {
-    throw new Error(`Tab with ID "${tabId}" already exists`);
-  }
+  if (config.tabs.some((tab) => tabIdOf(tab) === tabId)) throw new Error(`Tab with ID "${tabId}" already exists`);
 
   const label = options.label ?? options.title ?? tabId;
   const tabOrder = options.tabOrder ?? options.displayOrder ?? (config.tabs.length + 1) * 10;
@@ -88,23 +85,19 @@ export function addTab(config: FilingUIConfigData, options: AddTabOptions): Fili
     description: options.description,
   };
   config.tabs.push(tab);
-  config.tabs.sort((a, b) => (a.tabOrder ?? a.displayOrder ?? 0) - (b.tabOrder ?? b.displayOrder ?? 0));
+  config.tabs.sort((a, b) => a.tabOrder - b.tabOrder);
   return { ...config, tabs: [...config.tabs] };
 }
 
-/** Remove a tab and return a fresh config object for React callers. */
 export function removeTab(config: FilingUIConfigData, tabId: string): FilingUIConfigData {
   if (!config.tabs) return { ...config };
   const tab = config.tabs.find((candidate) => tabIdOf(candidate) === tabId);
   if (!tab) throw new Error(`Tab with ID "${tabId}" not found`);
 
-  const linkedSectionIds = new Set(tab.sections ?? []);
+  const linkedSectionIds = new Set(tab.sections);
   config.tabs = config.tabs.filter((candidate) => tabIdOf(candidate) !== tabId);
-  config.sections = config.sections.filter((section) => {
-    const sectionId = sectionIdOf(section);
-    return section.tabId !== tabId && (!sectionId || !linkedSectionIds.has(sectionId));
-  });
-  const survivingSections = new Set(config.sections.map(sectionIdOf).filter(Boolean));
+  config.sections = config.sections.filter((section) => section.tabId !== tabId && !linkedSectionIds.has(sectionIdOf(section)));
+  const survivingSections = new Set(config.sections.map(sectionIdOf));
   config.fields = config.fields.filter((field) => survivingSections.has(field.sectionId ?? field.section));
   return { ...config, tabs: [...config.tabs], sections: [...config.sections], fields: [...config.fields] };
 }
@@ -115,9 +108,9 @@ export function updateTab(config: FilingUIConfigData, tabId: string, updates: Pa
   if (tabIndex === -1) throw new Error(`Tab with ID "${tabId}" not found`);
 
   const current = config.tabs[tabIndex];
-  const nextLabel = updates.label ?? updates.title ?? current.label ?? current.title;
-  const nextOrder = updates.tabOrder ?? updates.displayOrder ?? current.tabOrder ?? current.displayOrder;
-  const nextId = updates.tabId ?? updates.id ?? tabIdOf(current);
+  const nextLabel = updates.label ?? updates.title ?? current.label;
+  const nextOrder = updates.tabOrder ?? updates.displayOrder ?? current.tabOrder;
+  const nextId = updates.tabId ?? updates.id ?? current.tabId;
   const updated: UITab = {
     ...current,
     ...updates,
@@ -127,6 +120,7 @@ export function updateTab(config: FilingUIConfigData, tabId: string, updates: Pa
     title: nextLabel,
     tabOrder: nextOrder,
     displayOrder: nextOrder,
+    sections: updates.sections ?? current.sections,
   };
   const tabs = [...config.tabs];
   tabs[tabIndex] = updated;
@@ -140,10 +134,7 @@ export function linkSectionToTab(config: FilingUIConfigData, sectionId: string, 
   const section = config.sections.find((candidate) => sectionIdOf(candidate) === sectionId);
   if (!section) throw new Error(`Section with ID "${sectionId}" not found`);
 
-  for (const candidate of config.tabs) {
-    candidate.sections = (candidate.sections ?? []).filter((id) => id !== sectionId);
-  }
-  tab.sections = tab.sections ?? [];
+  for (const candidate of config.tabs) candidate.sections = candidate.sections.filter((id) => id !== sectionId);
   if (!tab.sections.includes(sectionId)) tab.sections.push(sectionId);
   section.tabId = tabId;
 }
@@ -161,9 +152,7 @@ export interface AddSectionOptions {
 }
 
 export function addSection(config: FilingUIConfigData, options: AddSectionOptions): void {
-  if (config.sections.some((section) => sectionIdOf(section) === options.sectionId)) {
-    throw new Error(`Section with ID "${options.sectionId}" already exists`);
-  }
+  if (config.sections.some((section) => sectionIdOf(section) === options.sectionId)) throw new Error(`Section with ID "${options.sectionId}" already exists`);
   const order = options.sectionOrder ?? (config.sections.length + 1) * 10;
   const section: UISection = {
     sectionId: options.sectionId,
@@ -181,7 +170,7 @@ export function addSection(config: FilingUIConfigData, options: AddSectionOption
     description: options.description,
   };
   config.sections.push(section);
-  config.sections.sort((a, b) => (a.sectionOrder ?? a.displayOrder ?? 0) - (b.sectionOrder ?? b.displayOrder ?? 0));
+  config.sections.sort((a, b) => a.sectionOrder - b.sectionOrder);
   if (options.tabId) linkSectionToTab(config, options.sectionId, options.tabId);
 }
 
@@ -189,7 +178,7 @@ export function removeSection(config: FilingUIConfigData, sectionId: string): vo
   const index = config.sections.findIndex((section) => sectionIdOf(section) === sectionId);
   if (index === -1) throw new Error(`Section with ID "${sectionId}" not found`);
   config.sections.splice(index, 1);
-  config.tabs?.forEach((tab) => { tab.sections = (tab.sections ?? []).filter((id) => id !== sectionId); });
+  config.tabs?.forEach((tab) => { tab.sections = tab.sections.filter((id) => id !== sectionId); });
   config.fields = config.fields.filter((field) => (field.sectionId ?? field.section) !== sectionId);
   if (config.panels) config.panels = config.panels.filter((panel) => panel.sectionId !== sectionId);
 }
@@ -206,9 +195,7 @@ export interface AddPanelOptions {
 
 export function addPanel(config: FilingUIConfigData, options: AddPanelOptions): void {
   if (!config.panels) config.panels = [];
-  if (config.panels.some((panel) => panel.panelId === options.panelId)) {
-    throw new Error(`Panel with ID "${options.panelId}" already exists`);
-  }
+  if (config.panels.some((panel) => panel.panelId === options.panelId)) throw new Error(`Panel with ID "${options.panelId}" already exists`);
   const section = config.sections.find((candidate) => sectionIdOf(candidate) === options.sectionId);
   if (!section) throw new Error(`Section with ID "${options.sectionId}" not found`);
   const panel: UIPanel = {
@@ -225,7 +212,7 @@ export function addPanel(config: FilingUIConfigData, options: AddPanelOptions): 
   section.layout = "panels";
   section.panels = section.panels ?? [];
   if (!section.panels.includes(options.panelId)) section.panels.push(options.panelId);
-  config.panels.sort((a, b) => (a.panelOrder ?? 0) - (b.panelOrder ?? 0));
+  config.panels.sort((a, b) => a.panelOrder - b.panelOrder);
 }
 
 export function removePanel(config: FilingUIConfigData, panelId: string): void {
@@ -255,9 +242,7 @@ export interface AddFieldOptions {
 }
 
 export function addField(config: FilingUIConfigData, options: AddFieldOptions): void {
-  if (config.fields.some((field) => field.fieldPath === options.fieldPath)) {
-    throw new Error(`Field with path "${options.fieldPath}" already exists`);
-  }
+  if (config.fields.some((field) => field.fieldPath === options.fieldPath)) throw new Error(`Field with path "${options.fieldPath}" already exists`);
   const section = config.sections.find((candidate) => sectionIdOf(candidate) === options.section);
   if (!section) throw new Error(`Section with ID "${options.section}" not found`);
   if (options.panelId) {
@@ -284,14 +269,10 @@ export function addField(config: FilingUIConfigData, options: AddFieldOptions): 
     isArrayField: options.isArrayField ?? false,
   };
   config.fields.push(field);
-  section.fields = section.fields ?? [];
   if (!section.fields.includes(options.fieldPath)) section.fields.push(options.fieldPath);
   if (options.panelId) {
     const panel = config.panels?.find((candidate) => candidate.panelId === options.panelId);
-    if (panel) {
-      panel.fields = panel.fields ?? [];
-      if (!panel.fields.includes(options.fieldPath)) panel.fields.push(options.fieldPath);
-    }
+    if (panel && !panel.fields.includes(options.fieldPath)) panel.fields.push(options.fieldPath);
   }
   config.fields.sort((a, b) => a.displayOrder - b.displayOrder);
 }
@@ -301,10 +282,10 @@ export function removeField(config: FilingUIConfigData, fieldPath: string): void
   if (!field) throw new Error(`Field with path "${fieldPath}" not found`);
   config.fields = config.fields.filter((candidate) => candidate.fieldPath !== fieldPath);
   const section = config.sections.find((candidate) => sectionIdOf(candidate) === (field.sectionId ?? field.section));
-  if (section?.fields) section.fields = section.fields.filter((path) => path !== fieldPath);
+  if (section) section.fields = section.fields.filter((path) => path !== fieldPath);
   if (field.panelId) {
     const panel = config.panels?.find((candidate) => candidate.panelId === field.panelId);
-    if (panel?.fields) panel.fields = panel.fields.filter((path) => path !== fieldPath);
+    if (panel) panel.fields = panel.fields.filter((path) => path !== fieldPath);
   }
 }
 
@@ -316,12 +297,9 @@ export function updateField(config: FilingUIConfigData, fieldPath: string, updat
   const nextSectionId = updates.sectionId ?? updates.section;
   if (nextSectionId && nextSectionId !== oldSectionId) {
     const oldSection = config.sections.find((candidate) => sectionIdOf(candidate) === oldSectionId);
-    if (oldSection?.fields) oldSection.fields = oldSection.fields.filter((path) => path !== fieldPath);
+    if (oldSection) oldSection.fields = oldSection.fields.filter((path) => path !== fieldPath);
     const newSection = config.sections.find((candidate) => sectionIdOf(candidate) === nextSectionId);
-    if (newSection) {
-      newSection.fields = newSection.fields ?? [];
-      if (!newSection.fields.includes(fieldPath)) newSection.fields.push(fieldPath);
-    }
+    if (newSection && !newSection.fields.includes(fieldPath)) newSection.fields.push(fieldPath);
     field.section = nextSectionId;
     field.sectionId = nextSectionId;
   }
