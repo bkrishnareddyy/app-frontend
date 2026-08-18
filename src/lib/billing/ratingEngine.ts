@@ -1,9 +1,20 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
+const VERSION_INCLUDE = {
+  rules: {
+    include: {
+      capabilityMappings: {
+        include: { eventDefinition: true },
+      },
+    },
+  },
+} as const;
+
 /**
  * Resolves the active RateCardVersion for an account, client, and importer.
  * Resolution hierarchy: Importer-specific -> Client-specific -> Account Default.
+ * Only versions effective now and not expired are eligible.
  */
 export async function resolveActiveRateCardVersion(params: {
   accountId: string;
@@ -11,112 +22,57 @@ export async function resolveActiveRateCardVersion(params: {
   importerId?: string | null;
 }) {
   const { accountId, clientId, importerId } = params;
+  const now = new Date();
+  const versionWhere = {
+    status: "ACTIVE" as const,
+    effectiveDate: { lte: now },
+    OR: [{ expirationDate: null }, { expirationDate: { gt: now } }],
+  };
 
-  // 1. Try Importer-specific Rate Card
+  async function latestVersionForRateCard(where: Record<string, unknown>) {
+    const rateCard = await db.rateCard.findFirst({
+      where: { accountId, status: "ACTIVE", ...where },
+      include: {
+        versions: {
+          where: versionWhere,
+          orderBy: [{ effectiveDate: "desc" }, { version: "desc" }],
+          take: 1,
+          include: VERSION_INCLUDE,
+        },
+      },
+    });
+    return rateCard?.versions[0] ?? null;
+  }
+
   if (importerId) {
-    const importerRateCard = await db.rateCard.findFirst({
-      where: {
-        accountId,
-        importerId,
-        status: "ACTIVE",
-      },
-      include: {
-        versions: {
-          where: { status: "ACTIVE" },
-          orderBy: { version: "desc" },
-          take: 1,
-          include: {
-            rules: {
-              include: {
-                capabilityMappings: {
-                  include: { eventDefinition: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-    if (importerRateCard?.versions[0]) {
-      return importerRateCard.versions[0];
-    }
+    const version = await latestVersionForRateCard({ importerId });
+    if (version) return version;
   }
 
-  // 2. Try Client-specific Rate Card
   if (clientId) {
-    const clientRateCard = await db.rateCard.findFirst({
-      where: {
-        accountId,
-        clientId,
-        status: "ACTIVE",
-      },
-      include: {
-        versions: {
-          where: { status: "ACTIVE" },
-          orderBy: { version: "desc" },
-          take: 1,
-          include: {
-            rules: {
-              include: {
-                capabilityMappings: {
-                  include: { eventDefinition: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-    if (clientRateCard?.versions[0]) {
-      return clientRateCard.versions[0];
-    }
+    const version = await latestVersionForRateCard({ clientId, importerId: null });
+    if (version) return version;
   }
 
-  // 3. Try Default Brokerage Rate Card
-  const defaultRateCard = await db.rateCard.findFirst({
-    where: {
-      accountId,
-      isDefault: true,
-      status: "ACTIVE",
-    },
-    include: {
-      versions: {
-        where: { status: "ACTIVE" },
-        orderBy: { version: "desc" },
-        take: 1,
-        include: {
-          rules: {
-            include: {
-              capabilityMappings: {
-                include: { eventDefinition: true },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  return defaultRateCard?.versions[0] ?? null;
+  return latestVersionForRateCard({ isDefault: true, clientId: null, importerId: null });
 }
 
 interface TierConfig {
   fromQty: number;
-  toQty: number | null; // null for infinity
+  toQty: number | null;
   unitRate: number;
 }
 
+const ONCE_PER_SHIPMENT_MODELS = new Set(["FLAT_FEE", "PER_SHIPMENT", "PER_ENTRY", "BUNDLED"]);
+
 /**
- * Evaluates a usage event against the active rate card version and generates a ShipmentCharge if billable.
+ * Evaluates a usage event against the active rate card version and creates a
+ * ShipmentCharge if billable. A flat/bundled rule may be mapped to many
+ * capabilities but is charged only once per shipment and rate-rule version.
  */
 export async function evaluateAndRateUsageEvent(usageEventId: string) {
-  const usageEvent = await db.usageEvent.findUnique({
-    where: { id: usageEventId },
-  });
-
-  if (!usageEvent || !usageEvent.shipmentId) {
-    return null; // Rating requires an associated shipment
-  }
+  const usageEvent = await db.usageEvent.findUnique({ where: { id: usageEventId } });
+  if (!usageEvent || !usageEvent.shipmentId) return null;
 
   const activeVersion = await resolveActiveRateCardVersion({
     accountId: usageEvent.accountId,
@@ -125,53 +81,70 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
   });
 
   if (!activeVersion) {
-    // Record billing exception: Missing Rate Card
-    await db.billingException.create({
-      data: {
+    const existingException = await db.billingException.findFirst({
+      where: {
         accountId: usageEvent.accountId,
-        type: "MISSING_RATE_CARD",
-        severity: "HIGH",
-        status: "OPEN",
-        description: `No active rate card found for Account ${usageEvent.accountId}, Client ${usageEvent.clientId ?? "N/A"}. Event: ${usageEvent.eventCode}`,
-        shipmentId: usageEvent.shipmentId,
-        clientId: usageEvent.clientId,
         usageEventId: usageEvent.id,
+        type: "MISSING_RATE_CARD",
+        status: "OPEN",
       },
+      select: { id: true },
     });
+    if (!existingException) {
+      await db.billingException.create({
+        data: {
+          accountId: usageEvent.accountId,
+          type: "MISSING_RATE_CARD",
+          severity: "HIGH",
+          status: "OPEN",
+          description: `No active, effective rate card found for Client ${usageEvent.clientId ?? "N/A"}. Event: ${usageEvent.eventCode}`,
+          shipmentId: usageEvent.shipmentId,
+          clientId: usageEvent.clientId,
+          usageEventId: usageEvent.id,
+        },
+      });
+    }
     return null;
   }
 
-  // Find matching RateRule mapped to this billing event code
   const matchingRule = activeVersion.rules.find((rule) =>
-    rule.capabilityMappings.some((m) => m.eventDefinition.eventCode === usageEvent.eventCode)
+    rule.isBillable && rule.capabilityMappings.some((mapping) => mapping.eventDefinition.eventCode === usageEvent.eventCode)
   );
+  if (!matchingRule) return null;
 
-  if (!matchingRule || !matchingRule.isBillable) {
-    return null; // Event is non-billable or not covered by rate card
+  if (matchingRule.pricingModel === "PER_SUCCESSFUL_OUTCOME" && !usageEvent.success) return null;
+
+  if (ONCE_PER_SHIPMENT_MODELS.has(matchingRule.pricingModel)) {
+    const existingCharge = await db.shipmentCharge.findFirst({
+      where: {
+        accountId: usageEvent.accountId,
+        shipmentId: usageEvent.shipmentId,
+        rateRuleId: matchingRule.id,
+        status: { notIn: ["VOIDED", "REVERSED"] },
+      },
+    });
+    if (existingCharge) return existingCharge;
   }
 
   const eventQty = Number(usageEvent.quantity);
-
-  // Outcome-based check
-  if (matchingRule.pricingModel === "PER_SUCCESSFUL_OUTCOME" && !usageEvent.success) {
-    return null; // Unsuccessful outcome is not billed under PER_SUCCESSFUL_OUTCOME
-  }
-
+  const unitPrice = Number(matchingRule.rate);
   let grossAmount = 0;
-  let unitPrice = Number(matchingRule.rate);
   const trace: Record<string, unknown> = {
     pricingModel: matchingRule.pricingModel,
     baseRate: unitPrice,
     eventQty,
     includedQty: matchingRule.includedQuantity,
+    rateCardVersionId: activeVersion.id,
+    rateRuleId: matchingRule.id,
   };
 
-  // Evaluate Pricing Models
   switch (matchingRule.pricingModel) {
     case "FLAT_FEE":
     case "PER_SHIPMENT":
     case "PER_ENTRY":
+    case "BUNDLED":
       grossAmount = unitPrice;
+      trace.oncePerShipment = true;
       break;
 
     case "PER_TRANSACTION":
@@ -188,14 +161,11 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
     case "TIERED": {
       const tiers = (matchingRule.tieredConfig as unknown as TierConfig[]) ?? [];
       let totalTieredCharge = 0;
-      let remainingQty = eventQty;
-
       for (const tier of tiers) {
-        if (remainingQty <= 0) break;
-        const tierCap = tier.toQty ? tier.toQty - tier.fromQty + 1 : remainingQty;
-        const qtyInTier = Math.min(remainingQty, tierCap);
+        const lowerBound = Math.max(1, tier.fromQty);
+        const upperBound = tier.toQty ?? eventQty;
+        const qtyInTier = Math.max(0, Math.min(eventQty, upperBound) - lowerBound + 1);
         totalTieredCharge += qtyInTier * tier.unitRate;
-        remainingQty -= qtyInTier;
       }
       grossAmount = totalTieredCharge;
       trace.tieredResult = totalTieredCharge;
@@ -203,17 +173,28 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
     }
 
     case "TIME_BASED": {
-      // Duration in ms converted to hours
-      const durationHours = (usageEvent.processingDuration ?? 0) / (1000 * 60 * 60);
+      const durationHours = (usageEvent.processingDuration ?? 0) / 3_600_000;
       grossAmount = durationHours * unitPrice;
       trace.durationHours = durationHours;
       break;
     }
 
     case "PERCENTAGE_BASED": {
-      const baseValue = Number((usageEvent.metadata as Record<string, unknown>)?.valueAmount ?? 0);
+      const metadata = (usageEvent.metadata ?? {}) as Record<string, unknown>;
+      const baseValue = Number(metadata.valueAmount ?? 0);
       grossAmount = baseValue * (unitPrice / 100);
       trace.baseValue = baseValue;
+      break;
+    }
+
+    case "CONDITIONAL": {
+      // Conditions are persisted on the rule. Until a dedicated condition DSL
+      // evaluator is introduced, require the producer to explicitly mark the
+      // event as qualifying rather than silently billing every event.
+      const metadata = (usageEvent.metadata ?? {}) as Record<string, unknown>;
+      if (metadata.billingConditionMatched !== true) return null;
+      grossAmount = eventQty * unitPrice;
+      trace.conditionMatched = true;
       break;
     }
 
@@ -222,20 +203,21 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
       break;
   }
 
-  // Apply Min / Max constraints
-  if (matchingRule.minCharge && grossAmount > 0 && grossAmount < Number(matchingRule.minCharge)) {
+  if (matchingRule.minCharge !== null && grossAmount > 0 && grossAmount < Number(matchingRule.minCharge)) {
     trace.adjustedForMin = Number(matchingRule.minCharge);
     grossAmount = Number(matchingRule.minCharge);
   }
-  if (matchingRule.maxCharge && grossAmount > Number(matchingRule.maxCharge)) {
+  if (matchingRule.maxCharge !== null && grossAmount > Number(matchingRule.maxCharge)) {
     trace.adjustedForMax = Number(matchingRule.maxCharge);
     grossAmount = Number(matchingRule.maxCharge);
   }
 
-  const grossDecimal = new Prisma.Decimal(grossAmount);
-  const netDecimal = grossDecimal; // Initial net = gross until discount applied
+  // A zero-dollar result is legitimate for an included quantity, but it should
+  // not create a misleading customer charge row.
+  if (grossAmount <= 0) return null;
 
-  const charge = await db.shipmentCharge.create({
+  const grossDecimal = new Prisma.Decimal(grossAmount);
+  return db.shipmentCharge.create({
     data: {
       accountId: usageEvent.accountId,
       shipmentId: usageEvent.shipmentId,
@@ -247,12 +229,10 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
       unitPrice: new Prisma.Decimal(unitPrice),
       grossAmount: grossDecimal,
       discountAmount: new Prisma.Decimal(0),
-      netAmount: netDecimal,
+      netAmount: grossDecimal,
       currency: matchingRule.currency,
       status: "RATED",
       calculationTrace: trace as Prisma.InputJsonValue,
     },
   });
-
-  return charge;
 }
