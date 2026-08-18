@@ -6,8 +6,8 @@ import {
   loadAndMapParty,
   mapProcedurecode,
   mapLineItemToGoodsItem,
+  mapDocumentType,
   buildInternalData,
-  getDefaultCurrency,
 } from "./fieldMappers";
 
 export interface BuildExportDeclarationParams {
@@ -20,15 +20,23 @@ export interface BuildExportDeclarationParams {
   registrationNumber?: string | null;
 }
 
-export async function buildExportDeclaration(params: BuildExportDeclarationParams): Promise<Record<string, any>> {
+/**
+ * Builds a complete Export Declaration following the ExportDeclaration.schema.json structure.
+ * Commercial invoice values remain in their original currency; customs-value calculations
+ * use the filing's frozen conversion context separately.
+ */
+export async function buildExportDeclaration(
+  params: BuildExportDeclarationParams
+): Promise<Record<string, any>> {
   const { filingId, shipmentId, snapshotData, tariff, localReferenceNumber, registrationNumber } = params;
-  const { shipment, lineItems, documents } = snapshotData;
+  const { shipment, lineItems, documents, currency } = snapshotData;
 
-  const [declarant, exporter, consignee] = await Promise.all([
+  const [declarant, exporter, directConsignee] = await Promise.all([
     loadAndMapParty(shipmentId, "DECLARANT"),
     loadAndMapParty(shipmentId, "EXPORTER"),
     loadAndMapParty(shipmentId, "CONSIGNEE"),
   ]);
+  const consignee = directConsignee ?? await loadAndMapParty(shipmentId, "IMPORTER_OF_RECORD");
 
   const goodsItems = lineItems.map((item, idx) => {
     const lineResult = tariff.lineResults?.[idx];
@@ -39,8 +47,9 @@ export async function buildExportDeclaration(params: BuildExportDeclarationParam
   });
 
   const totalInvoiceAmount = lineItems.reduce((sum, item) => sum + item.totalValue, 0);
-  const supportingDocuments = documents?.map((doc) => ({
-    Type: doc.docType || "999",
+
+  const supportingDocuments = documents?.map(doc => ({
+    Type: mapDocumentType(doc.docType),
     ReferenceNumber: doc.id,
     Name: doc.fileName,
   })) || [];
@@ -52,32 +61,58 @@ export async function buildExportDeclaration(params: BuildExportDeclarationParam
         EntryNumber: snapshotData.filingHeader.entryNumber,
         DeclarationNumber: shipment.shipmentNumber,
         RegistrationNumber: registrationNumber || undefined,
+
         AreaCode: "EX",
         FunctionCode: "9",
-        Procedure: mapProcedurecode(snapshotData.filingHeader.entryType, (shipment as any).destinationCountry, "export"),
+
+        Procedure: mapProcedurecode(
+          snapshotData.filingHeader.entryType,
+          shipment.destinationCountry,
+          "export"
+        ),
+
         InvoiceAmount: totalInvoiceAmount,
-        InvoiceCurrency: getDefaultCurrency((shipment as any).countryOfExport || undefined),
+        InvoiceCurrency: currency.commercialCurrency,
         GoodsItemQuantity: lineItems.length,
-        ExportCountry: (shipment as any).countryOfExport,
-        DestinationCountry: (shipment as any).destinationCountry,
+
+        ExportCountry: shipment.countryOfExport,
+        DestinationCountry: shipment.destinationCountry,
+
         DeclarantStatus: "2",
         Declarant: declarant,
         Exporter: exporter,
         Consignee: consignee,
+
         GoodsShipment: {
           Consignment: {
-            TransportMeans: (shipment as any).transportMode ? { ModeCode: mapTransportMode((shipment as any).transportMode) } : undefined,
-            Carrier: shipment.carrierName ? { Name: shipment.carrierName } : undefined,
+            TransportMeans: shipment.transportMode ? {
+              ModeCode: mapTransportMode(shipment.transportMode),
+            } : undefined,
+            Carrier: shipment.carrierName ? {
+              Name: shipment.carrierName,
+            } : undefined,
             DepartureTransportMeans: {
-              Location: shipment.portOfEntry ? { Name: shipment.portOfEntry } : undefined,
-              DepartureDate: formatIsoDate((shipment as any).ladingDate || (shipment as any).estimatedArrival),
+              Location: shipment.portOfEntry ? {
+                Name: shipment.portOfEntry,
+              } : undefined,
+              DepartureDate: formatIsoDate(shipment.ladingDate || shipment.estimatedArrival),
             },
-            DeliveryTerms: shipment.incoterm ? { Code: shipment.incoterm } : undefined,
+            DeliveryTerms: shipment.incoterm ? {
+              Code: shipment.incoterm,
+            } : undefined,
             GoodsItem: goodsItems,
           },
         },
+
         SupportingDocuments: supportingDocuments.length > 0 ? supportingDocuments : undefined,
-        InternalData: buildInternalData(shipmentId, filingId, (shipment as any).status, (shipment as any).currentStage),
+
+        InternalData: buildInternalData(
+          shipmentId,
+          filingId,
+          shipment.status,
+          shipment.currentStage ?? undefined
+        ),
+
         Response: {},
       },
     },
