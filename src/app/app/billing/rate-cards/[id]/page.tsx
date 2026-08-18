@@ -49,6 +49,11 @@ export default async function RateCardDetailPage({
     mappedEvents: r.capabilityMappings.map((m) => m.eventDefinition.eventCode),
   }));
 
+  async function activateCurrentRateCard() {
+    "use server";
+    await activateRateCardAction(rateCard.id);
+  }
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -73,7 +78,7 @@ export default async function RateCardDetailPage({
 
         <div className="flex items-center gap-3">
           {rateCard.status !== "ACTIVE" && (
-            <form action={activateRateCardAction.bind(null, rateCard.id)}>
+            <form action={activateCurrentRateCard}>
               <button
                 type="submit"
                 className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm"
