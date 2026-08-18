@@ -1,13 +1,12 @@
 // Transitional compatibility types for the filing-config editor/runtime.
-// The repository currently contains both the canonical v2 UI-config shape and
-// older editor components. Keep the type surface permissive while those callers
-// are migrated; runtime validation remains in config-validator/ValidationEngine.
+// Both the canonical v2 vocabulary and the legacy visual-editor aliases remain
+// readable while the editor is migrated. Runtime validation remains authoritative.
 
-export type LayoutMode = 'tabs' | 'accordion' | 'single-page' | 'panels';
+export type LayoutMode = "tabs" | "accordion" | "single-page" | "panels";
 export type FieldType = string;
-export type DisplayMode = 'input' | 'grid' | 'cards' | 'readonly' | string;
-export type DataSourceType = 'api' | 'static' | 'masterData' | 'computed' | string;
-export type SectionLayout = 'grid' | 'panels' | 'cards' | 'list' | string;
+export type DisplayMode = "input" | "grid" | "cards" | "readonly" | string;
+export type DataSourceType = "api" | "static" | "masterData" | "computed" | string;
+export type SectionLayout = "grid" | "panels" | "cards" | "list" | string;
 
 export interface FilingUIConfigData {
   version: string;
@@ -124,7 +123,7 @@ export interface DataSourceConfig {
   type?: DataSourceType;
   endpoint?: string;
   apiEndpoint?: string;
-  method?: 'GET' | 'POST';
+  method?: "GET" | "POST";
   options?: Array<{ value: string | number; label: string; disabled?: boolean; metadata?: Record<string, any> }>;
   valueField?: string;
   labelField?: string;
@@ -137,19 +136,18 @@ export interface DataSourceConfig {
   [key: string]: any;
 }
 
-export interface ValidationRule<T> { value: T; message: string }
-export interface CustomValidator { validator: string; async: boolean; message?: string }
+/** The current visual editor stores primitive validation values. */
 export interface FieldValidationRules {
-  required?: boolean | ValidationRule<boolean>;
-  minLength?: number | ValidationRule<number>;
-  maxLength?: number | ValidationRule<number>;
-  pattern?: string | ValidationRule<string>;
-  min?: number | ValidationRule<number>;
-  max?: number | ValidationRule<number>;
-  email?: boolean | ValidationRule<boolean>;
-  url?: boolean | ValidationRule<boolean>;
-  phone?: boolean | ValidationRule<boolean>;
-  custom?: string | CustomValidator;
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  min?: number;
+  max?: number;
+  email?: boolean;
+  url?: boolean;
+  phone?: boolean;
+  custom?: string;
   message?: string;
   asyncValidation?: any;
   conditionalRequired?: any;
@@ -165,15 +163,18 @@ export interface FieldConditional {
   [key: string]: any;
 }
 
-export interface HookConfig { endpoint?: string; method?: string; payload?: any; [key: string]: any }
+/** The visual editor stores hook expressions as strings. */
 export interface FieldHooks {
-  onLoad?: string | HookConfig;
-  onChange?: string | HookConfig;
-  onBlur?: string | HookConfig;
-  onFocus?: string | HookConfig;
+  onLoad?: string;
+  onChange?: string;
+  onBlur?: string;
+  onFocus?: string;
   [key: string]: any;
 }
 
+export interface ValidationRule<T> { value: T; message: string }
+export interface CustomValidator { validator: string; async: boolean; message?: string }
+export interface HookConfig { endpoint?: string; method?: string; payload?: any; [key: string]: any }
 export interface ConditionalExpression { [key: string]: any }
 export interface ComputedDefault { [key: string]: any }
 export interface DataSourceOption { value: string | number; label: string; disabled?: boolean; metadata?: Record<string, any> }
@@ -192,6 +193,6 @@ export interface PermissionConfig { [key: string]: any }
 export interface UIMetadata { [key: string]: any }
 export interface UILayout { mode?: LayoutMode; [key: string]: any }
 export interface ResponsiveConfig { [key: string]: any }
-export type TabPosition = 'top' | 'left' | 'right';
+export type TabPosition = "top" | "left" | "right";
 export type ConditionalOperator = string;
-export type LogicalOperator = 'AND' | 'OR';
+export type LogicalOperator = "AND" | "OR";
