@@ -1,6 +1,6 @@
 // Transitional compatibility types for the filing-config editor/runtime.
-// Both the canonical v2 vocabulary and the legacy visual-editor aliases remain
-// readable while the editor is migrated. Runtime validation remains authoritative.
+// Canonical identifiers/order fields remain required; legacy visual-editor
+// aliases are readable during migration. Runtime validation remains authoritative.
 
 export type LayoutMode = "tabs" | "accordion" | "single-page" | "panels";
 export type FieldType = string;
@@ -26,15 +26,15 @@ export interface FilingUIConfigData {
 }
 
 export interface UITab {
-  tabId?: string;
+  tabId: string;
+  label: string;
+  tabOrder: number;
+  sections: string[];
   id?: string;
-  label?: string;
   title?: string;
-  icon?: string;
-  tabOrder?: number;
   displayOrder?: number;
+  icon?: string;
   isVisible?: boolean;
-  sections?: string[];
   conditional?: any;
   description?: string;
   badge?: string;
@@ -43,18 +43,18 @@ export interface UITab {
 }
 
 export interface UISection {
-  sectionId?: string;
+  sectionId: string;
+  title: string;
+  sectionOrder: number;
+  fields: string[];
   id?: string;
   tabId?: string;
-  title?: string;
-  sectionOrder?: number;
   displayOrder?: number;
   layout?: SectionLayout;
   columns?: number;
   isVisible?: boolean;
   isCollapsible?: boolean;
   defaultExpanded?: boolean;
-  fields?: string[];
   panels?: string[];
   conditional?: any;
   description?: string;
@@ -63,17 +63,17 @@ export interface UISection {
 }
 
 export interface UIPanel {
-  panelId?: string;
+  panelId: string;
+  sectionId: string;
+  panelOrder: number;
+  fields: string[];
   id?: string;
-  sectionId?: string;
   title?: string;
-  panelOrder?: number;
   displayOrder?: number;
   isCollapsible?: boolean;
   defaultExpanded?: boolean;
   borderStyle?: string;
   backgroundColor?: string;
-  fields?: string[];
   conditional?: any;
   className?: string;
   [key: string]: any;
@@ -136,7 +136,6 @@ export interface DataSourceConfig {
   [key: string]: any;
 }
 
-/** The current visual editor stores primitive validation values. */
 export interface FieldValidationRules {
   required?: boolean;
   minLength?: number;
@@ -163,7 +162,6 @@ export interface FieldConditional {
   [key: string]: any;
 }
 
-/** The visual editor stores hook expressions as strings. */
 export interface FieldHooks {
   onLoad?: string;
   onChange?: string;
