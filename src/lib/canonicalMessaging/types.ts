@@ -107,11 +107,59 @@ export interface CanonicalCustomsDeclaration {
   extensions?: Record<string, unknown>;
 }
 
+/**
+ * Import and Export declarations are structured as:
+ * { ImportDeclaration: { GoodsDeclaration: {...}, GoodsShipment: {...} } }
+ * { ExportDeclaration: { GoodsDeclaration: {...}, GoodsShipment: {...} } }
+ */
+export interface ImportDeclaration {
+  ImportDeclaration: {
+    GoodsDeclaration: Record<string, any>;
+    GoodsShipment?: Record<string, any>;
+    [key: string]: any;
+  };
+}
+
+export interface ExportDeclaration {
+  ExportDeclaration: {
+    GoodsDeclaration: Record<string, any>;
+    GoodsShipment?: Record<string, any>;
+    [key: string]: any;
+  };
+}
+
+/**
+ * Request and Response both use the same declaration structure.
+ * 
+ * REQUEST → CUSTOMS:
+ * - declaration contains what we know (parties, line items, values, etc.)
+ * 
+ * RESPONSE ← CUSTOMS:
+ * - declaration is the SAME structure with additional fields populated:
+ *   - ResponseCode, ResponseDescription (at GoodsDeclaration level)
+ *   - MRN (Movement Reference Number)
+ *   - ReleaseInformation (dates, status)
+ *   - DutyTaxFee assessments per line
+ *   - etc.
+ */
+export type DeclarationData = 
+  | ImportDeclaration 
+  | ExportDeclaration 
+  | CanonicalCustomsDeclaration  // Legacy format for backwards compatibility
+  | Record<string, any>;          // Standalone filings with custom structure
+
 export interface CanonicalFilingRequestData {
-  declaration: CanonicalCustomsDeclaration;
+  declaration: DeclarationData;
 }
 
 export interface CanonicalFilingResponseData {
+  declaration: DeclarationData;
+}
+
+/**
+ * @deprecated Legacy response format. Use CanonicalFilingResponseData with declaration instead.
+ */
+export interface LegacyResponseData {
   status: CanonicalFilingStatus;
   authorityReference?: string;
   humanMessage?: string;

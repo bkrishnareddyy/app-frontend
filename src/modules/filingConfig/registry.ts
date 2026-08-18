@@ -21,6 +21,8 @@ export type FilingConfigTableKey =
   | "procedure-config"
   | "action-message-mapping"
   | "action-configuration"
+  | "ui-configuration"
+  | "master-data-source"
   // KEPT TABLES
   | "action-data-requirement"
   // DROPPED TABLES (commented out - kept for reference)
@@ -278,13 +280,16 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
     description: "(transactionType, country, procedureCode, messageName) - lists valid messages per country/procedure",
     idField: "id",
     fields: [
-      { key: "transactionTypeId", label: "Transaction Type ID", type: "text" },
+      { key: "transactionType.code", label: "Transaction Type", type: "text" },
       { key: "country", label: "Country", type: "text" },
       { key: "procedureCode", label: "Procedure Code", type: "text" },
       { key: "messageName", label: "Message Name", type: "text" },
       { key: "isActive", label: "Is Active", type: "boolean" },
     ],
-    list: () => db.filingProcedureConfig.findMany({ orderBy: [{ country: "asc" }, { procedureCode: "asc" }] }),
+    list: () => db.filingProcedureConfig.findMany({ 
+      orderBy: [{ country: "asc" }, { procedureCode: "asc" }],
+      include: { transactionType: { select: { code: true } } }
+    }),
     create: (data) => wrapPrismaErrors(() => db.filingProcedureConfig.create({ data: procedureConfigSchema.parse(data) })),
     update: (id, data) => wrapPrismaErrors(() => db.filingProcedureConfig.update({ where: { id }, data: procedureConfigSchema.parse(data) })),
     remove: (id) => wrapPrismaErrors(() => db.filingProcedureConfig.delete({ where: { id } })).then(() => undefined),
@@ -296,13 +301,52 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
     description: "(country, procedureCode, action) → messageName - maps user actions to outbound messages",
     idField: "id",
     fields: [
+      { key: "transactionType", label: "Transaction Type", type: "text" },
       { key: "country", label: "Country", type: "text" },
       { key: "procedureCode", label: "Procedure Code", type: "text" },
       { key: "action", label: "Action", type: "text" },
       { key: "messageName", label: "Message Name", type: "text" },
       { key: "isActive", label: "Is Active", type: "boolean" },
     ],
-    list: () => db.filingActionMessageMapping.findMany({ orderBy: [{ country: "asc" }, { action: "asc" }] }),
+    list: async () => {
+      const rows = await db.filingActionMessageMapping.findMany({ 
+        orderBy: [{ country: "asc" }, { action: "asc" }] 
+      });
+      
+      // Get unique (country, procedureCode) pairs for lookup
+      const uniquePairs = Array.from(
+        new Set(rows.map(r => `${r.country}|${r.procedureCode}`))
+      );
+      
+      // Fetch transaction types for all procedure codes
+      const procedureConfigs = await db.filingProcedureConfig.findMany({
+        where: {
+          OR: uniquePairs.map(pair => {
+            const [country, procedureCode] = pair.split('|');
+            return { country, procedureCode };
+          })
+        },
+        include: {
+          transactionType: {
+            select: { code: true }
+          }
+        }
+      });
+      
+      // Create lookup map
+      const transactionTypeMap = new Map(
+        procedureConfigs.map(pc => [
+          `${pc.country}|${pc.procedureCode}`,
+          pc.transactionType?.code || null
+        ])
+      );
+      
+      // Enrich rows with transaction type
+      return rows.map(row => ({
+        ...row,
+        transactionType: transactionTypeMap.get(`${row.country}|${row.procedureCode}`) || '—'
+      }));
+    },
     create: (data) => wrapPrismaErrors(() => db.filingActionMessageMapping.create({ data: actionMessageMappingSchema.parse(data) })),
     update: (id, data) => wrapPrismaErrors(() => db.filingActionMessageMapping.update({ where: { id }, data: actionMessageMappingSchema.parse(data) })),
     remove: (id) => wrapPrismaErrors(() => db.filingActionMessageMapping.delete({ where: { id } })).then(() => undefined),
@@ -314,6 +358,7 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
     description: "(country, procedureCode, messageName, status) → availableActions, allowSubmit - determines UI actions",
     idField: "id",
     fields: [
+      { key: "transactionType", label: "Transaction Type", type: "text" },
       { key: "country", label: "Country", type: "text" },
       { key: "procedureCode", label: "Procedure Code", type: "text" },
       { key: "messageName", label: "Message Name", type: "text" },
@@ -342,9 +387,39 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
         orderBy: [{ country: "asc" }, { status: "asc" }] 
       });
       
-      // Transform string[] to object[] for UI
+      // Get unique (country, procedureCode) pairs for lookup
+      const uniquePairs = Array.from(
+        new Set(rows.map(r => `${r.country}|${r.procedureCode}`))
+      );
+      
+      // Fetch transaction types for all procedure codes
+      const procedureConfigs = await db.filingProcedureConfig.findMany({
+        where: {
+          OR: uniquePairs.map(pair => {
+            const [country, procedureCode] = pair.split('|');
+            return { country, procedureCode };
+          })
+        },
+        include: {
+          transactionType: {
+            select: { code: true }
+          }
+        },
+        distinct: ['country', 'procedureCode']
+      });
+      
+      // Create lookup map
+      const transactionTypeMap = new Map(
+        procedureConfigs.map(pc => [
+          `${pc.country}|${pc.procedureCode}`,
+          pc.transactionType?.code || null
+        ])
+      );
+      
+      // Transform string[] to object[] for UI and add transaction type
       return rows.map((row) => ({
         ...row,
+        transactionType: transactionTypeMap.get(`${row.country}|${row.procedureCode}`) || '—',
         availableActions: row.availableActions.map((action) => ({ action })),
       }));
     },
@@ -381,6 +456,7 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
       "(country, procedure, messageName, action) → extra fields a child action needs beyond the declaration itself (e.g. a guarantee reference a German NCTS cancellation needs that a US consumption cancellation doesn't). No match = no extra fields required -- cancelFiling()/amendFiling() stay single, country-agnostic implementations that just ask this table what a context needs.",
     idField: "id",
     fields: [
+      { key: "transactionType", label: "Transaction Type", type: "text" },
       { key: "country", label: "Country", type: "text", help: wildcardHelp },
       { key: "procedureCode", label: "Procedure Code", type: "text", help: wildcardHelp },
       { key: "messageName", label: "Message Name", type: "text", help: wildcardHelp },
@@ -409,12 +485,242 @@ export const FILING_CONFIG_TABLES: Record<FilingConfigTableKey, TableDef<unknown
         ],
       },
     ],
-    list: () => db.filingActionDataRequirement.findMany({ orderBy: [{ country: "asc" }, { action: "asc" }] }),
+    list: async () => {
+      const rows = await db.filingActionDataRequirement.findMany({ 
+        orderBy: [{ country: "asc" }, { action: "asc" }] 
+      });
+      
+      // Get unique (country, procedureCode) pairs for lookup
+      // Filter out wildcards as they don't have a specific transaction type
+      const uniquePairs = Array.from(
+        new Set(
+          rows
+            .filter(r => r.country !== '*' && r.procedureCode !== '*')
+            .map(r => `${r.country}|${r.procedureCode}`)
+        )
+      );
+      
+      // Fetch transaction types for all procedure codes
+      const procedureConfigs = await db.filingProcedureConfig.findMany({
+        where: {
+          OR: uniquePairs.map(pair => {
+            const [country, procedureCode] = pair.split('|');
+            return { country, procedureCode };
+          })
+        },
+        include: {
+          transactionType: {
+            select: { code: true }
+          }
+        },
+        distinct: ['country', 'procedureCode']
+      });
+      
+      // Create lookup map
+      const transactionTypeMap = new Map(
+        procedureConfigs.map(pc => [
+          `${pc.country}|${pc.procedureCode}`,
+          pc.transactionType?.code || null
+        ])
+      );
+      
+      // Enrich rows with transaction type
+      return rows.map(row => ({
+        ...row,
+        transactionType: row.country === '*' || row.procedureCode === '*' 
+          ? '*' 
+          : transactionTypeMap.get(`${row.country}|${row.procedureCode}`) || '—'
+      }));
+    },
     create: (data) => wrapPrismaErrors(() => db.filingActionDataRequirement.create({ data: actionDataRequirementSchema.parse(data) })),
     update: (id, data) => wrapPrismaErrors(() => db.filingActionDataRequirement.update({ where: { id }, data: actionDataRequirementSchema.parse(data) })),
     remove: (id) => wrapPrismaErrors(() => db.filingActionDataRequirement.delete({ where: { id } })).then(() => undefined),
     createSchema: actionDataRequirementSchema,
     updateSchema: actionDataRequirementSchema,
+  },
+
+  // ============================================================================
+  // UI CONFIGURATION TABLES
+  // ============================================================================
+
+  "ui-configuration": {
+    label: "UI Configuration",
+    description: "Configure form fields and layouts for declaration and response views",
+    idField: "id",
+    fields: [
+      { key: "country", label: "Country", type: "text" },
+      { key: "procedureCode", label: "Procedure Code", type: "text" },
+      { key: "messageName", label: "Message Name", type: "text" },
+      { key: "messageType", label: "Message Type", type: "text", help: "request or response" },
+      { key: "transactionType", label: "Transaction Type", type: "text", help: "import or export" },
+      { key: "version", label: "Version", type: "text" },
+      { key: "description", label: "Description", type: "text" },
+      { key: "totalFields", label: "Total Fields", type: "text", help: "Number of configured fields" },
+      { key: "isActive", label: "Active", type: "boolean" },
+      { key: "updatedAt", label: "Updated At", type: "text" },
+      { key: "createdBy", label: "Created By", type: "text" },
+      { key: "updatedBy", label: "Updated By", type: "text" },
+    ],
+    list: async () => {
+      const rows = await db.filingUIConfig.findMany({
+        where: { isActive: true },
+        orderBy: [
+          { country: "asc" },
+          { procedureCode: "asc" },
+          { messageName: "asc" },
+          { messageType: "asc" },
+          { transactionType: "asc" },
+        ],
+      });
+      
+      // Transform rows to include totalFields from configData
+      return rows.map(row => ({
+        id: row.id,
+        country: row.country,
+        procedureCode: row.procedureCode,
+        messageName: row.messageName,
+        messageType: row.messageType,
+        transactionType: row.transactionType,
+        version: row.version,
+        description: row.description,
+        totalFields: (row.configData as any)?.fields?.length || 0,
+        isActive: row.isActive,
+        updatedAt: row.updatedAt.toISOString(),
+        createdBy: row.createdBy,
+        updatedBy: row.updatedBy,
+      }));
+    },
+    create: (data) => wrapPrismaErrors(() => db.filingUIConfig.create({ 
+      data: {
+        country: String(data.country || ""),
+        procedureCode: String(data.procedureCode || ""),
+        messageName: String(data.messageName || ""),
+        messageType: String(data.messageType || "request"),
+        transactionType: String(data.transactionType || "import"),
+        configData: data.configData || { fields: [], totalFields: 0, sections: [] },
+        version: Number(data.version || 1),
+        description: data.description ? String(data.description) : null,
+        isActive: data.isActive !== false,
+        createdBy: data.createdBy ? String(data.createdBy) : 'system',
+        updatedBy: data.updatedBy ? String(data.updatedBy) : 'system',
+      } 
+    })),
+    update: (id, data) => wrapPrismaErrors(() => db.filingUIConfig.update({ 
+      where: { id }, 
+      data: {
+        country: data.country ? String(data.country) : undefined,
+        procedureCode: data.procedureCode ? String(data.procedureCode) : undefined,
+        messageName: data.messageName ? String(data.messageName) : undefined,
+        messageType: data.messageType ? String(data.messageType) : undefined,
+        transactionType: data.transactionType ? String(data.transactionType) : undefined,
+        configData: data.configData || undefined,
+        version: data.version !== undefined ? Number(data.version) : undefined,
+        description: data.description !== undefined ? String(data.description) : undefined,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : undefined,
+        updatedBy: data.updatedBy ? String(data.updatedBy) : undefined,
+      } 
+    })),
+    remove: (id) => wrapPrismaErrors(() => db.filingUIConfig.delete({ where: { id } })).then(() => undefined),
+    createSchema: z.object({
+      country: z.string(),
+      procedureCode: z.string(),
+      messageName: z.string(),
+      messageType: z.enum(["request", "response"]),
+      transactionType: z.enum(["import", "export"]).default("import"),
+      configData: z.object({
+        fields: z.array(z.any()),
+        totalFields: z.number(),
+        sections: z.array(z.string()),
+      }),
+      description: z.string().optional(),
+      isActive: z.boolean().default(true),
+      createdBy: z.string().optional(),
+      updatedBy: z.string().optional(),
+    }),
+    updateSchema: z.object({
+      country: z.string().optional(),
+      procedureCode: z.string().optional(),
+      messageName: z.string().optional(),
+      messageType: z.enum(["request", "response"]).optional(),
+      transactionType: z.enum(["import", "export"]).optional(),
+      configData: z.object({
+        fields: z.array(z.any()),
+        totalFields: z.number(),
+        sections: z.array(z.string()),
+      }).optional(),
+      version: z.number().optional(),
+      description: z.string().optional(),
+      isActive: z.boolean().optional(),
+      updatedBy: z.string().optional(),
+    }),
+  },
+
+  "master-data-source": {
+    label: "Master Data Sources",
+    description: "Define master data sources for dropdown and lookup fields",
+    idField: "id",
+    fields: [
+      { key: "sourceName", label: "Source Name", type: "text", help: "Unique identifier (e.g., Country, Currency)" },
+      { key: "sourceType", label: "Source Type", type: "text", help: "table, enum, api, or static" },
+      { key: "tableName", label: "Table Name", type: "text", help: "Prisma model name for table-based sources" },
+      { key: "valueField", label: "Value Field", type: "text", help: "Field to use as option value" },
+      { key: "labelField", label: "Label Field", type: "text", help: "Field to use as option label" },
+      { key: "apiEndpoint", label: "API Endpoint", type: "text", help: "For API-based sources" },
+      { key: "apiMethod", label: "API Method", type: "text" },
+      { key: "isActive", label: "Active", type: "boolean" },
+    ],
+    list: async () => {
+      const rows = await db.filingMasterDataSource.findMany({
+        orderBy: { sourceName: "asc" },
+      });
+      return rows;
+    },
+    create: (data) => wrapPrismaErrors(() => db.filingMasterDataSource.create({ 
+      data: {
+        sourceName: String(data.sourceName || ""),
+        sourceType: String(data.sourceType || "static"),
+        tableName: data.tableName ? String(data.tableName) : null,
+        valueField: data.valueField ? String(data.valueField) : null,
+        labelField: data.labelField ? String(data.labelField) : null,
+        apiEndpoint: data.apiEndpoint ? String(data.apiEndpoint) : null,
+        apiMethod: String(data.apiMethod || "GET"),
+        isActive: data.isActive !== false,
+      } 
+    })),
+    update: (id, data) => wrapPrismaErrors(() => db.filingMasterDataSource.update({ 
+      where: { id }, 
+      data: {
+        sourceName: data.sourceName ? String(data.sourceName) : undefined,
+        sourceType: data.sourceType ? String(data.sourceType) : undefined,
+        tableName: data.tableName !== undefined ? (data.tableName ? String(data.tableName) : null) : undefined,
+        valueField: data.valueField !== undefined ? (data.valueField ? String(data.valueField) : null) : undefined,
+        labelField: data.labelField !== undefined ? (data.labelField ? String(data.labelField) : null) : undefined,
+        apiEndpoint: data.apiEndpoint !== undefined ? (data.apiEndpoint ? String(data.apiEndpoint) : null) : undefined,
+        apiMethod: data.apiMethod ? String(data.apiMethod) : undefined,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : undefined,
+      } 
+    })),
+    remove: (id) => wrapPrismaErrors(() => db.filingMasterDataSource.delete({ where: { id } })).then(() => undefined),
+    createSchema: z.object({
+      sourceName: z.string(),
+      sourceType: z.enum(["table", "enum", "api", "static"]),
+      tableName: z.string().optional(),
+      valueField: z.string().optional(),
+      labelField: z.string().optional(),
+      apiEndpoint: z.string().optional(),
+      apiMethod: z.string().default("GET"),
+      isActive: z.boolean().default(true),
+    }),
+    updateSchema: z.object({
+      sourceName: z.string().optional(),
+      sourceType: z.enum(["table", "enum", "api", "static"]).optional(),
+      tableName: z.string().optional(),
+      valueField: z.string().optional(),
+      labelField: z.string().optional(),
+      apiEndpoint: z.string().optional(),
+      apiMethod: z.string().optional(),
+      isActive: z.boolean().optional(),
+    }),
   },
 };
 

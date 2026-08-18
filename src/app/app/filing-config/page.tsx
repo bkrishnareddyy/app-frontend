@@ -34,7 +34,9 @@ export default async function FilingConfigPage() {
     "procedure-config",
     "action-message-mapping",
     "action-configuration",
-    "action-data-requirement"
+    "action-data-requirement",
+    "ui-configuration",
+    // "master-data-source" - removed, will implement later
   ];
   
   const tables: TableMeta[] = await Promise.all(

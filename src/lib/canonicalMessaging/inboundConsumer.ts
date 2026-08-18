@@ -11,7 +11,8 @@ import type { CanonicalFilingResponseData, CanonicalMessage } from "./types";
  * FilingResponseStatusMapping table was dropped. Response status → state transition
  * mapping is now handled directly based on canonical status codes.
  * 
- * TODO: Implement proper state machine integration with new FilingActionConfiguration
+ * Response format: Same ImportDeclaration/ExportDeclaration structure as request,
+ * with response fields populated (ResponseCode, MRN, ReleaseInformation, etc.)
  */
 export async function processInboundMessage(message: CanonicalMessage<CanonicalFilingResponseData>): Promise<void> {
   const { header, data } = message;
@@ -26,9 +27,32 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
     );
   }
 
+  // Extract status from declaration response fields
+  const declaration = data.declaration as any;
+  const isImport = 'ImportDeclaration' in declaration;
+  const isExport = 'ExportDeclaration' in declaration;
+  const declarationKey = isImport ? 'ImportDeclaration' : isExport ? 'ExportDeclaration' : null;
+  
+  let canonicalStatus: string;
+  let responseDescription: string = "Response received";
+  let mrn: string | undefined;
+  
+  if (declarationKey && declaration[declarationKey]?.GoodsDeclaration) {
+    const goodsDecl = declaration[declarationKey].GoodsDeclaration;
+    canonicalStatus = goodsDecl.StatusCode || goodsDecl.ResponseCode || "UNKNOWN";
+    responseDescription = goodsDecl.ResponseDescription || responseDescription;
+    mrn = goodsDecl.MRN || goodsDecl.authorityReference;
+  } else {
+    // Fallback for legacy format
+    canonicalStatus = (data as any).status || "UNKNOWN";
+    responseDescription = (data as any).humanMessage || responseDescription;
+    mrn = (data as any).authorityReference;
+  }
+
   // Direct status mapping (simplified until proper state machine integration)
   const statusTransitionMap: Record<string, Parameters<typeof applyTransition>[1] | null> = {
     "ACCEPTED": "cbp.accept",
+    "00": "cbp.accept", // Response code for accepted
     "REJECTED": "cbp.reject",
     "RELEASED": "cbp.release",
     "CANCELLED": null, // No automatic transition
@@ -38,7 +62,7 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
   let transitionApplied = false;
   let newFilingStatus = filing.filingStatus;
 
-  const transition = statusTransitionMap[data.status];
+  const transition = statusTransitionMap[canonicalStatus];
   if (transition) {
     try {
       newFilingStatus = applyTransition(filing.filingStatus, transition);
@@ -47,26 +71,30 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
     } catch (err) {
       const reason = err instanceof FilingTransitionError ? err.message : err instanceof Error ? err.message : String(err);
       console.warn(
-        `[inboundConsumer] Response status "${data.status}" maps to transition "${transition}", ` +
+        `[inboundConsumer] Response status "${canonicalStatus}" maps to transition "${transition}", ` +
           `but it could not be applied to filing "${filing.id}" (currently "${filing.filingStatus}"). ` +
           `Recording the response without changing status. ${reason}`
       );
     }
   } else {
     console.warn(
-      `[inboundConsumer] No automatic transition for canonicalStatus="${data.status}". Recording the response without changing status.`
+      `[inboundConsumer] No automatic transition for canonicalStatus="${canonicalStatus}". Recording the response without changing status.`
     );
   }
 
   // Preserves the existing CustomsResponse UI surface
+  const title = mrn 
+    ? transitionApplied ? `${canonicalStatus} (${mrn}) — ${newFilingStatus}` : `${canonicalStatus} (${mrn})`
+    : transitionApplied ? `${canonicalStatus} — ${newFilingStatus}` : canonicalStatus;
+    
   await db.customsResponse.create({
     data: {
       accountId: filing.accountId,
       filingId: filing.id,
-      code: data.status,
-      title: transitionApplied ? `${data.status} — ${newFilingStatus}` : data.status,
-      description: data.humanMessage ?? `Canonical response received: ${data.status}`,
-      status: data.status,
+      code: canonicalStatus,
+      title,
+      description: mrn ? `${responseDescription} [MRN: ${mrn}]` : responseDescription,
+      status: canonicalStatus,
     },
   });
 

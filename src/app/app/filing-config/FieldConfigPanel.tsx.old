@@ -1,0 +1,401 @@
+/**
+ * Field Configuration Panel Component
+ * 
+ * Right-side panel for configuring field display properties.
+ * Allows users to set field type, label, section, validation, master data source, etc.
+ */
+
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Save, X } from "lucide-react";
+
+interface FieldConfig {
+  fieldPath: string;
+  fieldLabel: string;
+  fieldType: string;
+  section: string;
+  displayOrder: number;
+  gridColumn: number;
+  isRequired: boolean;
+  isReadOnly: boolean;
+  isVisible: boolean;
+  placeholder?: string;
+  helpText?: string;
+  masterDataSource?: string;
+  isMultiSelect: boolean;
+}
+
+interface FieldConfigPanelProps {
+  selectedPath: string | null;
+  selectedSchema: any;
+  existingConfig?: FieldConfig;
+  wrapperPrefix: string;  // NEW: Transaction wrapper (ImportDeclaration/ExportDeclaration)
+  onChange: (config: FieldConfig) => void; // Changed from onSave to onChange
+}
+
+const FIELD_TYPES = [
+  { value: "text", label: "Text (Single Line)" },
+  { value: "textarea", label: "Text Area (Multi Line)" },
+  { value: "number", label: "Number" },
+  { value: "date", label: "Date" },
+  { value: "datetime", label: "Date & Time" },
+  { value: "checkbox", label: "Checkbox (Boolean)" },
+  { value: "dropdown", label: "Dropdown (Select)" },
+  { value: "lookup", label: "Lookup (Searchable)" },
+];
+
+const SECTIONS = [
+  { value: "header", label: "Header" },
+  { value: "parties", label: "Parties" },
+  { value: "transport", label: "Transport Information" },
+  { value: "commercial", label: "Commercial Details" },
+  { value: "lineItems", label: "Line Items" },
+  { value: "valuation", label: "Valuation" },
+  { value: "totals", label: "Totals & Summary" },
+  { value: "compliance", label: "Compliance" },
+  { value: "evidence", label: "Evidence & Documentation" },
+  { value: "assessment", label: "Assessment Results (Response)" },
+  { value: "release", label: "Release Information (Response)" },
+  { value: "errors", label: "Errors & Warnings (Response)" },
+  { value: "notes", label: "Notes & Remarks" },
+];
+
+export default function FieldConfigPanel({
+  selectedPath,
+  selectedSchema,
+  existingConfig,
+  wrapperPrefix,
+  onChange, // Changed from onSave
+}: FieldConfigPanelProps) {
+  const [config, setConfig] = useState<FieldConfig>({
+    fieldPath: "",
+    fieldLabel: "",
+    fieldType: "text",
+    section: "general",
+    displayOrder: 0,
+    gridColumn: 6,
+    isRequired: false,
+    isReadOnly: false,
+    isVisible: false, // Changed default to false
+    placeholder: "",
+    helpText: "",
+    masterDataSource: "",
+    isMultiSelect: false,
+  });
+
+  const isInitialMount = useRef(true);
+  const previousPath = useRef<string | null>(null);
+
+  // Initialize config when path changes
+  useEffect(() => {
+    if (selectedPath && selectedSchema) {
+      if (existingConfig) {
+        setConfig(existingConfig);
+      } else {
+        // Auto-generate label from path
+        const fieldName = selectedPath.split(".").pop()?.replace("[]", "") || "";
+        const label = fieldName
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (str) => str.toUpperCase())
+          .trim();
+
+        // Infer field type from schema
+        let inferredType = "text";
+        if (selectedSchema.type === "boolean") inferredType = "checkbox";
+        if (selectedSchema.type === "number" || selectedSchema.type === "integer") inferredType = "number";
+        if (selectedSchema.format === "date") inferredType = "date";
+        if (selectedSchema.format === "date-time") inferredType = "datetime";
+        if (selectedSchema.enum) inferredType = "dropdown";
+
+        // Infer section from path
+        let inferredSection = "general";
+        if (selectedPath.includes("importer") || selectedPath.includes("exporter") || selectedPath.includes("filer")) {
+          inferredSection = "parties";
+        } else if (selectedPath.includes("transport")) {
+          inferredSection = "transport";
+        } else if (selectedPath.includes("lineItems")) {
+          inferredSection = "lineItems";
+        } else if (selectedPath.includes("valuation")) {
+          inferredSection = "valuation";
+        } else if (selectedPath.includes("totals")) {
+          inferredSection = "totals";
+        } else if (selectedPath.includes("compliance")) {
+          inferredSection = "compliance";
+        } else if (selectedPath.includes("evidence")) {
+          inferredSection = "evidence";
+        } else if (selectedPath === "declarationId" || selectedPath === "entryType") {
+          inferredSection = "header";
+        } else if (selectedPath === "currency" || selectedPath === "incoterm") {
+          inferredSection = "commercial";
+        }
+
+        setConfig({
+          fieldPath: selectedPath,
+          fieldLabel: label,
+          fieldType: inferredType,
+          section: inferredSection,
+          displayOrder: 0,
+          gridColumn: inferredType === "textarea" || inferredType === "checkbox" ? 12 : 6,
+          isRequired: false,
+          isReadOnly: false,
+          isVisible: false, // Changed default to false
+          placeholder: selectedSchema.description || "",
+          helpText: selectedSchema.description || "",
+          masterDataSource: "",
+          isMultiSelect: false,
+        });
+      }
+    }
+  }, [selectedPath, selectedSchema, existingConfig]);
+
+  // Notify parent of changes immediately (no save button)
+  // Only trigger when config actually changes, not on every render
+  useEffect(() => {
+    // Skip initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      previousPath.current = selectedPath;
+      return;
+    }
+
+    // Skip if path changed (handled by initialization effect above)
+    if (previousPath.current !== selectedPath) {
+      previousPath.current = selectedPath;
+      return;
+    }
+
+    if (selectedPath && config.fieldPath) {
+      // Prepend wrapper prefix to field path for database storage
+      const fullPath = wrapperPrefix 
+        ? `${wrapperPrefix}.${config.fieldPath}` 
+        : config.fieldPath;
+      
+      onChange({
+        ...config,
+        fieldPath: fullPath,  // Use full path with transaction wrapper
+      });
+    }
+  }, [config]);
+
+  if (!selectedPath) {
+    return (
+      <div className="h-full flex items-center justify-center bg-surface-muted">
+        <div className="text-center p-8">
+          <p className="text-sm text-ink-muted">Select a field from the schema tree to configure</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto bg-white">
+      <div className="sticky top-0 bg-surface-muted border-b border-border px-4 py-3 z-10">
+        <h3 className="text-xs font-bold text-ink uppercase tracking-wider">Field Configuration</h3>
+        <p className="text-[10px] text-ink-muted mt-1 font-mono">{selectedPath}</p>
+      </div>
+
+      <div className="p-6 space-y-6">
+        {/* Basic Information */}
+        <div className="space-y-4">
+          <h4 className="text-xs font-bold text-ink uppercase tracking-wider border-b border-border pb-2">
+            Basic Information
+          </h4>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Field Path (Read-only)</label>
+            <Input value={config.fieldPath} disabled className="text-xs mt-1 font-mono bg-surface-muted" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Field Label <span className="text-red-600">*</span></label>
+            <Input
+              value={config.fieldLabel}
+              onChange={(e) => setConfig({ ...config, fieldLabel: e.target.value })}
+              placeholder="Display label for this field"
+              className="text-xs mt-1"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Field Type <span className="text-red-600">*</span></label>
+            <select
+              value={config.fieldType}
+              onChange={(e) => {
+                const newType = e.target.value;
+                setConfig({
+                  ...config,
+                  fieldType: newType,
+                  gridColumn: newType === "textarea" || newType === "checkbox" ? 12 : 6,
+                });
+              }}
+              className="w-full text-xs px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand bg-white mt-1"
+            >
+              {FIELD_TYPES.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Layout & Display */}
+        <div className="space-y-4">
+          <h4 className="text-xs font-bold text-ink uppercase tracking-wider border-b border-border pb-2">
+            Layout & Display
+          </h4>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Section <span className="text-red-600">*</span></label>
+            <select
+              value={config.section}
+              onChange={(e) => setConfig({ ...config, section: e.target.value })}
+              className="w-full text-xs px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand bg-white mt-1"
+            >
+              {SECTIONS.map((section) => (
+                <option key={section.value} value={section.value}>
+                  {section.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-ink">Display Order</label>
+              <Input
+                type="number"
+                value={config.displayOrder}
+                onChange={(e) => setConfig({ ...config, displayOrder: parseInt(e.target.value) || 0 })}
+                placeholder="Order within section"
+                className="text-xs mt-1"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-ink">Grid Columns (1-12)</label>
+              <Input
+                type="number"
+                min="1"
+                max="12"
+                value={config.gridColumn}
+                onChange={(e) => setConfig({ ...config, gridColumn: parseInt(e.target.value) || 6 })}
+                placeholder="Width"
+                className="text-xs mt-1"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Field Properties */}
+        <div className="space-y-4">
+          <h4 className="text-xs font-bold text-ink uppercase tracking-wider border-b border-border pb-2">
+            Field Properties
+          </h4>
+
+          <div className="space-y-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={config.isRequired}
+                onChange={(e) => setConfig({ ...config, isRequired: e.target.checked })}
+                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
+              />
+              <span className="text-xs text-ink">Required Field</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={config.isReadOnly}
+                onChange={(e) => setConfig({ ...config, isReadOnly: e.target.checked })}
+                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
+              />
+              <span className="text-xs text-ink">Read-only</span>
+            </label>
+
+            <div className="p-2 bg-blue-50 border border-blue-200 rounded">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.isVisible}
+                  onChange={(e) => setConfig({ ...config, isVisible: e.target.checked })}
+                  className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-ink">Visible in Form</span>
+                  <p className="text-[10px] text-ink-muted mt-0.5">
+                    Uncheck to hide this field for this country/procedure (not all fields are required for every message)
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Placeholder Text</label>
+            <Input
+              value={config.placeholder || ""}
+              onChange={(e) => setConfig({ ...config, placeholder: e.target.value })}
+              placeholder="Hint text shown in empty field"
+              className="text-xs mt-1"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Help Text</label>
+            <textarea
+              value={config.helpText || ""}
+              onChange={(e) => setConfig({ ...config, helpText: e.target.value })}
+              placeholder="Explanation shown below the field"
+              className="w-full text-xs px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand mt-1"
+              rows={2}
+            />
+          </div>
+        </div>
+
+        {/* Master Data Source - Will be implemented later
+        {(config.fieldType === "dropdown" || config.fieldType === "lookup") && (
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-ink uppercase tracking-wider border-b border-border pb-2">
+              Dropdown/Lookup Configuration
+            </h4>
+
+            <div>
+              <label className="text-xs font-medium text-ink">Master Data Source</label>
+              <select
+                value={config.masterDataSource || ""}
+                onChange={(e) => setConfig({ ...config, masterDataSource: e.target.value })}
+                className="w-full text-xs px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand bg-white mt-1"
+              >
+                <option value="">-- Select a data source --</option>
+                {masterDataSources.map((source) => (
+                  <option key={source} value={source}>
+                    {source}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-ink-muted mt-1">
+                Select where the dropdown options come from
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={config.isMultiSelect}
+                onChange={(e) => setConfig({ ...config, isMultiSelect: e.target.checked })}
+                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
+              />
+              <span className="text-xs text-ink">Allow Multiple Selection</span>
+            </label>
+          </div>
+        )}
+        */}
+      </div>
+    </div>
+  );
+}

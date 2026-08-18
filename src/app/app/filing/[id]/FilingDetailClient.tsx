@@ -20,26 +20,32 @@ import {
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Input, Label } from "@/components/ui/Input";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/Modal";
 import { displayCurrency, displayDate, displayText } from "@/lib/honest";
 import { filingStages, type FilingStageState } from "@/modules/filings/filingStateMachine";
 import { getFilingConfig, formatCurrencyAmount } from "@/lib/filing/countryConfig";
+import DynamicFormRenderer from "./DynamicFormRenderer";
 
 interface FilingProps {
   id: string;
   entryNumber: string;
+  localReferenceNumber: string | null; // User-provided local reference (defaults to entryNumber)
+  registrationNumber: string | null; // User-provided registration number
   entryType: string | null; // Multi-country migration: now nullable (legacy field)
   filingType: string;
   filingStatus: string;
   paymentStatus: string;
   authority: string | null; // Multi-country migration: now nullable (legacy field)
   country: string | null; // Multi-country support
+  procedureCode?: string | null; // Procedure code for standalone filings
+  messageName?: string | null; // Message name for standalone filings
   totalValue: number | null;
   totalDuties: number | null;
   totalTaxes: number | null;
   totalAmount: number | null;
   dutyBreakdown: { feeName: string; amount: number; rate: string }[];
+  declarationDraft?: any | null; // For standalone filings, the saved declaration data
   submittedAt: string | null;
   releasedAt: string | null;
   createdAt: string;
@@ -112,7 +118,7 @@ interface AuditLogProps {
 
 interface FilingDetailClientProps {
   filing: FilingProps;
-  shipment: ShipmentProps;
+  shipment: ShipmentProps | null; // Now nullable for standalone filings
   lineItems: LineItemProps[];
   documents: DocumentProps[];
   responses: ResponseProps[];
@@ -492,13 +498,13 @@ export function FilingDetailClient({
   const router = useRouter();
   
   // Get country-specific configuration for multi-country support
-  const country = filing.country || shipment.destinationCountry || "US";
+  const country = filing.country || shipment?.destinationCountry || "US";
   const config = getFilingConfig(country);
   
   type Tab = "overview" | "declaration" | "response" | "form7501" | "psc";
   const [tab, setTab] = useState<Tab>("overview");
   const [edits, setEdits] = useState<Record<string, LineItemEdit>>(() =>
-    Object.fromEntries(lineItems.map((li) => [li.id, { htsCode: li.htsCode, countryOfOrigin: li.countryOfOrigin }]))
+    Object.fromEntries((lineItems || []).map((li) => [li.id, { htsCode: li.htsCode, countryOfOrigin: li.countryOfOrigin }]))
   );
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -514,6 +520,48 @@ export function FilingDetailClient({
   const [actionFields, setActionFields] = useState<ActionFieldEntry[] | null>(null);
   const [actionFieldsLoading, setActionFieldsLoading] = useState(false);
   const [promptedValues, setPromptedValues] = useState<Record<string, unknown>>({});
+
+  // Local Reference and Registration Number state
+  const [localReferenceNumber, setLocalReferenceNumber] = useState<string>(
+    filing.localReferenceNumber || filing.entryNumber
+  );
+  const [registrationNumber, setRegistrationNumber] = useState<string>(
+    filing.registrationNumber || ''
+  );
+
+  // Declaration form state - initialize from saved draft if available
+  const [declarationData, setDeclarationData] = useState<Record<string, any>>(() => {
+    console.log('🔍 Initializing declarationData, filing.declarationDraft:', filing.declarationDraft);
+    if (filing.declarationDraft) {
+      // Check if data is wrapped in ImportDeclaration/ExportDeclaration
+      if (filing.declarationDraft.ImportDeclaration) {
+        console.log('✅ Unwrapping ImportDeclaration:', filing.declarationDraft.ImportDeclaration);
+        return filing.declarationDraft.ImportDeclaration;
+      } else if (filing.declarationDraft.ExportDeclaration) {
+        console.log('✅ Unwrapping ExportDeclaration:', filing.declarationDraft.ExportDeclaration);
+        return filing.declarationDraft.ExportDeclaration;
+      }
+      // Otherwise return as-is
+      console.log('⚠️ No wrapper found, returning as-is');
+      return filing.declarationDraft;
+    }
+    // Default empty structure for new filings
+    console.log('⚠️ No declarationDraft, using defaults');
+    return {
+      declarationId: '',
+      entryType: '',
+      importer: { name: '', country: '', taxId: '' },
+      exporter: { name: '', country: '', taxId: '' },
+      filer: { name: '', country: '', taxId: '' },
+      transport: { mode: '', carrierName: '', vessel: '', portOfEntry: '', arrivalDate: '' },
+      currency: '',
+      incoterm: '',
+      valuation: { method: '', totalValue: 0 },
+      totals: { customsValue: 0, dutyAmount: 0, feesAmount: 0 },
+      compliance: { screeningCleared: false, licensesRequired: '' },
+      evidence: { classificationRationale: '', originCriterion: '', sourceDocumentIds: '' },
+    };
+  });
 
   useEffect(() => {
     if (!confirmAction) {
@@ -541,6 +589,24 @@ export function FilingDetailClient({
     };
   }, [confirmAction, filing.id]);
 
+  // Load existing declaration data
+  useEffect(() => {
+    async function loadDeclaration() {
+      try {
+        const res = await fetch(`/api/filing/${filing.id}/declaration`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.declarationData) {
+            setDeclarationData(data.declarationData);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load declaration data:', err);
+      }
+    }
+    loadDeclaration();
+  }, [filing.id]);
+
   const stages = filingStages(filing.filingStatus);
   const stageDates: Record<string, string | null> = {
     prepare: filing.createdAt,
@@ -551,7 +617,7 @@ export function FilingDetailClient({
 
   const changedLineItems = useMemo(
     () =>
-      lineItems
+      (lineItems || [])
         .filter((li) => edits[li.id] && (edits[li.id].htsCode !== li.htsCode || edits[li.id].countryOfOrigin !== li.countryOfOrigin))
         .map((li) => ({ id: li.id, htsCode: edits[li.id].htsCode, countryOfOrigin: edits[li.id].countryOfOrigin })),
     [lineItems, edits]
@@ -568,7 +634,7 @@ export function FilingDetailClient({
 
   async function saveLineItemEdits(): Promise<boolean> {
     if (changedLineItems.length === 0) return true;
-    const res = await fetch(`/api/shipments/${shipment.id}`, {
+    const res = await fetch(`/api/shipments/${shipment?.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lineItems: changedLineItems }),
@@ -651,10 +717,31 @@ export function FilingDetailClient({
   }
 
   async function handleTransmit() {
+    // Validate local reference number is provided
+    if (!localReferenceNumber || localReferenceNumber.trim() === '') {
+      setError('Local Reference Number is required for transmission');
+      return;
+    }
+
     setBusy("transmit");
     setError(null);
     setSuccess(null);
     try {
+      // First save local reference and registration numbers
+      const refRes = await fetch(`/api/filing/${filing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          localReferenceNumber,
+          registrationNumber 
+        }),
+      });
+      if (!refRes.ok) {
+        const refData = await refRes.json();
+        throw new Error(refData.error?.message || refData.error || 'Failed to save reference numbers');
+      }
+
+      // Then transmit
       const res = await fetch(`/api/filing/${filing.id}/transmit`, { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(errorFromResponse(data, "Transmit failed."));
@@ -669,6 +756,66 @@ export function FilingDetailClient({
     } finally {
       setBusy(null);
     }
+  }
+
+  async function handleSaveDeclarationDraft() {
+    // Validate local reference number is provided
+    if (!localReferenceNumber || localReferenceNumber.trim() === '') {
+      setError('Local Reference Number is required');
+      return;
+    }
+
+    setBusy("saveDraft");
+    setError(null);
+    setSuccess(null);
+    try {
+      // First save local reference and registration numbers
+      const refRes = await fetch(`/api/filing/${filing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          localReferenceNumber,
+          registrationNumber 
+        }),
+      });
+      if (!refRes.ok) {
+        const refData = await refRes.json();
+        throw new Error(refData.error?.message || refData.error || 'Failed to save reference numbers');
+      }
+
+      // Then save declaration data
+      const res = await fetch(`/api/filing/${filing.id}/declaration`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ declarationData }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to save draft');
+      setSuccess('Declaration draft saved successfully!');
+      router.refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Helper to update nested declaration data
+  function updateDeclarationField(path: string, value: any) {
+    setDeclarationData((prev) => {
+      const keys = path.split('.');
+      const newData = { ...prev };
+      let current: any = newData;
+      
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (!current[keys[i]]) current[keys[i]] = {};
+        current[keys[i]] = { ...current[keys[i]] };
+        current = current[keys[i]];
+      }
+      
+      current[keys[keys.length - 1]] = value;
+      return newData;
+    });
   }
 
   async function handleGenerateAuditRoom() {
@@ -747,12 +894,20 @@ export function FilingDetailClient({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-border shadow-2xs">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold text-ink tracking-tight">Entry {filing.entryNumber}</h1>
+            <h1 className="text-2xl font-extrabold text-ink tracking-tight">{filing.localReferenceNumber || filing.entryNumber}</h1>
             <Badge variant={statusBadgeVariant(filing.filingStatus)}>{filing.filingStatus}</Badge>
           </div>
           <p className="text-xs text-ink-muted">
-            {displayText(shipment.importerName)} &middot; {displayText(shipment.destinationCountry)} &middot;{" "}
-            {filing.filingType}
+            {shipment ? (
+              <>
+                {displayText(shipment.importerName)} &middot; {displayText(shipment.destinationCountry)} &middot;{" "}
+                {filing.filingType}
+              </>
+            ) : (
+              <>
+                {filing.country} &middot; {filing.procedureCode} &middot; {filing.messageName} &middot; {filing.filingType}
+              </>
+            )}
           </p>
         </div>
 
@@ -808,7 +963,7 @@ export function FilingDetailClient({
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
             Audit Room Binder
           </Button>
-          {childActions.map((action) => {
+          {(childActions || []).map((action) => {
             const def = CHILD_ACTION_REGISTRY[action];
             if (!def) return null;
             const Icon = def.icon;
@@ -846,6 +1001,65 @@ export function FilingDetailClient({
           </ul>
         </div>
       )}
+
+      {/* Filing Information - Always visible above tabs */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="text-xs font-bold text-ink mb-3">Filing Information</h4>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+          <div>
+            <span className="text-ink-muted font-bold">Country</span>
+            <p className="text-ink font-mono">{filing.country || "—"}</p>
+          </div>
+          <div>
+            <span className="text-ink-muted font-bold">Procedure Code</span>
+            <p className="text-ink font-mono">{filing.procedureCode || "—"}</p>
+          </div>
+          <div>
+            <span className="text-ink-muted font-bold">Message Name</span>
+            <p className="text-ink font-mono">{filing.messageName || "—"}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Local Reference Number and Registration Number */}
+      <div className="bg-surface border border-border rounded-lg p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="localReferenceNumber" className="text-xs font-bold text-ink">
+              Local Reference Number <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="localReferenceNumber"
+              type="text"
+              value={localReferenceNumber}
+              onChange={(e) => setLocalReferenceNumber(e.target.value)}
+              placeholder="Enter local reference number"
+              className="mt-1"
+              disabled={filing.filingStatus === "Transmitted" || filing.filingStatus === "Accepted"}
+            />
+            <p className="text-xs text-ink-muted mt-1">
+              Defaults to entry number. Required for save and transmit.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="registrationNumber" className="text-xs font-bold text-ink">
+              Registration Number
+            </Label>
+            <Input
+              id="registrationNumber"
+              type="text"
+              value={registrationNumber}
+              onChange={(e) => setRegistrationNumber(e.target.value)}
+              placeholder="Enter registration number"
+              className="mt-1"
+              disabled={filing.filingStatus === "Transmitted" || filing.filingStatus === "Accepted"}
+            />
+            <p className="text-xs text-ink-muted mt-1">
+              Optional registration or license number.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-border shadow-2xs w-fit">
@@ -895,7 +1109,7 @@ export function FilingDetailClient({
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
-                {stages.map((stage, index) => {
+                {(stages || []).map((stage, index) => {
                   const at = stageDates[stage.key];
                   return (
                     <div key={stage.key} className={`p-4 rounded-xl border ${STAGE_STYLES[stage.state]} space-y-1`}>
@@ -943,7 +1157,7 @@ export function FilingDetailClient({
 
             <div className="space-y-3 pt-3 border-t border-border">
               <h4 className="text-xs font-bold uppercase tracking-wider text-ink">Duty & Tax Breakdown</h4>
-              {filing.dutyBreakdown.length === 0 ? (
+              {!filing.dutyBreakdown || !Array.isArray(filing.dutyBreakdown) || filing.dutyBreakdown.length === 0 ? (
                 <p className="text-xs text-ink-muted">No duty or fee lines have been calculated for this entry yet.</p>
               ) : (
                 <table className="w-full text-left text-xs">
@@ -983,173 +1197,34 @@ export function FilingDetailClient({
 
       {tab === "declaration" && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="space-y-3">
-              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-brand" />
-                Parties
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Importer</span>
-                  <span className="font-medium text-ink">{displayText(shipment.importerName)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Country of Export</span>
-                  <span className="font-medium text-ink">{displayText(shipment.countryOfExport)}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-ink-muted font-bold">Destination Country</span>
-                  <span className="font-medium text-ink">{displayText(shipment.destinationCountry)}</span>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="space-y-3">
-              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center gap-2">
-                <Truck className="w-4 h-4 text-brand" />
-                Transport
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Carrier</span>
-                  <span className="font-medium text-ink">{displayText(shipment.carrierName)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-surface-muted">
-                  <span className="text-ink-muted font-bold">Port of Entry</span>
-                  <span className="font-medium text-ink">{displayText(shipment.portOfEntry)}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-ink-muted font-bold">Incoterm</span>
-                  <span className="font-mono font-bold text-brand">{displayText(shipment.incoterm)}</span>
-                </div>
-              </div>
-            </Card>
-          </div>
-
           <Card className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center gap-2">
-                <FileText className="w-4 h-4 text-brand" />
-                Line Items
-              </h3>
-              {allowUpdates && (
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  Editable — corrections required before resubmission
-                </span>
-              )}
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border text-ink-muted">
-                    <th className="pb-2 pr-3">#</th>
-                    <th className="pb-2 pr-3">Description</th>
-                    <th className="pb-2 pr-3 text-right">Qty</th>
-                    <th className="pb-2 pr-3 text-right">Unit Price</th>
-                    <th className="pb-2 pr-3 text-right">Total Value</th>
-                    <th className="pb-2 pr-3">Country of Origin</th>
-                    <th className="pb-2">HTS Code</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {lineItems.map((li) => (
-                    <tr key={li.id}>
-                      <td className="py-2 pr-3 text-ink-muted">{li.lineNumber}</td>
-                      <td className="py-2 pr-3 text-ink font-medium">{li.description}</td>
-                      <td className="py-2 pr-3 text-right text-ink">{li.quantity}</td>
-                      <td className="py-2 pr-3 text-right text-ink">{displayCurrency(li.unitPrice)}</td>
-                      <td className="py-2 pr-3 text-right font-bold text-ink">{displayCurrency(li.totalValue)}</td>
-                      <td className="py-2 pr-3">
-                        {allowUpdates ? (
-                          <Input
-                            value={edits[li.id]?.countryOfOrigin ?? li.countryOfOrigin}
-                            onChange={(e) =>
-                              setEdits((prev) => ({
-                                ...prev,
-                                [li.id]: { ...prev[li.id], countryOfOrigin: e.target.value },
-                              }))
-                            }
-                            className="w-28 py-1.5"
-                          />
-                        ) : (
-                          <span className="text-ink">{li.countryOfOrigin}</span>
-                        )}
-                      </td>
-                      <td className="py-2">
-                        {allowUpdates ? (
-                          <Input
-                            value={edits[li.id]?.htsCode ?? li.htsCode}
-                            onChange={(e) =>
-                              setEdits((prev) => ({
-                                ...prev,
-                                [li.id]: { ...prev[li.id], htsCode: e.target.value },
-                              }))
-                            }
-                            className="w-32 py-1.5 font-mono"
-                          />
-                        ) : (
-                          <span className="font-mono text-ink">{li.htsCode}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-border text-xs text-right">
-              <div className="space-y-1">
-                <p className="text-ink-muted">
-                  Customs Value: <span className="font-bold text-ink">{displayCurrency(filing.totalValue)}</span>
-                </p>
-                <p className="font-extrabold text-sm text-brand">Total Due: {displayCurrency(filing.totalAmount)}</p>
+              <div className="flex items-center gap-3">
+                <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">Declaration Details</h3>
+                <Badge variant="info">Draft</Badge>
               </div>
+              <Button variant="outline" size="sm" onClick={handleSaveDeclarationDraft}>
+                <Save className="w-4 h-4 mr-2" />
+                Save Draft
+              </Button>
             </div>
-          </Card>
 
-          <Card className="space-y-3">
-            <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">Compliance & Evidence (as last transmitted)</h3>
-            {declaration ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div className="space-y-2">
-                  <p className="text-ink-muted font-bold">Compliance</p>
-                  <pre className="bg-surface-muted rounded-lg p-3 overflow-x-auto text-[11px]">
-                    {JSON.stringify((declaration as { compliance?: unknown }).compliance ?? {}, null, 2)}
-                  </pre>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-ink-muted font-bold">Evidence</p>
-                  <pre className="bg-surface-muted rounded-lg p-3 overflow-x-auto text-[11px]">
-                    {JSON.stringify((declaration as { evidence?: unknown }).evidence ?? {}, null, 2)}
-                  </pre>
-                </div>
-              </div>
+            {/* Dynamic Form Renderer */}
+            {filing.country && filing.procedureCode && filing.messageName ? (
+              <DynamicFormRenderer
+                country={filing.country}
+                procedureCode={filing.procedureCode}
+                messageName={filing.messageName}
+                messageType="request"
+                data={declarationData}
+                onChange={updateDeclarationField}
+                readOnly={false}
+              />
             ) : (
-              <p className="text-xs text-ink-muted">Not yet transmitted — no declaration has been sent for this entry.</p>
-            )}
-
-            {documents.length > 0 && (
-              <div className="pt-3 border-t border-border space-y-2">
-                <p className="text-ink-muted font-bold text-xs">Source Documents</p>
-                <ul className="space-y-1.5">
-                  {documents.map((doc) => (
-                    <li key={doc.id} className="flex items-center justify-between text-xs">
-                      <span className="text-ink font-medium">
-                        {doc.fileName} <span className="text-ink-muted">({doc.docType})</span>
-                      </span>
-                      {doc.fileUrl ? (
-                        <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="text-brand font-semibold hover:underline">
-                          View
-                        </a>
-                      ) : (
-                        <span className="text-ink-muted">{doc.status}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-xs text-yellow-800">
+                  Unable to load declaration form. Missing country, procedure code, or message name.
+                </p>
               </div>
             )}
           </Card>
@@ -1200,7 +1275,7 @@ export function FilingDetailClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {messages
+                    {(messages || [])
                       .slice()
                       .reverse()
                       .map((m) => {

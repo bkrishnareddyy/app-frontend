@@ -84,8 +84,8 @@ export default async function CustomsFilingDashboardPage(props: {
           shipmentNumber: shipment.shipmentNumber,
           importerName: shipment.importerName,
           entryType: normalizeEntryType(shipment.entryType),
+          destinationCountry: shipment.destinationCountry,
         }}
-        entryTypeOptions={entryTypeOptions}
         lineItemCount={shipment.lineItems.length}
         totalValue={totalValue}
       />
@@ -104,6 +104,7 @@ export default async function CustomsFilingDashboardPage(props: {
 
   const rows: FilingRow[] = filings.map((f) => ({
     id: f.id,
+    localReferenceNumber: f.localReferenceNumber,
     entryNumber: f.entryNumber,
     importer: f.shipment?.importerName ?? null,
     country: f.shipment?.destinationCountry ?? null,

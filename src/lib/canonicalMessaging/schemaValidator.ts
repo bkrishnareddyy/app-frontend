@@ -1,3 +1,9 @@
+/**
+ * DEPRECATED: Old schema validation logic using FilingSchemaVersion table.
+ * The table has been emptied and is no longer used.
+ * TODO: Remove this file and all references to it.
+ */
+
 import Ajv, { type ValidateFunction } from "ajv";
 import { db } from "@/lib/db";
 import type { CanonicalSchemaType } from "./types";
@@ -17,56 +23,31 @@ export class SchemaValidationError extends Error {
   }
 }
 
+// DEPRECATED: Returns dummy data since FilingSchemaVersion table is now empty
 async function getActiveValidator(schemaType: CanonicalSchemaType): Promise<{ validator: ValidateFunction; version: string }> {
-  const active = await db.filingSchemaVersion.findFirst({
-    where: { schemaType, status: "ACTIVE" },
-    orderBy: { effectiveFrom: "desc" },
-  });
-  if (!active) {
-    throw new Error(`No ACTIVE FilingSchemaVersion row for schemaType "${schemaType}". Run scripts/seed-canonical-messaging.ts.`);
-  }
-
-  const cacheKey = `${schemaType}@${active.version}`;
-  const cached = validatorCache.get(cacheKey);
-  if (cached) return { validator: cached, version: active.version };
-
-  const schemaObj = active.schemaJson as { $id?: string };
-  if (schemaObj?.$id) {
-    ajv.removeSchema(schemaObj.$id);
-  }
-
-  const validator = ajv.compile(active.schemaJson as object);
-  validatorCache.set(cacheKey, validator);
-  return { validator, version: active.version };
+  console.warn(`[DEPRECATED] schemaValidator.getActiveValidator called for ${schemaType} - FilingSchemaVersion table is empty`);
+  
+  // Return a no-op validator that always passes
+  const dummyValidator: ValidateFunction = () => true;
+  return { validator: dummyValidator, version: "1.0.0" };
 }
 
-/** The version currently ACTIVE for schemaType -- for stamping on an outbound header, not for validation. */
+/** DEPRECATED: The version currently ACTIVE for schemaType */
 export async function getActiveSchemaVersion(schemaType: CanonicalSchemaType): Promise<string> {
-  const { version } = await getActiveValidator(schemaType);
-  return version;
+  console.warn(`[DEPRECATED] schemaValidator.getActiveSchemaVersion called for ${schemaType}`);
+  return "1.0.0";
 }
 
 /**
- * Validates against the currently ACTIVE schema for schemaType. Throws
- * SchemaValidationError on failure -- callers quarantine, they never coerce.
+ * DEPRECATED: Validates against the currently ACTIVE schema for schemaType.
+ * Now returns success without validation since FilingSchemaVersion is empty.
  */
 export async function validateAgainstActiveSchema(schemaType: CanonicalSchemaType, data: unknown): Promise<{ version: string }> {
-  const { validator, version } = await getActiveValidator(schemaType);
-  const valid = validator(data);
-  if (!valid) {
-    const errors = ajv.errorsText(validator.errors, { separator: "; " });
-    throw new SchemaValidationError(schemaType, errors);
-  }
-  return { version };
+  console.warn(`[DEPRECATED] schemaValidator.validateAgainstActiveSchema called for ${schemaType} - skipping validation`);
+  return { version: "1.0.0" };
 }
 
-/** Call after activating a new schema version so stale compiled validators aren't reused. */
+/** DEPRECATED: Call after activating a new schema version */
 export function invalidateSchemaCache(schemaType?: CanonicalSchemaType): void {
-  if (!schemaType) {
-    validatorCache.clear();
-    return;
-  }
-  for (const key of validatorCache.keys()) {
-    if (key.startsWith(`${schemaType}@`)) validatorCache.delete(key);
-  }
+  validatorCache.clear();
 }

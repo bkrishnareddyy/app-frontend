@@ -224,7 +224,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   const { id } = paramsVal.data;
 
   const body = await req.json();
-  const { filingStatus, paymentStatus, dutyBreakdown } = body;
+  const { filingStatus, paymentStatus, dutyBreakdown, localReferenceNumber, registrationNumber } = body;
 
   const existingFiling = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
@@ -245,6 +245,14 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   if (dutyBreakdown) {
     updateData.dutyBreakdown = dutyBreakdown;
+  }
+
+  if (localReferenceNumber !== undefined) {
+    updateData.localReferenceNumber = localReferenceNumber;
+  }
+
+  if (registrationNumber !== undefined) {
+    updateData.registrationNumber = registrationNumber;
   }
 
   const updatedFiling = await db.customsFiling.update({

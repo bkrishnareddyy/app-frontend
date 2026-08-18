@@ -883,8 +883,8 @@ model AgentPolicyConfig {
 
 model CustomsFiling {
   id                 String            @id @default(cuid())
-  shipmentId         String
-  shipment           Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipmentId         String?
+  shipment           Shipment?         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   accountId          String
   account            Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
   importerOfRecordId String?
@@ -892,7 +892,13 @@ model CustomsFiling {
   bondId             String?
   bond               Bond?             @relation(fields: [bondId], references: [id], onDelete: SetNull)
   entryNumber        String // internal reference until the authority assigns its own; see authorityReference on CustomsResponse
-
+  
+  /// Local Reference Number - User-provided reference for this filing (mandatory)
+  localReferenceNumber String?
+  
+  /// Registration Number - User-provided registration/license number
+  registrationNumber String?
+  
   // ========================================================================
   // NEW MULTI-COUNTRY FIELDS (replaces US-centric entryType + authority)
   // ========================================================================
@@ -908,7 +914,11 @@ model CustomsFiling {
   /// Country-specific procedure code (e.g., "5100" for NL NCTS, "4000" for IN Import)
   /// Together with country, uniquely identifies the customs procedure
   procedureCode String?
-
+  
+  /// Message name selected for this filing (e.g., "IE015", "IE501")
+  /// Used to determine which canonical message schema to use for transmission
+  messageName String?
+  
   // ========================================================================
   // LEGACY FIELDS (kept temporarily for backwards compatibility)
   // TODO: Remove after data migration
@@ -4209,23 +4219,22 @@ model FilingMessage {
 
 /// A versioned JSON Schema document for one part of the canonical contract.
 /// Authored as reviewed, version-controlled files and loaded in via
-/// migration/seed -- never edited live through a runtime admin surface.
-/// Mirrors HtsRelease's publicationStatus pattern (DRAFT/PUBLISHED/SUPERSEDED)
-/// for the same reason: a schema this consequential needs the same auditable
-/// promotion path as tariff master data, not ad hoc live edits.
-model FilingSchemaVersion {
-  id                  String   @id @default(cuid())
-  schemaType          String // ENVELOPE_HEADER | FILING_REQUEST_DECLARATION | FILING_RESPONSE_DATA
-  version             String // semver, e.g. "1.0.0"
-  schemaJson          Json
-  status              String   @default("DRAFT") // DRAFT, ACTIVE, DEPRECATED, RETIRED
-  effectiveFrom       DateTime @default(now())
-  supersedesVersionId String?
-  createdAt           DateTime @default(now())
-
-  @@unique([schemaType, version])
-  @@index([schemaType, status])
-}
+/// DEPRECATED: Old schema versioning system - removed 2026-08-17
+/// Schemas are now served from public/schemas/ directory via /api/schemas endpoint
+/// See: src/app/api/schemas/[country]/[procedure]/[message]/[type]/route.ts
+// model FilingSchemaVersion {
+//   id                  String   @id @default(cuid())
+//   schemaType          String
+//   version             String
+//   schemaJson          Json
+//   status              String   @default("DRAFT")
+//   effectiveFrom       DateTime @default(now())
+//   supersedesVersionId String?
+//   createdAt           DateTime @default(now())
+//
+//   @@unique([schemaType, version])
+//   @@index([schemaType, status])
+// }
 
 /// Maps an inbound response's canonical status onto which FilingTransition to
 /// apply. Deliberately does NOT redefine CustomsFiling.filingStatus -- that
@@ -4279,6 +4288,67 @@ model FilingActionDataRequirement {
 
   @@unique([country, procedureCode, messageName, action])
 }
+
+/// UI Configuration for dynamic form rendering
+/// Stores complete field configuration as JSON - ONE ROW PER CONFIGURATION
+/// Each configuration is uniquely identified by country + procedure + message + messageType + transactionType
+model FilingUIConfig {
+  id              String   @id @default(cuid())
+  
+  // Configuration identifier (unique combination)
+  country         String   // ISO code (NL, IE, FR, etc.)
+  procedureCode   String   // e.g., H1, H4, H7
+  messageName     String   // e.g., IE501, IE503, IE015
+  messageType     String   // "request" or "response"
+  transactionType String   @default("import") // "import" or "export"
+  
+  // Complete field configuration stored as JSON
+  // Structure: { fields: [{ fieldPath, fieldLabel, fieldType, section, displayOrder, ... }] }
+  configData      Json     // All field configurations in one JSON object
+  
+  // Metadata
+  version         Int      @default(1) // Configuration version for tracking changes
+  description     String?  // Optional description of what this config is for
+  isActive        Boolean  @default(true) // Whether this config is currently active
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+  updatedBy       String?
+
+  @@unique([country, procedureCode, messageName, messageType, transactionType])
+  @@index([country, procedureCode, messageName, messageType, transactionType])
+  @@index([isActive])
+}
+
+/// Master data source catalog for dropdown/lookup fields
+/// Defines available master data tables and their query configuration
+model FilingMasterDataSource {
+  id              String   @id @default(cuid())
+  sourceName      String   @unique // e.g., "Country", "Currency", "Incoterm", "HSCode"
+  sourceType      String   // "table" | "enum" | "api" | "static"
+  
+  // For table-based sources
+  tableName       String?  // Prisma model name
+  valueField      String?  // Field to use as option value
+  labelField      String?  // Field to use as option label
+  
+  // For static/enum sources
+  staticOptions   Json?    // Array of { value, label } objects
+  
+  // API configuration
+  apiEndpoint     String?  // API endpoint for dynamic lookups
+  apiMethod       String   @default("GET")
+  
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+  updatedBy       String?
+
+  @@index([sourceName])
+}
+
 
 // ============================================================================
 // NEW MULTI-COUNTRY FILING CONFIGURATION (Redesigned)
@@ -4334,13 +4404,14 @@ model FilingActionCatalog {
 model FilingProcedureConfig {
   id                String                @id @default(cuid())
   transactionTypeId String
-  transactionType   FilingTransactionType @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
-  country           String // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
-  procedureCode     String // Country-specific procedure code (5100, 4000, etc.)
-  messageName       String // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
-  isActive          Boolean               @default(true)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  transactionType   FilingTransactionType  @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
+  country           String                 // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
+  procedureCode     String                 // Country-specific procedure code (5100, 4000, etc.)
+  messageName       String                 // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
+  canCreateNewFiling Boolean               @default(true) // If true, can be used for new declaration; if false, only for amendments/cancellations/etc.
+  isActive          Boolean                @default(true)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
   createdBy         String?
   updatedBy         String?
 
@@ -4348,6 +4419,7 @@ model FilingProcedureConfig {
   @@index([country, procedureCode])
   @@index([transactionTypeId])
   @@index([isActive])
+  @@index([canCreateNewFiling])
 }
 
 /// Maps user actions to outbound message names per country/procedure.

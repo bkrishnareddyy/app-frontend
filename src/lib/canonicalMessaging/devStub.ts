@@ -29,6 +29,74 @@ export async function simulateThirdPartyResponse(outboundMessageId: string): Pro
   const isCancellation = request.header.messageName.includes("CANCELLATION");
   const responseMessageId = `resp_${pending.messageId}`;
 
+  // Clone the request declaration and populate response fields
+  const responseDeclaration = JSON.parse(JSON.stringify(request.data.declaration));
+  
+  // Detect declaration type (with backwards compatibility for missing wrappers)
+  let isImport = 'ImportDeclaration' in responseDeclaration;
+  let isExport = 'ExportDeclaration' in responseDeclaration;
+  let declarationKey: string | null = isImport ? 'ImportDeclaration' : isExport ? 'ExportDeclaration' : null;
+
+  // Handle legacy format without wrapper - infer from procedure code
+  if (!declarationKey && responseDeclaration.GoodsDeclaration) {
+    // Infer type from procedure code (H* = import, E* = export, or fallback to import)
+    const procedure = request.header.procedure || "";
+    isImport = procedure.toUpperCase().startsWith("H") || procedure.includes("IMP") || !procedure.toUpperCase().startsWith("E");
+    isExport = !isImport;
+    declarationKey = isImport ? 'ImportDeclaration' : 'ExportDeclaration';
+    
+    // Wrap the legacy data
+    const wrappedData = {
+      [declarationKey]: responseDeclaration
+    };
+    Object.assign(responseDeclaration, wrappedData);
+    // Clear the unwrapped GoodsDeclaration at root
+    delete (responseDeclaration as any).GoodsDeclaration;
+  }
+
+  if (declarationKey && responseDeclaration[declarationKey]?.GoodsDeclaration) {
+    const goodsDecl = responseDeclaration[declarationKey].GoodsDeclaration;
+    
+    if (isCancellation) {
+      // Populate cancellation response fields
+      goodsDecl.ResponseCode = "09";
+      goodsDecl.ResponseDescription = "[DEV STUB] Declaration cancelled - no real authority transmission occurred.";
+      goodsDecl.StatusCode = "CANCELLED";
+    } else {
+      // Populate acceptance response fields
+      const mrn = `${request.header.country}${Date.now().toString().slice(-12)}`;
+      goodsDecl.MRN = mrn;
+      goodsDecl.ResponseCode = "00";
+      goodsDecl.ResponseDescription = "[DEV STUB] Declaration accepted - no real authority transmission occurred.";
+      goodsDecl.StatusCode = "ACCEPTED";
+      
+      // Add release information for imports
+      if (isImport) {
+        const releaseDate = new Date();
+        releaseDate.setMinutes(releaseDate.getMinutes() + 15); // Release in 15 minutes
+        
+        goodsDecl.ReleaseInformation = {
+          ReleaseDate: releaseDate.toISOString(),
+          ReleaseCSVId: `REL-${Date.now()}`,
+        };
+        
+        // Add mock duty assessments if line items exist
+        const goodsShipment = responseDeclaration[declarationKey].GoodsShipment;
+        if (goodsShipment?.GovernmentAgencyGoodsItem) {
+          goodsShipment.GovernmentAgencyGoodsItem.forEach((item: any) => {
+            if (!item.CustomsValuation) {
+              item.CustomsValuation = {};
+            }
+            // Mock duty assessment
+            item.CustomsValuation.DutyTaxFeeAssessed = Math.round(
+              (item.CustomsValuation?.ChargeableAmount || 1000) * 0.028 * 100
+            ) / 100;
+          });
+        }
+      }
+    }
+  }
+
   const response: CanonicalMessage<CanonicalFilingResponseData> = {
     header: {
       messageId: responseMessageId,
@@ -43,16 +111,9 @@ export async function simulateThirdPartyResponse(outboundMessageId: string): Pro
       schemaVersion: request.header.schemaVersion,
       senderSystem: "DEV_STUB_THIRD_PARTY",
     },
-    data: isCancellation
-      ? {
-          status: "CANCELLED",
-          humanMessage: "[DEV STUB] Simulated cancellation acknowledged -- no real authority transmission occurred.",
-        }
-      : {
-          status: "ACCEPTED",
-          authorityReference: `STUB-${Date.now()}`,
-          humanMessage: "[DEV STUB] Simulated acceptance -- no real authority transmission occurred.",
-        },
+    data: {
+      declaration: responseDeclaration,
+    },
   };
 
   await db.$transaction([

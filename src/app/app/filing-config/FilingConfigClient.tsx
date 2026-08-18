@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Settings2, Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -38,6 +38,19 @@ function fieldHelp(dict: Dict, tableKey: string, field: FieldMeta): string | und
 
 function interpolate(template: string, values: Record<string, string | number>): string {
   return Object.entries(values).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, String(v)), template);
+}
+
+/**
+ * Get value from row using dot notation (e.g., "transactionType.code")
+ */
+function getNestedValue(row: Row, path: string): unknown {
+  const parts = path.split('.');
+  let value: any = row;
+  for (const part of parts) {
+    if (value == null) return null;
+    value = value[part];
+  }
+  return value;
 }
 
 export interface SubFieldMeta {
@@ -102,7 +115,25 @@ function emptyArrayEntry(itemFields: SubFieldMeta[]): ArrayEntry {
 export function FilingConfigClient({ tables }: { tables: TableMeta[] }) {
   const { t } = useLanguage();
   const [activeKey, setActiveKey] = useState(tables[0]?.key);
+  const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+  const [showUIConfigEditor, setShowUIConfigEditor] = useState(false);
   const active = tables.find((table) => table.key === activeKey) ?? tables[0];
+
+  if (showUIConfigEditor) {
+    // Dynamically import to avoid SSR issues
+    const UIConfigEditor = React.lazy(() => import("./UIConfigEditor"));
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-sm text-ink-muted">Loading...</div></div>}>
+        <UIConfigEditor 
+          configId={editingConfigId || undefined}
+          onBack={() => {
+            setShowUIConfigEditor(false);
+            setEditingConfigId(null);
+          }} 
+        />
+      </React.Suspense>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
@@ -132,12 +163,15 @@ export function FilingConfigClient({ tables }: { tables: TableMeta[] }) {
         ))}
       </div>
 
-      {active && <TablePanel key={active.key} table={active} />}
+      {active && <TablePanel key={active.key} table={active} onShowUIConfigEditor={(configId) => {
+        setEditingConfigId(configId);
+        setShowUIConfigEditor(true);
+      }} />}
     </div>
   );
 }
 
-function TablePanel({ table }: { table: TableMeta }) {
+function TablePanel({ table, onShowUIConfigEditor }: { table: TableMeta; onShowUIConfigEditor?: (configId: string | null) => void }) {
   const { t } = useLanguage();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -211,10 +245,18 @@ function TablePanel({ table }: { table: TableMeta }) {
               className="pl-9 w-52"
             />
           </div>
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="w-3.5 h-3.5" />
-            {t.filingConfig?.addRow ?? "Add Row"}
-          </Button>
+          {/* For UI Configuration tab, show visual editor button instead of Add Row */}
+          {table.key === "ui-configuration" ? (
+            <Button onClick={() => onShowUIConfigEditor?.(null)}>
+              <Plus className="w-3.5 h-3.5" />
+              Configure Fields Visually
+            </Button>
+          ) : (
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="w-3.5 h-3.5" />
+              {t.filingConfig?.addRow ?? "Add Row"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -245,24 +287,39 @@ function TablePanel({ table }: { table: TableMeta }) {
                   {table.fields.map((f) => (
                     <td key={f.key} className="py-2.5 px-3 text-ink">
                       {f.type === "boolean"
-                        ? (row[f.key] ? t.filingConfig?.yes ?? "Yes" : t.filingConfig?.no ?? "No")
+                        ? (getNestedValue(row, f.key) ? t.filingConfig?.yes ?? "Yes" : t.filingConfig?.no ?? "No")
                         : f.type === "fieldArray"
                           ? interpolate(t.filingConfig?.fieldsConfiguredCount ?? "{count} field(s) configured", {
-                              count: Array.isArray(row[f.key]) ? (row[f.key] as unknown[]).length : 0,
+                              count: Array.isArray(getNestedValue(row, f.key)) ? (getNestedValue(row, f.key) as unknown[]).length : 0,
                             })
-                          : String(row[f.key] ?? "")}
+                          : String(getNestedValue(row, f.key) ?? "")}
                     </td>
                   ))}
                   <td className="py-2.5 px-3 text-right">
                     <div className="inline-flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setEditing(row)}
-                        aria-label={t.filingConfig?.editRow ?? "Edit row"}
-                        className="p-1.5 rounded-lg border border-border bg-white hover:bg-surface-muted text-ink"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
+                      {/* For UI Configuration, edit button opens visual editor */}
+                      {table.key === "ui-configuration" ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const configId = String(row[table.idField]);
+                            onShowUIConfigEditor?.(configId);
+                          }}
+                          aria-label={t.filingConfig?.editRow ?? "Edit row"}
+                          className="p-1.5 rounded-lg border border-border bg-white hover:bg-surface-muted text-ink"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setEditing(row)}
+                          aria-label={t.filingConfig?.editRow ?? "Edit row"}
+                          className="p-1.5 rounded-lg border border-border bg-white hover:bg-surface-muted text-ink"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setConfirmDelete(row)}

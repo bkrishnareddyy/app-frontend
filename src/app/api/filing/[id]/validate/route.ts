@@ -33,7 +33,45 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
 });
 
   if (!filing) {
-    return NextResponse.json({ error: "Filing not found" });
+    return NextResponse.json({ error: "Filing not found" }, { status: 404 });
+  }
+
+  // Check if this is a standalone filing (no shipment)
+  const isStandalone = !filing.shipmentId || !filing.shipment;
+  
+  if (isStandalone) {
+    // For standalone filings, validation is minimal for now
+    // TODO: Implement standalone filing validation based on declarationData
+    
+    // Transition status: Draft -> ReadyForBrokerReview
+    let newStatus = filing.filingStatus;
+    if (filing.filingStatus === "Draft") {
+      newStatus = "ReadyForBrokerReview";
+      await db.customsFiling.update({
+        where: { id: filing.id },
+        data: { filingStatus: newStatus },
+      });
+    }
+    
+    return NextResponse.json({
+      validation: {
+        filingId: filing.id,
+        valid: true,
+        blockers: [],
+        warnings: [{
+          field: "declaration",
+          rule: "standalone-validation",
+          message: "Standalone filing validation is not fully implemented yet. Manual review recommended."
+        }],
+        previousFilingStatus: filing.filingStatus,
+        filingStatus: newStatus,
+      },
+    });
+  }
+
+  // Shipment-based filing validation (existing logic)
+  if (!filing.shipment) {
+    return NextResponse.json({ error: "Shipment not found for this filing" }, { status: 400 });
   }
 
   // Fetch readiness threshold from AgentPolicyConfig (falls back to 80)

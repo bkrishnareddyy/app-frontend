@@ -1,18 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, FileCheck2 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { FormField, Label, Select } from "@/components/ui/Input";
 import { displayCurrency } from "@/lib/honest";
-
-interface EntryTypeOption {
-  code: string;
-  label: string;
-}
+import { ShipmentFilingModal } from "./ShipmentFilingModal";
 
 interface CreateFilingPromptProps {
   shipment: {
@@ -20,45 +12,14 @@ interface CreateFilingPromptProps {
     shipmentNumber: string;
     importerName: string;
     entryType: string | null;
+    destinationCountry?: string | null;
   };
-  entryTypeOptions: EntryTypeOption[];
   lineItemCount: number;
   totalValue: number;
 }
 
-function errorFromResponse(data: unknown, fallback: string): string {
-  if (data && typeof data === "object" && "error" in data) {
-    const err = (data as { error?: { message?: string } | string }).error;
-    if (typeof err === "string") return err;
-    if (err && typeof err.message === "string") return err.message;
-  }
-  return fallback;
-}
-
-export function CreateFilingPrompt({ shipment, entryTypeOptions, lineItemCount, totalValue }: CreateFilingPromptProps) {
-  const router = useRouter();
-  const defaultEntryType = entryTypeOptions.find((o) => o.code === shipment.entryType)?.code ?? entryTypeOptions[0]?.code ?? "";
-  const [entryType, setEntryType] = useState(defaultEntryType);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleCreate() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/filing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shipmentId: shipment.id, entryType }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(errorFromResponse(data, "Could not create the filing."));
-      router.push(`/app/filing/${data.filing.id}`);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      setSubmitting(false);
-    }
-  }
+export function CreateFilingPrompt({ shipment, lineItemCount, totalValue }: CreateFilingPromptProps) {
+  const [isModalOpen, setIsModalOpen] = useState(true);
 
   return (
     <div className="max-w-xl mx-auto py-12 space-y-6">
@@ -67,7 +28,7 @@ export function CreateFilingPrompt({ shipment, entryTypeOptions, lineItemCount, 
         All Filings
       </Link>
 
-      <Card className="space-y-5">
+      <div className="apple-card p-6 rounded-3xl border border-border bg-white shadow-sm space-y-5">
         <div className="flex items-center gap-3 border-b border-border pb-4">
           <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0">
             <FileCheck2 className="w-5 h-5" />
@@ -90,28 +51,20 @@ export function CreateFilingPrompt({ shipment, entryTypeOptions, lineItemCount, 
             <p className="font-bold text-ink">{displayCurrency(totalValue)}</p>
           </div>
         </div>
+      </div>
 
-        <FormField>
-          <Label htmlFor="entry-type">Entry Type</Label>
-          <Select id="entry-type" value={entryType} onChange={(e) => setEntryType(e.target.value)}>
-            {entryTypeOptions.map((o) => (
-              <option key={o.code} value={o.code}>
-                {o.code} — {o.label}
-              </option>
-            ))}
-          </Select>
-        </FormField>
-
-        {error && (
-          <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-            {error}
-          </p>
-        )}
-
-        <Button onClick={handleCreate} loading={submitting} disabled={!entryType} className="w-full justify-center">
-          Create Filing
-        </Button>
-      </Card>
+      <ShipmentFilingModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          // Redirect back to filing dashboard
+          setTimeout(() => {
+            window.location.href = "/app/filing";
+          }, 100);
+        }}
+        shipmentId={shipment.id}
+        defaultCountry={shipment.destinationCountry}
+      />
     </div>
   );
 }
