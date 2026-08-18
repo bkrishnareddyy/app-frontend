@@ -5,6 +5,7 @@ import { validatePathParams } from "@/lib/api/validation";
 import { checkIdempotency, persistIdempotency } from "@/lib/api/idempotency";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { db } from "@/lib/db";
+import { recordUsageEvent } from "@/lib/billing/telemetry";
 import { FilingService } from "@/modules/filings/filing.service";
 import { simulateAndApplyResponse } from "@/lib/canonicalMessaging/devStub";
 import { runFilingValidation, type ValidatorInput } from "@/lib/filing/filingValidator";
@@ -12,7 +13,6 @@ import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().min(1) });
-
 const DEFAULT_READINESS_THRESHOLD = 80;
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, requestId, params }) => {
@@ -23,10 +23,6 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   const { idempotencyKey, requestHash, cachedResponse, errorResponse: idempError } = await checkIdempotency(req, ctx.accountId, requestId);
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
-
-  // ── Server-side filing validation gate (Task B-3) ──────────────────────────
-  // The client cannot bypass this check — it runs unconditionally on every
-  // transmit attempt, regardless of what the client reports about validation state.
 
   const filingForValidation = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
@@ -45,47 +41,31 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
         },
       },
     },
-});
+  });
 
   if (!filingForValidation) {
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
   }
 
-  // Check if this is a standalone filing (no shipment)
   const isStandalone = !filingForValidation.shipmentId || !filingForValidation.shipment;
 
   if (isStandalone) {
-    // For standalone filings, skip shipment-based validation
-    // Validate only that local reference number is provided
     if (!filingForValidation.localReferenceNumber) {
       return NextResponse.json({
-          error: {
-            code: "VALIDATION_BLOCKERS",
-            message: "Transmission blocked: Local Reference Number is required for standalone filings.",
-            blockers: [{
-              field: "localReferenceNumber",
-              rule: "required",
-              message: "Local Reference Number must be provided"
-            }],
-            warnings: [],
-          },
-          requestId,
+        error: {
+          code: "VALIDATION_BLOCKERS",
+          message: "Transmission blocked: Local Reference Number is required for standalone filings.",
+          blockers: [{ field: "localReferenceNumber", rule: "required", message: "Local Reference Number must be provided" }],
+          warnings: [],
         },
-        { status: 422 }
-      );
+        requestId,
+      }, { status: 422 });
     }
-
-    // Skip validation for standalone filings (validation happens client-side)
-    // Proceed directly to transmission
   } else {
-    // Shipment-based filing validation - existing logic
     if (!filingForValidation.shipment) {
       return buildErrorResponse(400, "BAD_REQUEST", "Shipment not found for this filing", undefined, requestId);
     }
 
-    // Maker/checker: whoever prepared this filing cannot also be the one who
-    // transmits it to the customs authority. See the matching check in
-    // approve/route.ts for the null-preparedByUserId (pre-existing filing) case.
     if (filingForValidation.preparedByUserId && filingForValidation.preparedByUserId === ctx.userId) {
       await createAuditLog({
         accountId: ctx.accountId,
@@ -140,31 +120,24 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       estimatedTotalDuties: filingForValidation.totalDuties ? Number(filingForValidation.totalDuties) : null,
       lineItems: lineItemsForValidation,
       blockingExceptions: filingForValidation.shipment.exceptionItems.map((e) => ({ id: e.id })),
-      blockingReconciliationIssues: filingForValidation.shipment.reconciliationIssues
-        .filter((r) => r.severity === "Critical")
-        .map((r) => ({ id: r.id })),
+      blockingReconciliationIssues: filingForValidation.shipment.reconciliationIssues.filter((r) => r.severity === "Critical").map((r) => ({ id: r.id })),
       htsReleaseAgeInDays,
       transportMode: filingForValidation.shipment.transportMode,
     };
 
     const outcome = runFilingValidation(validatorInput);
-
     if (!outcome.valid) {
       return NextResponse.json({
-          error: {
-            code: "VALIDATION_BLOCKERS",
-            message: `Transmission blocked: ${outcome.blockers.length} validation issue(s) must be resolved before filing.`,
-            blockers: outcome.blockers,
-            warnings: outcome.warnings,
-          },
-          requestId,
+        error: {
+          code: "VALIDATION_BLOCKERS",
+          message: `Transmission blocked: ${outcome.blockers.length} validation issue(s) must be resolved before filing.`,
+          blockers: outcome.blockers,
+          warnings: outcome.warnings,
         },
-        { status: 422 }
-      );
+        requestId,
+      }, { status: 422 });
     }
   }
-
-  // ── Proceed to transmission ────────────────────────────────────────────────
 
   try {
     const result = await FilingService.transmitFiling(ctx.accountId, ctx.userId, id);
@@ -179,12 +152,33 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
 
-    // No real third party exists yet, so there is no other process that will
-    // ever answer the outbound message we just published. In production,
-    // with a real integration wired up, this same message would sit PENDING
-    // until they respond -- CUSTOMS_FILING_MOCK_RESPONSES=false restores that
-    // behaviour. A simulation failure must never fail the transmit itself:
-    // the real outbound message is already durably published at this point.
+    if (filingForValidation.shipment) {
+      try {
+        await recordUsageEvent({
+          accountId: ctx.accountId,
+          eventCode: "ACE_FILING_TRANSMITTED",
+          clientId: filingForValidation.shipment.clientId ?? undefined,
+          importerId: filingForValidation.shipment.importerOfRecordId ?? undefined,
+          shipmentId: filingForValidation.shipment.id,
+          userId: ctx.userId,
+          quantity: 1,
+          unit: "transmission",
+          sourceFunction: "FilingService.transmitFiling",
+          sourceApi: `/api/filing/${id}/transmit`,
+          success: true,
+          automated: false,
+          idempotencyKey: `billing:ace-transmit:${idempotencyKey ?? requestId}`,
+          metadata: {
+            filingId: id,
+            entryNumber: result.filing.entryNumber,
+            messageId: result.messageId,
+          },
+        });
+      } catch (billingError) {
+        console.error("Failed to record ACE filing billing usage", billingError);
+      }
+    }
+
     let mockResponseApplied = false;
     try {
       mockResponseApplied = await simulateAndApplyResponse(result.messageId);
@@ -224,5 +218,4 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     }
     return buildErrorResponse(422, "BUSINESS_RULE_FAILURE", errorMessage(error) || "Failed to transmit filing", undefined, requestId);
   }
-
 }, { permission: "filings.submit", write: true });
