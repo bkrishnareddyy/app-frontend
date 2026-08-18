@@ -54,7 +54,14 @@ ALTER TABLE "ShipmentDocument" DROP CONSTRAINT "ShipmentDocument_shipmentId_fkey
 DROP INDEX "AdCvdCompanyRate_countryOfOrigin_idx";
 DROP INDEX "Shipment_scenarioId_idx";
 
--- AccountMembershipRole is the canonical many-to-many role model.
+-- AccountMembershipRole is the canonical many-to-many role model. Preserve
+-- every existing legacy single-role assignment before removing roleId.
+INSERT INTO "AccountMembershipRole" ("accountMembershipId", "roleId")
+SELECT "id", "roleId"
+FROM "AccountMembership"
+WHERE "roleId" IS NOT NULL
+ON CONFLICT ("accountMembershipId", "roleId") DO NOTHING;
+
 ALTER TABLE "AccountMembership" DROP COLUMN "roleId";
 
 ALTER TABLE "AcePortCode" ALTER COLUMN "transportModes" DROP DEFAULT;
