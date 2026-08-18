@@ -1,0 +1,530 @@
+/**
+ * UI Configuration Editor Page
+ * 
+ * Split-screen interface for configuring field display properties.
+ * Left: Schema tree viewer
+ * Right: Field configuration panel
+ */
+
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/Button";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/Input";
+import { ArrowLeft, Plus, Save, X, Eye } from "lucide-react";
+import SchemaTreeViewer from "./SchemaTreeViewer";
+import FieldConfigPanel from "./FieldConfigPanel";
+import ConfigPreviewModal from "./ConfigPreviewModal";
+
+// Add animation styles
+const styles = `
+  @keyframes slide-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+`;
+
+interface ConfigSelectorModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (country: string, procedureCode: string, messageName: string, messageType: string, schemaVersion: string, transactionType: string) => void;
+}
+
+function ConfigSelectorModal({ isOpen, onClose, onSelect }: ConfigSelectorModalProps) {
+  const [country, setCountry] = useState("NL");
+  const [procedureCode, setProcedureCode] = useState("H1");
+  const [messageName, setMessageName] = useState("IE501");
+  const [messageType, setMessageType] = useState("request");
+  const [schemaVersion, setSchemaVersion] = useState("1.0.0");
+  const [transactionType, setTransactionType] = useState("import");
+
+  const handleSubmit = () => {
+    if (country && procedureCode && messageName && messageType && schemaVersion && transactionType) {
+      onSelect(country, procedureCode, messageName, messageType, schemaVersion, transactionType);
+      // Don't call onClose() here - onSelect will close the modal
+      // onClose() would close the entire editor
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} titleId="config-selector">
+      <ModalHeader titleId="config-selector">
+        <h2 className="text-lg font-bold text-ink">Select Configuration Target</h2>
+        <p className="text-xs text-ink-muted mt-1">
+          Choose the country, procedure, and message to configure
+        </p>
+      </ModalHeader>
+
+      <ModalBody>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-ink">Country <span className="text-red-600">*</span></label>
+            <Input
+              value={country}
+              onChange={(e) => setCountry(e.target.value.toUpperCase())}
+              placeholder="e.g., NL, IE, FR"
+              maxLength={2}
+              className="text-xs mt-1"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Procedure Code <span className="text-red-600">*</span></label>
+            <Input
+              value={procedureCode}
+              onChange={(e) => setProcedureCode(e.target.value.toUpperCase())}
+              placeholder="e.g., H1, H4, H7"
+              className="text-xs mt-1"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Message Name <span className="text-red-600">*</span></label>
+            <Input
+              value={messageName}
+              onChange={(e) => setMessageName(e.target.value.toUpperCase())}
+              placeholder="e.g., IE501, IE503, IE015"
+              className="text-xs mt-1"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Transaction Type <span className="text-red-600">*</span></label>
+            <select
+              value={transactionType}
+              onChange={(e) => setTransactionType(e.target.value)}
+              className="w-full text-xs px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand bg-white mt-1"
+            >
+              <option value="import">Import</option>
+              <option value="export">Export</option>
+            </select>
+            <p className="text-[10px] text-ink-muted mt-1">
+              Select whether this is for import or export declarations
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Message Type <span className="text-red-600">*</span></label>
+            <select
+              value={messageType}
+              onChange={(e) => setMessageType(e.target.value)}
+              className="w-full text-xs px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand bg-white mt-1"
+            >
+              <option value="request">Request (Declaration Form)</option>
+              <option value="response">Response (From Customs)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-ink">Schema Version <span className="text-red-600">*</span></label>
+            <Input
+              value={schemaVersion}
+              onChange={(e) => setSchemaVersion(e.target.value)}
+              placeholder="e.g., 1.0.0, 1.0.1"
+              className="text-xs mt-1"
+            />
+            <p className="text-[10px] text-ink-muted mt-1">
+              Canonical schema version to use for field configuration
+            </p>
+          </div>
+        </div>
+      </ModalBody>
+
+      <ModalFooter>
+        <Button onClick={onClose} variant="outline">Cancel</Button>
+        <Button onClick={handleSubmit}>Continue</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+interface UIConfigEditorProps {
+  onBack: () => void;
+}
+
+export default function UIConfigEditor({ onBack }: UIConfigEditorProps) {
+  const [showSelectorModal, setShowSelectorModal] = useState(false); // Don't show by default
+  const [country, setCountry] = useState<string | null>(null);
+  const [procedureCode, setProcedureCode] = useState<string | null>(null);
+  const [messageName, setMessageName] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<string | null>(null);
+  const [schemaVersion, setSchemaVersion] = useState<string | null>(null);
+  const [transactionType, setTransactionType] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(true);
+  const [configId, setConfigId] = useState<string | null>(null); // Track if editing existing config
+  const [saveStatus, setSaveStatus] = useState<{ show: boolean; message: string; type: 'success' | 'error' } | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<Record<string, any>>({}); // Track unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  const [schema, setSchema] = useState<any>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedSchema, setSelectedSchema] = useState<any>(null);
+  const [configurations, setConfigurations] = useState<Record<string, any>>({});
+
+  // Inject animation styles
+  useEffect(() => {
+    const styleEl = document.createElement('style');
+    styleEl.textContent = styles;
+    document.head.appendChild(styleEl);
+    return () => {
+      document.head.removeChild(styleEl);
+    };
+  }, []);
+
+  // Check if editing existing config or creating new
+  useEffect(() => {
+    const editingConfig = sessionStorage.getItem('editingUIConfig');
+    if (editingConfig) {
+      // Editing existing config - load data and skip modal
+      try {
+        const config = JSON.parse(editingConfig);
+        setConfigId(config.id);
+        setCountry(config.country);
+        setProcedureCode(config.procedureCode);
+        setMessageName(config.messageName);
+        setMessageType(config.messageType);
+        setTransactionType(config.transactionType || "import");
+        setIsActive(config.isActive !== false);
+        setSchemaVersion("1.0.0"); // Default version
+        // Clear the session storage
+        sessionStorage.removeItem('editingUIConfig');
+      } catch (error) {
+        console.error("Failed to parse editing config:", error);
+        // If parsing fails, show selector modal for new config
+        setShowSelectorModal(true);
+      }
+    } else {
+      // Creating new config - show selector modal
+      setShowSelectorModal(true);
+    }
+  }, []);
+
+  // Calculate wrapper prefix based on transaction type
+  const wrapperPrefix = transactionType === "import" 
+    ? "ImportDeclaration" 
+    : transactionType === "export" 
+      ? "ExportDeclaration" 
+      : "";
+
+  // Load schema when target is selected
+  useEffect(() => {
+    if (country && procedureCode && messageName && messageType && schemaVersion && transactionType) {
+      loadSchema();
+      loadExistingConfigurations();
+    }
+  }, [country, procedureCode, messageName, messageType, schemaVersion, transactionType]);
+
+  const loadSchema = async () => {
+    try {
+      // Load canonical schema based on transaction type and version
+      // Schema files: import/1.0.0/ImportDeclaration.schema.json or export/1.0.0/ExportDeclaration.schema.json
+      const schemaFileName = transactionType === "import" ? "ImportDeclaration.schema.json" : "ExportDeclaration.schema.json";
+      const response = await fetch(`/schemas/customs-filing/filing-schemas/${transactionType}/${schemaVersion}/${schemaFileName}`);
+      const schemaData = await response.json();
+      setSchema(schemaData);
+    } catch (error) {
+      console.error("Failed to load schema:", error);
+    }
+  };
+
+  const loadExistingConfigurations = async () => {
+    try {
+      const response = await fetch(
+        `/api/filing/ui-config?country=${country}&procedureCode=${procedureCode}&messageName=${messageName}&messageType=${messageType}&transactionType=${transactionType}` // NEW: add transactionType
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Build a map of path -> config
+        const configMap: Record<string, any> = {};
+        Object.values(data.sections).flat().forEach((field: any) => {
+          configMap[field.fieldPath] = field;
+        });
+        setConfigurations(configMap);
+      }
+    } catch (error) {
+      console.error("Failed to load configurations:", error);
+    }
+  };
+
+  const handleSelectTarget = (c: string, p: string, m: string, t: string, v: string, tt: string) => {
+    setCountry(c);
+    setProcedureCode(p);
+    setMessageName(m);
+    setMessageType(t);
+    setSchemaVersion(v);
+    setTransactionType(tt);
+    setShowSelectorModal(false); // Close the modal after selection
+  };
+
+  const handleSelectPath = (path: string, pathSchema: any) => {
+    setSelectedPath(path);
+    setSelectedSchema(pathSchema);
+  };
+
+  // Handle field config changes (called on every input change)
+  const handleFieldConfigChange = useCallback((config: any) => {
+    // Track pending changes
+    setPendingChanges((prev) => ({
+      ...prev,
+      [config.fieldPath]: config,
+    }));
+    setHasUnsavedChanges(true);
+  }, []);
+
+  // Save all pending changes at once
+  const handleSaveAll = async () => {
+    try {
+      // Merge pending changes with existing configurations
+      const allFields = {
+        ...configurations,
+        ...pendingChanges,
+      };
+
+      const fieldsArray = Object.values(allFields);
+
+      // Save complete configuration as single JSON
+      const response = await fetch("/api/filing-config/ui-configuration", {
+        method: "POST", // POST will create or update based on unique key
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country,
+          procedureCode,
+          messageName,
+          messageType,
+          transactionType,
+          isActive, // Include isActive status
+          configData: {
+            fields: fieldsArray,
+            totalFields: fieldsArray.length,
+            sections: [...new Set(fieldsArray.map((f: any) => f.section))],
+          },
+          description: `UI configuration for ${country} ${procedureCode} ${messageName} ${messageType}`,
+        }),
+      });
+
+      if (response.ok) {
+        const savedConfig = await response.json();
+        // Show success message
+        setSaveStatus({
+          show: true,
+          message: `Configuration saved successfully! (${fieldsArray.length} fields configured)`,
+          type: 'success'
+        });
+        // Auto-hide after 3 seconds
+        setTimeout(() => setSaveStatus(null), 3000);
+        
+        // Clear pending changes
+        setPendingChanges({});
+        setHasUnsavedChanges(false);
+        
+        // Reload configurations to refresh both panels
+        await loadExistingConfigurations();
+        // Reload schema tree to reflect new configurations
+        await loadSchema();
+      } else {
+        const error = await response.json();
+        setSaveStatus({
+          show: true,
+          message: `Failed to save configuration: ${error.error || 'Unknown error'}`,
+          type: 'error'
+        });
+        setTimeout(() => setSaveStatus(null), 5000);
+      }
+    } catch (error) {
+      console.error("Failed to save configuration:", error);
+      setSaveStatus({
+        show: true,
+        message: "Error saving configuration. Please try again.",
+        type: 'error'
+      });
+      setTimeout(() => setSaveStatus(null), 5000);
+    }
+  };
+
+  // Cancel all pending changes
+  const handleCancelAll = () => {
+    if (hasUnsavedChanges) {
+      if (confirm("Discard all unsaved changes?")) {
+        setPendingChanges({});
+        setHasUnsavedChanges(false);
+        setSelectedPath(null);
+        setSelectedSchema(null);
+      }
+    } else {
+      setSelectedPath(null);
+      setSelectedSchema(null);
+    }
+  };
+
+  const handleCancel = () => {
+    setSelectedPath(null);
+    setSelectedSchema(null);
+  };
+
+  if (!country || !procedureCode || !messageName || !messageType || !schemaVersion || !transactionType) {
+    return (
+      <ConfigSelectorModal
+        isOpen={showSelectorModal}
+        onClose={onBack}
+        onSelect={handleSelectTarget}
+      />
+    );
+  }
+
+  if (!schema) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-sm text-ink-muted">Loading schema...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen flex flex-col">
+      {/* Success/Error Notification */}
+      {saveStatus?.show && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border animate-slide-in ${
+            saveStatus.type === 'success'
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-2 h-2 rounded-full ${saveStatus.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-sm font-semibold">{saveStatus.message}</span>
+            <button
+              onClick={() => setSaveStatus(null)}
+              className="ml-4 text-lg font-bold opacity-50 hover:opacity-100"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="bg-white border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-4">
+            <Button onClick={onBack} variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-lg font-bold text-ink">UI Configuration Editor</h1>
+              <p className="text-xs text-ink-muted mt-0.5">
+                {configId ? "Editing existing configuration" : "Creating new configuration"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            {/* Unsaved changes indicator */}
+            {hasUnsavedChanges && (
+              <span className="text-xs text-orange-600 font-semibold">
+                • Unsaved changes
+              </span>
+            )}
+            <span className="text-xs text-ink-muted">
+              {Object.keys({...configurations, ...pendingChanges}).length} fields configured
+            </span>
+            {/* Active/Inactive Toggle */}
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-ink-muted">Status:</label>
+              <button
+                onClick={() => setIsActive(!isActive)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  isActive 
+                    ? "bg-green-100 text-green-700 border border-green-300" 
+                    : "bg-gray-100 text-gray-600 border border-gray-300"
+                }`}
+              >
+                {isActive ? "Active" : "Inactive"}
+              </button>
+            </div>
+            {/* Save and Cancel buttons */}
+            <div className="flex items-center gap-2">
+              <Button onClick={handleCancelAll} variant="outline" size="sm">
+                <X className="w-4 h-4 mr-2" />
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSaveAll} 
+                size="sm"
+                disabled={!hasUnsavedChanges}
+                className={hasUnsavedChanges ? "bg-brand" : ""}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Save All
+              </Button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Configuration Details */}
+        <div className="bg-surface-muted rounded-lg px-4 py-3 border border-border">
+          <div className="grid grid-cols-6 gap-4 text-xs">
+            <div>
+              <span className="font-bold text-ink-muted">Transaction Type:</span>
+              <div className="text-ink mt-0.5 font-semibold uppercase">{transactionType}</div>
+            </div>
+            <div>
+              <span className="font-bold text-ink-muted">Country:</span>
+              <div className="text-ink mt-0.5 font-semibold">{country}</div>
+            </div>
+            <div>
+              <span className="font-bold text-ink-muted">Procedure Code:</span>
+              <div className="text-ink mt-0.5 font-semibold">{procedureCode}</div>
+            </div>
+            <div>
+              <span className="font-bold text-ink-muted">Message Name:</span>
+              <div className="text-ink mt-0.5 font-semibold">{messageName}</div>
+            </div>
+            <div>
+              <span className="font-bold text-ink-muted">Message Type:</span>
+              <div className="text-ink mt-0.5 font-semibold">{messageType}</div>
+            </div>
+            <div>
+              <span className="font-bold text-ink-muted">Schema Version:</span>
+              <div className="text-ink mt-0.5 font-semibold">v{schemaVersion}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Split Screen */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: Schema Tree */}
+        <div className="w-1/2 border-r border-border">
+          <SchemaTreeViewer
+            schema={schema}
+            selectedPath={selectedPath}
+            onSelectPath={handleSelectPath}
+          />
+        </div>
+
+        {/* Right: Configuration Panel */}
+        <div className="w-1/2">
+          <FieldConfigPanel
+            selectedPath={selectedPath}
+            selectedSchema={selectedSchema}
+            existingConfig={pendingChanges[selectedPath ? `${wrapperPrefix}.${selectedPath}` : ''] || configurations[selectedPath ? `${wrapperPrefix}.${selectedPath}` : '']}
+            wrapperPrefix={wrapperPrefix}
+            onChange={handleFieldConfigChange}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

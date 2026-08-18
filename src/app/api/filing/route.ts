@@ -5,6 +5,7 @@ import { createAuditLog, AuditAction } from "@/lib/audit";
 import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { ENTRY_TYPE_CODES, entryTypeVariants, normalizeEntryType } from "@/modules/filing/entryType";
 import { findMostSpecificMatch } from "@/lib/canonicalMessaging/wildcardLookup";
+import { wrapDeclarationData } from "@/lib/canonicalMessaging/declarationBuilder";
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { FactAuditService } from "@/modules/audit/factAuditService";
@@ -305,8 +306,111 @@ function generateInternalReference(shipmentNumber: string): string {
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
-  const { shipmentId, entryType, filingType, customEntryNumber } = body;
+  const { 
+    shipmentId, 
+    entryType, 
+    filingType, 
+    customEntryNumber, 
+    standalone, 
+    country, 
+    procedureCode, 
+    messageName, 
+    declarationData,
+    localReferenceNumber,
+    registrationNumber,
+  } = body;
 
+  // ========================================================================
+  // STANDALONE FILING - Direct creation without shipment
+  // ========================================================================
+  if (standalone) {
+    if (!country || !procedureCode || !messageName) {
+      return NextResponse.json(
+        { error: "country, procedureCode, and messageName are required for standalone filings" },
+        { status: 400 }
+      );
+    }
+
+    // Validate that the procedure config exists
+    const procedureConfig = await db.filingProcedureConfig.findFirst({
+      where: {
+        country,
+        procedureCode,
+        messageName,
+        isActive: true,
+      },
+      include: {
+        transactionType: true,
+      },
+    });
+
+    if (!procedureConfig) {
+      return NextResponse.json(
+        { error: `No active procedure configuration found for ${country}/${procedureCode}/${messageName}` },
+        { status: 404 }
+      );
+    }
+
+    // Generate a unique entry number for standalone filing
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const randomSuffix = randomUUID().slice(0, 6).toUpperCase();
+    const standaloneEntryNumber = `${country}-${procedureCode}-${timestamp}-${randomSuffix}`;
+
+    // Create the standalone filing
+    // Note: messageName is stored here for pre-transmission context
+    const filing = await db.customsFiling.create({
+      data: {
+        accountId: ctx.accountId,
+        entryNumber: standaloneEntryNumber,
+        localReferenceNumber: localReferenceNumber || standaloneEntryNumber, // Use provided value or default to entry number
+        registrationNumber: registrationNumber || null,
+        country,
+        procedureCode,
+        messageName,
+        transactionTypeId: procedureConfig.transactionTypeId,
+        filingType: filingType || "Standard",
+        filingStatus: "Draft",
+        preparedByUserId: ctx.userId,
+        // Standalone filings start with null values - user fills them in
+        totalValue: null,
+        totalDuties: null,
+        totalTaxes: null,
+        totalAmount: null,
+        // No shipment association
+        shipmentId: null,
+        entryType: null,
+        authority: null,
+        // If declarationData is provided, wrap it in the correct schema structure
+        dutyBreakdown: declarationData ? {
+          declarationDraft: wrapDeclarationData(declarationData, procedureConfig.transactionType?.code || "IMPORT")
+        } : null,
+      },
+      include: {
+        shipment: true,
+        responses: true,
+      },
+    });
+
+    await createAuditLog({
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      action: AuditAction.CREATE,
+      entity: "filing",
+      entityId: filing.id,
+      metadata: {
+        description: `Created standalone filing ${filing.entryNumber} for ${country}/${procedureCode}/${messageName}`,
+        country,
+        procedureCode,
+        messageName,
+      },
+    });
+
+    return NextResponse.json({ filing });
+  }
+
+  // ========================================================================
+  // SHIPMENT-BASED FILING - Existing flow
+  // ========================================================================
   if (!shipmentId) {
     return NextResponse.json({ error: "shipmentId is required" });
   }
@@ -327,22 +431,46 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     );
   }
 
-  // The single most load-bearing fact for everything downstream: every
-  // country-driven config table (FilingProcedureMapping, FilingMessageCatalog,
-  // FilingAuthorityConfig, ...) keys off this value. Checked here, at
-  // creation, rather than discovered three steps later at Transmit, so a
-  // broker never spends review effort approving a filing that can never
-  // actually be sent.
-  const destinationCountry = shipment.destinationCountry;
-  if (!destinationCountry) {
+  // Use provided country/procedure/message OR fall back to shipment defaults
+  const filingCountry = country || shipment.destinationCountry;
+  const filingProcedureCode = procedureCode || null;
+  const filingMessageName = messageName || null;
+
+  if (!filingCountry) {
     return NextResponse.json(
       {
         error:
-          "This shipment has no destination country set. Set it on the shipment (top of the shipment page) before starting a filing.",
+          "Country is required. Either provide it in the request or ensure the shipment has a destination country.",
       },
       { status: 400 }
     );
   }
+
+  // Look up transactionTypeId if procedure and message are provided
+  let transactionTypeId: string | null = null;
+  if (filingProcedureCode && filingMessageName) {
+    const procedureConfig = await db.filingProcedureConfig.findFirst({
+      where: {
+        country: filingCountry,
+        procedureCode: filingProcedureCode,
+        messageName: filingMessageName,
+        isActive: true,
+      },
+      include: {
+        transactionType: true,
+      },
+    });
+
+    if (procedureConfig) {
+      transactionTypeId = procedureConfig.transactionTypeId;
+    } else {
+      console.warn(
+        `[Filing Creation] No active FilingProcedureConfig found for country=${filingCountry}, procedureCode=${filingProcedureCode}, messageName=${filingMessageName}`
+      );
+    }
+  }
+
+  const destinationCountry = filingCountry;
 
   // Block 2 of the Form 7501 (or the equivalent declaration-type field for
   // another authority). Falls back to the shipment's own entryType, but is
@@ -357,18 +485,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   }
 
   // ========================================================================
-  // TODO: MULTI-COUNTRY MIGRATION - This validation needs to be redesigned
+  // NOTE: MULTI-COUNTRY MIGRATION
   // ========================================================================
   // The old US-centric validation checked FilingProcedureMapping (dropped table)
-  // and FilingAuthorityConfig (dropped table). For now, we skip these checks
-  // to allow the server to start. Proper multi-country validation should:
-  // 1. Require transactionType, country, procedureCode in request
-  // 2. Validate against FilingProcedureConfig
-  // 3. Look up transactionTypeId from FilingTransactionType
+  // and FilingAuthorityConfig (dropped table). 
+  // Now we accept country/procedureCode/messageName from the request and look up
+  // transactionTypeId from FilingProcedureConfig.
+  // If not provided, procedureCode/messageName remain null (legacy behavior).
   // ========================================================================
-  
-  // TEMPORARY: Skip validation for backwards compatibility
-  console.warn('[MIGRATION] Filing creation validation temporarily disabled - needs multi-country redesign');
   
   // Keep old entryType validation for existing US filings
   const entryTypeCode = declaredEntryType ? normalizeEntryType(declaredEntryType) : null;
@@ -409,10 +533,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
           // LEGACY fields (nullable now)
           authority: null, // TODO: Remove after full migration
           entryType: entryTypeCode,
-          // NEW fields (null for now - will be populated in multi-country redesign)
-          transactionTypeId: null,
-          country: destinationCountry,
-          procedureCode: null,
+          // NEW fields - use provided values or null
+          transactionTypeId,
+          country: filingCountry,
+          procedureCode: filingProcedureCode,
+          messageName: filingMessageName,
+          localReferenceNumber: entryNumber,  // Default to entry number
           filingType: filingType || "Standard",
           filingStatus: "Draft",
           preparedByUserId: ctx.userId,

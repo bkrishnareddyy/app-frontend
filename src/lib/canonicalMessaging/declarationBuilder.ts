@@ -1,16 +1,12 @@
 import { db } from "@/lib/db";
 import type { FilingSnapshotData } from "@/modules/filings/filing.service";
 import type { TariffEngineResult } from "@/lib/tariff/dutyEngine";
-import type { CanonicalCustomsDeclaration, CanonicalParty } from "./types";
+import type { CanonicalCustomsDeclaration, CanonicalParty, DeclarationData } from "./types";
+import { buildImportDeclaration, type BuildImportDeclarationParams } from "./importDeclarationBuilder";
+import { buildExportDeclaration, type BuildExportDeclarationParams } from "./exportDeclarationBuilder";
+import { splitHsCode } from "./fieldMappers";
 
-/** Splits a stored HTS code into the universal HS6 prefix and the national tail beyond it. */
-function splitHsCode(htsCode: string): { hsCode6: string; nationalTariffSuffix?: string } {
-  const digits = htsCode.replace(/\D/g, "");
-  const hsCode6 = digits.slice(0, 6).padEnd(6, "0");
-  const rest = digits.slice(6);
-  return rest.length > 0 ? { hsCode6, nationalTariffSuffix: rest } : { hsCode6 };
-}
-
+/** @deprecated Use loadAndMapParty from fieldMappers instead */
 async function loadParty(accountId: string, shipmentId: string, role: string): Promise<CanonicalParty | undefined> {
   const party = await db.shipmentParty.findFirst({
     where: { shipmentId, role },
@@ -24,23 +20,85 @@ async function loadParty(accountId: string, shipmentId: string, role: string): P
   };
 }
 
+/**
+ * Wraps declaration data in the correct schema structure based on transaction type.
+ * 
+ * If data is already wrapped (has ImportDeclaration or ExportDeclaration), returns as-is.
+ * Otherwise, wraps GoodsDeclaration in the appropriate top-level structure.
+ */
+export function wrapDeclarationData(data: any, transactionType: string): DeclarationData {
+  // Already wrapped - return as-is
+  if (data.ImportDeclaration || data.ExportDeclaration) {
+    return data;
+  }
+
+  // Determine wrapper based on transaction type
+  const isImport = transactionType.toUpperCase().includes("IMPORT") || transactionType === "H1";
+  const wrapperKey = isImport ? "ImportDeclaration" : "ExportDeclaration";
+
+  // If data has GoodsDeclaration at top level, wrap it
+  if (data.GoodsDeclaration) {
+    return {
+      [wrapperKey]: data
+    };
+  }
+
+  // Otherwise, assume the entire data object is the GoodsDeclaration content
+  return {
+    [wrapperKey]: {
+      GoodsDeclaration: data
+    }
+  };
+}
+
 export interface BuildDeclarationParams {
   accountId: string;
   filingId: string;
   shipmentId: string;
   snapshotData: FilingSnapshotData;
   tariff: TariffEngineResult;
+  /** Transaction type: "import" or "export" - determines which schema to use */
+  transactionType?: "import" | "export";
+  localReferenceNumber?: string | null;
+  registrationNumber?: string | null;
 }
 
 /**
- * Builds the country-agnostic canonical declaration. Reads only from data
- * already resolved by the time transmitFiling() calls this -- the frozen
- * FilingSnapshotData and the tariff calculation -- never from raw/unverified
- * extraction. Classification stays at HS6 plus a national-suffix field the
- * third party fills in per destination; Qubere's own classification is
- * US-HTSUS-specific and is not valid for an arbitrary destination country.
+ * Builds a transaction-specific declaration (Import or Export) with comprehensive field mapping.
+ * 
+ * Routes to the appropriate builder based on transactionType:
+ * - "import" → ImportDeclaration with full Import schema structure
+ * - "export" → ExportDeclaration with full Export schema structure
+ * - undefined → Legacy CanonicalCustomsDeclaration (backwards compatibility)
+ * 
+ * The new builders map ALL available Shipment fields to their canonical schema equivalents,
+ * including parties, transport, line items, documents, and internal tracking data.
  */
-export async function buildCanonicalDeclaration(params: BuildDeclarationParams): Promise<CanonicalCustomsDeclaration> {
+export async function buildCanonicalDeclaration(
+  params: BuildDeclarationParams
+): Promise<DeclarationData> {
+  const { transactionType } = params;
+
+  // Route to transaction-specific builder
+  if (transactionType === "import") {
+    return await buildImportDeclaration(params as BuildImportDeclarationParams);
+  } else if (transactionType === "export") {
+    return await buildExportDeclaration(params as BuildExportDeclarationParams);
+  }
+
+  // Legacy path: Build the old CanonicalCustomsDeclaration format
+  // This maintains backwards compatibility with existing code
+  return await buildLegacyDeclaration(params);
+}
+
+/**
+ * Legacy declaration builder - maintains backwards compatibility.
+ * 
+ * @deprecated Use buildImportDeclaration or buildExportDeclaration instead.
+ * This function builds the old ~20-field format and will be removed once all
+ * callers are updated to use transaction-specific builders.
+ */
+async function buildLegacyDeclaration(params: BuildDeclarationParams): Promise<CanonicalCustomsDeclaration> {
   const { accountId, shipmentId, snapshotData, tariff } = params;
 
   const [importer, exporter] = await Promise.all([

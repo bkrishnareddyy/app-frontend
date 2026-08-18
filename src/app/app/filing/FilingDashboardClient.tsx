@@ -2,15 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileCheck2, Search, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { FileCheck2, Search, ChevronLeft, ChevronRight, Eye, Plus } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Input, Select } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { displayCurrency, displayDate, displayText } from "@/lib/honest";
 import { FILING_STATUSES } from "@/modules/filings/filingStateMachine";
 import { PAGE_SIZE_DEFAULT, pageWindow } from "@/modules/tables/tableQuery";
+import { NewFilingModal } from "./NewFilingModal";
 
 export interface FilingRow {
   id: string;
+  localReferenceNumber: string | null;
   entryNumber: string;
   importer: string | null;
   country: string | null;
@@ -38,6 +41,7 @@ export function FilingDashboardClient({ initialFilings }: { initialFilings: Fili
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [isNewFilingModalOpen, setIsNewFilingModalOpen] = useState(false);
   const pageSize = PAGE_SIZE_DEFAULT;
 
   const filtered = useMemo(() => {
@@ -46,6 +50,7 @@ export function FilingDashboardClient({ initialFilings }: { initialFilings: Fili
       if (statusFilter !== "all" && f.filingStatus !== statusFilter) return false;
       if (!q) return true;
       return (
+        (f.localReferenceNumber ?? "").toLowerCase().includes(q) ||
         f.entryNumber.toLowerCase().includes(q) ||
         (f.importer ?? "").toLowerCase().includes(q) ||
         (f.country ?? "").toLowerCase().includes(q) ||
@@ -60,54 +65,67 @@ export function FilingDashboardClient({ initialFilings }: { initialFilings: Fili
   const openFiling = (id: string) => router.push(`/app/filing/${id}`);
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-border shadow-2xs">
-        <div>
-          <div className="flex items-center space-x-2">
-            <FileCheck2 className="w-5 h-5 text-brand" />
-            <h1 className="text-2xl font-extrabold text-ink tracking-tight">Customs Filing & Response Center</h1>
+    <>
+      <NewFilingModal
+        isOpen={isNewFilingModalOpen}
+        onClose={() => setIsNewFilingModalOpen(false)}
+      />
+      <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-border shadow-2xs">
+          <div>
+            <div className="flex items-center space-x-2">
+              <FileCheck2 className="w-5 h-5 text-brand" />
+              <h1 className="text-2xl font-extrabold text-ink tracking-tight">Customs Filing & Response Center</h1>
+            </div>
+            <p className="text-xs text-ink-muted mt-1">
+              {filtered.length} of {initialFilings.length} filing{initialFilings.length === 1 ? "" : "s"}
+            </p>
           </div>
-          <p className="text-xs text-ink-muted mt-1">
-            {filtered.length} of {initialFilings.length} filing{initialFilings.length === 1 ? "" : "s"}
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={search}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => setIsNewFilingModalOpen(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              New Filing
+            </Button>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <Input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search entry #, importer, country..."
+                className="pl-9 w-64"
+              />
+            </div>
+            <Select
+              value={statusFilter}
               onChange={(e) => {
-                setSearch(e.target.value);
+                setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search entry #, importer, country..."
-              className="pl-9 w-64"
-            />
+              className="w-44"
+            >
+              <option value="all">All statuses</option>
+              {FILING_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
           </div>
-          <Select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-            className="w-44"
-          >
-            <option value="all">All statuses</option>
-            {FILING_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
         </div>
-      </div>
 
       <div className="bg-white rounded-2xl border border-border shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-border text-ink-muted bg-surface-muted">
+                <th className="py-3 px-4 font-bold">Local Reference Number</th>
                 <th className="py-3 px-4 font-bold">Entry Number</th>
                 <th className="py-3 px-4 font-bold">Importer</th>
                 <th className="py-3 px-4 font-bold">Country</th>
@@ -122,7 +140,7 @@ export function FilingDashboardClient({ initialFilings }: { initialFilings: Fili
             <tbody className="divide-y divide-border">
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-ink-muted">
+                  <td colSpan={10} className="py-10 text-center text-ink-muted">
                     No filings match this search.
                   </td>
                 </tr>
@@ -133,7 +151,8 @@ export function FilingDashboardClient({ initialFilings }: { initialFilings: Fili
                     onDoubleClick={() => openFiling(f.id)}
                     className="hover:bg-surface-muted cursor-pointer transition-colors"
                   >
-                    <td className="py-3 px-4 font-bold text-ink">{f.entryNumber}</td>
+                    <td className="py-3 px-4 font-bold text-ink">{f.localReferenceNumber || "—"}</td>
+                    <td className="py-3 px-4 text-ink-muted font-mono text-[11px]">{f.entryNumber}</td>
                     <td className="py-3 px-4 text-ink">{displayText(f.importer)}</td>
                     <td className="py-3 px-4 text-ink">{displayText(f.country)}</td>
                     <td className="py-3 px-4 text-ink-muted">{f.filingType}</td>
@@ -152,7 +171,7 @@ export function FilingDashboardClient({ initialFilings }: { initialFilings: Fili
                           e.stopPropagation();
                           openFiling(f.id);
                         }}
-                        aria-label={`View filing ${f.entryNumber}`}
+                        aria-label={`View filing ${f.localReferenceNumber || f.entryNumber}`}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-white hover:bg-surface-muted text-ink font-semibold"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -196,5 +215,6 @@ export function FilingDashboardClient({ initialFilings }: { initialFilings: Fili
         )}
       </div>
     </div>
+    </>
   );
 }

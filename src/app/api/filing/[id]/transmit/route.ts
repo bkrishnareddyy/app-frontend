@@ -51,84 +51,117 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
   }
 
-  // Maker/checker: whoever prepared this filing cannot also be the one who
-  // transmits it to the customs authority. See the matching check in
-  // approve/route.ts for the null-preparedByUserId (pre-existing filing) case.
-  if (filingForValidation.preparedByUserId && filingForValidation.preparedByUserId === ctx.userId) {
-    await createAuditLog({
-      accountId: ctx.accountId,
-      userId: ctx.userId,
-      action: AuditAction.FILING_SEGREGATION_VIOLATION,
-      entity: "CustomsFiling",
-      entityId: id,
-      source: "UI",
-      metadata: { attemptedAction: "transmit", entryNumber: filingForValidation.entryNumber },
-    });
-    return buildErrorResponse(
-      403,
-      "SEGREGATION_OF_DUTIES_VIOLATION",
-      "The user who prepared this filing cannot also transmit it. A different user must submit it to customs.",
-      undefined,
-      requestId
-    );
-  }
+  // Check if this is a standalone filing (no shipment)
+  const isStandalone = !filingForValidation.shipmentId || !filingForValidation.shipment;
 
-  const policyConfig = await db.agentPolicyConfig.findFirst({
-    where: { accountId: ctx.accountId, agentName: "FilingReadinessAgent" },
-    select: { autoThreshold: true },
-  });
-  const readinessThreshold = policyConfig?.autoThreshold ?? DEFAULT_READINESS_THRESHOLD;
-
-  const publishedRelease = await db.htsRelease.findFirst({
-    where: { country: "US", publicationStatus: "PUBLISHED" },
-    orderBy: { effectiveFrom: "desc" },
-    select: { effectiveFrom: true },
-  });
-  const htsReleaseAgeInDays = publishedRelease?.effectiveFrom
-    ? Math.floor((Date.now() - publishedRelease.effectiveFrom.getTime()) / 86_400_000)
-    : null;
-
-  const lineItemsForValidation: ValidatorInput["lineItems"] = filingForValidation.shipment.lineItems.map((li) => ({
-    id: li.id,
-    lineNumber: li.lineNumber,
-    htsCode: li.htsCode,
-    hasApprovedDecision: (li.product?.classifications?.length ?? 0) > 0,
-  }));
-
-  const validatorInput: ValidatorInput = {
-    filingId: id,
-    entryType: filingForValidation.entryType,
-    portOfEntry: filingForValidation.shipment.portOfEntry,
-    importerOfRecordId: filingForValidation.importerOfRecordId ?? null,
-    importerCbpNumber: filingForValidation.importerOfRecord?.cbpImporterNumber ?? null,
-    readinessScore: filingForValidation.shipment.readinessScore,
-    readinessThreshold,
-    bondExpirationDate: filingForValidation.bond?.expirationDate ?? null,
-    bondAmount: filingForValidation.bond?.bondAmount ? Number(filingForValidation.bond.bondAmount) : null,
-    estimatedTotalDuties: filingForValidation.totalDuties ? Number(filingForValidation.totalDuties) : null,
-    lineItems: lineItemsForValidation,
-    blockingExceptions: filingForValidation.shipment.exceptionItems.map((e) => ({ id: e.id })),
-    blockingReconciliationIssues: filingForValidation.shipment.reconciliationIssues
-      .filter((r) => r.severity === "Critical")
-      .map((r) => ({ id: r.id })),
-    htsReleaseAgeInDays,
-    transportMode: filingForValidation.shipment.transportMode,
-  };
-
-  const outcome = runFilingValidation(validatorInput);
-
-  if (!outcome.valid) {
-    return NextResponse.json({
-        error: {
-          code: "VALIDATION_BLOCKERS",
-          message: `Transmission blocked: ${outcome.blockers.length} validation issue(s) must be resolved before filing.`,
-          blockers: outcome.blockers,
-          warnings: outcome.warnings,
+  if (isStandalone) {
+    // For standalone filings, skip shipment-based validation
+    // Validate only that local reference number is provided
+    if (!filingForValidation.localReferenceNumber) {
+      return NextResponse.json({
+          error: {
+            code: "VALIDATION_BLOCKERS",
+            message: "Transmission blocked: Local Reference Number is required for standalone filings.",
+            blockers: [{
+              field: "localReferenceNumber",
+              rule: "required",
+              message: "Local Reference Number must be provided"
+            }],
+            warnings: [],
+          },
+          requestId,
         },
-        requestId,
-      },
-      { status: 422 }
-    );
+        { status: 422 }
+      );
+    }
+
+    // Skip validation for standalone filings (validation happens client-side)
+    // Proceed directly to transmission
+  } else {
+    // Shipment-based filing validation - existing logic
+    if (!filingForValidation.shipment) {
+      return buildErrorResponse(400, "BAD_REQUEST", "Shipment not found for this filing", undefined, requestId);
+    }
+
+    // Maker/checker: whoever prepared this filing cannot also be the one who
+    // transmits it to the customs authority. See the matching check in
+    // approve/route.ts for the null-preparedByUserId (pre-existing filing) case.
+    if (filingForValidation.preparedByUserId && filingForValidation.preparedByUserId === ctx.userId) {
+      await createAuditLog({
+        accountId: ctx.accountId,
+        userId: ctx.userId,
+        action: AuditAction.FILING_SEGREGATION_VIOLATION,
+        entity: "CustomsFiling",
+        entityId: id,
+        source: "UI",
+        metadata: { attemptedAction: "transmit", entryNumber: filingForValidation.entryNumber },
+      });
+      return buildErrorResponse(
+        403,
+        "SEGREGATION_OF_DUTIES_VIOLATION",
+        "The user who prepared this filing cannot also transmit it. A different user must submit it to customs.",
+        undefined,
+        requestId
+      );
+    }
+
+    const policyConfig = await db.agentPolicyConfig.findFirst({
+      where: { accountId: ctx.accountId, agentName: "FilingReadinessAgent" },
+      select: { autoThreshold: true },
+    });
+    const readinessThreshold = policyConfig?.autoThreshold ?? DEFAULT_READINESS_THRESHOLD;
+
+    const publishedRelease = await db.htsRelease.findFirst({
+      where: { country: "US", publicationStatus: "PUBLISHED" },
+      orderBy: { effectiveFrom: "desc" },
+      select: { effectiveFrom: true },
+    });
+    const htsReleaseAgeInDays = publishedRelease?.effectiveFrom
+      ? Math.floor((Date.now() - publishedRelease.effectiveFrom.getTime()) / 86_400_000)
+      : null;
+
+    const lineItemsForValidation: ValidatorInput["lineItems"] = filingForValidation.shipment.lineItems.map((li) => ({
+      id: li.id,
+      lineNumber: li.lineNumber,
+      htsCode: li.htsCode,
+      hasApprovedDecision: (li.product?.classifications?.length ?? 0) > 0,
+    }));
+
+    const validatorInput: ValidatorInput = {
+      filingId: id,
+      entryType: filingForValidation.entryType,
+      portOfEntry: filingForValidation.shipment.portOfEntry,
+      importerOfRecordId: filingForValidation.importerOfRecordId ?? null,
+      importerCbpNumber: filingForValidation.importerOfRecord?.cbpImporterNumber ?? null,
+      readinessScore: filingForValidation.shipment.readinessScore,
+      readinessThreshold,
+      bondExpirationDate: filingForValidation.bond?.expirationDate ?? null,
+      bondAmount: filingForValidation.bond?.bondAmount ? Number(filingForValidation.bond.bondAmount) : null,
+      estimatedTotalDuties: filingForValidation.totalDuties ? Number(filingForValidation.totalDuties) : null,
+      lineItems: lineItemsForValidation,
+      blockingExceptions: filingForValidation.shipment.exceptionItems.map((e) => ({ id: e.id })),
+      blockingReconciliationIssues: filingForValidation.shipment.reconciliationIssues
+        .filter((r) => r.severity === "Critical")
+        .map((r) => ({ id: r.id })),
+      htsReleaseAgeInDays,
+      transportMode: filingForValidation.shipment.transportMode,
+    };
+
+    const outcome = runFilingValidation(validatorInput);
+
+    if (!outcome.valid) {
+      return NextResponse.json({
+          error: {
+            code: "VALIDATION_BLOCKERS",
+            message: `Transmission blocked: ${outcome.blockers.length} validation issue(s) must be resolved before filing.`,
+            blockers: outcome.blockers,
+            warnings: outcome.warnings,
+          },
+          requestId,
+        },
+        { status: 422 }
+      );
+    }
   }
 
   // ── Proceed to transmission ────────────────────────────────────────────────

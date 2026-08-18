@@ -1,12 +1,18 @@
 import { db } from "@/lib/db";
 import { computeFilingTariff, loadHtsCodesMap, type TariffEngineResult } from "@/lib/tariff/dutyEngine";
 import { applyTransition, FilingTransitionError } from "./filingStateMachine";
-import { buildCanonicalDeclaration } from "@/lib/canonicalMessaging/declarationBuilder";
+import { buildCanonicalDeclaration, wrapDeclarationData } from "@/lib/canonicalMessaging/declarationBuilder";
 import { resolveMessageContext } from "@/lib/canonicalMessaging/resolveMessageContext";
 import { PgCanonicalMessagePublisher } from "@/lib/canonicalMessaging/publisher";
 import { getActiveSchemaVersion } from "@/lib/canonicalMessaging/schemaValidator";
 import { buildActionExtensions } from "@/lib/canonicalMessaging/actionDataRequirements";
-import type { CanonicalCustomsDeclaration, CanonicalFilingRequestData, CanonicalMessage, FilingMessageAction } from "@/lib/canonicalMessaging/types";
+import type { 
+  CanonicalCustomsDeclaration, 
+  CanonicalFilingRequestData, 
+  CanonicalMessage, 
+  FilingMessageAction,
+  DeclarationData 
+} from "@/lib/canonicalMessaging/types";
 import { randomUUID } from "crypto";
 
 /** Shape frozen into FilingSnapshot.snapshotData at transmission. */
@@ -170,7 +176,7 @@ export class FilingService {
     filingId: string,
     authority: string,
     context: Awaited<ReturnType<typeof resolveMessageContext>>,
-    declaration: CanonicalCustomsDeclaration,
+    declaration: DeclarationData,
     priorMessageId?: string
   ): Promise<CanonicalMessage<CanonicalFilingRequestData>> {
     return {
@@ -222,6 +228,9 @@ export class FilingService {
       throw new Error("NOT_FOUND");
     }
 
+    // Check if this is a standalone filing
+    const isStandalone = !filing.shipmentId;
+
     // The old guard only rejected two hardcoded statuses, so a Cancelled,
     // Rejected or unvalidated filing could still be transmitted.
     let nextStatus: string;
@@ -234,9 +243,27 @@ export class FilingService {
       throw error;
     }
 
-    if (!filing.shipment.lineItems || filing.shipment.lineItems.length === 0) {
-      throw new Error("Cannot submit entry filing without line items.");
-    }
+    let declaration: any;
+    let snapshotData: FilingSnapshotData | null = null;
+
+    if (isStandalone) {
+      // For standalone filings, use the declarationData stored in dutyBreakdown
+      const storedData = filing.dutyBreakdown as any;
+      if (!storedData?.declarationDraft) {
+        throw new Error("Cannot submit standalone filing without declaration data.");
+      }
+      
+      // Wrap the declaration data in correct schema structure if needed
+      const transactionType = filing.transactionType?.code || "IMPORT";
+      declaration = wrapDeclarationData(storedData.declarationDraft, transactionType);
+      
+      // No snapshot needed for standalone - declaration is already built
+      // Just update filing status and publish message
+    } else {
+      // Shipment-based filing - existing logic
+      if (!filing.shipment?.lineItems || filing.shipment.lineItems.length === 0) {
+        throw new Error("Cannot submit entry filing without line items.");
+      }
 
     // MULTI-COUNTRY FIX: Only calculate US-specific duties for US filings
     // Other countries have different duty structures (EU VAT, India IGST, etc.)
@@ -292,7 +319,7 @@ export class FilingService {
       console.log(`[Filing] Skipped US duty calculation for ${country} filing. Duties will be calculated by destination customs.`);
     }
 
-    const snapshotData: FilingSnapshotData = {
+      snapshotData: FilingSnapshotData = {
       shipment: {
         id: filing.shipment.id,
         shipmentNumber: filing.shipment.shipmentNumber,
@@ -331,46 +358,50 @@ export class FilingService {
         timestamp: new Date().toISOString(),
       }
     };
+    
+      // FilingSnapshot.filingId is unique (one snapshot per filing, "current
+      // effective state"), so a resubmit updates it rather than creating a
+      // second row. The full history of what was actually sent at each point in
+      // time still lives in FilingMessage.envelope, one immutable row per
+      // message -- this snapshot is deliberately "latest," not an archive.
+      const hasSection301 = tariff.lineResults.some((r) => r.section301Amount > 0);
+      const htsCodesMapForSnapshot = await loadHtsCodesMap(filing.shipment.lineItems);
+      const section301List = hasSection301
+        ? (filing.shipment.lineItems
+            .map((item) => (item.htsCode ? htsCodesMapForSnapshot[item.htsCode]?.section301Tranche : null))
+            .find(Boolean) ?? null)
+        : null;
 
-    // FilingSnapshot.filingId is unique (one snapshot per filing, "current
-    // effective state"), so a resubmit updates it rather than creating a
-    // second row. The full history of what was actually sent at each point in
-    // time still lives in FilingMessage.envelope, one immutable row per
-    // message -- this snapshot is deliberately "latest," not an archive.
-    const hasSection301 = tariff.lineResults.some((r) => r.section301Amount > 0);
-    const htsCodesMapForSnapshot = await loadHtsCodesMap(filing.shipment.lineItems);
-    const section301List = hasSection301
-      ? (filing.shipment.lineItems
-          .map((item) => (item.htsCode ? htsCodesMapForSnapshot[item.htsCode]?.section301Tranche : null))
-          .find(Boolean) ?? null)
-      : null;
+      await db.filingSnapshot.upsert({
+        where: { filingId },
+        update: { snapshotData, hasSection301, section301List },
+        create: { filingId, snapshotData, hasSection301, section301List },
+      });
 
-    await db.filingSnapshot.upsert({
-      where: { filingId },
-      update: { snapshotData, hasSection301, section301List },
-      create: { filingId, snapshotData, hasSection301, section301List },
-    });
+      // Build the canonical (country-agnostic) declaration and hand it to the
+      // third-party filing service via the outbound queue. No CBP response
+      // exists yet at this point -- it arrives later, asynchronously, and is
+      // applied by the inbound consumer (see canonicalMessaging/inboundConsumer.ts).
+      // This function intentionally does not return a response/transmissionResult.
+      declaration = await buildCanonicalDeclaration({
+        accountId,
+        filingId,
+        shipmentId: filing.shipment.id,
+        snapshotData,
+        tariff,
+        localReferenceNumber: filing.localReferenceNumber,
+        registrationNumber: filing.registrationNumber,
+      });
+    }
 
-    // Build the canonical (country-agnostic) declaration and hand it to the
-    // third-party filing service via the outbound queue. No CBP response
-    // exists yet at this point -- it arrives later, asynchronously, and is
-    // applied by the inbound consumer (see canonicalMessaging/inboundConsumer.ts).
-    // This function intentionally does not return a response/transmissionResult.
-    const declaration = await buildCanonicalDeclaration({
-      accountId,
-      filingId,
-      shipmentId: filing.shipment.id,
-      snapshotData,
-      tariff,
-    });
-
+    // Message building and publishing (shared for both standalone and shipment-based)
     // TODO: MULTI-COUNTRY MIGRATION - Handle both old and new field structure
     // For backwards compatibility during migration
     const context = await resolveMessageContext(
       {
         transactionType: filing.transactionType?.code || "IMPORT", // TODO: Remove fallback
         procedureCode: filing.procedureCode || filing.entryType || "01", // TODO: Remove fallbacks
-        country: filing.country || filing.shipment.destinationCountry || "US", // TODO: Remove fallbacks
+        country: filing.country || (isStandalone ? "US" : filing.shipment?.destinationCountry) || "US", // TODO: Remove fallbacks
       },
       action
     );
