@@ -27,6 +27,17 @@ export interface ValidationOptions {
 /**
  * Validate a single field value against its validation rules
  */
+function extractVal<T>(rule: any): T | undefined {
+  if (rule === undefined || rule === null) return undefined;
+  if (typeof rule === 'object' && 'value' in rule) return rule.value;
+  return rule as T;
+}
+
+function extractMsg(rule: any, fallback: string): string {
+  if (typeof rule === 'object' && rule?.message) return rule.message;
+  return fallback;
+}
+
 export function validateField(
   field: FieldConfig,
   value: any,
@@ -39,11 +50,13 @@ export function validateField(
 
   const validation = field.validation;
   if (!validation) return null;
+  const v = validation as any;
 
   // Required validation
-  if (field.isRequired || validation.required) {
+  const isReq = field.isRequired || extractVal<boolean>(v.required);
+  if (isReq) {
     if (value === null || value === undefined || value === '') {
-      return validation.message || `${field.fieldLabel} is required`;
+      return extractMsg(v.required, `${field.fieldLabel} is required`);
     }
   }
 
@@ -55,37 +68,42 @@ export function validateField(
   const stringValue = String(value);
 
   // MinLength validation
-  if (validation.minLength !== undefined && stringValue.length < validation.minLength) {
-    return validation.message || `${field.fieldLabel} must be at least ${validation.minLength} characters`;
+  const minLen = extractVal<number>(v.minLength);
+  if (minLen !== undefined && stringValue.length < minLen) {
+    return extractMsg(v.minLength, `${field.fieldLabel} must be at least ${minLen} characters`);
   }
 
   // MaxLength validation
-  if (validation.maxLength !== undefined && stringValue.length > validation.maxLength) {
-    return validation.message || `${field.fieldLabel} must be at most ${validation.maxLength} characters`;
+  const maxLen = extractVal<number>(v.maxLength);
+  if (maxLen !== undefined && stringValue.length > maxLen) {
+    return extractMsg(v.maxLength, `${field.fieldLabel} must be at most ${maxLen} characters`);
   }
 
   // Min value validation
-  if (validation.min !== undefined) {
+  const minVal = extractVal<number>(v.min);
+  if (minVal !== undefined) {
     const numValue = Number(value);
-    if (!isNaN(numValue) && numValue < validation.min) {
-      return validation.message || `${field.fieldLabel} must be at least ${validation.min}`;
+    if (!isNaN(numValue) && numValue < minVal) {
+      return extractMsg(v.min, `${field.fieldLabel} must be at least ${minVal}`);
     }
   }
 
   // Max value validation
-  if (validation.max !== undefined) {
+  const maxVal = extractVal<number>(v.max);
+  if (maxVal !== undefined) {
     const numValue = Number(value);
-    if (!isNaN(numValue) && numValue > validation.max) {
-      return validation.message || `${field.fieldLabel} must be at most ${validation.max}`;
+    if (!isNaN(numValue) && numValue > maxVal) {
+      return extractMsg(v.max, `${field.fieldLabel} must be at most ${maxVal}`);
     }
   }
 
   // Pattern validation
-  if (validation.pattern) {
+  const pat = extractVal<string | RegExp>(v.pattern);
+  if (pat) {
     try {
-      const regex = new RegExp(validation.pattern);
+      const regex = typeof pat === 'string' ? new RegExp(pat) : pat;
       if (!regex.test(stringValue)) {
-        return validation.message || `${field.fieldLabel} format is invalid`;
+        return extractMsg(v.pattern, `${field.fieldLabel} format is invalid`);
       }
     } catch (e) {
       console.error(`Invalid regex pattern for field ${field.fieldPath}:`, e);
@@ -93,27 +111,27 @@ export function validateField(
   }
 
   // Email validation
-  if (validation.email) {
+  if (extractVal<boolean>(v.email)) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(stringValue)) {
-      return validation.message || `${field.fieldLabel} must be a valid email address`;
+      return extractMsg(v.email, `${field.fieldLabel} must be a valid email address`);
     }
   }
 
   // URL validation
-  if (validation.url) {
+  if (extractVal<boolean>(v.url)) {
     try {
       new URL(stringValue);
     } catch {
-      return validation.message || `${field.fieldLabel} must be a valid URL`;
+      return extractMsg(v.url, `${field.fieldLabel} must be a valid URL`);
     }
   }
 
   // Phone validation (basic)
-  if (validation.phone) {
+  if (extractVal<boolean>(v.phone)) {
     const phoneRegex = /^[\d\s\-\+\(\)]+$/;
     if (!phoneRegex.test(stringValue) || stringValue.replace(/\D/g, '').length < 10) {
-      return validation.message || `${field.fieldLabel} must be a valid phone number`;
+      return extractMsg(v.phone, `${field.fieldLabel} must be a valid phone number`);
     }
   }
 

@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     // Transform to match FilingConfigClient expected format: { rows: [...] }
     const rows = configs.map(c => {
-      const configData = c.configData as FilingUIConfigData;
+      const configData = c.configData as unknown as FilingUIConfigData;
       return {
         id: c.id,
         country: c.country,
@@ -103,14 +103,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate configData structure
-    const configData = body.configData as FilingUIConfigData;
+    const configData = body.configData as unknown as FilingUIConfigData;
     const validationResult = validateConfig(configData);
     
     if (!validationResult.valid) {
       return NextResponse.json(
         { 
           error: "Configuration validation failed",
-          summary: getValidationSummary(validationResult),
+          summary: getValidationSummary(validationResult.errors, validationResult.warnings),
           errors: formatValidationErrors(validationResult.errors),
           warnings: formatValidationErrors(validationResult.warnings),
         },

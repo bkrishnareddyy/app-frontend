@@ -409,8 +409,8 @@ export class FilingService {
 
       await db.filingSnapshot.upsert({
         where: { filingId },
-        update: { snapshotData, hasSection301, section301List },
-        create: { filingId, snapshotData, hasSection301, section301List },
+        update: { snapshotData: snapshotData as any, hasSection301, section301List },
+        create: { filingId, snapshotData: snapshotData as any, hasSection301, section301List },
       });
 
       // Build the canonical (country-agnostic) declaration and hand it to the

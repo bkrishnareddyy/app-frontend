@@ -103,8 +103,8 @@ export default async function CompliancePage() {
           id: f.filing.id,
           entryNumber: f.filing.entryNumber,
           filingStatus: f.filing.filingStatus,
-          shipmentNumber: f.filing.shipment.shipmentNumber,
-          importerName: f.filing.shipment.importerName,
+          shipmentNumber: f.filing.shipment?.shipmentNumber ?? "N/A",
+          importerName: f.filing.shipment?.importerName ?? "Unknown Importer",
         }
       : null,
   }));

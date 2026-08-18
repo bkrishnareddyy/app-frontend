@@ -75,16 +75,16 @@ export async function loadAndMapParty(
   return {
     Name: entity.legalName || undefined,
     Address: {
-      Street: entity.address || undefined,
+      Street: (entity as any).address || undefined,
       City: entity.city || undefined,
       PostCode: entity.postalCode || undefined,
       Country: entity.country || undefined,
     },
-    EORI: entity.eoriNumber || undefined,
+    EORI: (entity as any).eoriNumber || undefined,
     TIN: entity.taxIdentifier || undefined,
     Communication: {
-      Email: entity.email || undefined,
-      Phone: entity.phone || undefined,
+      Email: (entity as any).email || undefined,
+      Phone: (entity as any).phone || undefined,
     },
   };
 }

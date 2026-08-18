@@ -381,9 +381,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         entryType: null,
         authority: null,
         // If declarationData is provided, wrap it in the correct schema structure
-        dutyBreakdown: declarationData ? {
+        dutyBreakdown: declarationData ? ({
           declarationDraft: wrapDeclarationData(declarationData, procedureConfig.transactionType?.code || "IMPORT")
-        } : null,
+        } as any) : undefined,
       },
       include: {
         shipment: true,
@@ -394,7 +394,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
-      action: AuditAction.CREATE,
+      action: AuditAction.FILING_CREATED,
       entity: "filing",
       entityId: filing.id,
       metadata: {

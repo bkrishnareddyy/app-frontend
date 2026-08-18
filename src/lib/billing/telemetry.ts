@@ -19,7 +19,7 @@ export interface RecordUsageEventInput {
   sourceAgent?: string;
   success?: boolean;
   automated?: boolean;
-  processingDuration?: number; // In ms
+  processingDuration?: number;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
 }
@@ -27,13 +27,20 @@ export interface RecordUsageEventInput {
 export { DEFAULT_BILLING_EVENT_DEFINITIONS };
 
 /**
- * Ensure default billing event definitions exist for an account.
+ * Ensure the shared platform billing-capability catalog exists and reflects
+ * the current code definitions. accountId remains a legacy ownership field in
+ * the schema; eventCode is globally unique and is the stable mapping contract.
  */
 export async function seedBillingEventDefinitions(accountId: string): Promise<void> {
   for (const def of DEFAULT_BILLING_EVENT_DEFINITIONS) {
     await db.billingEventDefinition.upsert({
       where: { eventCode: def.eventCode },
-      update: {},
+      update: {
+        name: def.name,
+        description: def.description,
+        category: def.category as any,
+        defaultUnit: def.defaultUnit,
+      },
       create: {
         accountId,
         eventCode: def.eventCode,
@@ -59,7 +66,18 @@ export async function recordUsageEvent(input: RecordUsageEventInput) {
   });
 
   if (existing) {
+    if (existing.accountId !== input.accountId) {
+      throw new Error("Billing idempotency key collision across accounts");
+    }
     return { status: "IDEMPOTENT_SKIPPED", usageEvent: existing };
+  }
+
+  const definition = await db.billingEventDefinition.findUnique({
+    where: { eventCode: input.eventCode },
+    select: { defaultUnit: true },
+  });
+  if (!definition) {
+    throw new Error(`Unknown billing event code: ${input.eventCode}`);
   }
 
   const quantity = new Prisma.Decimal(input.quantity ?? 1.0);
@@ -74,7 +92,7 @@ export async function recordUsageEvent(input: RecordUsageEventInput) {
       userId: input.userId,
       agentId: input.agentId,
       quantity,
-      unit: input.unit ?? "unit",
+      unit: input.unit ?? definition.defaultUnit,
       sourceFunction: input.sourceFunction,
       sourceApi: input.sourceApi,
       sourceAgent: input.sourceAgent,
