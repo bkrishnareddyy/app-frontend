@@ -54,9 +54,25 @@ jobs:
           npx prisma migrate deploy
           npx prisma migrate status
 
-      - name: Verify Prisma schema matches migration history
+      - name: Generate Prisma schema drift SQL
         run: |
           PGPASSWORD=postgres createdb -h localhost -U postgres qubere_shadow
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --script > prisma-drift.sql
+
+      - name: Upload Prisma schema drift SQL
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-schema-drift
+          path: prisma-drift.sql
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Verify Prisma schema matches migration history
+        run: |
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema-datamodel prisma/schema.prisma \
