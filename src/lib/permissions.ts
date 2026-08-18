@@ -20,7 +20,7 @@ export interface PermissionDefinition {
   /** What holding it lets a person do, in the words the admin screen shows. */
   description: string;
   /** Grouping for display only. */
-  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence" | "Products" | "Parties" | "Post-Entry";
+  category: "Account" | "Documents" | "Decisions" | "Filing" | "Compliance" | "Intelligence" | "Products" | "Parties" | "Post-Entry" | "Billing";
   /** Roles that receive it when the catalogue is synced. */
   defaultRoles: readonly SystemRole[];
 }
@@ -430,6 +430,55 @@ export const PERMISSION_CATALOGUE: readonly PermissionDefinition[] = [
     description: "Close a party revalidation flag after looking again. This is not a screening result.",
     category: "Parties",
     defaultRoles: ADMIN_ONLY,
+  },
+  // ─── Billing ────────────────────────────────────────────────────────────
+  {
+    name: "billing.view",
+    description: "View billing overview, charges, and invoices.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER", "SPECIALIST", "MEMBER", "VIEWER"],
+  },
+  {
+    name: "billing.cost.view",
+    description: "View broker internal technology and labor costs.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.margin.view",
+    description: "View shipment, client, and agent profit margins.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.ratecard.manage",
+    description: "Create, upload, edit, map, activate, and retire rate cards.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.charge.adjust",
+    description: "Apply discounts, credits, waivers, and manual price adjustments.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN", "BROKER"],
+  },
+  {
+    name: "billing.invoice.manage",
+    description: "Create, edit, approve, send, export, and void invoices.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.payment.record",
+    description: "Record customer payments and update receivables balances.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
+  },
+  {
+    name: "billing.reports.view",
+    description: "Access unit economics, leakage, and profitability reports.",
+    category: "Billing",
+    defaultRoles: ["OWNER", "ADMIN"],
   },
 ] as const;
 

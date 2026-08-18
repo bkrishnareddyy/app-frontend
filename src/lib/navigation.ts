@@ -27,7 +27,8 @@ export type NavIcon =
   | "simulator"
   | "postEntry"
   | "tradeData"
-  | "tariffs";
+  | "tariffs"
+  | "billing";
 
 export interface NavItem {
   id: string;
@@ -66,6 +67,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
       { id: "compliance", labelKey: "complianceMonitoring", href: "/app/compliance", icon: "compliance" },
       { id: "post-entry", labelKey: "postEntry", href: "/app/post-entry", icon: "postEntry" },
+      { id: "billing", labelKey: "billing", href: "/app/billing", icon: "billing", permission: "billing.view" },
     ],
   },
   {

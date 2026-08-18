@@ -30,6 +30,7 @@ import {
   ReceiptText,
   Database,
   BookOpen,
+  DollarSign,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   postEntry: ReceiptText,
   tradeData: Database,
   tariffs: BookOpen,
+  billing: DollarSign,
 };
 
 interface SidebarProps {

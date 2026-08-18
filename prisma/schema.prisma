@@ -146,6 +146,16 @@ model Account {
   filingMessages              FilingMessage[]
   agentPolicyConfigs          AgentPolicyConfig[]
 
+  billingEventDefinitions BillingEventDefinition[]
+  rateCards               RateCard[]
+  costProfiles            CostProfile[]
+  usageEvents             UsageEvent[]
+  shipmentCharges         ShipmentCharge[]
+  shipmentCosts           ShipmentCost[]
+  invoices                Invoice[]
+  payments                Payment[]
+  billingExceptions       BillingException[]
+
   webhooks AccountWebhook[]
   apiKeys  AccountApiKey[]
 
@@ -462,6 +472,12 @@ model Shipment {
   complianceDeadlines             ComplianceDeadline[]
   restrictedPartyScreeningResults RestrictedPartyScreeningResult[]
   complianceScreeningFindings     ComplianceScreeningFinding[]
+
+  usageEvents       UsageEvent[]
+  shipmentCharges   ShipmentCharge[]
+  shipmentCosts     ShipmentCost[]
+  invoiceLines      InvoiceLine[]
+  billingExceptions BillingException[]
 
   @@unique([accountId, shipmentNumber])
   @@index([accountId])
@@ -1416,6 +1432,9 @@ model ImporterOfRecord {
   customsFilings   CustomsFiling[]
   powersOfAttorney PowerOfAttorney[]
 
+  rateCards RateCard[]
+  invoices  Invoice[]
+
   @@index([accountId])
   @@index([clientId])
 }
@@ -1440,6 +1459,11 @@ model Client {
   legalEntities     LegalEntity[]
   products          Product[]
   parties           Party[]
+
+  rateCards         RateCard[]
+  usageEvents       UsageEvent[]
+  invoices          Invoice[]
+  billingExceptions BillingException[]
 
   @@index([accountId])
   @@index([accountId, status])
@@ -5031,3 +5055,390 @@ model HtsPgaRequirement {
   @@index([htsNumber])
   @@index([agencyCode])
 }
+
+// ---------------------------------------------------------------------------
+// BILLING, COSTING, INVOICING & PROFITABILITY ENUMS & MODELS
+// ---------------------------------------------------------------------------
+
+enum BillingEventCategory {
+  DOCUMENT_PROCESSING
+  CLASSIFICATION
+  HUMAN_REVIEW
+  PRODUCT_NORMALIZATION
+  RECONCILIATION
+  PGA_PROCESSING
+  EXCEPTION_RESOLUTION
+  CUSTOMS_ENTRY
+  ACE_FILING
+  ISF_FILING
+  DUTY_DRAWBACK
+  POST_SUMMARY_CORRECTION
+  MANUAL_INTERVENTION
+  CUSTOM
+}
+
+enum PricingModel {
+  PER_TRANSACTION
+  PER_UNIT
+  PER_SHIPMENT
+  PER_ENTRY
+  PER_DOCUMENT
+  PER_API_EVENT
+  PER_SUCCESSFUL_OUTCOME
+  FLAT_FEE
+  TIERED
+  TIME_BASED
+  PERCENTAGE_BASED
+  BUNDLED
+  CONDITIONAL
+}
+
+enum ChargeStatus {
+  PENDING
+  RATED
+  REVIEWED
+  APPROVED
+  INVOICED
+  PAID
+  WAIVED
+  CREDITED
+  DISPUTED
+  WRITTEN_OFF
+  REVERSED
+  VOIDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+  DISPUTED
+  CREDITED
+}
+
+enum RateCardStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+model BillingEventDefinition {
+  id           String               @id @default(cuid())
+  accountId    String
+  account      Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  eventCode    String               @unique
+  name         String
+  description  String?
+  category     BillingEventCategory
+  defaultUnit  String               @default("count")
+  isBillable   Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  usageEvents           UsageEvent[]
+  rateRuleCapabilityMap RateRuleCapabilityMapping[]
+
+  @@index([accountId])
+  @@index([eventCode])
+}
+
+model RateCard {
+  id             String            @id @default(cuid())
+  accountId      String
+  account        Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  importerId     String?
+  importer       ImporterOfRecord? @relation(fields: [importerId], references: [id], onDelete: Cascade)
+  name           String
+  code           String?
+  description    String?
+  currency       String            @default("USD")
+  isDefault      Boolean           @default(false)
+  currentVersion Int               @default(1)
+  status         RateCardStatus    @default(DRAFT)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  versions RateCardVersion[]
+
+  @@index([accountId])
+  @@index([clientId])
+  @@index([importerId])
+}
+
+model RateCardVersion {
+  id             String         @id @default(cuid())
+  rateCardId     String
+  rateCard       RateCard       @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+  version        Int
+  effectiveDate  DateTime
+  expirationDate DateTime?
+  status         RateCardStatus @default(DRAFT)
+  activatedAt    DateTime?
+  activatedById  String?
+  notes          String?
+  createdAt      DateTime       @default(now())
+
+  rules   RateRule[]
+  charges ShipmentCharge[]
+
+  @@unique([rateCardId, version])
+  @@index([rateCardId])
+}
+
+model RateRule {
+  id                String          @id @default(cuid())
+  rateCardVersionId String
+  rateCardVersion   RateCardVersion @relation(fields: [rateCardVersionId], references: [id], onDelete: Cascade)
+  lineItemName      String
+  serviceCode       String
+  pricingModel      PricingModel
+  unit              String          @default("unit")
+  rate              Decimal         @db.Decimal(16, 4)
+  currency          String          @default("USD")
+  minCharge         Decimal?        @db.Decimal(16, 4)
+  maxCharge         Decimal?        @db.Decimal(16, 4)
+  includedQuantity  Int             @default(0)
+  tieredConfig      Json?
+  conditions        Json?
+  isBillable        Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  capabilityMappings RateRuleCapabilityMapping[]
+  charges            ShipmentCharge[]
+
+  @@index([rateCardVersionId])
+}
+
+model RateRuleCapabilityMapping {
+  id              String                 @id @default(cuid())
+  rateRuleId      String
+  rateRule        RateRule               @relation(fields: [rateRuleId], references: [id], onDelete: Cascade)
+  eventDefId      String
+  eventDefinition BillingEventDefinition @relation(fields: [eventDefId], references: [id], onDelete: Cascade)
+
+  @@unique([rateRuleId, eventDefId])
+}
+
+model CostProfile {
+  id                 String   @id @default(cuid())
+  accountId          String
+  account            Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name               String
+  loadedLaborRate    Decimal  @db.Decimal(16, 4)
+  aiTokenRate        Decimal  @db.Decimal(16, 6)
+  ocrPageRate        Decimal  @db.Decimal(16, 4)
+  aceTransmissionFee Decimal  @db.Decimal(16, 4)
+  effectiveDate      DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+model UsageEvent {
+  id                 String                 @id @default(cuid())
+  accountId          String
+  account            Account                @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  eventCode          String
+  eventDefinition    BillingEventDefinition @relation(fields: [eventCode], references: [eventCode])
+  occurredAt         DateTime               @default(now())
+  clientId           String?
+  client             Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  importerId         String?
+  shipmentId         String?
+  shipment           Shipment?              @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  userId             String?
+  agentId            String?
+  quantity           Decimal                @default(1.0000) @db.Decimal(16, 4)
+  unit               String                 @default("unit")
+  sourceFunction     String
+  sourceApi          String?
+  sourceAgent        String?
+  success            Boolean                @default(true)
+  automated          Boolean                @default(true)
+  processingDuration Int?
+  idempotencyKey     String                 @unique
+  metadata           Json?
+  createdAt          DateTime               @default(now())
+
+  charges ShipmentCharge[]
+  costs   ShipmentCost[]
+
+  @@index([accountId])
+  @@index([shipmentId])
+  @@index([clientId])
+  @@index([occurredAt])
+  @@index([eventCode])
+}
+
+model ShipmentCharge {
+  id                String           @id @default(cuid())
+  accountId         String
+  account           Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId        String
+  shipment          Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  usageEventId      String?
+  usageEvent        UsageEvent?      @relation(fields: [usageEventId], references: [id], onDelete: SetNull)
+  rateCardVersionId String?
+  rateCardVersion   RateCardVersion? @relation(fields: [rateCardVersionId], references: [id], onDelete: SetNull)
+  rateRuleId        String?
+  rateRule          RateRule?        @relation(fields: [rateRuleId], references: [id], onDelete: SetNull)
+  description       String
+  quantity          Decimal          @db.Decimal(16, 4)
+  unitPrice         Decimal          @db.Decimal(16, 4)
+  grossAmount       Decimal          @db.Decimal(16, 4)
+  discountAmount    Decimal          @default(0.0000) @db.Decimal(16, 4)
+  netAmount         Decimal          @db.Decimal(16, 4)
+  currency          String           @default("USD")
+  status            ChargeStatus     @default(RATED)
+  invoiceLineId     String?
+  invoiceLine       InvoiceLine?     @relation(fields: [invoiceLineId], references: [id], onDelete: SetNull)
+  calculationTrace  Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  adjustments ChargeAdjustment[]
+
+  @@index([accountId])
+  @@index([shipmentId])
+  @@index([status])
+}
+
+model ShipmentCost {
+  id           String      @id @default(cuid())
+  accountId    String
+  account      Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  shipmentId   String
+  shipment     Shipment    @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  usageEventId String?
+  usageEvent   UsageEvent? @relation(fields: [usageEventId], references: [id], onDelete: SetNull)
+  costType     String
+  description  String
+  amount       Decimal     @db.Decimal(16, 4)
+  currency     String      @default("USD")
+  userId       String?
+  agentId      String?
+  durationSec  Int?
+  createdAt    DateTime    @default(now())
+
+  @@index([accountId])
+  @@index([shipmentId])
+  @@index([costType])
+}
+
+model ChargeAdjustment {
+  id               String         @id @default(cuid())
+  chargeId         String
+  charge           ShipmentCharge @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  adjustmentType   String
+  originalAmount   Decimal        @db.Decimal(16, 4)
+  adjustmentAmount Decimal        @db.Decimal(16, 4)
+  newAmount        Decimal        @db.Decimal(16, 4)
+  reason           String
+  requestedById    String
+  approvedById     String?
+  approvalStatus   String         @default("APPROVED")
+  createdAt        DateTime       @default(now())
+
+  @@index([chargeId])
+}
+
+model Invoice {
+  id             String            @id @default(cuid())
+  accountId      String
+  account        Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  importerId     String?
+  importer       ImporterOfRecord? @relation(fields: [importerId], references: [id], onDelete: SetNull)
+  invoiceNumber  String            @unique
+  status         InvoiceStatus     @default(DRAFT)
+  issueDate      DateTime          @default(now())
+  dueDate        DateTime
+  currency       String            @default("USD")
+  subtotal       Decimal           @db.Decimal(16, 4)
+  totalDiscounts Decimal           @default(0.0000) @db.Decimal(16, 4)
+  totalTax       Decimal           @default(0.0000) @db.Decimal(16, 4)
+  totalAmount    Decimal           @db.Decimal(16, 4)
+  paidAmount     Decimal           @default(0.0000) @db.Decimal(16, 4)
+  balanceDue     Decimal           @db.Decimal(16, 4)
+  notes          String?
+  pdfUrl         String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  lines    InvoiceLine[]
+  payments Payment[]
+
+  @@index([accountId])
+  @@index([clientId])
+  @@index([status])
+  @@index([invoiceNumber])
+}
+
+model InvoiceLine {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  shipmentId  String?
+  shipment    Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  description String
+  quantity    Decimal   @db.Decimal(16, 4)
+  unitPrice   Decimal   @db.Decimal(16, 4)
+  amount      Decimal   @db.Decimal(16, 4)
+  createdAt   DateTime  @default(now())
+
+  charges ShipmentCharge[]
+
+  @@index([invoiceId])
+  @@index([shipmentId])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  paymentDate   DateTime @default(now())
+  amount        Decimal  @db.Decimal(16, 4)
+  paymentMethod String
+  referenceNo   String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@index([accountId])
+  @@index([invoiceId])
+}
+
+model BillingException {
+  id             String    @id @default(cuid())
+  accountId      String
+  account        Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type           String
+  severity       String    @default("MEDIUM")
+  status         String    @default("OPEN")
+  description    String
+  shipmentId     String?
+  shipment       Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  clientId       String?
+  client         Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  usageEventId   String?
+  assignedToId   String?
+  resolutionNote String?
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+
+  @@index([accountId])
+  @@index([status])
+  @@index([type])
+}
+
