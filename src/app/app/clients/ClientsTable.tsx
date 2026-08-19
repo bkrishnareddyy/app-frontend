@@ -232,34 +232,6 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
 
   return (
     <div className="space-y-8">
-      {/* Quick Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 p-1 bg-surface-muted border border-border rounded-2xl w-max max-w-full">
-        <Link
-          href="/app/clients"
-          className="px-4 py-2 rounded-xl text-xs font-bold transition-all bg-white text-brand shadow-sm"
-        >
-          Clients & Legal Entities
-        </Link>
-        <Link
-          href="/app/importers-of-record"
-          className="px-4 py-2 rounded-xl text-xs font-bold transition-all text-ink-muted hover:text-ink hover:bg-white/60"
-        >
-          Importers of Record (IOR)
-        </Link>
-        <Link
-          href="/app/bonds"
-          className="px-4 py-2 rounded-xl text-xs font-bold transition-all text-ink-muted hover:text-ink hover:bg-white/60"
-        >
-          Customs Bonds
-        </Link>
-        <Link
-          href="/app/poa"
-          className="px-4 py-2 rounded-xl text-xs font-bold transition-all text-ink-muted hover:text-ink hover:bg-white/60"
-        >
-          Powers of Attorney (POA)
-        </Link>
-      </div>
-
       {message && (
         <div
           className={`p-4 rounded-2xl text-sm border flex items-center space-x-3 ${

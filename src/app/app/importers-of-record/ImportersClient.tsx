@@ -15,6 +15,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { PanelHeading } from "@/components/PanelHeading";
+import { ClientNavTabs } from "@/components/clients/ClientNavTabs";
 import { Card, Button, Input, Label, Badge } from "@/components/ui";
 
 interface ImporterItem {
@@ -148,7 +149,7 @@ export function ImportersClient({ accountName }: { accountName: string }) {
   const bondActiveCount = importers.filter((i) => i.bond || i.bondId).length;
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <PanelHeading
           icon={Building2}
@@ -161,6 +162,8 @@ export function ImportersClient({ accountName }: { accountName: string }) {
           Add Importer of Record
         </Button>
       </div>
+
+      <ClientNavTabs />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

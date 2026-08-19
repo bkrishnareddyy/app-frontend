@@ -15,6 +15,7 @@ import {
   Clock,
 } from "lucide-react";
 import { PanelHeading } from "@/components/PanelHeading";
+import { ClientNavTabs } from "@/components/clients/ClientNavTabs";
 import { Card, Button, Input, Badge } from "@/components/ui";
 
 interface ImporterItem {
@@ -106,13 +107,15 @@ export function PoaClient({ accountName }: { accountName: string }) {
   const pendingCount = importers.length - grantedCount;
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <PanelHeading
         icon={FileSignature}
         badge="Legal Representation & Customs Authority"
         title="Powers of Attorney (POA)"
         subtitle={`Customs Power of Attorney authorizations granted to file customs entries for ${accountName}.`}
       />
+
+      <ClientNavTabs />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

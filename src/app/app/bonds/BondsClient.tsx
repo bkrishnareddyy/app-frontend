@@ -15,6 +15,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { PanelHeading } from "@/components/PanelHeading";
+import { ClientNavTabs } from "@/components/clients/ClientNavTabs";
 import { Card, Button, Input, Label, Badge } from "@/components/ui";
 
 interface BondItem {
@@ -138,7 +139,7 @@ export function BondsClient({ accountName }: { accountName: string }) {
   const continuousCount = bonds.filter((b) => b.bondType === "continuous").length;
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <PanelHeading
           icon={ShieldCheck}
@@ -151,6 +152,8 @@ export function BondsClient({ accountName }: { accountName: string }) {
           Add Customs Bond
         </Button>
       </div>
+
+      <ClientNavTabs />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
