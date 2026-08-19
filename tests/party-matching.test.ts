@@ -223,3 +223,26 @@ describe("matching is deterministic", () => {
     }
   });
 });
+
+describe("matchParty: client-level tie breaking", () => {
+  it("prefers client-scoped candidate over shared catalog candidate when matching for a client", () => {
+    const sharedParty = party({
+      id: "party_shared",
+      clientId: null,
+      identifiers: [{ identifierType: "EORI", normalizedValue: "DE123456789012345", issuingCountry: null }],
+    });
+    const clientParty = party({
+      id: "party_client_a",
+      clientId: "cli_a",
+      identifiers: [{ identifierType: "EORI", normalizedValue: "DE123456789012345", issuingCountry: null }],
+    });
+
+    const result = matchParty(
+      { identifiers: [{ identifierType: "EORI", value: "DE123456789012345" }], clientId: "cli_a" },
+      [sharedParty, clientParty]
+    );
+
+    expect(result.status).toBe("EXACT_MATCH");
+    expect(result.candidates.map((c) => c.partyId)).toEqual(["party_client_a"]);
+  });
+});

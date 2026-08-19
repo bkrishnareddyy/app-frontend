@@ -219,7 +219,7 @@ async function fetchFilingDetailLocal(accountId: string, id: string) {
   const snapshot = filing.snapshot
     ? (filing.snapshot.snapshotData as unknown as FilingSnapshotData)
     : null;
-  const lineItems = snapshot ? (snapshot.lineItems ?? []) : (filing.shipment.lineItems ?? []);
+  const lineItems = snapshot ? (snapshot.lineItems ?? []) : (filing.shipment?.lineItems ?? []);
   const primaryCOO = lineItems[0]?.countryOfOrigin ?? null;
 
   return {
@@ -227,7 +227,7 @@ async function fetchFilingDetailLocal(accountId: string, id: string) {
       id: filing.id,
       entryNumber: filing.entryNumber,
       filingStatus: filing.filingStatus,
-      importerOfRecord: snapshot ? snapshot.shipment.importerName : filing.shipment.importerName,
+      importerOfRecord: snapshot ? snapshot.shipment.importerName : (filing.shipment?.importerName ?? "Unknown Importer"),
       countryOfOrigin: primaryCOO,
       products: lineItems,
       totalCustomsValue: snapshot ? Number(snapshot.filingHeader.totalValue) : Number(filing.totalValue),

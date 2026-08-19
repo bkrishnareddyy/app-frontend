@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { evaluateRateRuleCondition } from "./conditionEvaluator";
 
 const VERSION_INCLUDE = {
   rules: {
@@ -63,7 +64,139 @@ interface TierConfig {
   unitRate: number;
 }
 
-const ONCE_PER_SHIPMENT_MODELS = new Set(["FLAT_FEE", "PER_SHIPMENT", "PER_ENTRY", "BUNDLED"]);
+export const ONCE_PER_SHIPMENT_MODELS = new Set(["FLAT_FEE", "PER_SHIPMENT", "PER_ENTRY", "BUNDLED"]);
+
+export interface RateRuleLike {
+  id: string;
+  pricingModel: string;
+  rate: number | { toNumber(): number } | string;
+  includedQuantity: number;
+  tieredConfig: unknown;
+  minCharge: number | { toNumber(): number } | string | null;
+  maxCharge: number | { toNumber(): number } | string | null;
+  conditions?: unknown;
+  lineItemName: string;
+  currency: string;
+  isBillable: boolean;
+}
+
+export interface UsageEventLike {
+  eventCode: string;
+  quantity: number | { toNumber(): number } | string;
+  success: boolean;
+  automated: boolean;
+  processingDuration?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export type ChargeAmountResult =
+  | { grossAmount: number; trace: Record<string, unknown> }
+  | { conditionFieldMissing: string }
+  | null;
+
+/**
+ * Pure (no I/O) charge calculation. Given a rate rule and a usage event view,
+ * returns the gross amount and calculation trace, null when no charge applies,
+ * or { conditionFieldMissing } when a CONDITIONAL rule references a missing
+ * field (caller must create a BillingException).
+ */
+export function computeChargeAmount(
+  rule: RateRuleLike,
+  event: UsageEventLike
+): ChargeAmountResult {
+  if (!rule.isBillable) return null;
+  if (rule.pricingModel === "PER_SUCCESSFUL_OUTCOME" && !event.success) return null;
+
+  const eventQty = Number(event.quantity);
+  const unitPrice = Number(rule.rate);
+  const metadata = (event.metadata ?? {}) as Record<string, unknown>;
+
+  let grossAmount = 0;
+  const trace: Record<string, unknown> = {
+    pricingModel: rule.pricingModel,
+    baseRate: unitPrice,
+    eventQty,
+    includedQty: rule.includedQuantity,
+    ruleId: rule.id,
+  };
+
+  switch (rule.pricingModel) {
+    case "FLAT_FEE":
+    case "PER_SHIPMENT":
+    case "PER_ENTRY":
+    case "BUNDLED":
+      grossAmount = unitPrice;
+      trace.oncePerShipment = true;
+      break;
+
+    case "PER_TRANSACTION":
+    case "PER_UNIT":
+    case "PER_DOCUMENT":
+    case "PER_API_EVENT":
+    case "PER_SUCCESSFUL_OUTCOME": {
+      const billableQty = Math.max(0, eventQty - rule.includedQuantity);
+      grossAmount = billableQty * unitPrice;
+      trace.billableQty = billableQty;
+      break;
+    }
+
+    case "TIERED": {
+      const tiers = (rule.tieredConfig as TierConfig[]) ?? [];
+      let totalTieredCharge = 0;
+      for (const tier of tiers) {
+        const lowerBound = Math.max(1, tier.fromQty);
+        const upperBound = tier.toQty ?? eventQty;
+        const qtyInTier = Math.max(0, Math.min(eventQty, upperBound) - lowerBound + 1);
+        totalTieredCharge += qtyInTier * tier.unitRate;
+      }
+      grossAmount = totalTieredCharge;
+      trace.tieredResult = totalTieredCharge;
+      break;
+    }
+
+    case "TIME_BASED": {
+      const durationHours = (event.processingDuration ?? 0) / 3_600_000;
+      grossAmount = durationHours * unitPrice;
+      trace.durationHours = durationHours;
+      break;
+    }
+
+    case "PERCENTAGE_BASED": {
+      const baseValue = Number(metadata.valueAmount ?? 0);
+      grossAmount = baseValue * (unitPrice / 100);
+      trace.baseValue = baseValue;
+      break;
+    }
+
+    case "CONDITIONAL": {
+      const eventView: Record<string, unknown> = { ...event, metadata };
+      const condResult = evaluateRateRuleCondition(rule.conditions, eventView);
+      if ("fieldMissing" in condResult) {
+        return { conditionFieldMissing: condResult.field };
+      }
+      if (!condResult.matched) return null;
+      grossAmount = eventQty * unitPrice;
+      trace.conditionMatched = true;
+      break;
+    }
+
+    default:
+      grossAmount = eventQty * unitPrice;
+      break;
+  }
+
+  if (rule.minCharge !== null && grossAmount > 0 && grossAmount < Number(rule.minCharge)) {
+    trace.adjustedForMin = Number(rule.minCharge);
+    grossAmount = Number(rule.minCharge);
+  }
+  if (rule.maxCharge !== null && grossAmount > Number(rule.maxCharge)) {
+    trace.adjustedForMax = Number(rule.maxCharge);
+    grossAmount = Number(rule.maxCharge);
+  }
+
+  if (grossAmount <= 0) return null;
+  return { grossAmount, trace };
+}
 
 /**
  * Evaluates a usage event against the active rate card version and creates a
@@ -107,12 +240,14 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
     return null;
   }
 
-  const matchingRule = activeVersion.rules.find((rule) =>
-    rule.isBillable && rule.capabilityMappings.some((mapping) => mapping.eventDefinition.eventCode === usageEvent.eventCode)
+  const matchingRule = activeVersion.rules.find(
+    (rule) =>
+      rule.isBillable &&
+      rule.capabilityMappings.some(
+        (mapping) => mapping.eventDefinition.eventCode === usageEvent.eventCode
+      )
   );
   if (!matchingRule) return null;
-
-  if (matchingRule.pricingModel === "PER_SUCCESSFUL_OUTCOME" && !usageEvent.success) return null;
 
   if (ONCE_PER_SHIPMENT_MODELS.has(matchingRule.pricingModel)) {
     const existingCharge = await db.shipmentCharge.findFirst({
@@ -126,95 +261,56 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
     if (existingCharge) return existingCharge;
   }
 
-  const eventQty = Number(usageEvent.quantity);
-  const unitPrice = Number(matchingRule.rate);
-  let grossAmount = 0;
-  const trace: Record<string, unknown> = {
-    pricingModel: matchingRule.pricingModel,
-    baseRate: unitPrice,
-    eventQty,
-    includedQty: matchingRule.includedQuantity,
+  const eventView: UsageEventLike = {
+    eventCode: usageEvent.eventCode,
+    quantity: usageEvent.quantity,
+    success: usageEvent.success,
+    automated: usageEvent.automated,
+    processingDuration: usageEvent.processingDuration,
+    metadata: (usageEvent.metadata as Record<string, unknown>) ?? null,
+  };
+
+  const result = computeChargeAmount(
+    {
+      id: matchingRule.id,
+      pricingModel: matchingRule.pricingModel,
+      rate: matchingRule.rate,
+      includedQuantity: matchingRule.includedQuantity,
+      tieredConfig: matchingRule.tieredConfig,
+      minCharge: matchingRule.minCharge,
+      maxCharge: matchingRule.maxCharge,
+      conditions: (matchingRule as unknown as { conditions?: unknown }).conditions,
+      lineItemName: matchingRule.lineItemName,
+      currency: matchingRule.currency,
+      isBillable: matchingRule.isBillable,
+    },
+    eventView
+  );
+
+  if (result === null) return null;
+
+  if ("conditionFieldMissing" in result) {
+    await db.billingException.create({
+      data: {
+        accountId: usageEvent.accountId,
+        type: "CONDITION_FIELD_MISSING",
+        severity: "MEDIUM",
+        status: "OPEN",
+        description: `CONDITIONAL rule (${matchingRule.id}) references field "${result.conditionFieldMissing}" which is absent from UsageEvent ${usageEvent.id} (${usageEvent.eventCode}).`,
+        shipmentId: usageEvent.shipmentId,
+        clientId: usageEvent.clientId,
+        usageEventId: usageEvent.id,
+      },
+    });
+    return null;
+  }
+
+  const { grossAmount, trace } = result;
+  const fullTrace = {
+    ...trace,
     rateCardVersionId: activeVersion.id,
     rateRuleId: matchingRule.id,
   };
-
-  switch (matchingRule.pricingModel) {
-    case "FLAT_FEE":
-    case "PER_SHIPMENT":
-    case "PER_ENTRY":
-    case "BUNDLED":
-      grossAmount = unitPrice;
-      trace.oncePerShipment = true;
-      break;
-
-    case "PER_TRANSACTION":
-    case "PER_UNIT":
-    case "PER_DOCUMENT":
-    case "PER_API_EVENT":
-    case "PER_SUCCESSFUL_OUTCOME": {
-      const billableQty = Math.max(0, eventQty - matchingRule.includedQuantity);
-      grossAmount = billableQty * unitPrice;
-      trace.billableQty = billableQty;
-      break;
-    }
-
-    case "TIERED": {
-      const tiers = (matchingRule.tieredConfig as unknown as TierConfig[]) ?? [];
-      let totalTieredCharge = 0;
-      for (const tier of tiers) {
-        const lowerBound = Math.max(1, tier.fromQty);
-        const upperBound = tier.toQty ?? eventQty;
-        const qtyInTier = Math.max(0, Math.min(eventQty, upperBound) - lowerBound + 1);
-        totalTieredCharge += qtyInTier * tier.unitRate;
-      }
-      grossAmount = totalTieredCharge;
-      trace.tieredResult = totalTieredCharge;
-      break;
-    }
-
-    case "TIME_BASED": {
-      const durationHours = (usageEvent.processingDuration ?? 0) / 3_600_000;
-      grossAmount = durationHours * unitPrice;
-      trace.durationHours = durationHours;
-      break;
-    }
-
-    case "PERCENTAGE_BASED": {
-      const metadata = (usageEvent.metadata ?? {}) as Record<string, unknown>;
-      const baseValue = Number(metadata.valueAmount ?? 0);
-      grossAmount = baseValue * (unitPrice / 100);
-      trace.baseValue = baseValue;
-      break;
-    }
-
-    case "CONDITIONAL": {
-      // Conditions are persisted on the rule. Until a dedicated condition DSL
-      // evaluator is introduced, require the producer to explicitly mark the
-      // event as qualifying rather than silently billing every event.
-      const metadata = (usageEvent.metadata ?? {}) as Record<string, unknown>;
-      if (metadata.billingConditionMatched !== true) return null;
-      grossAmount = eventQty * unitPrice;
-      trace.conditionMatched = true;
-      break;
-    }
-
-    default:
-      grossAmount = eventQty * unitPrice;
-      break;
-  }
-
-  if (matchingRule.minCharge !== null && grossAmount > 0 && grossAmount < Number(matchingRule.minCharge)) {
-    trace.adjustedForMin = Number(matchingRule.minCharge);
-    grossAmount = Number(matchingRule.minCharge);
-  }
-  if (matchingRule.maxCharge !== null && grossAmount > Number(matchingRule.maxCharge)) {
-    trace.adjustedForMax = Number(matchingRule.maxCharge);
-    grossAmount = Number(matchingRule.maxCharge);
-  }
-
-  // A zero-dollar result is legitimate for an included quantity, but it should
-  // not create a misleading customer charge row.
-  if (grossAmount <= 0) return null;
 
   const grossDecimal = new Prisma.Decimal(grossAmount);
   return db.shipmentCharge.create({
@@ -225,14 +321,14 @@ export async function evaluateAndRateUsageEvent(usageEventId: string) {
       rateCardVersionId: activeVersion.id,
       rateRuleId: matchingRule.id,
       description: matchingRule.lineItemName,
-      quantity: new Prisma.Decimal(eventQty),
-      unitPrice: new Prisma.Decimal(unitPrice),
+      quantity: new Prisma.Decimal(Number(usageEvent.quantity)),
+      unitPrice: new Prisma.Decimal(Number(matchingRule.rate)),
       grossAmount: grossDecimal,
       discountAmount: new Prisma.Decimal(0),
       netAmount: grossDecimal,
       currency: matchingRule.currency,
       status: "RATED",
-      calculationTrace: trace as Prisma.InputJsonValue,
+      calculationTrace: fullTrace as Prisma.InputJsonValue,
     },
   });
 }

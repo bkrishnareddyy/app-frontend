@@ -23,6 +23,7 @@ import {
 } from "@/modules/decisions/reviewAuthority";
 import { buildEditUpdate, readEditableValue } from "@/modules/decisions/editableFields";
 import { MemoryExtractorWorker } from "@/modules/memory";
+import { recordUsageEvent } from "@/lib/billing/telemetry";
 
 const REVIEWER_SELECT = {
   firstName: true,
@@ -107,6 +108,16 @@ async function applyProposedHtsCode(
     confidence: decision.confidence,
   });
 
+  deliverWebhookEvent(ctx.accountId, "classification.changed", {
+    shipmentId: decision.shipmentId,
+    lineNumber: decision.lineNumber,
+    lineItemId: target.id,
+    previousHtsCode: target.htsCode,
+    newHtsCode: proposedHtsCode,
+    changedByUserId: ctx.userId,
+    source: "DECISION_APPROVED",
+  }).catch((err) => console.error("[webhook] Failed to dispatch classification.changed:", err));
+
   return {
     proposedHtsCode,
     htsConfidence: decision.confidence,
@@ -121,9 +132,10 @@ async function applyProposedHtsCode(
  * so it is gated by the same decisions.override permission rather than a new
  * one, and reuses the decision.<verb> audit action naming.
  */
-async function handleEditValue(ctx: AccountContext, body: unknown) {
+async function handleEditValue(req: Request, ctx: AccountContext, body: unknown) {
   const { decisionId, fieldKey, value } =
     body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || (body as any)?.source === "CHAT") ? "CHAT" : "UI";
 
   if (typeof decisionId !== "string" || decisionId.trim() === "") {
     return NextResponse.json({ error: "decisionId is required" }, { status: 400 });
@@ -143,6 +155,7 @@ async function handleEditValue(ctx: AccountContext, body: unknown) {
       action: "decision.edit_value",
       entity: "AgentDecision",
       entityId: decisionId,
+      source: auditSource,
       success: false,
       metadata: { reason: "PERMISSION_REQUIRED", missing: check.missing, fieldKey },
     });
@@ -192,6 +205,7 @@ async function handleEditValue(ctx: AccountContext, body: unknown) {
     action: "decision.edit_value",
     entity: "AgentDecision",
     entityId: decisionId,
+    source: auditSource,
     metadata: { fieldKey: trimmedKey, previousValue, newValue: trimmedValue },
   });
 
@@ -249,8 +263,14 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
   const { decisionId, action, humanNotes, expectedVersion } = body;
 
+  const headerSource = req.headers?.get?.("x-qubere-source");
+  const auditSource: "CHAT" | "UI" =
+    (headerSource && headerSource.toUpperCase() === "CHAT") || body?.source === "CHAT"
+      ? "CHAT"
+      : "UI";
+
   if (action === "EDIT_VALUE") {
-    return handleEditValue(ctx, body);
+    return handleEditValue(req, ctx, body);
   }
 
   // An unrecognised action used to fall through to "In Progress" and then throw
@@ -278,6 +298,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       entity: "AgentDecision",
       entityId: decisionId,
       success: false,
+      source: auditSource,
       metadata: { reason: "PERMISSION_REQUIRED", missing: baseCheck.missing },
     });
     return NextResponse.json(
@@ -325,6 +346,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       entity: "AgentDecision",
       entityId: decisionId,
       success: false,
+      source: auditSource,
       metadata: { reason: "PERMISSION_REQUIRED", missing: overrideCheck.missing },
     });
     return NextResponse.json(
@@ -376,6 +398,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       entity: "AgentDecision",
       entityId: decisionId,
       success: false,
+      source: auditSource,
       metadata: { reason: "STALE_DECISION", attemptedStatus: newStatus },
     });
     return NextResponse.json(
@@ -419,8 +442,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     include: { reviewedByUser: { select: REVIEWER_SELECT } },
   });
 
-  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || (body.data as any)?.source === "CHAT") ? "CHAT" : "UI";
-
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
@@ -446,6 +467,35 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       status: newStatus,
       reviewedByUserId: ctx.userId,
     }).catch((err) => console.error("[webhook] Failed to dispatch decision.approved:", err));
+  }
+
+  // Billing: emit usage event for HTS manual review (non-blocking, must never fail the route)
+  if (decision.agentName?.includes("HTS")) {
+    db.shipment
+      .findUnique({
+        where: { id: decision.shipmentId },
+        select: { clientId: true, importerOfRecordId: true },
+      })
+      .then((shipment) =>
+        recordUsageEvent({
+          accountId: ctx.accountId,
+          eventCode: "HTS_MANUAL_REVIEW_COMPLETED",
+          shipmentId: decision.shipmentId,
+          clientId: shipment?.clientId ?? undefined,
+          importerId: shipment?.importerOfRecordId ?? undefined,
+          userId: ctx.userId,
+          sourceFunction: "POST /api/decisions",
+          sourceAgent: decision.agentName ?? undefined,
+          quantity: 1,
+          success: action === "APPROVE",
+          automated: false,
+          // processingDuration intentionally omitted — no client-side timer exists yet.
+          // costingEngine will log UNTRACKED_LABOR_DURATION exception (by design).
+          idempotencyKey: `billing:decision:${decisionId}:${action}`,
+          metadata: { overridesClassification, action },
+        })
+      )
+      .catch((err) => console.error("[decisions/route] Billing emission failed:", err));
   }
 
   // Trigger Account Memory extraction asynchronously (non-blocking)

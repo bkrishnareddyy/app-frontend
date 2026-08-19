@@ -3,6 +3,8 @@ import { applyTransition, FilingTransitionError } from "@/modules/filings/filing
 import { DrawbackService } from "@/modules/drawback/drawback.service";
 import { PgCanonicalMessageConsumer } from "./consumer";
 import type { CanonicalFilingResponseData, CanonicalMessage } from "./types";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 
 /**
  * Processes inbound responses and updates filing status.
@@ -100,6 +102,13 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
 
   // Task B-2 & D-6: Actions on filing acceptance
   if (newFilingStatus === "Accepted" || (data as any).status === "ACCEPTED") {
+    deliverWebhookEvent(filing.accountId, "filing.accepted", {
+      filingId: filing.id,
+      shipmentId: filing.shipmentId ?? null,
+      entryNumber: filing.entryNumber,
+      acceptedAt: new Date().toISOString(),
+    }).catch((err) => console.error("[webhook] Failed to dispatch filing.accepted:", err));
+
     // 1. Create DrawbackLots from accepted filing (Task B-2)
     try {
       await DrawbackService.createDrawbackLotsFromFiling(filing.id);
@@ -139,20 +148,18 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
 
   // Task D-6: Create an ExceptionItem when a filing is rejected by authority
   if ((data as any).status === "REJECTED") {
-    await db.exceptionItem.create({
-      data: {
-        accountId: filing.accountId,
-        shipmentId: filing.shipmentId,
-        filingId: filing.id,
-        category: "FILING",
-        type: "compliance_flag",
-        severity: "High",
-        description: (data as any).humanMessage ?? `Customs filing ${filing.entryNumber} was rejected by authority.`,
-        status: "Open",
-        blocking: true,
-        requiredAction: "Review filing rejection codes and resubmit declaration.",
-        sourceAgent: "CANONICAL_MESSAGING_CONSUMER",
-      },
+    await createExceptionItem({
+      accountId: filing.accountId,
+      shipmentId: filing.shipmentId,
+      filingId: filing.id,
+      category: "FILING",
+      type: "compliance_flag",
+      severity: "High",
+      description: (data as any).humanMessage ?? `Customs filing ${filing.entryNumber} was rejected by authority.`,
+      status: "Open",
+      blocking: true,
+      requiredAction: "Review filing rejection codes and resubmit declaration.",
+      sourceAgent: "CANONICAL_MESSAGING_CONSUMER",
     });
   }
 }

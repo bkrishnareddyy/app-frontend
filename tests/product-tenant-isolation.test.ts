@@ -67,6 +67,17 @@ describe("buildProductWhere: the account filter", () => {
     const where = buildProductWhere(TENANT, query("q=84"));
     expect(where.OR?.some((clause) => "classifications" in clause)).toBe(false);
   });
+
+  it("scopes products by clientId when specified", () => {
+    const exact = buildProductWhere(TENANT, query("clientId=cli_123"));
+    expect(exact.clientId).toBe("cli_123");
+
+    const unassigned = buildProductWhere(TENANT, query("clientId=unassigned"));
+    expect(unassigned.clientId).toBeNull();
+
+    const shared = buildProductWhere(TENANT, query("clientId=cli_123&clientScope=include_shared"));
+    expect(shared.clientId).toEqual({ in: ["cli_123", null] });
+  });
 });
 
 describe("parseProductQuery", () => {

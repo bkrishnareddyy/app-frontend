@@ -102,7 +102,8 @@ function parseOrThrow(content: string) {
 export async function previewImport(
   actor: PartyActor,
   content: string,
-  fileName: string | null
+  fileName: string | null,
+  options?: { clientId?: string | null }
 ): Promise<ImportPreview> {
   const counts = emptyCounts();
 
@@ -135,7 +136,7 @@ export async function previewImport(
 
   const rows: ImportPreviewRow[] = [];
   for (const row of validation.rows) {
-    const previewRow = await classifyRow(actor, row);
+    const previewRow = await classifyRow(actor, row, options);
     counts[previewRow.outcome] += 1;
     rows.push(previewRow);
   }
@@ -152,7 +153,11 @@ export async function previewImport(
 }
 
 /** Decides what would happen to one validated row, without writing anything. */
-async function classifyRow(actor: PartyActor, row: ImportRowResult): Promise<ImportPreviewRow> {
+async function classifyRow(
+  actor: PartyActor,
+  row: ImportRowResult,
+  options?: { clientId?: string | null }
+): Promise<ImportPreviewRow> {
   if (row.status === "INVALID" || row.data === null) {
     return {
       rowNumber: row.rowNumber,
@@ -173,6 +178,7 @@ async function classifyRow(actor: PartyActor, row: ImportRowResult): Promise<Imp
     registrationCountry: row.data.registration?.country ?? null,
     legalName: row.data.legalName,
     country,
+    clientId: options?.clientId ?? null,
   });
 
   const first = match.candidates[0] ?? null;
@@ -211,7 +217,8 @@ export async function commitImport(
   content: string,
   fileName: string | null,
   expectedDigest: string,
-  acceptedRows: readonly number[] | undefined
+  acceptedRows: readonly number[] | undefined,
+  options?: { clientId?: string | null }
 ): Promise<ImportCommitResult> {
   const contentDigest = digestContent(content);
   if (contentDigest !== expectedDigest) {
@@ -248,7 +255,7 @@ export async function commitImport(
       continue;
     }
 
-    const planned = await classifyRow(actor, row);
+    const planned = await classifyRow(actor, row, options);
 
     if (planned.outcome !== "CREATED" || row.data === null) {
       counts[planned.outcome] += 1;
@@ -257,7 +264,8 @@ export async function commitImport(
     }
 
     try {
-      const created = await createParty(actor, toCreateInput(row.data));
+      const createInput = { ...toCreateInput(row.data), clientId: options?.clientId ?? undefined };
+      const created = await createParty(actor, createInput);
       createdPartyIds.push(created.id);
       counts.CREATED += 1;
       rows.push({ ...planned, matchedPartyId: created.id });

@@ -43,6 +43,7 @@ export interface RateReviewActor {
   accountId: string;
   userId: string | null;
   requestId?: string | null;
+  source?: string | null;
 }
 
 export class RateReviewNotFoundError extends DomainError {
@@ -120,7 +121,7 @@ async function logReview(
     action: afterStatus === "APPROVED" ? AuditAction.TRADE_RATE_APPROVED : AuditAction.TRADE_RATE_REJECTED,
     entity: type,
     entityId: id,
-    source: "UI",
+    source: actor.source || "UI",
     metadata: { from: beforeStatus, to: afterStatus, reviewNote },
     requestId: actor.requestId ?? null,
     // Approving is what unlocks this rate for real duty-stack use, so a

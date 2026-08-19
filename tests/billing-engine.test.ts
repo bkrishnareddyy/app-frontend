@@ -1,175 +1,346 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_BILLING_EVENT_DEFINITIONS } from "@/lib/billing/constants";
+import { computeChargeAmount, type RateRuleLike, type UsageEventLike } from "@/lib/billing/ratingEngine";
+import { evaluateRateRuleCondition } from "@/lib/billing/conditionEvaluator";
 
-describe("Billing, Costing & Rating Engine Suite", () => {
-  // ── 1. Telemetry & Definitions ──────────────────────────────────────────
-  describe("Telemetry Definitions & Event Codes", () => {
-    it("contains all required stable billing event codes", () => {
-      expect(DEFAULT_BILLING_EVENT_DEFINITIONS.length).toBeGreaterThanOrEqual(10);
-      const codes = DEFAULT_BILLING_EVENT_DEFINITIONS.map((d) => d.eventCode);
+// ── Shared test fixtures ──────────────────────────────────────────────────────
 
-      expect(codes).toContain("DOCUMENT_PROCESSED");
-      expect(codes).toContain("HTS_CLASSIFICATION_COMPLETED");
-      expect(codes).toContain("HTS_MANUAL_REVIEW_COMPLETED");
-      expect(codes).toContain("PRODUCT_NORMALIZATION_COMPLETED");
-      expect(codes).toContain("PGA_PROCESSING_COMPLETED");
-      expect(codes).toContain("EXCEPTION_MANUALLY_RESOLVED");
-      expect(codes).toContain("CUSTOMS_ENTRY_COMPLETED");
-      expect(codes).toContain("ACE_FILING_TRANSMITTED");
-      expect(codes).toContain("ISF_FILING_TRANSMITTED");
-      expect(codes).toContain("RECONCILIATION_ENTRY_PREPARED");
-    });
+function makeRule(overrides: Partial<RateRuleLike> = {}): RateRuleLike {
+  return {
+    id: "rule_test",
+    pricingModel: "PER_UNIT",
+    rate: 4.0,
+    includedQuantity: 0,
+    tieredConfig: null,
+    minCharge: null,
+    maxCharge: null,
+    conditions: null,
+    lineItemName: "Test Service",
+    currency: "USD",
+    isBillable: true,
+    ...overrides,
+  };
+}
+
+function makeEvent(overrides: Partial<UsageEventLike> = {}): UsageEventLike {
+  return {
+    eventCode: "HTS_CLASSIFICATION_COMPLETED",
+    quantity: 1,
+    success: true,
+    automated: true,
+    processingDuration: null,
+    metadata: {},
+    ...overrides,
+  };
+}
+
+// ── 1. Telemetry & Definitions ────────────────────────────────────────────────
+
+describe("Billing Event Definitions", () => {
+  it("contains all required stable billing event codes including new agent-emitted ones", () => {
+    const codes = DEFAULT_BILLING_EVENT_DEFINITIONS.map((d) => d.eventCode);
+
+    expect(codes).toContain("DOCUMENT_PROCESSED");
+    expect(codes).toContain("HTS_CLASSIFICATION_COMPLETED");
+    expect(codes).toContain("HTS_MANUAL_REVIEW_COMPLETED");
+    expect(codes).toContain("PRODUCT_NORMALIZATION_COMPLETED");
+    expect(codes).toContain("ORIGIN_DETERMINATION_COMPLETED");
+    expect(codes).toContain("VALUATION_COMPLETED");
+    expect(codes).toContain("COMPLIANCE_REVIEW_COMPLETED");
+    expect(codes).toContain("FILING_READINESS_COMPLETED");
+    expect(codes).toContain("EXCEPTION_MANUALLY_RESOLVED");
+    expect(codes).toContain("CUSTOMS_ENTRY_COMPLETED");
+    expect(codes).toContain("ACE_FILING_TRANSMITTED");
+    expect(codes).toContain("ISF_FILING_TRANSMITTED");
+    expect(codes).toContain("RECONCILIATION_ENTRY_PREPARED");
+    expect(codes).toContain("PGA_PROCESSING_COMPLETED");
   });
 
-  // ── 2. Pricing Models Evaluation ───────────────────────────────────────
-  describe("Pricing Models & Rating Engine Math", () => {
-    it("rates PER_UNIT and PER_TRANSACTION with included quantity deduction", () => {
-      const unitRate = 4.0; // $4/line
-      const totalQty = 12;
-      const includedQty = 5; // 5 lines included free
-      const billableQty = Math.max(0, totalQty - includedQty);
-      const grossAmount = billableQty * unitRate;
+  it("every definition has a non-empty name and category", () => {
+    for (const def of DEFAULT_BILLING_EVENT_DEFINITIONS) {
+      expect(def.name.length, `${def.eventCode} missing name`).toBeGreaterThan(0);
+      expect(def.category.length, `${def.eventCode} missing category`).toBeGreaterThan(0);
+    }
+  });
+});
 
-      expect(billableQty).toBe(7);
-      expect(grossAmount).toBe(28.0);
-    });
+// ── 2. computeChargeAmount — all 13 pricing models ───────────────────────────
 
-    it("rates FLAT_FEE, PER_SHIPMENT, and PER_ENTRY independently of quantity", () => {
-      const flatRate = 125.0; // $125 flat entry fee
-      const qty = 50; // Qty should not multiply flat fee
-      const grossAmount = flatRate; // flat fee remains 125.00
-
-      expect(grossAmount).toBe(125.0);
-    });
-
-    it("rates PER_SUCCESSFUL_OUTCOME ($0 on failure, full rate on success)", () => {
-      const outcomeRate = 175.0;
-      const successfulEvent = { success: true, rate: outcomeRate };
-      const failedEvent = { success: false, rate: outcomeRate };
-
-      const successfulCharge = successfulEvent.success ? successfulEvent.rate : 0;
-      const failedCharge = failedEvent.success ? failedEvent.rate : 0;
-
-      expect(successfulCharge).toBe(175.0);
-      expect(failedCharge).toBe(0.0);
-    });
-
-    it("rates TIERED volume pricing across multiple quantity thresholds", () => {
-      // Tier rule:
-      // Band 1: Qty 1–5  -> Included ($0/unit)
-      // Band 2: Qty 6–20 -> $4.00/unit
-      // Band 3: Qty 21+  -> $2.00/unit
-      const tiers = [
-        { fromQty: 1, toQty: 5, unitRate: 0.0 },
-        { fromQty: 6, toQty: 20, unitRate: 4.0 },
-        { fromQty: 21, toQty: null, unitRate: 2.0 },
-      ];
-
-      const testQuantity = 25; // 5 free + 15 @ $4 + 5 @ $2
-      let totalCharge = 0;
-      let remainingQty = testQuantity;
-
-      for (const tier of tiers) {
-        if (remainingQty <= 0) break;
-        const tierCapacity = tier.toQty ? tier.toQty - tier.fromQty + 1 : remainingQty;
-        const qtyInTier = Math.min(remainingQty, tierCapacity);
-        totalCharge += qtyInTier * tier.unitRate;
-        remainingQty -= qtyInTier;
-      }
-
-      // 5*0 + 15*4 + 5*2 = 0 + 60 + 10 = $70.00
-      expect(totalCharge).toBe(70.0);
-    });
-
-    it("rates TIME_BASED work accurately from duration in milliseconds", () => {
-      const hourlyRate = 75.0; // $75/hour manual review
-      const durationMs = 24 * 60 * 1000; // 24 minutes = 0.4 hours
-      const durationHours = durationMs / (1000 * 60 * 60);
-      const charge = durationHours * hourlyRate;
-
-      expect(durationHours).toBe(0.4);
-      expect(charge).toBe(30.0);
-    });
-
-    it("rates PERCENTAGE_BASED fee against entered merchandise value", () => {
-      const dutyDrawbackPercent = 10.0; // 10% of recovered duty
-      const recoveredDuty = 4500.0;
-      const charge = recoveredDuty * (dutyDrawbackPercent / 100);
-
-      expect(charge).toBe(450.0);
-    });
-
-    it("enforces MIN_CHARGE and MAX_CHARGE floor and ceiling boundaries", () => {
-      const minCharge = 50.0;
-      const maxCharge = 200.0;
-
-      // Low calculation below floor
-      let rawCharge1 = 15.0;
-      if (rawCharge1 > 0 && rawCharge1 < minCharge) rawCharge1 = minCharge;
-      expect(rawCharge1).toBe(50.0);
-
-      // High calculation above ceiling
-      let rawCharge2 = 350.0;
-      if (rawCharge2 > maxCharge) rawCharge2 = maxCharge;
-      expect(rawCharge2).toBe(200.0);
-    });
+describe("computeChargeAmount", () => {
+  it("PER_UNIT deducts includedQuantity before charging", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_UNIT", rate: 4.0, includedQuantity: 5 }),
+      makeEvent({ quantity: 12 })
+    );
+    expect(result).not.toBeNull();
+    expect(result).not.toHaveProperty("conditionFieldMissing");
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(28.0); // (12 - 5) * 4
   });
 
-  // ── 3. Internal Costing & No-Fallback Integrity ──────────────────────
-  describe("Internal Broker Costing & Honesty Controls", () => {
-    it("calculates loaded labor duration cost with exact seconds", () => {
-      const loadedLaborRate = 72.0; // $72.00/hr
-      const durationSec = 15 * 60; // 15 minutes = 900 seconds
-      const laborCost = (durationSec / 3600) * loadedLaborRate;
-
-      expect(laborCost).toBe(18.0);
-    });
-
-    it("calculates AI technology cost using exact token counts", () => {
-      const aiTokenRate = 0.00015; // $0.00015 per 1k tokens
-      const actualTokenCount = 14200; // Exact tokens used
-      const techCost = (actualTokenCount / 1000) * aiTokenRate;
-
-      expect(Number(techCost.toFixed(5))).toBe(0.00213);
-    });
-
-    it("prevents arbitrary default fallbacks when metadata is missing", () => {
-      const missingDuration: number | null = null;
-      const missingTokens: number | null = null;
-
-      // When telemetry is missing, system must NOT fabricate 5-min or 2500-token defaults
-      const hasValidDuration = missingDuration !== null && missingDuration > 0;
-      const hasValidTokens = missingTokens !== null && missingTokens > 0;
-
-      expect(hasValidDuration).toBe(false);
-      expect(hasValidTokens).toBe(false);
-    });
+  it("PER_TRANSACTION deducts includedQuantity before charging", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_TRANSACTION", rate: 2.5, includedQuantity: 0 }),
+      makeEvent({ quantity: 10 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(25.0);
   });
 
-  // ── 4. Ledger Unit Economics & AR ─────────────────────────────────────
-  describe("Shipment Financial Ledger & AR Balances", () => {
-    it("computes Net Revenue, Gross Profit, and Gross Margin %", () => {
-      const grossRevenue = 208.0;
-      const discount = 10.0;
-      const netRevenue = grossRevenue - discount; // $198.00
-      const totalCost = 32.42; // AI ($3.42) + ACE ($4.00) + Labor ($18.25) + Ops ($6.75)
-      const grossProfit = netRevenue - totalCost; // $165.58
-      const grossMarginPct = (grossProfit / netRevenue) * 100;
+  it("PER_UNIT returns null when all quantity is within includedQuantity", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_UNIT", rate: 4.0, includedQuantity: 20 }),
+      makeEvent({ quantity: 5 })
+    );
+    expect(result).toBeNull();
+  });
 
-      expect(netRevenue).toBe(198.0);
-      expect(Number(grossProfit.toFixed(2))).toBe(165.58);
-      expect(Number(grossMarginPct.toFixed(1))).toBe(83.6);
-    });
+  it("FLAT_FEE always charges the rule rate regardless of quantity", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "FLAT_FEE", rate: 125.0, includedQuantity: 0 }),
+      makeEvent({ quantity: 99 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(125.0);
+  });
 
-    it("tracks Accounts Receivable states (Accrued, Unbilled, Invoiced, Paid, Outstanding)", () => {
-      const accruedCharges = 198.0;
-      const invoicedCharges = 198.0;
-      const paidAmount = 100.0;
-      const unbilledAmount = accruedCharges - invoicedCharges;
-      const outstandingBalance = invoicedCharges - paidAmount;
+  it("PER_SHIPMENT charges rate once regardless of quantity", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_SHIPMENT", rate: 75.0 }),
+      makeEvent({ quantity: 50 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(75.0);
+  });
 
-      expect(unbilledAmount).toBe(0.0);
-      expect(outstandingBalance).toBe(98.0);
-    });
+  it("PER_ENTRY charges rate once regardless of quantity", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_ENTRY", rate: 200.0 }),
+      makeEvent({ quantity: 30 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(200.0);
+  });
+
+  it("BUNDLED charges rate once regardless of quantity", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "BUNDLED", rate: 500.0 }),
+      makeEvent({ quantity: 10 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(500.0);
+  });
+
+  it("PER_DOCUMENT charges per-quantity like PER_UNIT", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_DOCUMENT", rate: 3.0, includedQuantity: 0 }),
+      makeEvent({ quantity: 5 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(15.0);
+  });
+
+  it("PER_API_EVENT charges per-quantity like PER_UNIT", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_API_EVENT", rate: 0.10, includedQuantity: 0 }),
+      makeEvent({ quantity: 100 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBeCloseTo(10.0);
+  });
+
+  it("PER_SUCCESSFUL_OUTCOME returns null on failure", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_SUCCESSFUL_OUTCOME", rate: 175.0 }),
+      makeEvent({ success: false })
+    );
+    expect(result).toBeNull();
+  });
+
+  it("PER_SUCCESSFUL_OUTCOME charges full rate on success", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_SUCCESSFUL_OUTCOME", rate: 175.0 }),
+      makeEvent({ success: true, quantity: 1 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(175.0);
+  });
+
+  it("TIERED computes multi-band pricing correctly", () => {
+    // Band 1: Qty 1–5 @ $0, Band 2: Qty 6–20 @ $4, Band 3: Qty 21+ @ $2
+    const tiers = [
+      { fromQty: 1, toQty: 5, unitRate: 0.0 },
+      { fromQty: 6, toQty: 20, unitRate: 4.0 },
+      { fromQty: 21, toQty: null, unitRate: 2.0 },
+    ];
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "TIERED", tieredConfig: tiers, rate: 0 }),
+      makeEvent({ quantity: 25 }) // 5*0 + 15*4 + 5*2 = $70
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(70.0);
+  });
+
+  it("TIME_BASED charges hourly rate against processingDuration in ms", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "TIME_BASED", rate: 75.0 }),
+      makeEvent({ processingDuration: 24 * 60 * 1000 }) // 24 min
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(30.0); // 0.4h * $75
+  });
+
+  it("PERCENTAGE_BASED charges a % of metadata.valueAmount", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PERCENTAGE_BASED", rate: 10.0 }),
+      makeEvent({ metadata: { valueAmount: 4500 } })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(450.0);
+  });
+
+  it("CONDITIONAL evaluates true condition and charges", () => {
+    const result = computeChargeAmount(
+      makeRule({
+        pricingModel: "CONDITIONAL",
+        rate: 20.0,
+        conditions: { field: "metadata.confidence", operator: "lt", value: 0.8 },
+      }),
+      makeEvent({ metadata: { confidence: 0.6 }, quantity: 1 })
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(20.0);
+  });
+
+  it("CONDITIONAL returns null when condition is false", () => {
+    const result = computeChargeAmount(
+      makeRule({
+        pricingModel: "CONDITIONAL",
+        rate: 20.0,
+        conditions: { field: "metadata.confidence", operator: "lt", value: 0.8 },
+      }),
+      makeEvent({ metadata: { confidence: 0.9 }, quantity: 1 })
+    );
+    expect(result).toBeNull();
+  });
+
+  it("CONDITIONAL returns conditionFieldMissing when referenced field is absent", () => {
+    const result = computeChargeAmount(
+      makeRule({
+        pricingModel: "CONDITIONAL",
+        rate: 20.0,
+        conditions: { field: "metadata.confidence", operator: "lt", value: 0.8 },
+      }),
+      makeEvent({ metadata: {}, quantity: 1 }) // no confidence field
+    );
+    expect(result).not.toBeNull();
+    expect(result).toHaveProperty("conditionFieldMissing", "metadata.confidence");
+  });
+
+  it("enforces minCharge floor when grossAmount falls below it", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_UNIT", rate: 1.0, includedQuantity: 0, minCharge: 50.0 }),
+      makeEvent({ quantity: 15 }) // raw = $15, below $50 floor
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(50.0);
+  });
+
+  it("enforces maxCharge ceiling when grossAmount exceeds it", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_UNIT", rate: 10.0, includedQuantity: 0, maxCharge: 200.0 }),
+      makeEvent({ quantity: 50 }) // raw = $500, above $200 ceiling
+    );
+    const { grossAmount } = result as { grossAmount: number };
+    expect(grossAmount).toBe(200.0);
+  });
+
+  it("returns null for isBillable: false rules", () => {
+    const result = computeChargeAmount(
+      makeRule({ isBillable: false }),
+      makeEvent()
+    );
+    expect(result).toBeNull();
+  });
+
+  it("trace includes pricingModel, baseRate, and eventQty for audit", () => {
+    const result = computeChargeAmount(
+      makeRule({ pricingModel: "PER_UNIT", rate: 5.0, includedQuantity: 2 }),
+      makeEvent({ quantity: 7 })
+    );
+    const { trace } = result as { grossAmount: number; trace: Record<string, unknown> };
+    expect(trace.pricingModel).toBe("PER_UNIT");
+    expect(trace.baseRate).toBe(5.0);
+    expect(trace.eventQty).toBe(7);
+    expect(trace.billableQty).toBe(5);
+  });
+});
+
+// ── 3. evaluateRateRuleCondition ─────────────────────────────────────────────
+
+describe("evaluateRateRuleCondition", () => {
+  it("returns matched:true for null conditions (unconditional)", () => {
+    const result = evaluateRateRuleCondition(null, {});
+    expect(result).toEqual({ matched: true });
+  });
+
+  it("eq operator matches exact value", () => {
+    expect(evaluateRateRuleCondition({ field: "eventCode", operator: "eq", value: "HTS_CLASSIFICATION_COMPLETED" }, { eventCode: "HTS_CLASSIFICATION_COMPLETED" })).toEqual({ matched: true });
+    expect(evaluateRateRuleCondition({ field: "eventCode", operator: "eq", value: "OTHER" }, { eventCode: "HTS_CLASSIFICATION_COMPLETED" })).toEqual({ matched: false });
+  });
+
+  it("neq operator matches when values differ", () => {
+    expect(evaluateRateRuleCondition({ field: "success", operator: "neq", value: false }, { success: true })).toEqual({ matched: true });
+  });
+
+  it("lt / lte / gt / gte operators compare numerically", () => {
+    const view = { metadata: { confidence: 0.75 } };
+    expect(evaluateRateRuleCondition({ field: "metadata.confidence", operator: "lt", value: 0.8 }, view)).toEqual({ matched: true });
+    expect(evaluateRateRuleCondition({ field: "metadata.confidence", operator: "lte", value: 0.75 }, view)).toEqual({ matched: true });
+    expect(evaluateRateRuleCondition({ field: "metadata.confidence", operator: "gt", value: 0.8 }, view)).toEqual({ matched: false });
+    expect(evaluateRateRuleCondition({ field: "metadata.confidence", operator: "gte", value: 0.75 }, view)).toEqual({ matched: true });
+  });
+
+  it("in operator matches value in array", () => {
+    expect(evaluateRateRuleCondition({ field: "eventCode", operator: "in", value: ["A", "B", "HTS_CLASSIFICATION_COMPLETED"] }, { eventCode: "HTS_CLASSIFICATION_COMPLETED" })).toEqual({ matched: true });
+    expect(evaluateRateRuleCondition({ field: "eventCode", operator: "in", value: ["A", "B"] }, { eventCode: "HTS_CLASSIFICATION_COMPLETED" })).toEqual({ matched: false });
+  });
+
+  it("returns fieldMissing when field does not exist on event view", () => {
+    const result = evaluateRateRuleCondition({ field: "metadata.confidence", operator: "lt", value: 0.8 }, { metadata: {} });
+    expect(result).toHaveProperty("fieldMissing", true);
+    expect(result).toHaveProperty("field", "metadata.confidence");
+  });
+
+  it("all conditions in an array must pass (AND semantics)", () => {
+    const conditions = [
+      { field: "success", operator: "eq", value: true },
+      { field: "metadata.confidence", operator: "gte", value: 0.9 },
+    ];
+    expect(evaluateRateRuleCondition(conditions, { success: true, metadata: { confidence: 0.95 } })).toEqual({ matched: true });
+    expect(evaluateRateRuleCondition(conditions, { success: true, metadata: { confidence: 0.5 } })).toEqual({ matched: false });
+  });
+});
+
+// ── 4. Ledger unit economics ──────────────────────────────────────────────────
+
+describe("Shipment Financial Ledger Economics", () => {
+  it("derives gross margin % from net revenue and total cost", () => {
+    const grossRevenue = 208.0;
+    const discount = 10.0;
+    const netRevenue = grossRevenue - discount;
+    const totalCost = 32.42;
+    const grossProfit = netRevenue - totalCost;
+    const grossMarginPct = (grossProfit / netRevenue) * 100;
+
+    expect(netRevenue).toBe(198.0);
+    expect(Number(grossProfit.toFixed(2))).toBe(165.58);
+    expect(Number(grossMarginPct.toFixed(1))).toBe(83.6);
+  });
+
+  it("computes outstanding AR from invoiced minus paid", () => {
+    const invoicedCharges = 198.0;
+    const paidAmount = 100.0;
+    expect(invoicedCharges - paidAmount).toBe(98.0);
   });
 });

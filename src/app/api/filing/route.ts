@@ -9,33 +9,28 @@ import { wrapDeclarationData } from "@/lib/canonicalMessaging/declarationBuilder
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { FactAuditService } from "@/modules/audit/factAuditService";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
 
-  // Search query (Entry #, PO, Importer, Carrier, HTS, Description, Port, etc.)
   const search = searchParams.get("search") || searchParams.get("q") || "";
-
-  // Filters
   const filingStatus = searchParams.get("filingStatus");
   const portOfEntry = searchParams.get("portOfEntry");
   const carrierName = searchParams.get("carrierName");
   const countryOfOrigin = searchParams.get("countryOfOrigin");
   const importerName = searchParams.get("importerName");
   const entryType = searchParams.get("entryType");
-  const riskLevel = searchParams.get("riskLevel"); // high, medium, low
+  const riskLevel = searchParams.get("riskLevel");
 
-  // Financial Range Filters
   const minDuty = searchParams.get("minDuty") ? parseFloat(searchParams.get("minDuty")!) : undefined;
   const maxDuty = searchParams.get("maxDuty") ? parseFloat(searchParams.get("maxDuty")!) : undefined;
   const minValue = searchParams.get("minValue") ? parseFloat(searchParams.get("minValue")!) : undefined;
   const maxValue = searchParams.get("maxValue") ? parseFloat(searchParams.get("maxValue")!) : undefined;
 
-  // Date Range Filters
   const startDate = searchParams.get("startDate") ? new Date(searchParams.get("startDate")!) : undefined;
   const endDate = searchParams.get("endDate") ? new Date(searchParams.get("endDate")!) : undefined;
 
-  // Pagination & Sorting
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
   const skip = (page - 1) * limit;
@@ -43,12 +38,10 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const sortBy = searchParams.get("sortBy") || "createdAt";
   const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
-  // Build Prisma query condition
   const where: import("@prisma/client").Prisma.CustomsFilingWhereInput = {
     accountId: ctx.accountId,
   };
 
-  // Filter by filing status
   if (filingStatus && filingStatus !== "all") {
     const statuses = filingStatus.split(",").map((s) => s.trim());
     if (statuses.length > 1) {
@@ -58,7 +51,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     }
   }
 
-  // Financial filters
   if (minDuty !== undefined || maxDuty !== undefined) {
     where.totalDuties = {};
     if (minDuty !== undefined) where.totalDuties.gte = minDuty;
@@ -71,14 +63,12 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     if (maxValue !== undefined) where.totalValue.lte = maxValue;
   }
 
-  // Date range filter
   if (startDate || endDate) {
     where.createdAt = {};
     if (startDate) where.createdAt.gte = startDate;
     if (endDate) where.createdAt.lte = endDate;
   }
 
-  // Related Shipment filters
   const shipmentWhere: import("@prisma/client").Prisma.ShipmentWhereInput = {};
   if (portOfEntry) {
     shipmentWhere.portOfEntry = { contains: portOfEntry, mode: "insensitive" };
@@ -106,10 +96,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     where.shipment = shipmentWhere;
   }
 
-  // Filter by entry type. Rows written before the column was canonicalised
-  // still hold "Consumption Entry" or "01 - CONSUMPTION ENTRY", so a filter
-  // on the code has to match every spelling of that code. It goes in AND
-  // because the keyword search below owns OR and would otherwise erase it.
   if (entryType) {
     const code = normalizeEntryType(entryType);
     if (code) {
@@ -126,7 +112,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     }
   }
 
-  // Keyword & Natural Language search across multiple fields
   if (search.trim()) {
     const q = search.trim();
     where.OR = [
@@ -162,7 +147,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     ];
   }
 
-  // Order By fields mapping
   let orderBy: import("@prisma/client").Prisma.CustomsFilingOrderByWithRelationInput | import("@prisma/client").Prisma.CustomsFilingOrderByWithRelationInput[] = {};
   if (sortBy === "totalValue" || sortBy === "totalDuties" || sortBy === "totalTaxes" || sortBy === "entryNumber") {
     orderBy[sortBy] = sortOrder;
@@ -174,7 +158,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     orderBy = { createdAt: sortOrder };
   }
 
-  // Execute query and total count in parallel
   const [totalCount, rawFilings] = await Promise.all([
     db.customsFiling.count({ where }),
     db.customsFiling.findMany({
@@ -196,7 +179,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     }),
   ]);
 
-  // Format filings with rich computed metadata & default breakdowns
   const filings = rawFilings.map((filing) => {
     const lineItems = filing.shipment?.lineItems || [];
     const primaryCOO = lineItems[0]?.countryOfOrigin ?? filing.shipment?.countryOfExport ?? null;
@@ -208,10 +190,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
         : null;
     const totalDuty = filing.totalDuties !== null ? Number(filing.totalDuties) : null;
     const totalTaxes = filing.totalTaxes !== null ? Number(filing.totalTaxes) : null;
-
-    // Duty lines come from a real calculation or not at all. The previous
-    // fallback split the total 70/15/15 and labelled the slices with rates
-    // that were never used to compute them.
     const dutyBreakdown = Array.isArray(filing.dutyBreakdown) ? filing.dutyBreakdown : [];
 
     return {
@@ -223,8 +201,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
       paymentStatus: filing.paymentStatus,
       authority: filing.authority,
       filingType: filing.filingType,
-
-      // Logistics & Parties
       importerOfRecord: filing.shipment?.importerName ?? null,
       portOfEntry: filing.shipment?.portOfEntry ?? null,
       modeOfTransport: null,
@@ -234,8 +210,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
       supplier: null,
       shipmentReference: filing.shipment?.shipmentNumber ?? null,
       poReference: filing.shipment?.poReference ?? null,
-
-      // Financials
       totalCustomsValue,
       currency: "USD",
       totalDuty,
@@ -243,18 +217,12 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
       fees: null,
       totalAmount: filing.totalAmount,
       dutyBreakdown,
-
-      // Compliance & Risk
       aiRiskScore: filing.shipment?.riskScore ?? null,
       readinessScore: filing.shipment?.readinessScore ?? null,
-
-      // Timestamps
       submissionDate: filing.submittedAt || filing.createdAt,
       releaseDate: filing.releasedAt,
       createdAt: filing.createdAt,
       updatedAt: filing.updatedAt,
-
-      // Embedded Collections
       shipment: filing.shipment,
       responsesCount: filing.responses.length,
       latestResponse: filing.responses[0] || null,
@@ -262,7 +230,6 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
     };
   });
 
-  // Compute aggregate metrics across entire account's filings
   const allAccountFilings = await db.customsFiling.findMany({
     where: { accountId: ctx.accountId },
     select: { filingStatus: true, totalValue: true, totalDuties: true },
@@ -295,34 +262,26 @@ export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   });
 });
 
-/** A neutral, non-authority-shaped internal reference -- not a real CBP/customs
- *  entry number. The authority's own number (if any) arrives later as
- *  `authorityReference` on the accepted response; this is only ever "how we
- *  refer to this draft internally," and must never look like it was assigned
- *  by anyone but us. */
 function generateInternalReference(shipmentNumber: string): string {
   return `DFT-${shipmentNumber}-${randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const body = await req.json();
-  const { 
-    shipmentId, 
-    entryType, 
-    filingType, 
-    customEntryNumber, 
-    standalone, 
-    country, 
-    procedureCode, 
-    messageName, 
+  const {
+    shipmentId,
+    entryType,
+    filingType,
+    customEntryNumber,
+    standalone,
+    country,
+    procedureCode,
+    messageName,
     declarationData,
     localReferenceNumber,
     registrationNumber,
   } = body;
 
-  // ========================================================================
-  // STANDALONE FILING - Direct creation without shipment
-  // ========================================================================
   if (standalone) {
     if (!country || !procedureCode || !messageName) {
       return NextResponse.json(
@@ -331,7 +290,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       );
     }
 
-    // Validate that the procedure config exists
     const procedureConfig = await db.filingProcedureConfig.findFirst({
       where: {
         country,
@@ -351,18 +309,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       );
     }
 
-    // Generate a unique entry number for standalone filing
     const timestamp = Date.now().toString(36).toUpperCase();
     const randomSuffix = randomUUID().slice(0, 6).toUpperCase();
     const standaloneEntryNumber = `${country}-${procedureCode}-${timestamp}-${randomSuffix}`;
 
-    // Create the standalone filing
-    // Note: messageName is stored here for pre-transmission context
     const filing = await db.customsFiling.create({
       data: {
         accountId: ctx.accountId,
         entryNumber: standaloneEntryNumber,
-        localReferenceNumber: localReferenceNumber || standaloneEntryNumber, // Use provided value or default to entry number
+        localReferenceNumber: localReferenceNumber || standaloneEntryNumber,
         registrationNumber: registrationNumber || null,
         country,
         procedureCode,
@@ -371,16 +326,13 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         filingType: filingType || "Standard",
         filingStatus: "Draft",
         preparedByUserId: ctx.userId,
-        // Standalone filings start with null values - user fills them in
         totalValue: null,
         totalDuties: null,
         totalTaxes: null,
         totalAmount: null,
-        // No shipment association
         shipmentId: null,
         entryType: null,
         authority: null,
-        // If declarationData is provided, wrap it in the correct schema structure
         dutyBreakdown: declarationData ? ({
           declarationDraft: wrapDeclarationData(declarationData, procedureConfig.transactionType?.code || "IMPORT")
         } as any) : undefined,
@@ -408,9 +360,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     return NextResponse.json({ filing });
   }
 
-  // ========================================================================
-  // SHIPMENT-BASED FILING - Existing flow
-  // ========================================================================
   if (!shipmentId) {
     return NextResponse.json({ error: "shipmentId is required" });
   }
@@ -418,7 +367,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   const shipment = await db.shipment.findFirst({
     where: { id: shipmentId, accountId: ctx.accountId },
     include: { lineItems: true, documents: true },
-});
+  });
 
   if (!shipment) {
     return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
@@ -431,7 +380,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     );
   }
 
-  // Use provided country/procedure/message OR fall back to shipment defaults
   const filingCountry = country || shipment.destinationCountry;
   const filingProcedureCode = procedureCode || null;
   const filingMessageName = messageName || null;
@@ -446,7 +394,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     );
   }
 
-  // Look up transactionTypeId if procedure and message are provided
   let transactionTypeId: string | null = null;
   if (filingProcedureCode && filingMessageName) {
     const procedureConfig = await db.filingProcedureConfig.findFirst({
@@ -471,11 +418,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   }
 
   const destinationCountry = filingCountry;
-
-  // Block 2 of the Form 7501 (or the equivalent declaration-type field for
-  // another authority). Falls back to the shipment's own entryType, but is
-  // never silently defaulted to a specific one -- see schema.prisma's comment
-  // on why CustomsFiling.entryType/authority/filingType carry no @default.
   const declaredEntryType = entryType || shipment.entryType;
   if (!declaredEntryType) {
     return NextResponse.json(
@@ -484,43 +426,24 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     );
   }
 
-  // ========================================================================
-  // NOTE: MULTI-COUNTRY MIGRATION
-  // ========================================================================
-  // The old US-centric validation checked FilingProcedureMapping (dropped table)
-  // and FilingAuthorityConfig (dropped table). 
-  // Now we accept country/procedureCode/messageName from the request and look up
-  // transactionTypeId from FilingProcedureConfig.
-  // If not provided, procedureCode/messageName remain null (legacy behavior).
-  // ========================================================================
-  
-  // Keep old entryType validation for existing US filings
-  const entryTypeCode = declaredEntryType ? normalizeEntryType(declaredEntryType) : null;
+  const entryTypeCode = normalizeEntryType(declaredEntryType);
+  if (!entryTypeCode) {
+    return NextResponse.json(
+      { error: `Unsupported entryType: ${declaredEntryType}` },
+      { status: 400 }
+    );
+  }
 
-  // Calculate tariff, duty, MPF, and HMF using centralized Tariff Engine, grounded
-  // in the real ingested HTS Master Release data rather than a flat rate guess.
-  // NOTE: this engine computes US CBP duty (MPF/HMF/general rate) unconditionally,
-  // regardless of destinationCountry. For any non-US destination these figures
-  // are not meaningful and should be treated as provisional/US-only until a
-  // country-scoped duty engine exists -- tracked as a known gap, not fixed here.
   const tariffResult = computeFilingTariff(
     shipment.lineItems,
     await loadHtsCodesMap(shipment.lineItems)
   );
-  // Any line without a published rate makes every total an understatement,
-  // so the figures stay null rather than being persisted as if complete.
   const dutyIsComplete = tariffResult.unratedLineCount === 0;
   const calculatedValue = tariffResult.totalCustomsValue;
   const calculatedDuty = dutyIsComplete ? tariffResult.totalDuty : null;
   const calculatedTotal = dutyIsComplete ? tariffResult.totalAmount : null;
   const dutyBreakdown = tariffResult.dutyBreakdown;
 
-  // QPR-001: POST /api/filing creates DRAFT only.
-  // - paymentStatus and submittedAt are NOT set here.
-  // - Customs responses (ACK/REJECT) are created only from real provider callbacks.
-  // - Transmission happens via POST /api/filing/[id]/transmit after broker approval.
-  // entryNumber is scoped-unique per account (@@unique([accountId, entryNumber]));
-  // retry on the rare collision instead of trusting an unchecked random suffix.
   let filing: Awaited<ReturnType<typeof db.customsFiling.create>> | null = null;
   for (let attempt = 0; attempt < 5 && !filing; attempt++) {
     const entryNumber = customEntryNumber || generateInternalReference(shipment.shipmentNumber);
@@ -530,21 +453,18 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
           shipmentId,
           accountId: ctx.accountId,
           entryNumber,
-          // LEGACY fields (nullable now)
-          authority: null, // TODO: Remove after full migration
+          authority: null,
           entryType: entryTypeCode,
-          // NEW fields - use provided values or null
           transactionTypeId,
           country: filingCountry,
           procedureCode: filingProcedureCode,
           messageName: filingMessageName,
-          localReferenceNumber: entryNumber,  // Default to entry number
+          localReferenceNumber: entryNumber,
           filingType: filingType || "Standard",
           filingStatus: "Draft",
           preparedByUserId: ctx.userId,
           totalValue: calculatedValue,
           totalDuties: calculatedDuty,
-          // Null, not 0: no tax calculation runs here, and 0 would claim one did.
           totalTaxes: null,
           totalAmount: calculatedTotal,
           dutyBreakdown,
@@ -556,24 +476,15 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       });
     } catch (err) {
       const isDuplicate = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
-      if (!isDuplicate || customEntryNumber) throw err; // an explicit custom number colliding is a real conflict, not retryable
+      if (!isDuplicate || customEntryNumber) throw err;
     }
   }
   if (!filing) {
     return NextResponse.json({ error: "Could not generate a unique filing reference. Try again." }, { status: 500 });
   }
 
-  // A shipment already Submitted or Completed has left the filing-preparation
-  // part of its lifecycle; a correction/second filing created against it must
-  // not silently regress it back to Draft. Guarded here (rather than left as
-  // an unconditional write) because this is the only call site in the
-  // codebase that ever writes Shipment.status, and there is no centralized
-  // transition check it goes through.
   const TERMINAL_SHIPMENT_STATUSES = new Set(["Submitted", "Completed"]);
   if (!TERMINAL_SHIPMENT_STATUSES.has(shipment.status)) {
-    // Optimistic concurrency, matching the compare-and-swap every other
-    // shipment field write uses (see shipments/[id]/route.ts) -- without it,
-    // this write can silently clobber a concurrent status-relevant change.
     const updated = await db.shipment.updateMany({
       where: { id: shipmentId, accountId: ctx.accountId, version: shipment.version },
       data: { status: "Draft", version: { increment: 1 } },
@@ -588,6 +499,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         newValue: "Draft",
         reason: "New filing created for shipment",
       });
+      deliverWebhookEvent(ctx.accountId, "shipment.status_changed", {
+        shipmentId,
+        previousStatus: shipment.status,
+        newStatus: "Draft",
+        reason: "New filing created for shipment",
+      }).catch((err) => console.error("[webhook] Failed to dispatch shipment.status_changed:", err));
     }
   }
 
@@ -604,8 +521,6 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
   return NextResponse.json(
     {
       filing,
-      // > 0 means totalDuties is a floor, not the amount owed. The draft is
-      // still created so the gap is visible and can be classified.
       unratedLineCount: tariffResult.unratedLineCount,
     },
     { status: 201 }

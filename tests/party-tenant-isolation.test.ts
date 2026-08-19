@@ -58,6 +58,17 @@ describe("buildPartyWhere: the account filter", () => {
       identifiers: { some: { normalizedValue: { contains: "DE123" }, status: "ACTIVE" } },
     });
   });
+
+  it("scopes parties by clientId when specified", () => {
+    const exact = buildPartyWhere(TENANT, query("clientId=cli_123"));
+    expect(exact.clientId).toBe("cli_123");
+
+    const unassigned = buildPartyWhere(TENANT, query("clientId=unassigned"));
+    expect(unassigned.clientId).toBeNull();
+
+    const shared = buildPartyWhere(TENANT, query("clientId=cli_123&clientScope=include_shared"));
+    expect(shared.clientId).toEqual({ in: ["cli_123", null] });
+  });
 });
 
 describe("parsePartyQuery", () => {

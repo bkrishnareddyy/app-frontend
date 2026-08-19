@@ -11,6 +11,7 @@ import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
 import { ShipmentPartyService, type ShipmentPartyRole } from "@/modules/shipment/shipmentPartyService";
 import { loadHtsCodesMap, calculateDutyStack } from "@/lib/tariff/dutyEngine";
 import { normalizeCountryCode } from "@/modules/shipment/countryCode";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 import { z } from "zod";
 
 const paramsSchema = z.object({
@@ -46,7 +47,7 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
   const { id } = paramsVal.data;
 
   const body = await req.json();
-  const { lineItems, clientId, parties, countryOfOrigin, incoterm, destinationCountry, expectedVersion } = body;
+  const { lineItems, clientId, parties, countryOfOrigin, incoterm, destinationCountry, expectedVersion, status } = body;
 
   const shipment = await db.shipment.findFirst({
     where: { id, accountId: ctx.accountId, deletedAt: null },
@@ -81,6 +82,28 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
     if (result.count === 0) return false;
     currentVersion += 1;
     return true;
+  }
+
+  // Handle Shipment Status update
+  if (status !== undefined && status !== shipment.status) {
+    await FactAuditService.logChangeEvent({
+      shipmentId: id,
+      userId: ctx.userId,
+      changeType: "STATUS_CHANGED",
+      field: "status",
+      previousValue: shipment.status,
+      newValue: status,
+      reason: "User manual status update",
+    });
+    if (!(await applyVersionedShipmentUpdate({ status }))) {
+      return staleShipmentResponse();
+    }
+    deliverWebhookEvent(ctx.accountId, "shipment.status_changed", {
+      shipmentId: id,
+      previousStatus: shipment.status,
+      newStatus: status,
+      reason: "User manual status update",
+    }).catch((err) => console.error("[webhook] Failed to dispatch shipment.status_changed:", err));
   }
 
   // Handle Destination Country update. Validated against the ISO 3166-1
@@ -215,6 +238,15 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
               value: item.htsCode,
               sourceType: "USER_ENTERED",
             });
+            deliverWebhookEvent(ctx.accountId, "classification.changed", {
+              shipmentId: id,
+              lineItemId: existingItem.id,
+              lineNumber: existingItem.lineNumber,
+              previousHtsCode: existingItem.htsCode,
+              newHtsCode: item.htsCode,
+              changedByUserId: ctx.userId,
+              source: "MANUAL_EDIT",
+            }).catch((err) => console.error("[webhook] Failed to dispatch classification.changed:", err));
           }
           if (originChanged) {
             await FactAuditService.logChangeEvent({

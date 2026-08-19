@@ -43,6 +43,7 @@ export interface PartyQuery extends TableQuery<PartySortColumn> {
   /** Restricts to parties with at least one open revalidation flag. */
   needsRevalidation: boolean;
   clientId: string | null;
+  clientScope?: "exact" | "include_shared" | "all" | null;
 }
 
 function trimmed(raw: string | null): string | null {
@@ -62,6 +63,7 @@ export function parsePartyQuery(params: URLSearchParams): PartyQuery {
     roleType: trimmed(params.get("roleType")),
     needsRevalidation: params.get("needsRevalidation") === "true",
     clientId: trimmed(params.get("clientId")),
+    clientScope: (trimmed(params.get("clientScope")) as PartyQuery["clientScope"]) ?? null,
   };
 }
 
@@ -77,7 +79,7 @@ export interface PartyWhere {
   deletedAt: null;
   status?: string;
   reviewStatus?: string;
-  clientId?: string;
+  clientId?: string | null | { in: (string | null)[] };
   roles?: { some: { roleType: string; status: string } };
   revalidationFlags?: { some: { status: string } };
   OR?: PartySearchClause[];
@@ -102,7 +104,15 @@ type PartySearchClause =
 export function buildPartyWhere(accountId: string, query: PartyQuery): PartyWhere {
   const where: PartyWhere = { accountId, deletedAt: null };
 
-  if (query.clientId) where.clientId = query.clientId;
+  if (query.clientId === "unassigned") {
+    where.clientId = null;
+  } else if (query.clientId) {
+    if (query.clientScope === "include_shared") {
+      where.clientId = { in: [query.clientId, null] };
+    } else {
+      where.clientId = query.clientId;
+    }
+  }
   if (query.status) where.status = query.status;
   if (query.reviewStatus) where.reviewStatus = query.reviewStatus;
 

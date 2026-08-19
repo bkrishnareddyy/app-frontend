@@ -24,7 +24,7 @@ export const en = {
     settingsAudit: "Settings & Audit",
     documentEmail: "Document Email",
     mainOperations: "Main Operations",
-    toolingAndDocs: "Tooling & Docs",
+    toolingAndDocs: "Tooling & Admin",
     tradeDocs: "Docs",
     dutyDrawbacks: "Duty Drawbacks",
     reconciliation: "ACE Recon",

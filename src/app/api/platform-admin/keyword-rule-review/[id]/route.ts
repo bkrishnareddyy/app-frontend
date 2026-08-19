@@ -29,8 +29,10 @@ export const POST = withAuthenticatedRoute<Params>(async ({ req, ctx, params, re
   const body = await parseAndValidateBody(req, bodySchema, requestId);
   if ("response" in body) return body.response;
 
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || (body.data as any)?.source === "CHAT") ? "CHAT" : "UI";
+
   const updated = await reviewKeywordRule(
-    { accountId: ctx.accountId, userId: ctx.userId, requestId },
+    { accountId: ctx.accountId, userId: ctx.userId, requestId, source: auditSource },
     path.data.id,
     body.data.action,
     body.data.reviewNote ?? null

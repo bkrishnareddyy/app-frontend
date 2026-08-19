@@ -37,7 +37,7 @@ export default async function TradeDataPage() {
       {/* Page header */}
       <div className="border-b border-border bg-white/70 backdrop-blur-sm px-6 py-5">
         <div className="flex items-center gap-2 text-ink-muted text-sm mb-1">
-          <span>Tooling &amp; Docs</span>
+          <span>Tooling &amp; Admin</span>
           <ChevronRight className="w-3.5 h-3.5" />
           <span className="text-ink font-medium">Trade Data</span>
         </div>

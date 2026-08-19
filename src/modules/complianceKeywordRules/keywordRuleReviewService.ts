@@ -37,6 +37,7 @@ export interface KeywordRuleReviewActor {
   accountId: string;
   userId: string | null;
   requestId?: string | null;
+  source?: string | null;
 }
 
 export class KeywordRuleReviewNotFoundError extends DomainError {
@@ -93,7 +94,7 @@ async function logReview(
       afterStatus === "PUBLISHED" ? AuditAction.COMPLIANCE_KEYWORD_RULE_PUBLISHED : AuditAction.COMPLIANCE_KEYWORD_RULE_REJECTED,
     entity: "ComplianceKeywordRule",
     entityId: id,
-    source: "UI",
+    source: actor.source || "UI",
     metadata: { from: beforeStatus, to: afterStatus, reviewNote },
     requestId: actor.requestId ?? null,
     // Publishing is what unlocks this phrase for live screening, so a

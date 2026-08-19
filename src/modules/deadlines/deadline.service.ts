@@ -10,6 +10,7 @@
  */
 
 import { db } from "@/lib/db";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 import {
   DeadlineStatus,
   DeadlineType,
@@ -346,19 +347,17 @@ async function _upsertMissingAnchorExceptions(
     });
 
     if (!existing) {
-      await db.exceptionItem.create({
-        data: {
-          accountId,
-          shipmentId,
-          code,
-          category: "FILING",
-          type: "compliance_flag",
-          severity: "High",
-          description,
-          blocking: false,
-          sourceAgent: "DeadlineMonitor",
-          status: "Open",
-        },
+      await createExceptionItem({
+        accountId,
+        shipmentId,
+        code,
+        category: "FILING",
+        type: "compliance_flag",
+        severity: "High",
+        description,
+        blocking: false,
+        sourceAgent: "DeadlineMonitor",
+        status: "Open",
       });
     }
   }
@@ -407,19 +406,17 @@ async function _escalateToException(
   });
 
   if (!existing) {
-    await db.exceptionItem.create({
-      data: {
-        accountId,
-        shipmentId: d.shipmentId,
-        code,
-        category: "FILING",
-        type: "compliance_flag",
-        severity: breached ? "Critical" : "High",
-        description,
-        blocking: deadlineIsBlocking(d.type),
-        sourceAgent: "DeadlineMonitor",
-        status: "Open",
-      },
+    await createExceptionItem({
+      accountId,
+      shipmentId: d.shipmentId,
+      code,
+      category: "FILING",
+      type: "compliance_flag",
+      severity: breached ? "Critical" : "High",
+      description,
+      blocking: deadlineIsBlocking(d.type),
+      sourceAgent: "DeadlineMonitor",
+      status: "Open",
     });
   } else if (breached && existing.severity !== "Critical") {
     // Escalate from High to Critical on breach.

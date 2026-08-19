@@ -227,3 +227,26 @@ describe("matching is deterministic", () => {
     }
   });
 });
+
+describe("matchProduct: client-level tie breaking", () => {
+  it("prefers client-scoped candidate over shared catalog candidate when matching for a client", () => {
+    const sharedProduct = product({
+      id: "prod_shared",
+      clientId: null,
+      identifiers: [{ identifierType: "GTIN", normalizedValue: "05012345678900" }],
+    });
+    const clientProduct = product({
+      id: "prod_client_a",
+      clientId: "cli_a",
+      identifiers: [{ identifierType: "GTIN", normalizedValue: "05012345678900" }],
+    });
+
+    const result = matchProduct(
+      { identifiers: [{ identifierType: "GTIN", value: "05012345678900" }], clientId: "cli_a" },
+      [sharedProduct, clientProduct]
+    );
+
+    expect(result.status).toBe("EXACT_MATCH");
+    expect(result.candidates.map((c) => c.productId)).toEqual(["prod_client_a"]);
+  });
+});

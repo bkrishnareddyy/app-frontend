@@ -34,6 +34,18 @@ function currencyOf(extractedJson: string | null | undefined): string | null {
   }
 }
 
+/** Returns every distinct document currency, preserving conflicts for filing review. */
+export function extractedCurrencies(
+  documents: ReadonlyArray<{ extractedJson?: string | null }>
+): string[] {
+  const found = new Set<string>();
+  for (const doc of documents) {
+    const code = currencyOf(doc.extractedJson);
+    if (code !== null) found.add(code);
+  }
+  return [...found].sort();
+}
+
 /**
  * Returns the single currency these documents agree on, or null.
  *
@@ -45,22 +57,12 @@ function currencyOf(extractedJson: string | null | undefined): string | null {
 export function extractedCurrency(
   documents: ReadonlyArray<{ extractedJson?: string | null }>
 ): string | null {
-  const found = new Set<string>();
-  for (const doc of documents) {
-    const code = currencyOf(doc.extractedJson);
-    if (code !== null) found.add(code);
-  }
-  return found.size === 1 ? [...found][0] : null;
+  const found = extractedCurrencies(documents);
+  return found.length === 1 ? found[0] : null;
 }
 
 /**
  * The single currency a whole collection of shipments agrees on, or null.
- *
- * Used for figures that sum across shipments. Such a total is only meaningful
- * when every contributing shipment is in the same currency — adding EUR to USD
- * produces a number that denominates nothing, so when they differ the caller
- * gets null and shows the sum unlabelled rather than stamping one currency on a
- * mixed-currency figure.
  */
 export function commonExtractedCurrency(
   shipments: ReadonlyArray<{ currency?: string | null }>

@@ -47,6 +47,9 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
   }
 
+  const rawBody = await req.clone().json().catch(() => ({}));
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || rawBody?.source === "CHAT") ? "CHAT" : "UI";
+
   const isStandalone = !filingForValidation.shipmentId || !filingForValidation.shipment;
 
   if (isStandalone) {
@@ -73,7 +76,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
         action: AuditAction.FILING_SEGREGATION_VIOLATION,
         entity: "CustomsFiling",
         entityId: id,
-        source: "UI",
+        source: auditSource,
         metadata: { attemptedAction: "transmit", entryNumber: filingForValidation.entryNumber },
       });
       return buildErrorResponse(
@@ -148,7 +151,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       action: AuditAction.FILING_TRANSMITTED,
       entity: "CustomsFiling",
       entityId: id,
-      source: "UI",
+      source: auditSource,
       metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
 

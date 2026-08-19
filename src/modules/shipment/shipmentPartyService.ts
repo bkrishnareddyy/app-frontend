@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 
 export type ShipmentPartyRole =
   | "IMPORTER_OF_RECORD"
@@ -130,20 +131,18 @@ export class ShipmentPartyService {
 
     const flagSummary = openFlags.map((f) => `${f.flag}: ${f.reason}`).join("; ");
 
-    await db.exceptionItem.create({
-      data: {
-        accountId,
-        shipmentId,
-        category: "COMPLIANCE",
-        type: "compliance_flag",
-        severity: "High",
-        description:
-          `Party "${legalEntity.legalName}" has ${openFlags.length} open revalidation flag(s) in the party master: ${flagSummary}. Review and resolve before filing.`,
-        status: "Open",
-        blocking: false,
-        requiredAction: "Resolve the open revalidation flags on this party in the party master before filing.",
-        sourceAgent: "Party Revalidation Check",
-      },
+    await createExceptionItem({
+      accountId,
+      shipmentId,
+      category: "COMPLIANCE",
+      type: "compliance_flag",
+      severity: "High",
+      description:
+        `Party "${legalEntity.legalName}" has ${openFlags.length} open revalidation flag(s) in the party master: ${flagSummary}. Review and resolve before filing.`,
+      status: "Open",
+      blocking: false,
+      requiredAction: "Resolve the open revalidation flags on this party in the party master before filing.",
+      sourceAgent: "Party Revalidation Check",
     });
 
     await createAuditLog({

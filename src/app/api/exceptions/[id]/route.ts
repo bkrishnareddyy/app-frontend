@@ -49,7 +49,11 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
       name: resolverName,
     });
 
-    const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || bodyVal.data.source === "CHAT") ? "CHAT" : "UI";
+    const headerSource = req.headers?.get?.("x-qubere-source");
+    const auditSource: "CHAT" | "UI" =
+      (headerSource && headerSource.toUpperCase() === "CHAT") || bodyVal.data.source === "CHAT"
+        ? "CHAT"
+        : "UI";
 
     await createAuditLog({
       accountId: ctx.accountId,
