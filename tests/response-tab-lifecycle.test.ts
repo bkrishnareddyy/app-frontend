@@ -38,6 +38,7 @@ describe("Customs Filing Response tab lifecycle", () => {
           sourceFormat: "JSON",
           sha256: `test-${Date.now()}`,
           validationStatus: "VALIDATED",
+          publicationStatus: "PUBLISHED",
         },
       });
       await db.htsNode.create({

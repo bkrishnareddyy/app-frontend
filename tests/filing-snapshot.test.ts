@@ -36,6 +36,7 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
           sourceFormat: "JSON",
           sha256: `test-${Date.now()}`,
           validationStatus: "VALIDATED",
+          publicationStatus: "PUBLISHED",
         },
       });
       await db.htsNode.create({
