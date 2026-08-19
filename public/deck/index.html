@@ -210,6 +210,17 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy
 .feature-bullets li::before { content: '→'; color: var(--blue); flex-shrink: 0; font-weight: 600; }
 .feature-right { display: flex; align-items: center; justify-content: center; background: var(--slate-50); padding: 20px; overflow: hidden; }
 
+/* Real product screenshot frame (slides 18+) */
+.shot-frame { width: 100%; max-width: 900px; background: white; border-radius: 10px; box-shadow: 0 24px 64px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid var(--slate-200); }
+.shot-frame-bar { height: 26px; background: var(--slate-100); display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--slate-200); flex-shrink: 0; }
+.shot-dot { width: 9px; height: 9px; border-radius: 50%; }
+.shot-frame img { display: block; width: 100%; height: auto; }
+.live-badge { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-body); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #16A34A; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 12px; padding: 3px 9px; margin-bottom: 14px; }
+.live-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #16A34A; }
+.usecase-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 16px; padding: 12px 14px; background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: 8px; }
+.usecase-label { font-family: var(--font-body); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--slate-400); font-weight: 700; }
+.usecase-text { font-family: var(--font-body); font-size: 12.5px; color: var(--slate-700); line-height: 1.5; }
+
 /* =============================================
    RESPONSIVE / MOBILE
    ============================================= */
@@ -1548,19 +1559,532 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy
   </div>
 </section>
 
+<!-- SLIDE 18: COMMAND CENTER (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="18">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Command Center</p>
+      <h2 class="feature-headline">See your entire book of business before you open a single shipment.</h2>
+      <p class="feature-desc">The dashboard aggregates every active shipment into one operational view &mdash; value at risk, overdue filings, exception age, and AI throughput &mdash; so ops leads triage by exception, not by clicking through every file.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A brokerage manager needs to know, at 8am, which of dozens of active shipments are about to miss a filing deadline &mdash; without opening each one individually.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Value-at-risk and overdue-filing counters update in real time across every shipment</li>
+        <li>AI Throughput bar shows what share of decisions were auto-certified vs. human-reviewed</li>
+        <li>Exception age distribution flags anything sitting untouched for days</li>
+        <li>“Requires Attention” panel ranks shipments by severity so nothing slips</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Command Center</strong>. It's the default landing page after sign-in &mdash; no setup required.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/command-center.png" alt="Qubere Command Center dashboard showing live queue, filing pipeline, and shipments">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 19: ACTIONS QUEUE (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="19">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Actions Queue</p>
+      <h2 class="feature-headline">AI pre-triages every decision. Your team only touches what needs a human.</h2>
+      <p class="feature-desc">Every document field, HTS classification, and compliance flag the AI isn't fully confident in lands here &mdash; grouped by shipment, sorted Blocked / Needs Review / Verified, with the source document and confidence score attached.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A reviewer opens their queue and needs to know instantly which open items are filing-blocking versus routine sign-off, out of dozens.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Items are pre-sorted into Blocked, Needs Review, and Verified &mdash; no manual sifting</li>
+        <li>Each item shows the source PDF, extracted field, and AI confidence score inline</li>
+        <li>One-click Approve / Reject / Re-evaluate with an optional note, no context-switching</li>
+        <li>Compliance flags cite the actual regulation (e.g. 19 CFR 141.68(a)) next to the AI's reasoning</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Actions</strong>. Select a shipment card to open its queue; use Approve All for routine batches or drill into individual items.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/actions-queue.png" alt="Qubere Actions queue showing AI review triage for a shipment">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 20: SHIPMENT WORKBENCH (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="20">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Shipment Workbench</p>
+      <h2 class="feature-headline">One screen for the full customs lifecycle &mdash; intake to ACE.</h2>
+      <p class="feature-desc">Every shipment carries a live readiness gate across compliance categories, its own exception list, and a document vault with AI-extracted line items &mdash; so nothing gets filed until it's actually ready.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A broker needs to know exactly why a shipment can't be filed yet, and what to do about it, without hunting through email threads.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Readiness gate shows &ldquo;X of 11 categories ready&rdquo; plus blocker and review counts</li>
+        <li>Missing-document exceptions come with a one-click &lsquo;Request from counterparty&rsquo; action</li>
+        <li>Compliance deadlines (ISF, Entry Summary, Duty Payment) compute automatically once an anchor date is on file</li>
+        <li>Send to Customs Filing only unlocks once the readiness gate clears</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Shipments</strong> &rarr; open any shipment. &ldquo;Show Details&rdquo; expands the full readiness checklist.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/shipment-workbench.png" alt="Qubere shipment detail view showing readiness gate and compliance exceptions">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 21: TRADE DOCUMENTS (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="21">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Trade Documents</p>
+      <h2 class="feature-headline">Every invoice, B/L, and packing list &mdash; extracted, classified, and vaulted automatically.</h2>
+      <p class="feature-desc">Upload any trade document and Qubere's vision extraction reads it, classifies the document type, and links it to the right shipment with a confidence score &mdash; no manual data entry.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A logistics coordinator receives a stack of PDFs from a freight forwarder in different formats and needs them turned into structured line-item data before end of day.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>AI classifies document type (Commercial Invoice, B/L, Packing List, etc.) automatically on upload</li>
+        <li>Every document shows a parse confidence score and links to its target shipment</li>
+        <li>Filter the entire vault by type, client, shipment, or AI status in one search</li>
+        <li>Reprocess any document on demand if a revised version comes in</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Docs</strong> &rarr; Upload Document. Documents route themselves to the matching shipment once identified.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/trade-documents.png" alt="Qubere Trade Documents vault with AI extraction status per document">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 22: CUSTOMS FILING (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="22">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Customs Filing</p>
+      <h2 class="feature-headline">ABI filing and CBP response tracking, without logging into ACE.</h2>
+      <p class="feature-desc">Once a shipment clears its readiness gate, Qubere prepares and tracks the ABI submission &mdash; entry number, filing type, and status &mdash; in the same workspace, end to end.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A broker needs to tell a client exactly where their entry stands &mdash; Draft, Transmitted, Accepted, or under CBP query &mdash; without switching to the ACE portal.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Every filing tracks Local Reference Number, Entry Number, filing type, and total value in one table</li>
+        <li>Status pipeline covers the full lifecycle: Draft &rarr; Preparing &rarr; Transmitted &rarr; Accepted / Rejected / Customs Hold</li>
+        <li>New Filing kicks off directly from a cleared shipment &mdash; no duplicate data entry</li>
+        <li>Full filing history stays searchable by importer, country, or entry number</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Customs Filing</strong>. Click New Filing to start one, or View on any row for full entry detail.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/customs-filing.png" alt="Qubere Customs Filing and Response Center showing entry status table">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 23: COMPLIANCE MONITOR (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="23">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Compliance Monitor</p>
+      <h2 class="feature-headline">Screening doesn't stop at filing &mdash; it runs continuously.</h2>
+      <p class="feature-desc">Country embargo, end-use, end-user, anti-boycott, and military end-use screening run against every shipment on an ongoing basis, with findings tracked by severity so nothing drifts unnoticed.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A compliance officer needs proof &mdash; not a guess &mdash; that every active filing has been screened against restricted-party and embargo lists this week, not just at intake.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Findings tracked live across Critical / High / Medium / Low severity</li>
+        <li>Five screening categories run per shipment: Country Embargo, End-Use, End-User, Anti-Boycott, Military End-Use</li>
+        <li>Review Queue isolates filing-level findings that still need a resolution</li>
+        <li>Every audit run is timestamped &mdash; the record itself is the Reasonable Care defense</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Compliance</strong>. The Screening tab breaks down open findings by category and severity.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/compliance-monitor.png" alt="Qubere Compliance Workspace showing screening findings by category">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 24: POST-ENTRY MANAGEMENT (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="24">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Post-Entry Management</p>
+      <h2 class="feature-headline">Drawback, reconciliation, corrections, and protests &mdash; one hub, four statutory clocks.</h2>
+      <p class="feature-desc">After an entry files, the compliance work doesn't stop. Post-Entry brings duty drawback, ACE reconciliation, post-summary corrections, and Form 19 protests into a single workspace instead of four disconnected processes.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A finance/compliance team is tracking four different post-filing deadlines by hand &mdash; the 270-day PSC window, the 180-day protest window &mdash; and needs one place that owns all of it.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Duty Drawback: identify and quantify refund claims, track lot eligibility and export deadlines</li>
+        <li>ACE Reconciliation: surface discrepancies between entry summaries and source documents</li>
+        <li>Post-Summary Corrections: recalculate duties and manage ACE transmissions inside the 270-day window</li>
+        <li>Protests (Form 19): track deemed denials and CIT appeal deadlines under 19 U.S.C. § 1514</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Post-Entry</strong>, then choose the workflow you need.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/post-entry-hub.png" alt="Qubere Post-Entry Management hub with four workflow cards">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 25: DUTY DRAWBACK &AMP; RECOVERY (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="25">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Duty Drawback &amp; Recovery</p>
+      <h2 class="feature-headline">Find the refund money sitting in filings you've already made.</h2>
+      <p class="feature-desc">One click scans filing history for Section 301 exclusion opportunities, matches drawback-eligible inventory, and tracks every recovery claim from identification to payment.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A CFO wants to know whether the company is leaving duty refunds unclaimed &mdash; money that's legally recoverable but requires someone to go looking for it.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Scan for Refund Opportunities checks filing history automatically &mdash; no manual review</li>
+        <li>Drawback Matching links exported goods back to the original import for manufacturing / unused-merchandise drawback</li>
+        <li>Section 301 Readiness Inventory flags every HTS code in the catalog that qualifies for exclusion refunds</li>
+        <li>Recovery tracked end-to-end: identified &rarr; filed &rarr; pending &rarr; paid</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Post-Entry</strong> &rarr; Duty Drawback &rarr; Scan for Refund Opportunities.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/duty-drawback.png" alt="Qubere Recovery and Drawback Control Center">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 26: REGULATORY INTELLIGENCE (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="26">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Regulatory Intelligence</p>
+      <h2 class="feature-headline">Know about a CBP rule change before it hits your shipment &mdash; not after.</h2>
+      <p class="feature-desc">A live feed of Federal Register notices, AD/CVD orders, Section 301 actions, and trade-agreement changes, each with an AI-generated impact assessment against your actual product portfolio.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A trade compliance team currently finds out about tariff changes from a broker email or a Federal Register PDF someone happened to read &mdash; days after it took effect.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Live feed spans tariff changes, exclusions, policy updates, and AD/CVD actions</li>
+        <li>Filter by HTS code to see only what actually touches your catalog</li>
+        <li>Assess Impact runs the update against your product and shipment portfolio automatically</li>
+        <li>Action Required flags surface items your team hasn't responded to yet</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Tariffs &amp; Regs</strong> &rarr; Regulatory Updates. Click Assess Impact on any feed item.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/regulatory-intel.png" alt="Qubere Regulatory Intelligence and Analytics feed">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 27: TARIFF &AMP; SOURCING SIMULATOR (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="27">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Tariff &amp; Sourcing Simulator</p>
+      <h2 class="feature-headline">Model the duty stack before you sign the PO &mdash; not after.</h2>
+      <p class="feature-desc">Build a landed-cost scenario by origin country and HTS code, then compare it against alternative sourcing to see the exact breakeven volume where switching suppliers actually pays off.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">A supply chain lead is deciding whether to shift a product line to a new origin country and wants the real duty math, not a trade attorney's two-week turnaround.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Scenarios model unit cost, freight, insurance, and quantity into a full landed-cost figure</li>
+        <li>Duty stack includes base rate, Section 301 adders, AD/CVD, and FTA preferences</li>
+        <li>Side-by-side breakeven analysis shows the exact volume where an alternate origin wins</li>
+        <li>Every saved scenario stays in Active Modeling Scenarios for later comparison</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Tariffs &amp; Regs</strong> &rarr; Tariff Simulator &rarr; fill in origin, HTS, and cost components &rarr; Save &amp; Model Scenario.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/tariff-simulator.png" alt="Qubere Tariff and Sourcing Simulator with a live saved scenario">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 28: PRODUCT MASTER (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="28">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Product Master</p>
+      <h2 class="feature-headline">One canonical item master &mdash; with an evidence trail behind every HTS code.</h2>
+      <p class="feature-desc">A product record holds what's true of the item everywhere. Each customs classification and origin claim is held per jurisdiction, with its own review status and its own evidence, instead of one tariff code typed into a spreadsheet cell.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">An importer classifies the same SKU differently across different brokers because there's no single source of truth for what the item actually is.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Item identity (name, SKU, brand, model) is separated from the classification decision made against it</li>
+        <li>Classification is proposed and approved per jurisdiction, against evidence &mdash; not typed in blind</li>
+        <li>Identifiers (SKU, GTIN, UPC, supplier part number) let incoming shipment lines auto-match to the right product</li>
+        <li>Filters surface unreviewed items, unclassified items, and anything awaiting revalidation</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Trade Data</strong> &rarr; Products &rarr; Add product.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/product-master.png" alt="Qubere Product Master item list with classification status">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 29: PARTY MASTER (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="29">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Party Master</p>
+      <h2 class="feature-headline">One verified record for every importer, supplier, and broker you work with.</h2>
+      <p class="feature-desc">A party holds identity only &mdash; name, identifiers, registrations, and roles &mdash; each with its own status and evidence. Screening runs against this record; it doesn't invent one.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">The same supplier shows up under slightly different names across old shipment records, and restricted-party screening needs one clean identity to check against.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Legal name, identifiers (EORI, D-U-N-S, VAT, Tax ID), and registrations tracked as separate, evidenced facts</li>
+        <li>Roles (Importer, Exporter, Manufacturer, Customs Broker, etc.) assigned per relationship</li>
+        <li>Review status (Unreviewed, Needs Review, Awaiting Revalidation) flags stale records automatically</li>
+        <li>Client-scoped or account-wide &mdash; the same party record works across every shipment it touches</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Sidebar &rarr; <strong>Trade Data</strong> &rarr; Parties &rarr; Add party.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/party-master.png" alt="Qubere Party Master list with roles and review status">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- SLIDE 30: ASK QUBERE &MDASH; AI CHAT (REAL SCREENSHOT) -->
+<section class="slide slide-pale" data-slide="30">
+  <div class="feature-layout">
+    <div class="feature-left">
+      <div class="live-badge">Live product screenshot</div>
+      <p class="feature-eyebrow">Ask Qubere &mdash; AI Chat</p>
+      <h2 class="feature-headline">Your entire trade operation, answerable in one question.</h2>
+      <p class="feature-desc">A natural-language interface into the live workspace &mdash; not a FAQ bot. Ask about risk, pull a shipment list, or create a new entry, and Qubere queries your actual data and answers with follow-up actions.</p>
+      <div class="usecase-row">
+        <span class="usecase-label">Use Case</span>
+        <span class="usecase-text">An account manager on a client call gets asked &ldquo;what's at risk right now&rdquo; and needs the real number in five seconds, not a callback.</span>
+      </div>
+      <ul class="feature-bullets">
+        <li>Answers are grounded in live workspace data, not a canned script &mdash; shown live at right</li>
+        <li>Understands context: workspace, client, and shipment scope carry through the conversation</li>
+        <li>Proactively offers the next action (&ldquo;Would you like me to review its open exceptions?&rdquo;)</li>
+        <li>Can create records directly from chat &mdash; &ldquo;Create a shipment for ABC Manufacturing&rdquo;</li>
+      </ul>
+      <div class="demo-tip">
+        <div class="demo-tip-label">How to on Qubere</div>
+        <div class="demo-tip-text">Click <strong>Ask Qubere</strong> in the sidebar (or go to /chat) and type a question in plain English.</div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="shot-frame" style="max-width:900px;">
+        <div class="shot-frame-bar"><span class="shot-dot" style="background:#EF4444;"></span><span class="shot-dot" style="background:#F59E0B;"></span><span class="shot-dot" style="background:#22C55E;"></span></div>
+        <img src="screenshots/ask-qubere-chat.png" alt="Ask Qubere live chat answering a real question about critical shipments">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 31: FEATURES DETAILS -->
+<section class="slide slide-light" data-slide="31">
+  <div style="max-width:1200px;width:100%;padding:0 56px;">
+    <p class="eyebrow eyebrow-dark">Reference</p>
+    <div class="rule"></div>
+    <h2 style="font-family:var(--font-display);font-size:32px;font-weight:800;color:var(--slate-900);margin-bottom:4px;">Feature Details</h2>
+    <p style="font-family:var(--font-body);font-size:13px;color:var(--slate-500);margin-bottom:18px;">Every major capability, its benefit, and exactly where to find it on Qubere.</p>
+    <table class="data-table" style="font-size:11.5px;">
+      <thead>
+        <tr>
+          <th style="width:16%;">Feature</th>
+          <th style="width:56%;">Benefit</th>
+          <th style="width:28%;">How to on Qubere</th>
+        </tr>
+      </thead>
+      <tbody>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Command Center</td>
+                  <td>See value at risk, overdue filings, and AI throughput in one glance, across every shipment.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Command Center</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Actions Queue</td>
+                  <td>AI pre-triages every decision into Blocked / Needs Review / Verified so reviewers only touch exceptions.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Actions</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Shipment Workbench</td>
+                  <td>One live readiness gate across 11 compliance categories, per shipment, from intake to ACE.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Shipments &rarr; open a shipment</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Trade Documents</td>
+                  <td>AI extracts and classifies every invoice, B/L, and packing list automatically on upload.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Docs &rarr; Upload Document</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Customs Filing</td>
+                  <td>Track ABI/ACE entry status end to end without logging into CBP's portal.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Customs Filing &rarr; New Filing</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Compliance Monitor</td>
+                  <td>Continuous embargo, end-use, and restricted-party screening, tracked live by severity.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Compliance &rarr; Screening</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Post-Entry Management</td>
+                  <td>Drawback, ACE reconciliation, post-summary corrections, and Form 19 protests in one hub.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Post-Entry</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Duty Drawback &amp; Recovery</td>
+                  <td>One click scans filing history for unclaimed Section 301 and drawback refunds.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Post-Entry &rarr; Duty Drawback &rarr; Scan for Refund Opportunities</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Regulatory Intelligence</td>
+                  <td>Live CBP / Federal Register feed with AI impact assessment against your own catalog.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Tariffs &amp; Regs &rarr; Regulatory Updates</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Tariff &amp; Sourcing Simulator</td>
+                  <td>Model landed cost and sourcing breakeven before committing to a PO.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Tariffs &amp; Regs &rarr; Tariff Simulator</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Product Master</td>
+                  <td>One item master with evidence-backed, per-jurisdiction HTS classification.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Trade Data &rarr; Products &rarr; Add product</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Party Master</td>
+                  <td>One verified identity record per importer, supplier, and broker &mdash; what screening runs against.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Trade Data &rarr; Parties &rarr; Add party</td>
+                </tr>
+                <tr>
+                  <td style="font-weight:700;color:var(--slate-900);white-space:nowrap;">Ask Qubere (AI Chat)</td>
+                  <td>Query risk, pull data, or create records in plain English against live workspace data.</td>
+                  <td style="font-family:var(--font-mono);font-size:10.5px;color:var(--blue);white-space:nowrap;">Sidebar &rarr; Ask Qubere, or /chat</td>
+                </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
 
   </div>
   <nav class="dots-nav" id="dots">
-    <button class="dot" data-target="1" aria-label="Slide 1"></button><button class="dot" data-target="2" aria-label="Slide 2"></button><button class="dot" data-target="3" aria-label="Slide 3"></button><button class="dot" data-target="4" aria-label="Slide 4"></button><button class="dot" data-target="5" aria-label="Slide 5"></button><button class="dot" data-target="6" aria-label="Slide 6"></button><button class="dot" data-target="7" aria-label="Slide 7"></button><button class="dot" data-target="8" aria-label="Slide 8"></button><button class="dot" data-target="9" aria-label="Slide 9"></button><button class="dot" data-target="10" aria-label="Slide 10"></button><button class="dot" data-target="11" aria-label="Slide 11"></button><button class="dot" data-target="12" aria-label="Slide 12"></button><button class="dot" data-target="13" aria-label="Slide 13"></button><button class="dot" data-target="14" aria-label="Slide 14"></button><button class="dot" data-target="15" aria-label="Slide 15"></button><button class="dot" data-target="16" aria-label="Slide 16"></button><button class="dot" data-target="17" aria-label="Slide 17"></button>
+    <button class="dot" data-target="1" aria-label="Slide 1"></button><button class="dot" data-target="2" aria-label="Slide 2"></button><button class="dot" data-target="3" aria-label="Slide 3"></button><button class="dot" data-target="4" aria-label="Slide 4"></button><button class="dot" data-target="5" aria-label="Slide 5"></button><button class="dot" data-target="6" aria-label="Slide 6"></button><button class="dot" data-target="7" aria-label="Slide 7"></button><button class="dot" data-target="8" aria-label="Slide 8"></button><button class="dot" data-target="9" aria-label="Slide 9"></button><button class="dot" data-target="10" aria-label="Slide 10"></button><button class="dot" data-target="11" aria-label="Slide 11"></button><button class="dot" data-target="12" aria-label="Slide 12"></button><button class="dot" data-target="13" aria-label="Slide 13"></button><button class="dot" data-target="14" aria-label="Slide 14"></button><button class="dot" data-target="15" aria-label="Slide 15"></button><button class="dot" data-target="16" aria-label="Slide 16"></button><button class="dot" data-target="17" aria-label="Slide 17"></button><button class="dot" data-target="18" aria-label="Slide 18"></button><button class="dot" data-target="19" aria-label="Slide 19"></button><button class="dot" data-target="20" aria-label="Slide 20"></button><button class="dot" data-target="21" aria-label="Slide 21"></button><button class="dot" data-target="22" aria-label="Slide 22"></button><button class="dot" data-target="23" aria-label="Slide 23"></button><button class="dot" data-target="24" aria-label="Slide 24"></button><button class="dot" data-target="25" aria-label="Slide 25"></button><button class="dot" data-target="26" aria-label="Slide 26"></button><button class="dot" data-target="27" aria-label="Slide 27"></button><button class="dot" data-target="28" aria-label="Slide 28"></button><button class="dot" data-target="29" aria-label="Slide 29"></button><button class="dot" data-target="30" aria-label="Slide 30"></button><button class="dot" data-target="31" aria-label="Slide 31"></button>
   </nav>
-  <div class="slide-counter" id="counter">1 / 17</div>
+  <div class="slide-counter" id="counter">1 / 31</div>
 </div>
 <script>
 (function(){
   const sw = document.getElementById('sw');
   const dots = document.querySelectorAll('.dot');
   const counter = document.getElementById('counter');
-  const N = 17;
+  const N = 31;
   let cur = 1;
 
   function go(n){
