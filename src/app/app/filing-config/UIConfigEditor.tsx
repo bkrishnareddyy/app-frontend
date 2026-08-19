@@ -62,7 +62,7 @@ const styles = `
 interface ConfigSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (country: string, procedureCode: string, messageName: string, messageType: string, schemaVersion: string, transactionType: string) => void;
+  onSelect: (country: string, procedureCode: string, messageName: string, messageType: string, schemaVersion: string) => void;
 }
 
 function ConfigSelectorModal({ isOpen, onClose, onSelect }: ConfigSelectorModalProps) {
@@ -71,11 +71,10 @@ function ConfigSelectorModal({ isOpen, onClose, onSelect }: ConfigSelectorModalP
   const [messageName, setMessageName] = useState("IE501");
   const [messageType, setMessageType] = useState("request");
   const [schemaVersion, setSchemaVersion] = useState("1.0.0");
-  const [transactionType, setTransactionType] = useState("import");
 
   const handleSubmit = () => {
-    if (country && procedureCode && messageName && messageType && schemaVersion && transactionType) {
-      onSelect(country, procedureCode, messageName, messageType, schemaVersion, transactionType);
+    if (country && procedureCode && messageName && messageType && schemaVersion) {
+      onSelect(country, procedureCode, messageName, messageType, schemaVersion);
     }
   };
 
@@ -134,18 +133,6 @@ function ConfigSelectorModal({ isOpen, onClose, onSelect }: ConfigSelectorModalP
           </div>
 
           <div>
-            <label className="text-xs font-medium text-ink">Transaction Type <span className="text-red-600">*</span></label>
-            <select
-              value={transactionType}
-              onChange={(e) => setTransactionType(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="import">Import</option>
-              <option value="export">Export</option>
-            </select>
-          </div>
-
-          <div>
             <label className="text-xs font-medium text-ink">Schema Version <span className="text-red-600">*</span></label>
             <Input
               value={schemaVersion}
@@ -165,7 +152,7 @@ function ConfigSelectorModal({ isOpen, onClose, onSelect }: ConfigSelectorModalP
           variant="primary" 
           size="sm" 
           onClick={handleSubmit}
-          disabled={!country || !procedureCode || !messageName || !messageType || !schemaVersion || !transactionType}
+          disabled={!country || !procedureCode || !messageName || !messageType || !schemaVersion}
         >
           Continue
         </Button>
@@ -186,7 +173,6 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
   const [messageName, setMessageName] = useState<string>("");
   const [messageType, setMessageType] = useState<string>("");
   const [schemaVersion, setSchemaVersion] = useState<string>("");
-  const [transactionType, setTransactionType] = useState<string>("");
   const [showSelectorModal, setShowSelectorModal] = useState(!configId);
   
   // UI Config data state (NEW: FilingUIConfigData structure)
@@ -221,17 +207,17 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
   useEffect(() => {
     if (configId) {
       loadExistingConfig();
-    } else if (country && procedureCode && messageName && messageType && transactionType) {
+    } else if (country && procedureCode && messageName && messageType) {
       initializeNewConfig();
     }
-  }, [configId, country, procedureCode, messageName, messageType, transactionType]);
+  }, [configId, country, procedureCode, messageName, messageType]);
 
   // Load schema when target is selected
   useEffect(() => {
-    if (country && procedureCode && messageName && messageType && schemaVersion && transactionType) {
+    if (country && procedureCode && messageName && messageType && schemaVersion) {
       loadSchema();
     }
-  }, [country, procedureCode, messageName, messageType, schemaVersion, transactionType]);
+  }, [country, procedureCode, messageName, messageType, schemaVersion]);
 
   // Track unsaved changes
   useEffect(() => {
@@ -255,17 +241,11 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
       
       const data = await response.json();
       
-      // Derive transactionType from procedure code if not in database
-      // H* = import, E* = export
-      const derivedTransactionType = data.transactionType || 
-        (data.procedureCode?.toUpperCase().startsWith('H') ? 'import' : 'export');
-      
       // Set target info
       setCountry(data.country);
       setProcedureCode(data.procedureCode);
       setMessageName(data.messageName);
       setMessageType(data.messageType);
-      setTransactionType(derivedTransactionType);
       // Fix version: database has integer 1, but folder is "1.0.0"
       const versionStr = data.version?.toString() || "1";
       const normalizedVersion = versionStr.includes('.') ? versionStr : `${versionStr}.0.0`;
@@ -338,7 +318,7 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
       procedure: procedureCode,
       message: messageName,
       layoutMode: 'single-page', // Default layout
-      tags: [transactionType, messageType]
+      tags: [messageType]
     });
     
     setConfig(newConfig);
@@ -347,9 +327,9 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
 
   const loadSchema = async () => {
     // Validate all required params before attempting to load
-    if (!country || !procedureCode || !messageName || !messageType || !schemaVersion || !transactionType) {
+    if (!country || !procedureCode || !messageName || !messageType || !schemaVersion) {
       console.warn('⚠️ Schema load skipped - missing params:', { 
-        country, procedureCode, messageName, messageType, schemaVersion, transactionType 
+        country, procedureCode, messageName, messageType, schemaVersion 
       });
       return;
     }
@@ -360,7 +340,7 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
     try {
       const url = `/api/schemas/${country}/${procedureCode}/${messageName}/${messageType}?version=${schemaVersion}`;
       console.log('🔍 Loading schema from:', url);
-      console.log('📋 All params:', { country, procedureCode, messageName, messageType, schemaVersion, transactionType });
+      console.log('📋 All params:', { country, procedureCode, messageName, messageType, schemaVersion });
       
       const response = await fetch(url);
       
@@ -405,15 +385,13 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
     newProcedureCode: string,
     newMessageName: string,
     newMessageType: string,
-    newSchemaVersion: string,
-    newTransactionType: string
+    newSchemaVersion: string
   ) => {
     setCountry(newCountry);
     setProcedureCode(newProcedureCode);
     setMessageName(newMessageName);
     setMessageType(newMessageType);
     setSchemaVersion(newSchemaVersion);
-    setTransactionType(newTransactionType);
     setShowSelectorModal(false);
   };
 
@@ -526,7 +504,6 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
         procedureCode,
         messageName,
         messageType,
-        transactionType,
         configData: configToSave,
         isActive,
         version: parseInt(schemaVersion) || 1
@@ -607,7 +584,7 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
     hasWarnings: validationWarnings.length > 0
   } : null;
 
-  if (!country || !procedureCode || !messageName || !messageType || !schemaVersion || !transactionType) {
+  if (!country || !procedureCode || !messageName || !messageType || !schemaVersion) {
     return (
       <ConfigSelectorModal
         isOpen={showSelectorModal}
@@ -859,7 +836,6 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
           <span><strong>Procedure:</strong> {procedureCode}</span>
           <span><strong>Message:</strong> {messageName}</span>
           <span><strong>Type:</strong> {messageType}</span>
-          <span><strong>Transaction:</strong> {transactionType}</span>
           <span><strong>Version:</strong> {schemaVersion}</span>
         </div>
       </div>

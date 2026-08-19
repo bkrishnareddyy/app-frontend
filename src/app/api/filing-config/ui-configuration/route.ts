@@ -47,7 +47,6 @@ export async function GET(request: NextRequest) {
         procedureCode: c.procedureCode,
         messageName: c.messageName,
         messageType: c.messageType,
-        transactionType: c.transactionType,
         version: c.version,
         description: c.description,
         totalFields: configData.fields?.length || 0,
@@ -123,16 +122,15 @@ export async function POST(request: NextRequest) {
       configData.metadata.lastModifiedBy = userIdentifier;
       configData.metadata.lastModifiedAt = new Date().toISOString();
     }
-
+    
     // Check if configuration already exists
     const existing = await db.filingUIConfig.findUnique({
       where: {
-        country_procedureCode_messageName_messageType_transactionType: {
+        country_procedureCode_messageName_messageType: {
           country: body.country,
           procedureCode: body.procedureCode,
           messageName: body.messageName,
           messageType: body.messageType,
-          transactionType: body.transactionType || "import",
         }
       }
     });
@@ -159,7 +157,6 @@ export async function POST(request: NextRequest) {
           procedureCode: body.procedureCode,
           messageName: body.messageName,
           messageType: body.messageType,
-          transactionType: body.transactionType || "import",
           configData: body.configData,
           version: 1,
           description: body.description,

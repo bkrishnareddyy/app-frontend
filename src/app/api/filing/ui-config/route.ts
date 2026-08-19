@@ -1,7 +1,7 @@
 /**
  * API endpoint for fetching UI configuration for filing forms
  * 
- * GET /api/filing/ui-config?country=NL&procedureCode=H1&messageName=IE501&messageType=request&transactionType=import
+ * GET /api/filing/ui-config?country=NL&procedureCode=H1&messageName=IE501&messageType=request
  * 
  * Returns the complete UI configuration with tabs, sections, panels, and fields
  */
@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
     const procedureCode = searchParams.get("procedureCode");
     const messageName = searchParams.get("messageName");
     const messageType = searchParams.get("messageType") || "request";
-    const transactionType = searchParams.get("transactionType") || "import";
 
     // Validate required parameters
     if (!country || !procedureCode || !messageName) {
@@ -36,23 +35,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validate transactionType
-    if (transactionType !== "import" && transactionType !== "export") {
-      return NextResponse.json(
-        { error: "transactionType must be 'import' or 'export'" },
-        { status: 400 }
-      );
-    }
-
     // Fetch UI configuration
     const config = await db.filingUIConfig.findUnique({
       where: {
-        country_procedureCode_messageName_messageType_transactionType: {
+        country_procedureCode_messageName_messageType: {
           country,
           procedureCode,
           messageName,
           messageType,
-          transactionType,
         },
         isActive: true,
       },
@@ -62,7 +52,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { 
           error: "No UI configuration found for the specified parameters",
-          details: { country, procedureCode, messageName, messageType, transactionType }
+          details: { country, procedureCode, messageName, messageType }
         },
         { status: 404 }
       );
@@ -96,7 +86,6 @@ export async function GET(request: NextRequest) {
         procedureCode,
         messageName,
         messageType,
-        transactionType,
         version: config.version,
         legacy: true,
         sections,
@@ -115,7 +104,6 @@ export async function GET(request: NextRequest) {
       procedureCode,
       messageName,
       messageType,
-      transactionType,
       dbVersion: config.version,
       configVersion: configData.version,
       metadata: configData.metadata,
