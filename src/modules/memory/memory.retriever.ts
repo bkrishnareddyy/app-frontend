@@ -36,8 +36,9 @@ export class HybridMemoryRetriever {
     if (this.aiClient && process.env.GEMINI_API_KEY) {
       try {
         const response = await this.aiClient.models.embedContent({
-          model: "text-embedding-004",
+          model: "gemini-embedding-001",
           contents: text,
+          config: { outputDimensionality: 768 },
         });
         const resAny = response as any;
         const values = resAny.embedding?.values || resAny.embeddings?.[0]?.values;
