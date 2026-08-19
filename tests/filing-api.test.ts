@@ -41,15 +41,6 @@ const dbMock = {
   filingMessage: {
     create: vi.fn(),
   },
-  filingTransactionType: {
-    findUnique: vi.fn(),
-  },
-  filingActionMessageMapping: {
-    findUnique: vi.fn(),
-  },
-  filingProcedureConfig: {
-    findUnique: vi.fn(),
-  },
   section232Rate: {
     findMany: vi.fn().mockResolvedValue([]),
   },
@@ -85,7 +76,6 @@ function filingRecord(lineItems: unknown[]) {
     entryNumber: "5901-26-004872",
     entryType: "01",
     filingStatus: "BrokerApproved",
-    shipmentId: "shp_1",
     country: "US",
     procedureCode: "CBP_7501",
     transactionType: { code: "IMPORT" },
