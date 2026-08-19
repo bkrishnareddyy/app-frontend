@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { ShipmentEventBus } from "@/modules/events/shipmentEventBus";
 import { isPlaceholderValue, lineItemFactField } from "./lineItemReconciler";
 import { recomputeShipmentDeadlines } from "@/modules/deadlines/deadline.service";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 
 import { runReconciliationEngine, type DocumentGroup } from "@/lib/reconciliation/reconciliationEngine";
 
@@ -146,19 +147,17 @@ export class ReconciliationEngine {
         select: { id: true },
       });
       if (!existingEx) {
-        await db.exceptionItem.create({
-          data: {
-            shipmentId: shipment.id,
-            accountId: shipment.accountId,
-            code: exCode,
-            category: "CONFLICT",
-            type: "data_mismatch",
-            severity: exSeverity,
-            blocking: result.severity === "BLOCKING",
-            description: exDescription,
-            requiredAction: "Review both source documents and accept the correct value, or flag both as wrong.",
-            sourceAgent: "Reconciliation Engine",
-          },
+        await createExceptionItem({
+          shipmentId: shipment.id,
+          accountId: shipment.accountId,
+          code: exCode,
+          category: "CONFLICT",
+          type: "data_mismatch",
+          severity: exSeverity,
+          blocking: result.severity === "BLOCKING",
+          description: exDescription,
+          requiredAction: "Review both source documents and accept the correct value, or flag both as wrong.",
+          sourceAgent: "Reconciliation Engine",
         });
         exceptionsGenerated++;
         affectedAgentsSet.add("RECONCILIATION_ENGINE");
@@ -195,19 +194,17 @@ export class ReconciliationEngine {
     const missingImporterException = activeExceptions.find((e) => e.code === "MISSING_IMPORTER_OF_RECORD");
     if (!shipment.importerOfRecordId && !shipment.clientId && shipment.shipmentParties.length === 0) {
       if (!missingImporterException) {
-        await db.exceptionItem.create({
-          data: {
-            accountId: shipment.accountId,
-            shipmentId: shipment.id,
-            code: "MISSING_IMPORTER_OF_RECORD",
-            category: "MISSING_DATA",
-            type: "compliance_flag",
-            severity: "High",
-            description: "No Importer of Record or Client entity assigned to this shipment.",
-            blocking: true,
-            requiredAction: "Assign a Client or Importer of Record entity",
-            sourceAgent: "Reconciliation Engine",
-          },
+        await createExceptionItem({
+          accountId: shipment.accountId,
+          shipmentId: shipment.id,
+          code: "MISSING_IMPORTER_OF_RECORD",
+          category: "MISSING_DATA",
+          type: "compliance_flag",
+          severity: "High",
+          description: "No Importer of Record or Client entity assigned to this shipment.",
+          blocking: true,
+          requiredAction: "Assign a Client or Importer of Record entity",
+          sourceAgent: "Reconciliation Engine",
         });
         exceptionsGenerated++;
         affectedAgentsSet.add("COMPLIANCE_AUDIT");
@@ -229,19 +226,17 @@ export class ReconciliationEngine {
 
     if (unreviewedItems.length > 0) {
       if (!htsReviewException) {
-        await db.exceptionItem.create({
-          data: {
-            accountId: shipment.accountId,
-            shipmentId: shipment.id,
-            code: "HTS_REVIEW_REQUIRED",
-            category: "CLASSIFICATION",
-            type: "data_mismatch",
-            severity: "Medium",
-            description: `${unreviewedItems.length} line item(s) require tariff classification review.`,
-            blocking: false,
-            requiredAction: "Review and confirm HTS classification codes",
-            sourceAgent: "HTS Classification Agent",
-          },
+        await createExceptionItem({
+          accountId: shipment.accountId,
+          shipmentId: shipment.id,
+          code: "HTS_REVIEW_REQUIRED",
+          category: "CLASSIFICATION",
+          type: "data_mismatch",
+          severity: "Medium",
+          description: `${unreviewedItems.length} line item(s) require tariff classification review.`,
+          blocking: false,
+          requiredAction: "Review and confirm HTS classification codes",
+          sourceAgent: "HTS Classification Agent",
         });
         exceptionsGenerated++;
         affectedAgentsSet.add("HTS_CLASSIFICATION");
@@ -323,23 +318,21 @@ export class ReconciliationEngine {
 
       if (affectedLines.length > 0) {
         if (!existing) {
-          await db.exceptionItem.create({
-            data: {
-              accountId: shipment.accountId,
-              shipmentId: shipment.id,
-              documentId: invoiceDoc?.id ?? null,
-              code: check.code,
-              fieldKey: check.fieldKey,
-              category: "MISSING_DATA",
-              type: "data_mismatch",
-              severity: "Medium",
-              description: `${check.label} could not be extracted for ${affectedLines.length} line item(s) (line ${affectedLines
-                .map((i) => i.lineNumber)
-                .join(", ")})${docSuffix} -- confirm before filing.`,
-              blocking: false,
-              requiredAction: `Review and confirm ${check.label.toLowerCase()} for the affected line item(s)`,
-              sourceAgent: "Line Item Reconciler",
-            },
+          await createExceptionItem({
+            accountId: shipment.accountId,
+            shipmentId: shipment.id,
+            documentId: invoiceDoc?.id ?? null,
+            code: check.code,
+            fieldKey: check.fieldKey,
+            category: "MISSING_DATA",
+            type: "data_mismatch",
+            severity: "Medium",
+            description: `${check.label} could not be extracted for ${affectedLines.length} line item(s) (line ${affectedLines
+              .map((i) => i.lineNumber)
+              .join(", ")})${docSuffix} -- confirm before filing.`,
+            blocking: false,
+            requiredAction: `Review and confirm ${check.label.toLowerCase()} for the affected line item(s)`,
+            sourceAgent: "Line Item Reconciler",
           });
           exceptionsGenerated++;
           affectedAgentsSet.add("LINE_ITEM_RECONCILER");
@@ -382,19 +375,17 @@ export class ReconciliationEngine {
         (f) => f.category === finding.category && (finding.lineNumber == null || f.evidenceRef.includes(`Line ${finding.lineNumber}`))
       );
 
-      await db.exceptionItem.create({
-        data: {
-          accountId: shipment.accountId,
-          shipmentId: shipment.id,
-          code,
-          category: COMPLIANCE_EXCEPTION_CATEGORY[finding.category],
-          type: "compliance_flag",
-          severity: finding.severity === "CRITICAL" ? "Critical" : "High",
-          description: matchingFlag?.summary ?? finding.details,
-          blocking: finding.severity === "CRITICAL",
-          requiredAction: matchingFlag?.suggestedAction ?? "Manual compliance review required before filing.",
-          sourceAgent: "Compliance Agent",
-        },
+      await createExceptionItem({
+        accountId: shipment.accountId,
+        shipmentId: shipment.id,
+        code,
+        category: COMPLIANCE_EXCEPTION_CATEGORY[finding.category],
+        type: "compliance_flag",
+        severity: finding.severity === "CRITICAL" ? "Critical" : "High",
+        description: matchingFlag?.summary ?? finding.details,
+        blocking: finding.severity === "CRITICAL",
+        requiredAction: matchingFlag?.suggestedAction ?? "Manual compliance review required before filing.",
+        sourceAgent: "Compliance Agent",
       });
       exceptionsGenerated++;
       affectedAgentsSet.add("COMPLIANCE_AUDIT");

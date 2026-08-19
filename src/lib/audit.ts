@@ -55,6 +55,7 @@ export async function createAuditLog(params: CreateAuditLogParams) {
   try {
     let ipAddress = params.ipAddress;
     let userAgent = params.userAgent;
+    let headerSource: AuditSource | null = null;
 
     try {
       const headerList = await headers();
@@ -66,6 +67,10 @@ export async function createAuditLog(params: CreateAuditLogParams) {
       }
       if (!userAgent) {
         userAgent = headerList.get("user-agent") || null;
+      }
+      const xSource = headerList.get("x-qubere-source") || headerList.get("x-audit-source");
+      if (xSource === "CHAT" || xSource === "SYSTEM" || xSource === "API" || xSource === "UI") {
+        headerSource = xSource as AuditSource;
       }
     } catch {
       // Ignore if called outside request context
@@ -80,6 +85,11 @@ export async function createAuditLog(params: CreateAuditLogParams) {
           }
         : undefined;
 
+    const resolvedSource =
+      params.source && params.source !== "UI"
+        ? params.source
+        : (headerSource ?? params.source ?? "UI");
+
     return await db.auditLog.create({
       data: {
         accountId: params.accountId,
@@ -87,7 +97,7 @@ export async function createAuditLog(params: CreateAuditLogParams) {
         action: String(params.action),
         entity: params.entity,
         entityId: params.entityId,
-        source: params.source ?? "UI",
+        source: resolvedSource,
         metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : undefined,
         ipAddress: ipAddress || null,
         userAgent: userAgent || null,

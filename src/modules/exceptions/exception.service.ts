@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 import { ProviderMetadata } from "@/lib/providers";
 import {
   EXCEPTION_STATES,
@@ -29,6 +30,7 @@ export interface ExceptionUpdateInput {
   /** Picklist code from resolutionReasons.ts. Must be valid for the exception's category. */
   resolutionReasonCode?: string;
   resolutionEvidence?: string;
+  source?: string;
   expectedVersion: number;
 }
 
@@ -169,7 +171,7 @@ export class ExceptionService {
         action: AuditAction.EXCEPTION_RESOLVED,
         entity: "ExceptionItem",
         entityId: exceptionId,
-        source: "UI",
+        source: (input.source as any) || "UI",
         metadata: {
           fromStatus: existing.status,
           toStatus: nextStatus,
@@ -264,21 +266,19 @@ export class ExceptionService {
 
       if (!value) {
         if (!existingOpen) {
-          await db.exceptionItem.create({
-            data: {
-              accountId: input.accountId,
-              shipmentId: input.shipmentId,
-              documentId: input.documentId,
-              fieldKey,
-              code: `MISSING_FIELD:${fieldKey}`,
-              category: "MISSING_DATA",
-              type: "missing_document",
-              severity: "Medium",
-              blocking: false,
-              description: `${label} was not found on ${input.fileName}.`,
-              requiredAction: `Provide ${label} or confirm it's not applicable.`,
-              sourceAgent: "Document Intelligence Agent",
-            },
+          await createExceptionItem({
+            accountId: input.accountId,
+            shipmentId: input.shipmentId,
+            documentId: input.documentId,
+            fieldKey,
+            code: `MISSING_FIELD:${fieldKey}`,
+            category: "MISSING_DATA",
+            type: "missing_document",
+            severity: "Medium",
+            blocking: false,
+            description: `${label} was not found on ${input.fileName}.`,
+            requiredAction: `Provide ${label} or confirm it's not applicable.`,
+            sourceAgent: "Document Intelligence Agent",
           });
         }
       } else if (existingOpen) {
@@ -326,21 +326,19 @@ export class ExceptionService {
 
       if (!isPresent) {
         if (!existingOpen) {
-          await db.exceptionItem.create({
-            data: {
-              accountId: input.accountId,
-              shipmentId: input.shipmentId,
-              documentId: input.documentId,
-              fieldKey: fieldName,
-              code,
-              category: "MISSING_DATA",
-              type: "missing_document",
-              severity: "Medium",
-              blocking: false,
-              description: `${label} was not extracted from ${input.fileName}.`,
-              requiredAction: `Review document and provide ${label}, or confirm it is not applicable.`,
-              sourceAgent: "Document Intelligence Agent",
-            },
+          await createExceptionItem({
+            accountId: input.accountId,
+            shipmentId: input.shipmentId,
+            documentId: input.documentId,
+            fieldKey: fieldName,
+            code,
+            category: "MISSING_DATA",
+            type: "missing_document",
+            severity: "Medium",
+            blocking: false,
+            description: `${label} was not extracted from ${input.fileName}.`,
+            requiredAction: `Review document and provide ${label}, or confirm it is not applicable.`,
+            sourceAgent: "Document Intelligence Agent",
           });
         }
       } else if (existingOpen) {

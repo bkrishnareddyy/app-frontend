@@ -106,15 +106,46 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
 
   const form7501 = buildForm7501(filingHeaderInput, lineItemInputs, htsReleaseId);
 
-  const { searchParams } = new URL(req.url);
-  const format = searchParams.get("format");
   if (format === "pdf") {
     const pdfBuffer = generateForm7501PdfBuffer(form7501);
     return new Response(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="7501-${filing.entryNumber}.pdf"`,
+        "Content-Disposition": `attachment; filename="7501-${filing.entryNumber}.pdf"`,
+      },
+    });
+  }
+
+  if (format === "zip") {
+    const { generateZipBuffer } = await import("@/lib/zip/zipGenerator");
+    const pdfBuffer = generateForm7501PdfBuffer(form7501);
+    const jsonContent = JSON.stringify(form7501, null, 2);
+
+    const csvHeaders = ["Line", "Description", "HTS Code", "COO", "Quantity", "Value (USD)", "Duty Rate", "Duty (USD)"];
+    const csvRows = form7501.lineItems.map((li) => [
+      li.lineNumber,
+      `"${String(li.description.value || "").replace(/"/g, '""')}"`,
+      li.htsCode.value || "",
+      li.countryOfOrigin.value || "",
+      li.quantity.value ?? 1,
+      li.enteredValue.value ?? 0,
+      li.dutyRate.value != null ? `${(li.dutyRate.value * 100).toFixed(2)}%` : "0%",
+      li.dutyAmount.value ?? 0,
+    ].join(","));
+    const csvContent = [csvHeaders.join(","), ...csvRows].join("\n");
+
+    const zipBuffer = generateZipBuffer([
+      { filename: `7501-${filing.entryNumber}.pdf`, content: pdfBuffer },
+      { filename: `7501-${filing.entryNumber}-data.json`, content: jsonContent },
+      { filename: `7501-${filing.entryNumber}-line-items.csv`, content: csvContent },
+    ]);
+
+    return new Response(new Uint8Array(zipBuffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="7501-${filing.entryNumber}-package.zip"`,
       },
     });
   }

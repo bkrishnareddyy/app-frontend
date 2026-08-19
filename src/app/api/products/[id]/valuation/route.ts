@@ -3,6 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { calculateCustomsValuation, ValuationInput } from "@/lib/valuation/valuationEngine";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 
 export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, params }) => {
   const { id: productId } = params;
@@ -47,16 +48,14 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, pa
     if (lineItem) {
       // Task C-3: Flag related-party transaction and create ExceptionItem if relatedParty is true
       if (valuationResult.relatedParty) {
-        await db.exceptionItem.create({
-          data: {
-            accountId: ctx.accountId,
-            shipmentId: lineItem.shipmentId,
-            category: "VALUATION",
-            type: "compliance_flag",
-            severity: "High",
-            status: "Open",
-            description: `Line item ${lineItem.lineNumber} (${lineItem.description}) is a related-party transaction. Broker must document arm's-length transaction value test.`,
-          },
+        await createExceptionItem({
+          accountId: ctx.accountId,
+          shipmentId: lineItem.shipmentId,
+          category: "VALUATION",
+          type: "compliance_flag",
+          severity: "High",
+          status: "Open",
+          description: `Line item ${lineItem.lineNumber} (${lineItem.description}) is a related-party transaction. Broker must document arm's-length transaction value test.`,
         });
       }
 

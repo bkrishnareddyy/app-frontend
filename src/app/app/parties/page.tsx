@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Landmark, Upload } from "lucide-react";
 import { getAccountContext } from "@/lib/auth";
 import { canWrite } from "@/lib/api/write-access";
+import { getClientsData } from "@/lib/clients/clientsData";
 import { Badge } from "@/components/ui";
 import { SortableHeader } from "@/components/table/SortableHeader";
 import { TablePagination } from "@/components/table/TablePagination";
@@ -25,6 +26,7 @@ const PRESERVED_ON_SEARCH = [
   "reviewStatus",
   "roleType",
   "needsRevalidation",
+  "clientId",
   "sort",
   "dir",
   "pageSize",
@@ -43,8 +45,14 @@ export default async function PartiesPage(props: {
     else if (Array.isArray(value) && value.length > 0) params.set(key, value[0]);
   }
 
+  const [clientsRes, partyRes] = await Promise.all([
+    getClientsData(context),
+    listParties(partyActor(context, "page"), parsePartyQuery(params)),
+  ]);
+
   const query = parsePartyQuery(params);
-  const { rows, total } = await listParties(partyActor(context, "page"), query);
+  const clients = clientsRes.clients;
+  const { rows, total } = partyRes;
 
   const writable = canWrite(context);
   const mayCreate = writable && holdsPermission(context, "parties.create");
@@ -55,7 +63,14 @@ export default async function PartiesPage(props: {
   const chipHref = (patch: Record<string, string | number | null>) =>
     tableHref(BASE_PATH, params, { ...patch, page: null });
 
-  const hasFilter = Boolean(query.search || query.status || query.reviewStatus || query.roleType || query.needsRevalidation);
+  const hasFilter = Boolean(
+    query.search ||
+      query.status ||
+      query.reviewStatus ||
+      query.roleType ||
+      query.needsRevalidation ||
+      query.clientId
+  );
 
   const exportRows: PartyExportRow[] = rows.map((row) => ({
     id: row.id,
@@ -116,6 +131,25 @@ export default async function PartiesPage(props: {
               defaultValue={query.search ?? ""}
               className="w-full h-10 px-3 rounded-xl border border-border text-sm"
             />
+          </div>
+          <div>
+            <label htmlFor="party-client" className="block text-xs font-semibold text-ink-muted mb-1">
+              Client Scope
+            </label>
+            <select
+              id="party-client"
+              name="clientId"
+              defaultValue={query.clientId ?? ""}
+              className="h-10 px-3 rounded-xl border border-border text-sm bg-white"
+            >
+              <option value="">All Clients</option>
+              <option value="unassigned">Unassigned (Account-wide)</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label htmlFor="party-role" className="block text-xs font-semibold text-ink-muted mb-1">
@@ -189,6 +223,9 @@ export default async function PartiesPage(props: {
                   <th scope="col" className="px-3 xl:px-4 py-3.5">
                     Party
                   </th>
+                  <th scope="col" className="px-3 xl:px-4 py-3.5">
+                    Client Scope
+                  </th>
                   <SortableHeader
                     column="internalPartyCode"
                     label="Code"
@@ -239,6 +276,13 @@ export default async function PartiesPage(props: {
                           <span className="block mt-1">
                             <Badge variant="warning">{row.openRevalidationCount} to re-check</Badge>
                           </span>
+                        )}
+                      </td>
+                      <td className="px-3 xl:px-4 py-3 text-[#6E6E73]">
+                        {row.clientName ? (
+                          <Badge variant="neutral">{row.clientName}</Badge>
+                        ) : (
+                          <span className="text-xs text-ink-muted">Account-wide</span>
                         )}
                       </td>
                       <td className="px-3 xl:px-4 py-3 text-[#6E6E73]">

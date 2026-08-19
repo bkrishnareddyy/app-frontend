@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ShieldAlert,
   Plus,
   UserX,
@@ -179,6 +181,7 @@ export function CommandCenterClient({
   const [snapshots, setSnapshots] = useState<any[]>([]);
 
   const [selectedClientId, setSelectedClientId] = useState("ALL");
+  const [isQualityTrendsExpanded, setIsQualityTrendsExpanded] = useState(false);
 
   useEffect(() => {
     const query = selectedClientId !== "ALL" ? `?clientId=${selectedClientId}` : "";
@@ -327,139 +330,6 @@ export function CommandCenterClient({
   // ─── Sub-views ────────────────────────────────────────────────────────────
 
   const tableColCount = isEnterpriseAdmin ? 8 : 7;
-
-  const kpiTiles = (
-    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
-      {/* Tile 1: Unassigned (manager) / Value at Risk (solo) */}
-      {isEnterpriseAdmin ? (
-        <Link
-          href="/app/shipments"
-          className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
-        >
-          <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-red-600">
-            <span className="font-semibold min-w-0 leading-tight">Unassigned</span>
-            <UserX className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
-          </div>
-          <p className={`text-2xl font-extrabold ${unassignedCount > 0 ? "text-red-600" : "text-ink"}`}>
-            {unassignedCount}
-          </p>
-          <div className="min-h-8 w-full mt-2 bg-red-50 rounded-lg border border-red-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-red-700 font-semibold group-hover:bg-red-600 group-hover:text-white transition-all">
-            <span className="min-w-0 leading-tight">No broker assigned</span>
-            <ChevronRight className="w-3 h-3 shrink-0" />
-          </div>
-        </Link>
-      ) : (
-        <Link
-          href="/app/shipments"
-          className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
-        >
-          <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-red-600">
-            <span className="font-semibold min-w-0 leading-tight">Value at Risk</span>
-            <ShieldAlert className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
-          </div>
-          <p className="text-2xl font-extrabold text-ink">
-            {valueAtRiskCurrency
-              ? displayCurrency(Math.round(valueAtRisk), valueAtRiskCurrency)
-              : valueAtRisk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </p>
-          <div className="flex flex-wrap items-center justify-between mt-2 gap-x-2 gap-y-1">
-            <span className="text-[10px] text-ink-muted truncate">
-              {notReadyShipments.length} not ready
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap shrink-0">
-              {clearedShipments.length} cleared
-            </span>
-          </div>
-        </Link>
-      )}
-
-      {/* Tile 2: Overdue */}
-      <Link
-        href="/app/shipments"
-        className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-orange-400 hover:shadow-md transition-all cursor-pointer group block"
-      >
-        <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-orange-600">
-          <span className="font-semibold min-w-0 leading-tight">Overdue</span>
-          <Clock className="w-4 h-4 shrink-0 text-orange-500 group-hover:scale-110 transition-transform" />
-        </div>
-        <p className={`text-2xl font-extrabold ${overdueCount > 0 ? "text-orange-600" : "text-ink"}`}>
-          {overdueCount}
-        </p>
-        <div className="min-h-8 w-full mt-2 bg-orange-50 rounded-lg border border-orange-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-orange-700 font-semibold group-hover:bg-orange-500 group-hover:text-white transition-all">
-          <span className="min-w-0 leading-tight">Past ETA, not filed</span>
-          <ChevronRight className="w-3 h-3 shrink-0" />
-        </div>
-      </Link>
-
-      {/* Tile 3: Needs Action */}
-      <Link
-        href="/app/actions"
-        className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group block"
-      >
-        <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-amber-600">
-          <span className="font-semibold min-w-0 leading-tight">Needs Action</span>
-          <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 group-hover:scale-110 transition-transform" />
-        </div>
-        <p className={`text-2xl font-extrabold ${needsActionCount > 0 ? "text-amber-600" : "text-ink"}`}>
-          {needsActionCount}
-        </p>
-        <div className="min-h-8 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-amber-700 font-semibold group-hover:bg-amber-500 group-hover:text-white transition-all">
-          <span className="min-w-0 leading-tight">
-            {needsActionItems} {isEnterpriseAdmin ? "broker reviews" : "my reviews"}
-          </span>
-          <ChevronRight className="w-3 h-3 shrink-0" />
-        </div>
-      </Link>
-
-      {/* Tile 4: In Progress */}
-      <Link
-        href="/app/shipments"
-        className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group block"
-      >
-        <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-blue-600">
-          <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiTotal}</span>
-          <FileText className="w-4 h-4 shrink-0 text-blue-500 group-hover:scale-110 transition-transform" />
-        </div>
-        <p className="text-2xl font-extrabold text-ink">{inProgressCount}</p>
-        <div className="min-h-8 w-full mt-2 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-blue-600 font-semibold group-hover:bg-blue-600 group-hover:text-white transition-all">
-          <span className="min-w-0 leading-tight">Active pipelines</span>
-          <ChevronRight className="w-3 h-3 shrink-0" />
-        </div>
-      </Link>
-
-      {/* Tile 5: Ready to File */}
-      <Link
-        href="/app/filing"
-        className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
-      >
-        <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-emerald-600">
-          <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiReady}</span>
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
-        </div>
-        <p className="text-2xl font-extrabold text-emerald-600">{readyToFileCount}</p>
-        <div className="min-h-8 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-emerald-700 font-semibold group-hover:bg-emerald-600 group-hover:text-white transition-all">
-          <span className="min-w-0 leading-tight">Verified for ACE</span>
-          <ChevronRight className="w-3 h-3 shrink-0" />
-        </div>
-      </Link>
-
-      {/* Tile 6: Completed */}
-      <Link
-        href="/app/filing"
-        className="bg-white p-5 rounded-2xl border border-border shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
-      >
-        <div className="flex items-start justify-between gap-2 text-xs text-ink-muted mb-2 group-hover:text-emerald-600">
-          <span className="font-semibold min-w-0 leading-tight">Completed</span>
-          <TrendingUp className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
-        </div>
-        <p className="text-2xl font-extrabold text-ink">{completedCount}</p>
-        <div className="min-h-8 w-full mt-2 bg-slate-50 rounded-lg border border-border flex items-center justify-between gap-1 px-2 py-1 text-[10px] text-ink-muted font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
-          <span className="min-w-0 leading-tight">Audit settled</span>
-          <ChevronRight className="w-3 h-3 shrink-0" />
-        </div>
-      </Link>
-    </div>
-  );
 
   const shipmentTable = (
     <div className="bg-white p-6 rounded-3xl border border-border shadow-2xs space-y-4">
@@ -935,70 +805,208 @@ export function CommandCenterClient({
         </Link>
       </div>
 
-      {/* ─── Section 1: Queue at a Glance (D-2, D-4) ─── */}
+      {/* ─── Section 1: Queue at a Glance (Merged with KPI Tiles in one line) ─── */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
             <h3 className="text-sm font-bold text-slate-900 tracking-tight">Queue at a Glance</h3>
           </div>
-          <span className="text-xs font-medium text-slate-500">Live operational backlog</span>
+          <span className="text-xs font-medium text-slate-500">Live operational backlog & pipeline overview</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Open Exceptions</span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-extrabold text-red-600">{liveMetrics?.openExceptions ?? filteredShipments.reduce((s, sh) => s + (sh.openExceptions ?? 0), 0)}</span>
-              <span className="text-xs text-slate-500">items requiring action</span>
+        {/* Unified 1-line grid of operational KPI tiles */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
+          {/* Tile 1: Open Exceptions (Clickable -> /app/actions) */}
+          <Link
+            href="/app/actions"
+            className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
+          >
+            <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-red-600">
+              <span className="font-semibold min-w-0 leading-tight">Open Exceptions</span>
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
             </div>
-          </div>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Avg Exception Age</span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-extrabold text-amber-700">
+            <p className={`text-2xl font-extrabold ${(liveMetrics?.openExceptions ?? filteredShipments.reduce((s, sh) => s + (sh.openExceptions ?? 0), 0)) > 0 ? "text-red-600" : "text-ink"}`}>
+              {liveMetrics?.openExceptions ?? filteredShipments.reduce((s, sh) => s + (sh.openExceptions ?? 0), 0)}
+            </p>
+            <div className="min-h-7 w-full mt-2 bg-red-50 rounded-lg border border-red-100 flex items-center justify-between gap-1 px-2 py-0.5 text-[10px] text-red-700 font-semibold group-hover:bg-red-600 group-hover:text-white transition-all">
+              <span className="min-w-0 leading-tight truncate">Items requiring action</span>
+              <ChevronRight className="w-3 h-3 shrink-0" />
+            </div>
+          </Link>
+
+          {/* Tile 2: Unassigned / Value at Risk */}
+          {isEnterpriseAdmin ? (
+            <Link
+              href="/app/shipments"
+              className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
+            >
+              <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-red-600">
+                <span className="font-semibold min-w-0 leading-tight">Unassigned</span>
+                <UserX className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
+              </div>
+              <p className={`text-2xl font-extrabold ${unassignedCount > 0 ? "text-red-600" : "text-ink"}`}>
+                {unassignedCount}
+              </p>
+              <div className="min-h-7 w-full mt-2 bg-red-50 rounded-lg border border-red-100 flex items-center justify-between gap-1 px-2 py-0.5 text-[10px] text-red-700 font-semibold group-hover:bg-red-600 group-hover:text-white transition-all">
+                <span className="min-w-0 leading-tight truncate">No broker assigned</span>
+                <ChevronRight className="w-3 h-3 shrink-0" />
+              </div>
+            </Link>
+          ) : (
+            <Link
+              href="/app/shipments"
+              className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-red-400 hover:shadow-md transition-all cursor-pointer group block"
+            >
+              <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-red-600">
+                <span className="font-semibold min-w-0 leading-tight">Value at Risk</span>
+                <ShieldAlert className="w-4 h-4 shrink-0 text-red-500 group-hover:scale-110 transition-transform" />
+              </div>
+              <p className="text-2xl font-extrabold text-ink truncate">
+                {valueAtRiskCurrency
+                  ? displayCurrency(Math.round(valueAtRisk), valueAtRiskCurrency)
+                  : valueAtRisk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <div className="flex items-center justify-between mt-2 text-[10px] text-ink-muted">
+                <span className="truncate">{notReadyShipments.length} not ready</span>
+                <span className="font-semibold text-emerald-700">{clearedShipments.length} cleared</span>
+              </div>
+            </Link>
+          )}
+
+          {/* Tile 3: Overdue */}
+          <Link
+            href="/app/shipments"
+            className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-orange-400 hover:shadow-md transition-all cursor-pointer group block"
+          >
+            <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-orange-600">
+              <span className="font-semibold min-w-0 leading-tight">Overdue</span>
+              <Clock className="w-4 h-4 shrink-0 text-orange-500 group-hover:scale-110 transition-transform" />
+            </div>
+            <p className={`text-2xl font-extrabold ${overdueCount > 0 ? "text-orange-600" : "text-ink"}`}>
+              {overdueCount}
+            </p>
+            <div className="min-h-7 w-full mt-2 bg-orange-50 rounded-lg border border-orange-100 flex items-center justify-between gap-1 px-2 py-0.5 text-[10px] text-orange-700 font-semibold group-hover:bg-orange-500 group-hover:text-white transition-all">
+              <span className="min-w-0 leading-tight truncate">Past ETA, not filed</span>
+              <ChevronRight className="w-3 h-3 shrink-0" />
+            </div>
+          </Link>
+
+          {/* Tile 4: Needs Action */}
+          <Link
+            href="/app/actions"
+            className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group block"
+          >
+            <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-amber-600">
+              <span className="font-semibold min-w-0 leading-tight">Needs Action</span>
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 group-hover:scale-110 transition-transform" />
+            </div>
+            <p className={`text-2xl font-extrabold ${needsActionCount > 0 ? "text-amber-600" : "text-ink"}`}>
+              {needsActionCount}
+            </p>
+            <div className="min-h-7 w-full mt-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between gap-1 px-2 py-0.5 text-[10px] text-amber-700 font-semibold group-hover:bg-amber-500 group-hover:text-white transition-all">
+              <span className="min-w-0 leading-tight truncate">
+                {needsActionItems} {isEnterpriseAdmin ? "broker reviews" : "my reviews"}
+              </span>
+              <ChevronRight className="w-3 h-3 shrink-0" />
+            </div>
+          </Link>
+
+          {/* Tile 5: Total Active Filings */}
+          <Link
+            href="/app/shipments"
+            className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group block"
+          >
+            <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-blue-600">
+              <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiTotal}</span>
+              <FileText className="w-4 h-4 shrink-0 text-blue-500 group-hover:scale-110 transition-transform" />
+            </div>
+            <p className="text-2xl font-extrabold text-ink">{inProgressCount}</p>
+            <div className="min-h-7 w-full mt-2 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-between gap-1 px-2 py-0.5 text-[10px] text-blue-600 font-semibold group-hover:bg-blue-600 group-hover:text-white transition-all">
+              <span className="min-w-0 leading-tight truncate">Active pipelines</span>
+              <ChevronRight className="w-3 h-3 shrink-0" />
+            </div>
+          </Link>
+
+          {/* Tile 6: Ready to File (CBP) */}
+          <Link
+            href="/app/filing"
+            className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
+          >
+            <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-emerald-600">
+              <span className="font-semibold min-w-0 leading-tight">{t.dashboard.kpiReady}</span>
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
+            </div>
+            <p className="text-2xl font-extrabold text-emerald-600">{readyToFileCount}</p>
+            <div className="min-h-7 w-full mt-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between gap-1 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold group-hover:bg-emerald-600 group-hover:text-white transition-all">
+              <span className="min-w-0 leading-tight truncate">Verified for ACE</span>
+              <ChevronRight className="w-3 h-3 shrink-0" />
+            </div>
+          </Link>
+
+          {/* Tile 7: Completed */}
+          <Link
+            href="/app/filing"
+            className="bg-white p-4 rounded-xl border border-border shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group block"
+          >
+            <div className="flex items-start justify-between gap-1.5 text-xs text-ink-muted mb-1.5 group-hover:text-emerald-600">
+              <span className="font-semibold min-w-0 leading-tight">Completed</span>
+              <TrendingUp className="w-4 h-4 shrink-0 text-emerald-500 group-hover:scale-110 transition-transform" />
+            </div>
+            <p className="text-2xl font-extrabold text-ink">{completedCount}</p>
+            <div className="min-h-7 w-full mt-2 bg-slate-50 rounded-lg border border-border flex items-center justify-between gap-1 px-2 py-0.5 text-[10px] text-ink-muted font-semibold group-hover:bg-slate-800 group-hover:text-white transition-all">
+              <span className="min-w-0 leading-tight truncate">Audit settled</span>
+              <ChevronRight className="w-3 h-3 shrink-0" />
+            </div>
+          </Link>
+        </div>
+
+        {/* Secondary exception metrics */}
+        <div className="pt-3 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-slate-100">
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Avg Exception Age</span>
+              <span className="text-xl font-extrabold text-amber-700">
                 {liveMetrics?.exceptionAgeAvgHours != null ? `${liveMetrics.exceptionAgeAvgHours} hrs` : "—"}
               </span>
-              <span className="text-xs text-slate-500">time in queue</span>
             </div>
+            <span className="text-xs text-slate-500 font-medium">time in queue</span>
           </div>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Human Touch Rate</span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-extrabold text-indigo-700">
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Human Touch Rate</span>
+              <span className="text-xl font-extrabold text-indigo-700">
                 {liveMetrics?.touchRate != null ? `${liveMetrics.touchRate}%` : "—"}
               </span>
-              <span className="text-xs text-slate-500">manual intervention</span>
             </div>
+            <span className="text-xs text-slate-500 font-medium">manual intervention</span>
           </div>
-        </div>
-
-        {/* Exception Age-Bucket Bar Chart (D-4) */}
-        <div className="pt-2">
-          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">Exception Age Distribution (D-4)</span>
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { label: "0-24h", value: liveMetrics?.exceptionAgeBuckets?.under24h ?? 0, color: "bg-emerald-500" },
-              { label: "1-7d", value: liveMetrics?.exceptionAgeBuckets?.days1to7 ?? 0, color: "bg-amber-500" },
-              { label: "7-30d", value: liveMetrics?.exceptionAgeBuckets?.days7to30 ?? 0, color: "bg-orange-500" },
-              { label: "30+d", value: liveMetrics?.exceptionAgeBuckets?.over30d ?? 0, color: "bg-red-500" },
-            ].map((bucket, _, arr) => {
-              const maxVal = Math.max(1, ...arr.map((b) => b.value));
-              return (
-                <div key={bucket.label} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="font-semibold text-slate-700">{bucket.label}</span>
-                    <span className="font-extrabold text-slate-900">{bucket.value}</span>
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Exception Age Distribution</span>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: "0-24h", value: liveMetrics?.exceptionAgeBuckets?.under24h ?? 0, color: "bg-emerald-500" },
+                { label: "1-7d", value: liveMetrics?.exceptionAgeBuckets?.days1to7 ?? 0, color: "bg-amber-500" },
+                { label: "7-30d", value: liveMetrics?.exceptionAgeBuckets?.days7to30 ?? 0, color: "bg-orange-500" },
+                { label: "30+d", value: liveMetrics?.exceptionAgeBuckets?.over30d ?? 0, color: "bg-red-500" },
+              ].map((bucket, _, arr) => {
+                const maxVal = Math.max(1, ...arr.map((b) => b.value));
+                return (
+                  <div key={bucket.label} className="flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-[10px] mb-1">
+                      <span className="font-semibold text-slate-600">{bucket.label}</span>
+                      <span className="font-extrabold text-slate-900">{bucket.value}</span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${bucket.color} transition-all`}
+                        style={{ width: `${Math.min(100, (bucket.value / maxVal) * 100)}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${bucket.color} transition-all`}
-                      style={{ width: `${Math.min(100, (bucket.value / maxVal) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -1065,195 +1073,6 @@ export function CommandCenterClient({
         </div>
       </div>
 
-      {/* ─── Section 3: Quality Trends (D-2) ─── */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Quality Trends</h3>
-          </div>
-          <span className="text-xs font-medium text-slate-500">Historical accuracy & touch rate</span>
-        </div>
-
-        {totalResolved > 0 && (
-          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex items-center gap-6 flex-wrap">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-md bg-brand/10 flex items-center justify-center shrink-0">
-                <TrendingUp className="w-3 h-3 text-brand" />
-              </div>
-              <span className="text-[11px] font-bold text-ink uppercase tracking-wider">AI Throughput</span>
-            </div>
-            <div className="flex items-center gap-4 flex-wrap text-[11px]">
-              <span className="text-ink-muted">
-                Auto-certified:{" "}
-                <span className="font-bold text-emerald-700">{autoCertified}</span>
-              </span>
-              <span className="text-ink-muted">
-                Human reviewed:{" "}
-                <span className="font-bold text-ink">{humanReviewed}</span>
-              </span>
-              {touchRate !== null && (
-                <span className="text-ink-muted">
-                  Touch rate:{" "}
-                  <span className={`font-bold ${touchRate <= 20 ? "text-emerald-700" : touchRate <= 50 ? "text-amber-600" : "text-red-600"}`}>
-                    {touchRate}%
-                  </span>
-                </span>
-              )}
-            </div>
-            {touchRate !== null && (
-              <div className="flex-1 min-w-24 max-w-48 h-1.5 rounded-full bg-surface-muted overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-emerald-400 transition-all"
-                  style={{ width: `${100 - touchRate}%` }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Agent Operations */}
-        {agentOperations.length > 0 && (
-          <div className="pt-2">
-            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">Agent Operations</span>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-1.5 pr-4">Agent</th>
-                    <th className="py-1.5 pr-4">Processed</th>
-                    <th className="py-1.5 pr-4">Review</th>
-                    <th className="py-1.5 pr-4">Blocked</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agentOperations.map((row) => (
-                    <tr key={row.agentName} className="border-t border-slate-100">
-                      <td className="py-1.5 pr-4 font-semibold text-slate-800">{row.agentName}</td>
-                      <td className="py-1.5 pr-4 text-slate-700">{row.processed}</td>
-                      <td className="py-1.5 pr-4">
-                        {row.needsReview > 0 ? (
-                          <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">{row.needsReview}</span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="py-1.5 pr-4">
-                        {row.blocked > 0 ? (
-                          <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 font-bold">{row.blocked}</span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Classification Signals / Product Intelligence / Review Queue */}
-        {(classificationSignals || productIntelligenceSignals || reviewQueue) && (
-          <div className="pt-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {classificationSignals && (
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-2">Classification Signals</span>
-                <div className="flex flex-wrap gap-1.5 text-[11px]">
-                  <Link href="/app/products?unclassified=true" className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold hover:opacity-80">
-                    {classificationSignals.newOrInProgress} in progress
-                  </Link>
-                  {classificationSignals.humanReviewRequired > 0 && (
-                    <Link href="/app/products?reviewStatus=NEEDS_REVIEW" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {classificationSignals.humanReviewRequired} needs review
-                    </Link>
-                  )}
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
-                    {classificationSignals.approved} approved
-                  </span>
-                  {classificationSignals.overridden > 0 && (
-                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
-                      {classificationSignals.overridden} overridden
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {productIntelligenceSignals && (
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-2">Product Intelligence</span>
-                <div className="flex flex-wrap gap-1.5 text-[11px]">
-                  {productIntelligenceSignals.classificationRevalidationRequired > 0 && (
-                    <Link href="/app/products?needsRevalidation=true" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {productIntelligenceSignals.classificationRevalidationRequired} classification revalidation
-                    </Link>
-                  )}
-                  {productIntelligenceSignals.originRevalidationRequired > 0 && (
-                    <Link href="/app/products?needsRevalidation=true" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {productIntelligenceSignals.originRevalidationRequired} origin revalidation
-                    </Link>
-                  )}
-                  {productIntelligenceSignals.regulatoryRevalidationRequired > 0 && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">
-                      {productIntelligenceSignals.regulatoryRevalidationRequired} regulatory revalidation
-                    </span>
-                  )}
-                  {productIntelligenceSignals.valuationReviewRequired > 0 && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">
-                      {productIntelligenceSignals.valuationReviewRequired} valuation review
-                    </span>
-                  )}
-                  <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
-                    {productIntelligenceSignals.significantChanges30d} significant changes (30d)
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {reviewQueue && (
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-2">My Review Queue</span>
-                <div className="flex flex-wrap gap-1.5 text-[11px]">
-                  {reviewQueue.classification > 0 && (
-                    <Link href="/app/products?reviewStatus=NEEDS_REVIEW" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {reviewQueue.classification} classification
-                    </Link>
-                  )}
-                  {reviewQueue.productIntelligence > 0 && (
-                    <Link href="/app/products?reviewStatus=NEEDS_REVIEW" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {reviewQueue.productIntelligence} product
-                    </Link>
-                  )}
-                  {reviewQueue.documentIntelligence > 0 && (
-                    <Link href="/app/actions" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {reviewQueue.documentIntelligence} document
-                    </Link>
-                  )}
-                  {reviewQueue.origin > 0 && (
-                    <Link href="/app/actions" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {reviewQueue.origin} origin
-                    </Link>
-                  )}
-                  {reviewQueue.valuation > 0 && (
-                    <Link href="/app/actions" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
-                      {reviewQueue.valuation} valuation
-                    </Link>
-                  )}
-                  {reviewQueue.classification === 0 &&
-                    reviewQueue.productIntelligence === 0 &&
-                    reviewQueue.documentIntelligence === 0 &&
-                    reviewQueue.origin === 0 &&
-                    reviewQueue.valuation === 0 && (
-                      <span className="text-slate-400">Queue is clear</span>
-                    )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* ─── Requires Attention (deterministic priority, top 5) ─── */}
       {attentionShipments.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
@@ -1303,12 +1122,9 @@ export function CommandCenterClient({
           {decisionsTruncated && (
             <>Agent throughput reflects the {initialDecisions.length} most recent of {decisionTotalCount} decisions. </>
           )}
-          KPI tiles below only cover the shipments/decisions shown.
+          KPI tiles above only cover the shipments/decisions shown.
         </div>
       )}
-
-      {/* KPI tiles */}
-      {kpiTiles}
 
       {/* Main content — two-column for managers, full-width for solo brokers */}
       {isEnterpriseAdmin ? (
@@ -1319,6 +1135,213 @@ export function CommandCenterClient({
       ) : (
         shipmentTable
       )}
+
+      {/* ─── Expandable Quality Trends (at the bottom) ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+        <button
+          type="button"
+          onClick={() => setIsQualityTrendsExpanded(!isQualityTrendsExpanded)}
+          className="w-full flex items-center justify-between text-left cursor-pointer group"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-brand transition-colors">
+              Quality Trends
+            </h3>
+            <span className="text-xs font-medium text-slate-500 ml-2">Historical accuracy & touch rate</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 group-hover:text-brand transition-colors">
+            <span>{isQualityTrendsExpanded ? "Hide Quality Trends" : "Expand Quality Trends"}</span>
+            {isQualityTrendsExpanded ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </div>
+        </button>
+
+        {isQualityTrendsExpanded && (
+          <div className="space-y-4 pt-2 border-t border-slate-100 transition-all">
+            {totalResolved > 0 && (
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex items-center gap-6 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-brand/10 flex items-center justify-center shrink-0">
+                    <TrendingUp className="w-3 h-3 text-brand" />
+                  </div>
+                  <span className="text-[11px] font-bold text-ink uppercase tracking-wider">AI Throughput</span>
+                </div>
+                <div className="flex items-center gap-4 flex-wrap text-[11px]">
+                  <span className="text-ink-muted">
+                    Auto-certified:{" "}
+                    <span className="font-bold text-emerald-700">{autoCertified}</span>
+                  </span>
+                  <span className="text-ink-muted">
+                    Human reviewed:{" "}
+                    <span className="font-bold text-ink">{humanReviewed}</span>
+                  </span>
+                  {touchRate !== null && (
+                    <span className="text-ink-muted">
+                      Touch rate:{" "}
+                      <span className={`font-bold ${touchRate <= 20 ? "text-emerald-700" : touchRate <= 50 ? "text-amber-600" : "text-red-600"}`}>
+                        {touchRate}%
+                      </span>
+                    </span>
+                  )}
+                </div>
+                {touchRate !== null && (
+                  <div className="flex-1 min-w-24 max-w-48 h-1.5 rounded-full bg-surface-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-emerald-400 transition-all"
+                      style={{ width: `${100 - touchRate}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Agent Operations */}
+            {agentOperations.length > 0 && (
+              <div className="pt-2">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">Agent Operations</span>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th className="py-1.5 pr-4">Agent</th>
+                        <th className="py-1.5 pr-4">Processed</th>
+                        <th className="py-1.5 pr-4">Review</th>
+                        <th className="py-1.5 pr-4">Blocked</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agentOperations.map((row) => (
+                        <tr key={row.agentName} className="border-t border-slate-100">
+                          <td className="py-1.5 pr-4 font-semibold text-slate-800">{row.agentName}</td>
+                          <td className="py-1.5 pr-4 text-slate-700">{row.processed}</td>
+                          <td className="py-1.5 pr-4">
+                            {row.needsReview > 0 ? (
+                              <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">{row.needsReview}</span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 pr-4">
+                            {row.blocked > 0 ? (
+                              <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 font-bold">{row.blocked}</span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Classification Signals / Product Intelligence / Review Queue */}
+            {(classificationSignals || productIntelligenceSignals || reviewQueue) && (
+              <div className="pt-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                {classificationSignals && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-2">Classification Signals</span>
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      <Link href="/app/products?unclassified=true" className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold hover:opacity-80">
+                        {classificationSignals.newOrInProgress} in progress
+                      </Link>
+                      {classificationSignals.humanReviewRequired > 0 && (
+                        <Link href="/app/products?reviewStatus=NEEDS_REVIEW" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {classificationSignals.humanReviewRequired} needs review
+                        </Link>
+                      )}
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                        {classificationSignals.approved} approved
+                      </span>
+                      {classificationSignals.overridden > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
+                          {classificationSignals.overridden} overridden
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {productIntelligenceSignals && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-2">Product Intelligence</span>
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      {productIntelligenceSignals.classificationRevalidationRequired > 0 && (
+                        <Link href="/app/products?needsRevalidation=true" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {productIntelligenceSignals.classificationRevalidationRequired} classification revalidation
+                        </Link>
+                      )}
+                      {productIntelligenceSignals.originRevalidationRequired > 0 && (
+                        <Link href="/app/products?needsRevalidation=true" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {productIntelligenceSignals.originRevalidationRequired} origin revalidation
+                        </Link>
+                      )}
+                      {productIntelligenceSignals.regulatoryRevalidationRequired > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                          {productIntelligenceSignals.regulatoryRevalidationRequired} regulatory revalidation
+                        </span>
+                      )}
+                      {productIntelligenceSignals.valuationReviewRequired > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                          {productIntelligenceSignals.valuationReviewRequired} valuation review
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
+                        {productIntelligenceSignals.significantChanges30d} significant changes (30d)
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {reviewQueue && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-2">My Review Queue</span>
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      {reviewQueue.classification > 0 && (
+                        <Link href="/app/products?reviewStatus=NEEDS_REVIEW" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {reviewQueue.classification} classification
+                        </Link>
+                      )}
+                      {reviewQueue.productIntelligence > 0 && (
+                        <Link href="/app/products?reviewStatus=NEEDS_REVIEW" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {reviewQueue.productIntelligence} product
+                        </Link>
+                      )}
+                      {reviewQueue.documentIntelligence > 0 && (
+                        <Link href="/app/actions" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {reviewQueue.documentIntelligence} document
+                        </Link>
+                      )}
+                      {reviewQueue.origin > 0 && (
+                        <Link href="/app/actions" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {reviewQueue.origin} origin
+                        </Link>
+                      )}
+                      {reviewQueue.valuation > 0 && (
+                        <Link href="/app/actions" className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:opacity-80">
+                          {reviewQueue.valuation} valuation
+                        </Link>
+                      )}
+                      {reviewQueue.classification === 0 &&
+                        reviewQueue.productIntelligence === 0 &&
+                        reviewQueue.documentIntelligence === 0 &&
+                        reviewQueue.origin === 0 &&
+                        reviewQueue.valuation === 0 && (
+                          <span className="text-slate-400">Queue is clear</span>
+                        )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

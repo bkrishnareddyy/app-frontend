@@ -22,9 +22,10 @@
  *     document; a fact created by hand says so. Nothing invents a source.
  */
 
-import type { Prisma, PrismaClient, Product } from "@prisma/client";
+import type { LegalEntity, Prisma, PrismaClient, Product } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 import { DomainError } from "@/lib/api/error";
 import {
   buildProductOrderBy,
@@ -78,6 +79,8 @@ type Tx = Prisma.TransactionClient | PrismaClient;
 
 const LIST_SELECT = {
   id: true,
+  clientId: true,
+  client: { select: { id: true, name: true } },
   internalSku: true,
   productName: true,
   brand: true,
@@ -91,6 +94,8 @@ const LIST_SELECT = {
 
 export interface ProductListRow {
   id: string;
+  clientId: string | null;
+  clientName: string | null;
   internalSku: string | null;
   productName: string;
   brand: string | null;
@@ -145,6 +150,8 @@ export async function listProducts(
       const approved = row.classifications.filter((c) => c.status === "APPROVED");
       return {
         id: row.id,
+        clientId: row.clientId,
+        clientName: row.client?.name ?? null,
         internalSku: row.internalSku,
         productName: row.productName,
         brand: row.brand,
@@ -163,6 +170,7 @@ export async function listProducts(
 }
 
 const DETAIL_INCLUDE = {
+  client: { select: { id: true, name: true } },
   identifiers: { orderBy: [{ isPrimary: "desc" }, { identifierType: "asc" }] },
   attributes: { orderBy: { attributeCode: "asc" } },
   compositions: { orderBy: [{ percentage: "desc" }, { material: "asc" }] },
@@ -251,10 +259,9 @@ async function requireOwnedLegalEntity(
   tx: Tx,
   actor: ProductActor,
   legalEntityId: string
-): Promise<string> {
+): Promise<LegalEntity> {
   const entity = await tx.legalEntity.findFirst({
     where: { id: legalEntityId, accountId: actor.accountId },
-    select: { id: true },
   });
   if (entity === null) {
     throw new DomainError(
@@ -263,7 +270,26 @@ async function requireOwnedLegalEntity(
       404
     );
   }
-  return entity.id;
+  return entity;
+}
+
+export async function requireOwnedClient(
+  tx: Tx | typeof db,
+  actor: ProductActor,
+  clientId: string
+): Promise<string> {
+  const client = await tx.client.findFirst({
+    where: { id: clientId, accountId: actor.accountId },
+    select: { id: true },
+  });
+  if (client === null) {
+    throw new DomainError(
+      "That client does not exist in this account.",
+      "CLIENT_NOT_FOUND",
+      404
+    );
+  }
+  return client.id;
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +446,9 @@ export async function createProduct(
   actor: ProductActor,
   input: CreateProductInput
 ): Promise<ProductDetail> {
+  if (input.clientId) {
+    await requireOwnedClient(db, actor, input.clientId);
+  }
   const internalSku = trimToNull(input.internalSku ?? null);
   if (internalSku !== null) {
     const clash = await db.product.findFirst({
@@ -503,12 +532,12 @@ export async function createProduct(
     }
 
     for (const party of input.parties ?? []) {
-      const legalEntityId = await requireOwnedLegalEntity(tx, actor, party.legalEntityId);
+      const legalEntity = await requireOwnedLegalEntity(tx, actor, party.legalEntityId);
       await tx.productParty.create({
         data: {
           accountId: actor.accountId,
           productId: created.id,
-          legalEntityId,
+          legalEntityId: legalEntity.id,
           role: party.role,
           manufacturingSite: party.manufacturingSite ?? null,
           sourceType: party.sourceType ?? "USER",
@@ -687,6 +716,10 @@ export async function updateProduct(
 ): Promise<MutationOutcome<ProductDetail>> {
   const { changeReason, ...fields } = input;
 
+  if (fields.clientId !== undefined && fields.clientId !== null) {
+    await requireOwnedClient(db, actor, fields.clientId);
+  }
+
   if (fields.internalSku !== undefined && fields.internalSku !== null) {
     const clash = await db.product.findFirst({
       where: {
@@ -768,11 +801,14 @@ export async function addIdentifier(
   productId: string,
   input: { identifierType: string; value: string; issuerPartyId?: string | null; isPrimary?: boolean; sourceType?: string }
 ) {
-  await requireOwnedProduct(db, actor, productId);
+  const product = await requireOwnedProduct(db, actor, productId);
   await assertIdentifierAvailable(db, actor, productId, input.identifierType, input.value);
 
   if (input.issuerPartyId != null) {
-    await requireOwnedLegalEntity(db, actor, input.issuerPartyId);
+    const issuer = await requireOwnedLegalEntity(db, actor, input.issuerPartyId);
+    if (product.clientId && issuer.clientId && product.clientId !== issuer.clientId) {
+      throw new DomainError("Cannot link an issuer party belonging to another client to this product.", "CLIENT_MISMATCH", 400);
+    }
   }
 
   return db.productIdentifier.create({
@@ -904,7 +940,14 @@ export async function addParty(
   input: { legalEntityId: string; role: string; manufacturingSite?: string | null; sourceType?: string; evidenceId?: string | null }
 ): Promise<MutationOutcome<void>> {
   return withChangeDetection(actor, productId, null, async (tx) => {
-    const legalEntityId = await requireOwnedLegalEntity(tx, actor, input.legalEntityId);
+    const legalEntity = await requireOwnedLegalEntity(tx, actor, input.legalEntityId);
+    const product = await tx.product.findFirst({
+      where: { id: productId, accountId: actor.accountId },
+      select: { clientId: true },
+    });
+    if (product?.clientId && legalEntity.clientId && product.clientId !== legalEntity.clientId) {
+      throw new DomainError("Cannot link a party belonging to another client to this product.", "CLIENT_MISMATCH", 400);
+    }
     if (input.evidenceId != null) {
       await requireOwnedEvidence(tx, actor, productId, input.evidenceId);
     }
@@ -912,7 +955,7 @@ export async function addParty(
       data: {
         accountId: actor.accountId,
         productId,
-        legalEntityId,
+        legalEntityId: legalEntity.id,
         role: input.role as Prisma.ProductPartyUncheckedCreateInput["role"],
         manufacturingSite: input.manufacturingSite ?? null,
         sourceType: (input.sourceType ?? "USER") as Prisma.ProductPartyUncheckedCreateInput["sourceType"],
@@ -1151,7 +1194,7 @@ export async function reviewClassification(
   productId: string,
   classificationId: string,
   action: "PROPOSE" | "START_REVIEW" | "APPROVE" | "REJECT",
-  options: { reviewNote?: string | null; effectiveFrom?: string } = {}
+  options: { reviewNote?: string | null; effectiveFrom?: string; source?: string } = {}
 ) {
   await requireOwnedProduct(db, actor, productId);
 
@@ -1248,6 +1291,7 @@ export async function reviewClassification(
     action: `product.classification.${action.toLowerCase()}`,
     entity: "ProductClassification",
     entityId: classificationId,
+    source: options.source,
     metadata: {
       productId,
       jurisdiction: classification.jurisdiction,
@@ -1259,6 +1303,17 @@ export async function reviewClassification(
     requestId: actor.requestId ?? null,
     failClosed: target === "APPROVED",
   });
+
+  if (target === "APPROVED") {
+    deliverWebhookEvent(actor.accountId, "classification.changed", {
+      productId,
+      classificationId: updated.id,
+      classificationCode: updated.classificationCode,
+      status: updated.status,
+      changedByUserId: actor.userId,
+      source: "PRODUCT_CLASSIFICATION_APPROVED",
+    }).catch((err) => console.error("[webhook] Failed to dispatch classification.changed:", err));
+  }
 
   return updated;
 }
@@ -1417,11 +1472,23 @@ export async function findProductMatches(
     return { status: "NO_MATCH", candidates: [], rule: null };
   }
 
+  const clientFilter: Prisma.ProductWhereInput = {};
+  if (input.clientId !== undefined) {
+    if (input.clientId === null || input.clientId === "unassigned") {
+      clientFilter.clientId = { equals: null };
+    } else if (input.clientScope === "EXACT") {
+      clientFilter.clientId = input.clientId;
+    } else {
+      clientFilter.clientId = { in: [input.clientId, null] };
+    }
+  }
+
   const products = await db.product.findMany({
     where: {
       accountId: actor.accountId,
       deletedAt: null,
       status: { notIn: ["ARCHIVED"] },
+      ...clientFilter,
       OR: orClauses,
     },
     select: {
@@ -1429,6 +1496,7 @@ export async function findProductMatches(
       productName: true,
       brand: true,
       internalSku: true,
+      clientId: true,
       identifiers: { select: { identifierType: true, normalizedValue: true } },
       parties: {
         where: { role: "MANUFACTURER", status: "ACTIVE" },
@@ -1445,6 +1513,7 @@ export async function findProductMatches(
       productName: product.productName,
       brand: product.brand,
       internalSku: product.internalSku,
+      clientId: product.clientId,
       identifiers: product.identifiers,
       manufacturerPartyIds: product.parties.map((party) => party.legalEntityId),
     }))
@@ -1465,7 +1534,12 @@ export async function matchShipmentLine(
 ): Promise<{ line: { id: string; partNumber: string | null; description: string }; match: ProductMatchResult }> {
   const line = await db.shipmentLineItem.findFirst({
     where: { id: lineItemId, accountId: actor.accountId },
-    select: { id: true, partNumber: true, description: true },
+    select: {
+      id: true,
+      partNumber: true,
+      description: true,
+      shipment: { select: { clientId: true } },
+    },
   });
   if (line === null) {
     throw new DomainError("No such shipment line in this account.", "LINE_ITEM_NOT_FOUND", 404);
@@ -1476,8 +1550,11 @@ export async function matchShipmentLine(
       ? []
       : [{ identifierType: "MANUFACTURER_PART_NUMBER" as const, value: line.partNumber }];
 
-  const match = await findProductMatches(actor, { identifiers });
-  return { line, match };
+  const match = await findProductMatches(actor, {
+    identifiers,
+    clientId: line.shipment?.clientId ?? null,
+  });
+  return { line: { id: line.id, partNumber: line.partNumber, description: line.description }, match };
 }
 
 /**

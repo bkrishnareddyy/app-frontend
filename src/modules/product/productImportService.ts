@@ -106,7 +106,8 @@ function parseOrThrow(content: string) {
 export async function previewImport(
   actor: ProductActor,
   content: string,
-  fileName: string | null
+  fileName: string | null,
+  options?: { clientId?: string | null }
 ): Promise<ImportPreview> {
   const counts = emptyCounts();
 
@@ -139,7 +140,7 @@ export async function previewImport(
 
   const rows: ImportPreviewRow[] = [];
   for (const row of validation.rows) {
-    const previewRow = await classifyRow(actor, row);
+    const previewRow = await classifyRow(actor, row, options);
     counts[previewRow.outcome] += 1;
     rows.push(previewRow);
   }
@@ -158,7 +159,8 @@ export async function previewImport(
 /** Decides what would happen to one validated row, without writing anything. */
 async function classifyRow(
   actor: ProductActor,
-  row: ImportRowResult
+  row: ImportRowResult,
+  options?: { clientId?: string | null }
 ): Promise<ImportPreviewRow> {
   if (row.status === "INVALID" || row.data === null) {
     return {
@@ -177,6 +179,7 @@ async function classifyRow(
     identifiers: row.data.identifiers,
     productName: row.data.productName,
     brand: row.data.brand,
+    clientId: options?.clientId ?? null,
   });
 
   const first = match.candidates[0] ?? null;
@@ -221,7 +224,8 @@ export async function commitImport(
   content: string,
   fileName: string | null,
   expectedDigest: string,
-  acceptedRows: readonly number[] | undefined
+  acceptedRows: readonly number[] | undefined,
+  options?: { clientId?: string | null }
 ): Promise<ImportCommitResult> {
   const contentDigest = digestContent(content);
   if (contentDigest !== expectedDigest) {
@@ -258,7 +262,7 @@ export async function commitImport(
       continue;
     }
 
-    const planned = await classifyRow(actor, row);
+    const planned = await classifyRow(actor, row, options);
 
     if (planned.outcome !== "CREATED" || row.data === null) {
       counts[planned.outcome] += 1;
@@ -267,7 +271,8 @@ export async function commitImport(
     }
 
     try {
-      const created = await createProduct(actor, toCreateInput(row.data));
+      const createInput = { ...toCreateInput(row.data), clientId: options?.clientId ?? undefined };
+      const created = await createProduct(actor, createInput);
       createdProductIds.push(created.id);
 
       // Classifications are recorded after the product exists, and always as

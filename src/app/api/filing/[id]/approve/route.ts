@@ -30,6 +30,9 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
     return buildErrorResponse(404, "NOT_FOUND", "Filing case not found", undefined, requestId);
   }
 
+  const rawBody = await req.clone().json().catch(() => ({}));
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || rawBody?.source === "CHAT") ? "CHAT" : "UI";
+
   // Maker/checker: whoever prepared this filing cannot also be the one who
   // signs off on it. A filing created before this field existed has
   // preparedByUserId === null, which never matches a real userId, so it
@@ -41,7 +44,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       action: AuditAction.FILING_SEGREGATION_VIOLATION,
       entity: "CustomsFiling",
       entityId: id,
-      source: "UI",
+      source: auditSource,
       metadata: { attemptedAction: "approve", entryNumber: filing.entryNumber },
     });
     return buildErrorResponse(
@@ -66,7 +69,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       action: AuditAction.FILING_APPROVED,
       entity: "CustomsFiling",
       entityId: id,
-      source: "UI",
+      source: auditSource,
       metadata: { entryNumber: updated.entryNumber, previousStatus: filing.filingStatus, newStatus: nextStatus },
     });
 

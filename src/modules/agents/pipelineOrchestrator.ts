@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { createAuditLog } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent, DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
 import { ProductIntelligenceAgent, ProductIntelligenceOutput } from "./productIntelligenceAgent";
@@ -895,20 +896,18 @@ export class PipelineOrchestrator {
       });
       if (existing) continue;
 
-      await db.exceptionItem.create({
-        data: {
-          accountId,
-          shipmentId,
-          documentId,
-          code: finding.code,
-          category: finding.category,
-          type: "data_mismatch",
-          severity: "Medium",
-          description: finding.description,
-          blocking: false,
-          sourceAgent: "Product Intelligence Agent",
-          status: "Open",
-        },
+      await createExceptionItem({
+        accountId,
+        shipmentId,
+        documentId,
+        code: finding.code,
+        category: finding.category,
+        type: "data_mismatch",
+        severity: "Medium",
+        description: finding.description,
+        blocking: false,
+        sourceAgent: "Product Intelligence Agent",
+        status: "Open",
       });
     }
   }

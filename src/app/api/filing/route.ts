@@ -9,6 +9,7 @@ import { wrapDeclarationData } from "@/lib/canonicalMessaging/declarationBuilder
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { FactAuditService } from "@/modules/audit/factAuditService";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 
 export const GET = withAuthenticatedRoute(async ({ req, ctx }) => {
   const { searchParams } = new URL(req.url);
@@ -498,6 +499,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
         newValue: "Draft",
         reason: "New filing created for shipment",
       });
+      deliverWebhookEvent(ctx.accountId, "shipment.status_changed", {
+        shipmentId,
+        previousStatus: shipment.status,
+        newStatus: "Draft",
+        reason: "New filing created for shipment",
+      }).catch((err) => console.error("[webhook] Failed to dispatch shipment.status_changed:", err));
     }
   }
 

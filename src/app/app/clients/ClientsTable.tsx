@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Contact2,
   UserPlus,
@@ -9,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Package,
+  Landmark,
   Building2,
   ChevronDown,
   ChevronRight,
@@ -50,6 +52,8 @@ interface ClientItem {
   status: string;
   createdAt: string;
   shipmentCount: number;
+  productCount?: number;
+  partyCount?: number;
   legalEntities: LegalEntityItem[];
 }
 
@@ -102,18 +106,47 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
 
   const [checkingBondId, setCheckingBondId] = useState<string | null>(null);
 
-  const handleCheckBond = async (importerNumber?: string | null) => {
-    setCheckingBondId(importerNumber || "active");
+  const handleCheckBond = async (profile: CustomsProfileItem) => {
+    setCheckingBondId(profile.id);
     try {
       const res = await fetch("/api/bonds");
       const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        alert(`Customs Bond Status: ${data.status || "ACTIVE"} (${data.bondType || "Continuous Bond"}) - Validated with CBP`);
+      if (res.ok && Array.isArray(data.bonds)) {
+        const matchingBond = data.bonds.find(
+          (b: { bondNumber?: string; importersOfRecord?: Array<{ cbpImporterNumber?: string | null }> }) =>
+            (profile.bondNumber && b.bondNumber === profile.bondNumber) ||
+            (profile.cbpImporterNumber &&
+              b.importersOfRecord?.some((ior) => ior.cbpImporterNumber === profile.cbpImporterNumber))
+        );
+
+        if (matchingBond) {
+          alert(
+            `Account Bond Record:\n` +
+              `• Bond #: ${matchingBond.bondNumber}\n` +
+              `• Status: ${matchingBond.status || "Active"}\n` +
+              `• Type: ${matchingBond.bondType || "Continuous"}\n` +
+              `• Surety: ${matchingBond.suretyName || "N/A"}\n\n` +
+              `[Note: Status retrieved from internal Account Bond Registry. Live real-time CBP surety verification is not connected.]`
+          );
+        } else if (profile.bondNumber || profile.bondType) {
+          alert(
+            `Customs Profile Stored Bond Info:\n` +
+              `• Bond #: ${profile.bondNumber || "On File"}\n` +
+              `• Type: ${profile.bondType || "Continuous"}\n\n` +
+              `[Note: Status retrieved from client profile. Live real-time CBP surety verification is not connected.]`
+          );
+        } else {
+          alert(
+            `No bond record found in account registry for Importer #${profile.cbpImporterNumber || "Unassigned"}.\n\n` +
+              `[Note: Live real-time CBP surety verification is not connected.]`
+          );
+        }
       } else {
-        alert(data.error?.message || "Customs Bond verification failed");
+        alert(data.error?.message || "Failed to retrieve bond records from account registry");
       }
     } catch (err) {
       console.error("Error checking bond", err);
+      alert("Network error occurred while retrieving bond records.");
     } finally {
       setCheckingBondId(null);
     }
@@ -199,6 +232,34 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
 
   return (
     <div className="space-y-8">
+      {/* Quick Navigation Tabs */}
+      <div className="flex flex-wrap gap-2 p-1 bg-surface-muted border border-border rounded-2xl w-max max-w-full">
+        <Link
+          href="/app/clients"
+          className="px-4 py-2 rounded-xl text-xs font-bold transition-all bg-white text-brand shadow-sm"
+        >
+          Clients & Legal Entities
+        </Link>
+        <Link
+          href="/app/importers-of-record"
+          className="px-4 py-2 rounded-xl text-xs font-bold transition-all text-ink-muted hover:text-ink hover:bg-white/60"
+        >
+          Importers of Record (IOR)
+        </Link>
+        <Link
+          href="/app/bonds"
+          className="px-4 py-2 rounded-xl text-xs font-bold transition-all text-ink-muted hover:text-ink hover:bg-white/60"
+        >
+          Customs Bonds
+        </Link>
+        <Link
+          href="/app/poa"
+          className="px-4 py-2 rounded-xl text-xs font-bold transition-all text-ink-muted hover:text-ink hover:bg-white/60"
+        >
+          Powers of Attorney (POA)
+        </Link>
+      </div>
+
       {message && (
         <div
           className={`p-4 rounded-2xl text-sm border flex items-center space-x-3 ${
@@ -309,11 +370,33 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-6 text-xs text-ink-muted">
-                    <div className="flex items-center space-x-1.5 font-medium">
+                  <div className="flex items-center space-x-5 text-xs text-ink-muted">
+                    <Link
+                      href={`/app/parties?clientId=${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center space-x-1.5 font-medium text-ink hover:text-brand hover:underline"
+                    >
+                      <Landmark className="w-3.5 h-3.5 text-brand" />
+                      <span>{c.partyCount ?? 0} Parties</span>
+                    </Link>
+
+                    <Link
+                      href={`/app/products?clientId=${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center space-x-1.5 font-medium text-ink hover:text-brand hover:underline"
+                    >
+                      <Package className="w-3.5 h-3.5 text-brand" />
+                      <span>{c.productCount ?? 0} Products</span>
+                    </Link>
+
+                    <Link
+                      href={`/app/shipments?clientId=${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center space-x-1.5 font-medium text-ink hover:text-brand hover:underline"
+                    >
                       <Package className="w-3.5 h-3.5 text-brand" />
                       <span>{c.shipmentCount} Shipments</span>
-                    </div>
+                    </Link>
 
                     <Button
                       variant="secondary"
@@ -397,10 +480,10 @@ export function ClientsTable({ clients, onSaved }: ClientsTableProps) {
                                         <button
                                           type="button"
                                           disabled={checkingBondId === cp.id}
-                                          onClick={() => handleCheckBond(cp.cbpImporterNumber)}
+                                          onClick={() => handleCheckBond(cp)}
                                           className="text-brand font-semibold hover:underline cursor-pointer"
                                         >
-                                          {checkingBondId === cp.cbpImporterNumber ? "Checking..." : "Check Bond"}
+                                          {checkingBondId === cp.id ? "Checking..." : "Check Bond"}
                                         </button>
                                         <label className="text-brand font-semibold hover:underline cursor-pointer">
                                           <span>{poaUploadingId === cp.id ? "Uploading..." : "Upload POA"}</span>

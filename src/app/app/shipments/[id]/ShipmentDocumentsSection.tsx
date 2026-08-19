@@ -140,6 +140,16 @@ export function ShipmentDocumentsSection({
               <FileText className="w-3.5 h-3.5 text-brand" />
               <span>Audit PDF</span>
             </a>
+            <a
+              href={`/api/audit/package/${shipmentId}/zip`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl border border-border bg-white hover:bg-surface-muted text-ink text-xs font-semibold transition-colors"
+              title="Download compiled reasonable care audit ZIP archive"
+            >
+              <Files className="w-3.5 h-3.5 text-brand" />
+              <span>Audit ZIP</span>
+            </a>
             <Button
               size="sm"
               onClick={() => setIsModalOpen(true)}

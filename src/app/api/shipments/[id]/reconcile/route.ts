@@ -3,6 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 import { runReconciliationEngine, type DocumentGroup } from "@/lib/reconciliation/reconciliationEngine";
 import { computeReadinessBreakdown } from "@/lib/shipmentReadiness";
 import { getMissingDocuments } from "@/lib/requiredDocumentTypes";
@@ -94,19 +95,17 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
       select: { id: true },
     });
     if (!existingEx) {
-      await db.exceptionItem.create({
-        data: {
-          shipmentId: id,
-          accountId: ctx.accountId,
-          code: exCode,
-          category: "CONFLICT",
-          type: "data_mismatch",
-          severity: exSeverity,
-          blocking: result.severity === "BLOCKING",
-          description: exDescription,
-          requiredAction: "Review both source documents and accept the correct value, or flag both as wrong.",
-          sourceAgent: "Reconciliation Engine",
-        },
+      await createExceptionItem({
+        shipmentId: id,
+        accountId: ctx.accountId,
+        code: exCode,
+        category: "CONFLICT",
+        type: "data_mismatch",
+        severity: exSeverity,
+        blocking: result.severity === "BLOCKING",
+        description: exDescription,
+        requiredAction: "Review both source documents and accept the correct value, or flag both as wrong.",
+        sourceAgent: "Reconciliation Engine",
       });
     } else {
       await db.exceptionItem.update({
@@ -219,17 +218,15 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
   for (const missing of missingDocs) {
     const description = `${MISSING_DOC_PREFIX}${missing.type} — ${missing.reason}`;
     if (!existingDescriptions.has(description)) {
-      await db.exceptionItem.create({
-        data: {
-          shipmentId: id,
-          accountId: ctx.accountId,
-          description,
-          type: "missing_document",
-          severity: missing.blocking ? "High" : "Medium",
-          status: "Open",
-          category: "DOCUMENT",
-          blocking: missing.blocking,
-        },
+      await createExceptionItem({
+        shipmentId: id,
+        accountId: ctx.accountId,
+        description,
+        type: "missing_document",
+        severity: missing.blocking ? "High" : "Medium",
+        status: "Open",
+        category: "DOCUMENT",
+        blocking: missing.blocking,
       });
     }
   }

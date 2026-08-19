@@ -31,12 +31,14 @@ export const POST = withAuthenticatedRoute<Params>(
     const body = await parseAndValidateBody(req, classificationReviewSchema, requestId);
     if ("response" in body) return body.response;
 
+    const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || body.data.source === "CHAT") ? "CHAT" : "UI";
+
     const classification = await reviewClassification(
       productActor(ctx, requestId),
       path.data.id,
       path.data.classificationId,
       body.data.action,
-      { reviewNote: body.data.reviewNote ?? null, effectiveFrom: body.data.effectiveFrom }
+      { reviewNote: body.data.reviewNote ?? null, effectiveFrom: body.data.effectiveFrom, source: auditSource }
     );
 
     return NextResponse.json({ classification, requestId });

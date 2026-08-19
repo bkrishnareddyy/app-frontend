@@ -28,6 +28,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   if (idempError) return idempError;
 
   const rawBody = await req.json().catch(() => ({}));
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || rawBody?.source === "CHAT") ? "CHAT" : "UI";
   const body = bodySchema.safeParse(rawBody);
   const promptedValues = body.success ? (body.data.promptedValues ?? {}) : {};
 
@@ -40,7 +41,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       action: AuditAction.FILING_CANCELLED,
       entity: "CustomsFiling",
       entityId: id,
-      source: "UI",
+      source: auditSource,
       metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
 

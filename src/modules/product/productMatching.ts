@@ -73,6 +73,7 @@ export interface MatchableProduct {
   productName: string;
   brand: string | null;
   internalSku: string | null;
+  clientId?: string | null;
   identifiers: readonly MatchableIdentifier[];
   /** Legal entity ids linked as MANUFACTURER, for qualifying a part number. */
   manufacturerPartyIds: readonly string[];
@@ -90,6 +91,8 @@ export interface MatchCandidateInput {
    * would smuggle a fuzzy comparison into a module that promises not to have one.
    */
   manufacturerPartyId?: string | null;
+  clientId?: string | null;
+  clientScope?: "EXACT" | "INCLUDE_SHARED" | "ALL";
 }
 
 export type MatchRule =
@@ -136,30 +139,43 @@ export function matchProduct(
     }))
     .filter((identifier) => identifier.normalizedValue !== "");
 
-  const uniqueRule = matchOnIdentifierTypes(
-    inputIdentifiers,
-    products,
-    UNIQUE_IDENTIFIER_TYPES,
-    "UNIQUE_IDENTIFIER",
-    (identifierType, value) =>
-      `Matched on ${identifierType}, which identifies one product within this account, with value ${value}.`
+  const filterCandidatesByClient = (candidates: ProductMatchCandidate[]): ProductMatchCandidate[] => {
+    if (candidates.length <= 1 || !input.clientId) return candidates;
+    const clientSpecific = candidates.filter((c) => {
+      const prod = products.find((p) => p.id === c.productId);
+      return prod?.clientId === input.clientId;
+    });
+    return clientSpecific.length > 0 ? clientSpecific : candidates;
+  };
+
+  const uniqueRule = filterCandidatesByClient(
+    matchOnIdentifierTypes(
+      inputIdentifiers,
+      products,
+      UNIQUE_IDENTIFIER_TYPES,
+      "UNIQUE_IDENTIFIER",
+      (identifierType, value) =>
+        `Matched on ${identifierType}, which identifies one product within this account, with value ${value}.`
+    )
   );
   if (uniqueRule.length > 0) return decide(uniqueRule, "UNIQUE_IDENTIFIER");
 
-  const qualifiedRule = matchQualified(inputIdentifiers, products, input.manufacturerPartyId ?? null);
+  const qualifiedRule = filterCandidatesByClient(
+    matchQualified(inputIdentifiers, products, input.manufacturerPartyId ?? null)
+  );
   if (qualifiedRule.length > 0) return decide(qualifiedRule, "MANUFACTURER_QUALIFIED_IDENTIFIER");
 
-  const unqualifiedRule = matchOnIdentifierTypes(
-    inputIdentifiers,
-    products,
-    MANUFACTURER_QUALIFIED_TYPES,
-    "UNQUALIFIED_IDENTIFIER",
-    (identifierType, value) =>
-      `Matched on ${identifierType} ${value}, without a known manufacturer to qualify it. The same part number can belong to unrelated manufacturers, so this needs confirmation.`
+  const unqualifiedRule = filterCandidatesByClient(
+    matchOnIdentifierTypes(
+      inputIdentifiers,
+      products,
+      MANUFACTURER_QUALIFIED_TYPES,
+      "UNQUALIFIED_IDENTIFIER",
+      (identifierType, value) =>
+        `Matched on ${identifierType} ${value}, without a known manufacturer to qualify it. The same part number can belong to unrelated manufacturers, so this needs confirmation.`
+    )
   );
   if (unqualifiedRule.length > 0) {
-    // Never EXACT: a part number without its manufacturer is weak evidence even
-    // when only one product happens to carry it today.
     return {
       status: unqualifiedRule.length === 1 ? "POSSIBLE_MATCH" : "AMBIGUOUS",
       candidates: unqualifiedRule,
@@ -167,7 +183,7 @@ export function matchProduct(
     };
   }
 
-  const nameRule = matchOnNameAndBrand(input, products);
+  const nameRule = filterCandidatesByClient(matchOnNameAndBrand(input, products));
   if (nameRule.length > 0) {
     return {
       status: nameRule.length === 1 ? "POSSIBLE_MATCH" : "AMBIGUOUS",

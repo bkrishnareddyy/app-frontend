@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { determineOrigin } from "@/lib/origin/originEngine";
 
-export const POST = withAuthenticatedRoute<{ lineItemId: string }>(async ({ ctx, params }) => {
+export const POST = withAuthenticatedRoute<{ lineItemId: string }>(async ({ req, ctx, params }) => {
   const { lineItemId } = params;
 
   const lineItem = await db.shipmentLineItem.findFirst({
@@ -50,13 +50,15 @@ export const POST = withAuthenticatedRoute<{ lineItemId: string }>(async ({ ctx,
     });
   }
 
+  const auditSource = req.headers?.get?.("x-qubere-source") === "CHAT" ? "CHAT" : "UI";
+
   await createAuditLog({
     accountId: ctx.accountId,
     userId: ctx.userId,
     action: "advisory.origin.re-evaluated",
     entity: "ShipmentLineItem",
     entityId: lineItemId,
-    source: "UI",
+    source: auditSource,
     metadata: { result: result as unknown as Record<string, unknown> },
   });
 

@@ -11,6 +11,9 @@ export type NavIcon =
   | "products"
   | "parties"
   | "clients"
+  | "importersOfRecord"
+  | "bonds"
+  | "poa"
   | "documents"
   | "actions"
   | "decisions"
@@ -67,7 +70,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: "filing", labelKey: "customsFiling", href: "/app/filing", icon: "filing" },
       { id: "compliance", labelKey: "complianceMonitoring", href: "/app/compliance", icon: "compliance" },
       { id: "post-entry", labelKey: "postEntry", href: "/app/post-entry", icon: "postEntry" },
-      { id: "billing", labelKey: "billing", href: "/app/billing", icon: "billing", permission: "billing.view" },
     ],
   },
   {
@@ -76,8 +78,8 @@ export const NAV_SECTIONS: NavSection[] = [
     renderAs: "pills",
     items: [
       { id: "documents", labelKey: "tradeDocs", href: "/app/documents", icon: "documents" },
-      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
-      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
+      { id: "clients", labelKey: "clients", href: "/app/clients", icon: "clients" },
+      { id: "billing", labelKey: "billing", href: "/app/billing", icon: "billing", permission: "billing.view" },
       { id: "trade-data", labelKey: "tradeData", href: "/app/trade-data", icon: "tradeData" },
       { id: "tariffs", labelKey: "tariffsAndRegulations", href: "/app/tariffs", icon: "tariffs" },
       { id: "filingConfig", labelKey: "filingConfiguration", href: "/app/filing-config", icon: "settings", platformAdminOnly: true },
@@ -128,7 +130,6 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ACCOUNT_ADMIN_ROLES,
         permission: "settings.manage",
       },
-      { id: "clients", labelKey: "clients", href: "/app/clients", icon: "clients" },
     ],
   },
   {

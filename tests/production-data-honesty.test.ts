@@ -163,3 +163,34 @@ describe("Shipment numbering is concurrency safe", () => {
     expect(b).toBe("SHP-2027-000001");
   });
 });
+
+describe("New shipment form initial defaults", () => {
+  it("does not pre-fill fake values into real form input fields", async () => {
+    const fs = await import("fs");
+    const content = fs.readFileSync(
+      "src/app/app/shipments/new/page.tsx",
+      "utf-8"
+    );
+    expect(content).not.toMatch(/importerName:\s*"ABC Manufacturing India Pvt Ltd"/);
+    expect(content).not.toMatch(/countryOfExport:\s*"Germany"/);
+    expect(content).not.toMatch(/poReference:\s*"PO-2026-849102"/);
+    expect(content).not.toMatch(/incoterm:\s*"CIF Los Angeles"/);
+    expect(content).not.toMatch(/portOfEntry:\s*"Port of Los Angeles \(2704\)"/);
+    expect(content).not.toMatch(/carrierName:\s*"Maersk Line"/);
+    expect(content).not.toMatch(/estimatedArrival:\s*"2026-05-20"/);
+  });
+});
+
+describe("Clients table bond checking data honesty", () => {
+  it("does not fabricate live CBP verification status", async () => {
+    const fs = await import("fs");
+    const content = fs.readFileSync(
+      "src/app/app/clients/ClientsTable.tsx",
+      "utf-8"
+    );
+    expect(content).not.toContain("Validated with CBP");
+    expect(content).toContain("Live real-time CBP surety verification is not connected");
+  });
+});
+
+
