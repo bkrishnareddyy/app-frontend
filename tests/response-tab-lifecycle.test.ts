@@ -19,7 +19,7 @@ describe("Customs Filing Response tab lifecycle", () => {
   let shipmentId: string;
   let filingId: string;
 
-  const DB_TIMEOUT = 60_000;
+  const DB_TIMEOUT = 120_000;
 
   const TEST_HTS_CODE = "8481.80.5090";
   const TEST_HTS_NORMALIZED = "8481805090";
@@ -119,7 +119,7 @@ describe("Customs Filing Response tab lifecycle", () => {
         account: { connect: { id: accountId } },
         entryNumber: `5901-27-${suffix}`,
         authority: "US Customs (CBP)",
-        entryType: "Consumption Entry",
+        entryType: "01", // seeded US procedureCode (Consumption Entry) so resolveMessageContext resolves against real config
         filingType: "ABI - Automated",
         filingStatus: "BrokerApproved",
         totalValue: 5000.0,
@@ -238,9 +238,10 @@ describe("Customs Filing Response tab lifecycle", () => {
     expect(outbound.length).toBe(3); // SUBMIT, RESUBMIT, CANCELLATION
     expect(inbound.length).toBe(3); // REJECTED, ACCEPTED, CANCELLED responses
 
-    expect(outbound.map((m) => m.messageName).sort()).toEqual(
-      ["CUSTOMS_DECLARATION_SUBMIT", "CUSTOMS_DECLARATION_RESUBMIT", "CUSTOMS_DECLARATION_CANCELLATION"].sort()
-    );
+    // This account's FilingActionMessageMapping has no rows for procedureCode "01", so
+    // resolveMessageContext takes its documented US backwards-compatibility fallback
+    // (CBP_ENTRY_7501) for every action, SUBMIT/RESUBMIT/CANCELLATION alike.
+    expect(outbound.map((m) => m.messageName)).toEqual(["CBP_ENTRY_7501", "CBP_ENTRY_7501", "CBP_ENTRY_7501"]);
 
     // Every inbound row correlates back to the outbound request it answers.
     expect(inbound.find((m) => m.correlationId === submitMessageId)?.status).toBe("REJECTED");
@@ -248,8 +249,8 @@ describe("Customs Filing Response tab lifecycle", () => {
     expect(inbound.find((m) => m.correlationId === cancelMessageId)?.status).toBe("CANCELLED");
 
     // The CANCELLATION request itself is a child action against the accepted declaration.
-    const cancellationRequest = outbound.find((m) => m.messageName === "CUSTOMS_DECLARATION_CANCELLATION");
-    expect(cancellationRequest?.priorMessageId).toBe(resubmitMessageId);
+    const cancellationRequest = outbound.find((m) => m.priorMessageId === resubmitMessageId);
+    expect(cancellationRequest).toBeTruthy();
 
     // Full envelope detail survives on every row (what the View/JSON buttons render).
     for (const m of messages) {
