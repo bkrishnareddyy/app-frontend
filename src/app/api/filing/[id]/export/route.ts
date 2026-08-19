@@ -22,8 +22,9 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
       },
       importerOfRecord: true,
       bond: true,
-      messages: { orderBy: { createdAt: "asc" } },
+      filingMessages: { orderBy: { createdAt: "asc" } },
       responses: { orderBy: { receivedAt: "desc" } },
+      snapshot: true,
     },
   });
 
@@ -83,12 +84,12 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ ctx, requestI
     } : null,
     bond: filing.bond ? {
       bondNumber: filing.bond.bondNumber,
-      suretyCode: filing.bond.suretyCode,
+      suretyName: filing.bond.suretyName,
     } : null,
-    declarationDraft: filing.declarationDraft,
+    declarationDraft: filing.snapshot?.snapshotData ?? null,
   };
 
-  const messageLogJson = JSON.stringify(filing.messages, null, 2);
+  const messageLogJson = JSON.stringify(filing.filingMessages, null, 2);
   const responsesJson = JSON.stringify(filing.responses, null, 2);
 
   const zipEntries = [

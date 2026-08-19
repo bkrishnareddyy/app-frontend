@@ -1472,14 +1472,14 @@ export async function findProductMatches(
     return { status: "NO_MATCH", candidates: [], rule: null };
   }
 
-  const clientFilter: Prisma.ProductWhereInput = {};
+  const andClauses: Prisma.ProductWhereInput[] = [];
   if (input.clientId !== undefined) {
     if (input.clientId === null || input.clientId === "unassigned") {
-      clientFilter.clientId = { equals: null };
+      andClauses.push({ clientId: null });
     } else if (input.clientScope === "EXACT") {
-      clientFilter.clientId = input.clientId;
+      andClauses.push({ clientId: input.clientId });
     } else {
-      clientFilter.clientId = { in: [input.clientId, null] };
+      andClauses.push({ OR: [{ clientId: input.clientId }, { clientId: null }] });
     }
   }
 
@@ -1488,7 +1488,7 @@ export async function findProductMatches(
       accountId: actor.accountId,
       deletedAt: null,
       status: { notIn: ["ARCHIVED"] },
-      ...clientFilter,
+      AND: andClauses.length > 0 ? andClauses : undefined,
       OR: orClauses,
     },
     select: {

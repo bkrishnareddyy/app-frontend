@@ -13,6 +13,7 @@ export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, req
   const paramsVal = validatePathParams(params, paramsSchema, requestId);
   if ("response" in paramsVal) return paramsVal.response;
   const { id } = paramsVal.data;
+  const format = new URL(req.url).searchParams.get("format");
 
   const filing = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
