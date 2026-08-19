@@ -16,12 +16,22 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
   const TEST_HTS_NORMALIZED = "8481805090";
   /** Set only when this suite inserted the tariff rows and must remove them again. */
   let seededReleaseId: string | null = null;
+  /** Set only when this suite inserted the IMPORT transaction type and must remove it again. */
+  let seededTransactionTypeId: string | null = null;
 
   // transmitFiling refuses any line with no published duty rate, so the HTS
   // master needs this code before the filing can be sent. The rate below is a
   // test fixture, not a real HTSUS rate, so it must never be left behind in a
   // shared database, and a pre-existing real node is never overwritten.
   beforeAll(async () => {
+    const existingTxType = await db.filingTransactionType.findUnique({ where: { code: "IMPORT" } });
+    if (!existingTxType) {
+      const txType = await db.filingTransactionType.create({
+        data: { code: "IMPORT", isActive: true },
+      });
+      seededTransactionTypeId = txType.id;
+    }
+
     const existing = await db.htsNode.findFirst({
       where: { htsNumberNormalized: TEST_HTS_NORMALIZED },
     });
@@ -67,6 +77,9 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
     // Cascades to the node and its duty rate.
     if (seededReleaseId) {
       await db.htsRelease.delete({ where: { id: seededReleaseId } });
+    }
+    if (seededTransactionTypeId) {
+      await db.filingTransactionType.delete({ where: { id: seededTransactionTypeId } });
     }
   }, DB_TIMEOUT);
 

@@ -24,8 +24,17 @@ describe("Customs Filing Response tab lifecycle", () => {
   const TEST_HTS_CODE = "8481.80.5090";
   const TEST_HTS_NORMALIZED = "8481805090";
   let seededReleaseId: string | null = null;
+  let seededTransactionTypeId: string | null = null;
 
   beforeAll(async () => {
+    const existingTxType = await db.filingTransactionType.findUnique({ where: { code: "IMPORT" } });
+    if (!existingTxType) {
+      const txType = await db.filingTransactionType.create({
+        data: { code: "IMPORT", isActive: true },
+      });
+      seededTransactionTypeId = txType.id;
+    }
+
     const existing = await db.htsNode.findFirst({ where: { htsNumberNormalized: TEST_HTS_NORMALIZED } });
     if (!existing) {
       const release = await db.htsRelease.create({
@@ -66,6 +75,9 @@ describe("Customs Filing Response tab lifecycle", () => {
   afterAll(async () => {
     if (seededReleaseId) {
       await db.htsRelease.delete({ where: { id: seededReleaseId } });
+    }
+    if (seededTransactionTypeId) {
+      await db.filingTransactionType.delete({ where: { id: seededTransactionTypeId } });
     }
   }, DB_TIMEOUT);
 
