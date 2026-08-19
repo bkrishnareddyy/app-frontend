@@ -12,7 +12,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { validateField, validateForm, validateFieldByPath, type ValidationResult } from "@/lib/validation/ValidationEngine";
+import { validateForm, validateFieldByPath, type ValidationResult } from "@/lib/validation/ValidationEngine";
 import type { FilingUIConfigData } from "@/types/ui-config.types";
 
 export interface UseValidationOptions {
@@ -39,7 +39,6 @@ export function useValidation(
   options: UseValidationOptions = {}
 ): UseValidationReturn {
   const {
-    validateOnBlur = true,
     validateOnChange = false,
     validateOnMount = false
   } = options;
@@ -111,6 +110,7 @@ export function useValidation(
     if (validateOnMount) {
       handleValidateForm();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [validateOnMount]); // Only run on mount
 
   // Validate on change if requested
@@ -122,6 +122,7 @@ export function useValidation(
         handleValidateField(fieldPath);
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData, validateOnChange]); // Run when formData changes
 
   const isValid = Object.keys(errors).length === 0;

@@ -271,7 +271,7 @@ export class HTSClassificationAgent {
           productDescription: item.rawDescription,
         });
         accountContextPrompt = accountContext.formattedText;
-      } catch (err) {
+      } catch {
         // Non-blocking fallback
       }
 

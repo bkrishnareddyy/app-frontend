@@ -98,12 +98,9 @@ export function parseDecisionQuery(params: URLSearchParams): DecisionQuery {
   };
 }
 
-import { normalizeDecisionStatus, statusVariantsForState } from "./decisionState";
-
 export interface DecisionWhere {
   accountId: string;
-  status?: string | { in: string[] };
-  triageState?: string | null;
+  status?: string;
   agentName?: string;
   shipmentId?: string;
   reviewedByUserId?: string;
@@ -119,50 +116,34 @@ export function buildDecisionWhere(
   accountId: string,
   now: Date = new Date()
 ): Prisma.AgentDecisionWhereInput {
-  const conditions: Prisma.AgentDecisionWhereInput[] = [{ accountId }];
+  const where: DecisionWhere = { accountId };
 
-  if (query.status) {
-    const normalized = normalizeDecisionStatus(query.status);
-    if (normalized) {
-      const variants = statusVariantsForState(normalized);
-      conditions.push({
-        OR: [
-          { triageState: normalized },
-          { status: { in: variants } },
-        ],
-      });
-    } else {
-      conditions.push({ status: query.status });
-    }
-  }
+  if (query.status) where.status = query.status;
+  if (query.agentName) where.agentName = query.agentName;
+  if (query.shipmentId) where.shipmentId = query.shipmentId;
+  if (query.reviewerId) where.reviewedByUserId = query.reviewerId;
 
-  if (query.agentName) conditions.push({ agentName: query.agentName });
-  if (query.shipmentId) conditions.push({ shipmentId: query.shipmentId });
-  if (query.reviewerId) conditions.push({ reviewedByUserId: query.reviewerId });
+  if (query.confidence === "high") where.confidence = { gte: 85 };
+  else if (query.confidence === "medium") where.confidence = { gte: 60, lte: 84 };
+  else if (query.confidence === "low") where.confidence = { lte: 59 };
+  else if (query.confidence === "unscored") where.confidence = null;
 
-  if (query.confidence === "high") conditions.push({ confidence: { gte: 85 } });
-  else if (query.confidence === "medium") conditions.push({ confidence: { gte: 60, lte: 84 } });
-  else if (query.confidence === "low") conditions.push({ confidence: { lte: 59 } });
-  else if (query.confidence === "unscored") conditions.push({ confidence: null });
-
-  if (query.age === "today") conditions.push({ createdAt: { gte: new Date(now.getTime() - DAY_MS) } });
-  else if (query.age === "week") conditions.push({ createdAt: { gte: new Date(now.getTime() - 7 * DAY_MS) } });
-  else if (query.age === "older") conditions.push({ createdAt: { lt: new Date(now.getTime() - 7 * DAY_MS) } });
+  if (query.age === "today") where.createdAt = { gte: new Date(now.getTime() - DAY_MS) };
+  else if (query.age === "week") where.createdAt = { gte: new Date(now.getTime() - 7 * DAY_MS) };
+  else if (query.age === "older") where.createdAt = { lt: new Date(now.getTime() - 7 * DAY_MS) };
 
   if (query.search) {
     const contains = { contains: query.search, mode: "insensitive" as const };
-    conditions.push({
-      OR: [
-        { agentName: contains },
-        { decisionSummary: contains },
-        { proposedHtsCode: contains },
-        { currentHtsCode: contains },
-        { shipment: { shipmentNumber: contains } },
-      ],
-    });
+    where.OR = [
+      { agentName: contains },
+      { decisionSummary: contains },
+      { proposedHtsCode: contains },
+      { currentHtsCode: contains },
+      { shipment: { shipmentNumber: contains } },
+    ];
   }
 
-  return conditions.length === 1 ? conditions[0] : { AND: conditions };
+  return where;
 }
 
 export function buildDecisionOrderBy(query: DecisionQuery): OrderBy {

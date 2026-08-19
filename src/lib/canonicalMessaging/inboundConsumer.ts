@@ -31,8 +31,8 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
 
   // Extract status from declaration response fields
   const declaration = data.declaration as any;
-  const isImport = 'ImportDeclaration' in declaration;
-  const isExport = 'ExportDeclaration' in declaration;
+  const isImport = declaration != null && 'ImportDeclaration' in declaration;
+  const isExport = declaration != null && 'ExportDeclaration' in declaration;
   const declarationKey = isImport ? 'ImportDeclaration' : isExport ? 'ExportDeclaration' : null;
   
   let canonicalStatus: string;
@@ -57,7 +57,7 @@ export async function processInboundMessage(message: CanonicalMessage<CanonicalF
     "00": "cbp.accept", // Response code for accepted
     "REJECTED": "cbp.reject",
     "RELEASED": "cbp.release",
-    "CANCELLED": null, // No automatic transition
+    "CANCELLED": "cbp.cancel",
     "ERROR": null, // No automatic transition
   };
 

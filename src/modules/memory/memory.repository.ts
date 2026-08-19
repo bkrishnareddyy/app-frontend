@@ -7,7 +7,6 @@ import {
 } from "@prisma/client";
 import type {
   AccountMemoryRecord,
-  MemoryEvidenceRecord,
   MemoryAnalyticsSummary,
 } from "./memory.types";
 

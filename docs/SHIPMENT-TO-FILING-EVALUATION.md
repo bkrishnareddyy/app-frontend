@@ -187,7 +187,7 @@ function buildImportDeclaration(params) {
         // Map shipment fields to schema structure
         DeclarationNumber: params.entryNumber,
         Procedure: params.procedure,
-        InvoiceAmount: params.totalValue,
+        InvoiceAmount: params.totalValue, // converted to USD by ExchangeRateService before this point -- see src/modules/fx/exchangeRateService.ts
         InvoiceCurrency: params.currency || "USD",
         GoodsItemQuantity: params.lineItems.length,
         
@@ -287,8 +287,8 @@ shipment.importerName      → ImportDeclaration.GoodsDeclaration.Parties.Import
 shipment.portOfEntry       → ImportDeclaration.GoodsDeclaration.GoodsShipment.Consignment.ArrivalTransportMeans.LocationOfGoods
 shipment.carrierName       → ImportDeclaration.GoodsDeclaration.GoodsShipment.Consignment.CarrierName
 shipment.incoterm          → ImportDeclaration.GoodsDeclaration.GoodsShipment.Consignment.DeliveryTerms.Code
-shipment.totalValue        → ImportDeclaration.GoodsDeclaration.InvoiceAmount
-shipment.currency          → ImportDeclaration.GoodsDeclaration.InvoiceCurrency
+shipment.totalValue        → ImportDeclaration.GoodsDeclaration.InvoiceAmount (already USD -- converted from invoiceCurrency by ExchangeRateService)
+shipment.invoiceCurrency   → ImportDeclaration.GoodsDeclaration.InvoiceCurrency
 lineItems.length           → ImportDeclaration.GoodsDeclaration.GoodsItemQuantity
 ```
 

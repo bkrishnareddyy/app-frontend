@@ -19,6 +19,12 @@ vi.mock("@/modules/shipments/resolveShipment", () => ({
   shipmentResolutionStatus: () => 404,
   ShipmentResolutionError: class extends Error {},
 }));
+vi.mock("@/lib/db", () => ({
+  db: {
+    $queryRaw: vi.fn().mockResolvedValue([{ requests: 1 }]),
+    $executeRaw: vi.fn().mockResolvedValue(0),
+  },
+}));
 
 const agentModule = () => ({
   DocumentIntakeAgent: { execute },

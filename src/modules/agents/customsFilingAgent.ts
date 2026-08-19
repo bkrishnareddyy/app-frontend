@@ -44,22 +44,8 @@ export interface CustomsFilingOutput {
   debugError?: string;
 }
 
-import { AccountContextBuilder } from "@/modules/memory";
-
 export class CustomsFilingAgent {
   static async execute(input: CustomsFilingInput): Promise<CustomsFilingOutput> {
-    let accountContextPrompt = "";
-    try {
-      const accountContext = await AccountContextBuilder.build({
-        accountId: input.accountId,
-        task: "FILING",
-        shipmentId: input.shipmentId,
-      });
-      accountContextPrompt = accountContext.formattedText;
-    } catch (err) {
-      // Non-blocking fallback
-    }
-
     // ACE simulation — no LLM call and no real CBP ABI connection in this environment.
     const aiProvider = "Deterministic ACE Simulation (Demo Mode)";
     let debugError: string | undefined = undefined;

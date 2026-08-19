@@ -4,7 +4,7 @@ import { BisCslIngestionService } from "@/modules/screening/bisCslIngestionServi
 
 export const maxDuration = 300;
 
-export const POST = withCronRoute(async ({ requestId }) => {
+async function handleIngest(requestId: string) {
   try {
     const result = await BisCslIngestionService.fetchAndIngest();
     return NextResponse.json({
@@ -21,4 +21,8 @@ export const POST = withCronRoute(async ({ requestId }) => {
       { status: 502 }
     );
   }
-});
+}
+
+export const GET = withCronRoute(async ({ requestId }) => handleIngest(requestId));
+
+export const POST = withCronRoute(async ({ requestId }) => handleIngest(requestId));

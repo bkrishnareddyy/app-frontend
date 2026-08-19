@@ -54,7 +54,7 @@ async function seedUSFilingConfig() {
 
   // 3. Create FilingProcedureConfig for each US entry type
   for (const entryType of usEntryTypes) {
-    const result = await db.filingProcedureConfig.upsert({
+    await db.filingProcedureConfig.upsert({
       where: {
         country_procedureCode_messageName: {
           country: "US",

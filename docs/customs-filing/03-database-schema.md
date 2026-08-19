@@ -326,6 +326,7 @@ which are included below for completeness since the model was read in full.
 | `poReference` | String? | nullable, e.g. `"PO-778899"` | Purchase order reference for this shipment. | Not read in files reviewed here. |
 | `entryType` | String? | nullable | Shipment-level entry type (distinct from `CustomsFiling.entryType`, which is the entry's own copy at filing time). | `filing.service.ts` copies `filing.shipment.entryType` into `FilingSnapshotData.shipment.entryType`; `FilingDetailClient.tsx` `ShipmentProps.entryType`. |
 | `incoterm` | String? | nullable | Incoterm (e.g. `CIF`, `FOB`) governing the shipment. | `filing.service.ts` snapshot; `FilingDetailClient.tsx` displays it under "Transport". |
+| `invoiceCurrency` | String? | nullable, `@default("USD")`, ISO 4217 (e.g. `"EUR"`, `"GBP"`, `"CNY"`) | Currency the commercial invoice was denominated in. Extracted from invoice OCR via `documentIntelligenceAgent.ts` and persisted onto this column by `pipelineOrchestrator.ts`. | `filing.service.ts` and `api/products/[id]/valuation/route.ts` pass this (plus `ladingDate` as the as-of date) to `ExchangeRateService.resolveExchangeRate()` to convert all monetary fields to USD before duty/valuation math. See [ExchangeRate](#exchangerate) below. |
 | `portOfEntry` | String? | nullable | Port where the shipment enters. | `filing.service.ts` snapshot; `FilingDetailClient.tsx` "Port of Entry". |
 | `carrierName` | String? | nullable | Name of the carrier transporting the shipment. | `filing.service.ts` snapshot; `FilingDetailClient.tsx` "Carrier". |
 | `countryOfExport` | String? | nullable | Country the goods were exported from. | `FilingDetailClient.tsx` "Country of Export" (Declaration tab, Parties card). |
@@ -368,6 +369,35 @@ which are included below for completeness since the model was read in full.
 | `fieldApprovals` | relation | → `FieldApproval[]` | Field-level approval records. | Not read here. |
 | `documentCandidates` | relation | → `DocumentShipmentCandidate[]` | Candidate document-to-shipment matches. | Not read here. |
 | `complianceDeadlines` | relation | → `ComplianceDeadline[]` | Every statutory/commercial deadline attached to this shipment. | `inboundConsumer.ts` creates a `PSC_WINDOW` deadline here on filing acceptance (see below). |
+
+---
+
+## ExchangeRate
+
+Daily-ingested USD conversion rates, fetched from the CurrencyFreaks API by
+the `fx-rate-refresh` cron (`src/app/api/cron/fx-rate-refresh/route.ts` →
+`ExchangeRateService.fetchAndStoreRates()`). Rows are never deleted — each
+refresh flips the prior `isCurrent: true` row for a currency to `false` and
+inserts a new one, so the table doubles as a dated rate history. This history
+is what `resolveExchangeRate(currencyCode, asOfDate)` queries to resolve the
+rate as of a shipment's `ladingDate` (19 CFR 159.34 date-of-export intent)
+rather than always using today's rate.
+
+| Column | Type | Constraints | Business meaning | Used by |
+|---|---|---|---|---|
+| `id` | String | `@id @default(cuid())` | Primary key. | — |
+| `currencyCode` | String | required, ISO 4217 (e.g. `"EUR"`) | Currency this rate applies to. | Lookup key in `resolveExchangeRate()`. |
+| `rateToUsd` | Decimal | `@db.Decimal(18, 8)` | `1 unit of currencyCode = rateToUsd USD` — inverted from CurrencyFreaks' USD-per-X convention at ingestion time so downstream math is a plain multiply. | `ExchangeRateService.resolveExchangeRate()` return value; multiplied into every monetary field at the `filing.service.ts` / valuation call sites. |
+| `fetchedAt` | DateTime | `@default(now())` | When this rate was ingested. | `resolveExchangeRate(code, asOfDate)` queries `fetchedAt <= asOfDate`, ordered `fetchedAt desc`, to find the rate in effect as of a given date. |
+| `isCurrent` | Boolean | `@default(true)` | Whether this is the latest ingested rate for `currencyCode`. Only one row per currency has `isCurrent: true` at a time. | `resolveExchangeRate(code)` with no `asOfDate` queries this directly. |
+| `createdAt` | DateTime | `@default(now())` | Row creation timestamp. | — |
+| *(index)* | — | `@@index([currencyCode, isCurrent])` | Fast lookup of the current rate. | — |
+| *(index)* | — | `@@index([currencyCode, fetchedAt])` | Fast as-of-date history lookup. | — |
+
+**Fail-closed**: if no rate row exists for a currency (current or as-of-date),
+`resolveExchangeRate()` throws rather than defaulting to `1` — silently
+treating a foreign-currency invoice as USD is the exact bug this table and
+service exist to close.
 
 ---
 

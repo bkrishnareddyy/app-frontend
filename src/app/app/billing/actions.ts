@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, runWithAccountId } from "@/lib/db";
 import { getAccountContext, hasPermission } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { createInvoiceFromCharges } from "@/lib/billing/invoicing";
@@ -41,50 +41,52 @@ export async function createRateCardAction(input: CreateRateCardInput) {
   if (!input.lineItems.length) throw new Error("At least one rate-card line item is required");
   if (input.lineItems.some((item) => !Number.isFinite(item.rate) || item.rate < 0)) throw new Error("Rate-card rates must be valid non-negative numbers");
 
-  const rateCard = await db.$transaction(async (tx) => tx.rateCard.create({
-    data: {
-      accountId: context.accountId,
-      clientId: input.clientId || null,
-      importerId: input.importerId || null,
-      name: input.name.trim(),
-      code: input.code || null,
-      description: input.description || null,
-      currency: input.currency || "USD",
-      isDefault: input.isDefault ?? false,
-      currentVersion: 1,
-      status: "DRAFT",
-      versions: {
-        create: [{
-          version: 1,
-          effectiveDate: new Date(),
-          status: "DRAFT",
-          rules: {
-            create: input.lineItems.map((item) => ({
-              lineItemName: item.lineItemName,
-              serviceCode: item.serviceCode,
-              pricingModel: item.pricingModel as any,
-              unit: item.unit,
-              rate: item.rate,
-              currency: input.currency || "USD",
-              includedQuantity: item.includedQuantity,
-              isBillable: true,
-            })),
-          },
-        }],
+  return runWithAccountId(context.accountId, async () => {
+    const rateCard = await db.$transaction(async (tx) => tx.rateCard.create({
+      data: {
+        accountId: context.accountId,
+        clientId: input.clientId || null,
+        importerId: input.importerId || null,
+        name: input.name.trim(),
+        code: input.code || null,
+        description: input.description || null,
+        currency: input.currency || "USD",
+        isDefault: input.isDefault ?? false,
+        currentVersion: 1,
+        status: "DRAFT",
+        versions: {
+          create: [{
+            version: 1,
+            effectiveDate: new Date(),
+            status: "DRAFT",
+            rules: {
+              create: input.lineItems.map((item) => ({
+                lineItemName: item.lineItemName,
+                serviceCode: item.serviceCode,
+                pricingModel: item.pricingModel as any,
+                unit: item.unit,
+                rate: item.rate,
+                currency: input.currency || "USD",
+                includedQuantity: item.includedQuantity,
+                isBillable: true,
+              })),
+            },
+          }],
+        },
       },
-    },
-  }));
+    }));
 
-  await createAuditLog({
-    accountId: context.accountId,
-    userId: context.userId,
-    action: "billing.ratecard.create",
-    entity: "RateCard",
-    entityId: rateCard.id,
-    metadata: { name: rateCard.name, version: 1, status: "DRAFT" },
+    await createAuditLog({
+      accountId: context.accountId,
+      userId: context.userId,
+      action: "billing.ratecard.create",
+      entity: "RateCard",
+      entityId: rateCard.id,
+      metadata: { name: rateCard.name, version: 1, status: "DRAFT" },
+    });
+    revalidatePath("/app/billing/rate-cards");
+    return { success: true, rateCardId: rateCard.id };
   });
-  revalidatePath("/app/billing/rate-cards");
-  return { success: true, rateCardId: rateCard.id };
 }
 
 export async function saveRateRuleMappingsAction(ruleId: string, eventCodes: string[]) {

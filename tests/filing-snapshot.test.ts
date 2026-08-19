@@ -10,7 +10,7 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
 
   // This suite runs against a real Postgres, so the hooks and tests need more
   // than the default 10s/5s budgets for their round trips.
-  const DB_TIMEOUT = 30_000;
+  const DB_TIMEOUT = 60_000;
 
   const TEST_HTS_CODE = "8481.80.5090";
   const TEST_HTS_NORMALIZED = "8481805090";
@@ -22,6 +22,18 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
   // test fixture, not a real HTSUS rate, so it must never be left behind in a
   // shared database, and a pre-existing real node is never overwritten.
   beforeAll(async () => {
+    // Unlike the HTS fixture below, IMPORT is genuine reference config (not a
+    // fabricated rate), so this is an idempotent ensure-exists, never torn
+    // down -- a per-run create/delete would race with response-tab-lifecycle
+    // running the same ensure-exists concurrently in its own process, since
+    // Vitest doesn't synchronize afterAll timing across files.
+    const existingTxType = await db.filingTransactionType.findUnique({ where: { code: "IMPORT" } });
+    if (!existingTxType) {
+      await db.filingTransactionType.create({ data: { code: "IMPORT", isActive: true } });
+    } else if (!existingTxType.isActive) {
+      await db.filingTransactionType.update({ where: { id: existingTxType.id }, data: { isActive: true } });
+    }
+
     const existing = await db.htsNode.findFirst({
       where: { htsNumberNormalized: TEST_HTS_NORMALIZED },
     });
@@ -36,6 +48,7 @@ describe("CBP Filing Immutable Snapshot Integration Suite", () => {
           sourceFormat: "JSON",
           sha256: `test-${Date.now()}`,
           validationStatus: "VALIDATED",
+          publicationStatus: "PUBLISHED",
         },
       });
       await db.htsNode.create({

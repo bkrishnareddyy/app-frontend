@@ -110,7 +110,7 @@ export function AccountMemoryPanel({ accounts }: AccountMemoryPanelProps) {
       } else {
         setMessage({ type: "error", text: data.error || "Extraction failed" });
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: "error", text: "Network error triggering extraction" });
     } finally {
       setExtracting(false);

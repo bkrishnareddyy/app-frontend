@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import type { FilingSnapshotData } from "@/modules/filings/filing.service";
-import type { TariffEngineResult } from "@/lib/tariff/dutyEngine";
 
 /**
  * Shared field mapping utilities for declaration builders.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, FileCheck2 } from "lucide-react";
 import { displayCurrency } from "@/lib/honest";
@@ -20,6 +21,7 @@ interface CreateFilingPromptProps {
 
 export function CreateFilingPrompt({ shipment, lineItemCount, totalValue }: CreateFilingPromptProps) {
   const [isModalOpen, setIsModalOpen] = useState(true);
+  const router = useRouter();
 
   return (
     <div className="max-w-xl mx-auto py-12 space-y-6">
@@ -59,7 +61,7 @@ export function CreateFilingPrompt({ shipment, lineItemCount, totalValue }: Crea
           setIsModalOpen(false);
           // Redirect back to filing dashboard
           setTimeout(() => {
-            window.location.href = "/app/filing";
+            router.push("/app/filing");
           }, 100);
         }}
         shipmentId={shipment.id}

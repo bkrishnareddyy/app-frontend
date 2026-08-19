@@ -755,6 +755,17 @@ export class PipelineOrchestrator {
       countryOfOrigin: output.originCountry,
       incoterm: output.incoterm,
     });
+
+    // invoiceCurrency defaults to "USD" in the schema, so fillShipmentFields'
+    // fill-if-empty semantics would never apply it -- the field is never
+    // falsy. Set it directly whenever extraction produces a value; the most
+    // recently ingested invoice's currency is authoritative.
+    if (output.currency) {
+      await db.shipment.updateMany({
+        where: { id: shipmentId, accountId },
+        data: { invoiceCurrency: output.currency },
+      });
+    }
   }
 
   private static async persistProductIntelligence(

@@ -3,6 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { calculateCustomsValuation, ValuationInput } from "@/lib/valuation/valuationEngine";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { ExchangeRateService } from "@/modules/fx/exchangeRateService";
 import { createExceptionItem } from "@/lib/exceptions/createException";
 
 export const GET = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, params }) => {
@@ -38,7 +39,40 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, pa
   const { id: productId } = params;
   const body = (await req.json()) as ValuationInput & { shipmentLineItemId?: string };
 
-  const valuationResult = calculateCustomsValuation(body);
+  // If this valuation is tied to a real shipment line item, resolve the rate
+  // as of that shipment's date of export (ladingDate) rather than today's
+  // rate -- same reasoning as filing.service.ts. An ad-hoc valuation with no
+  // line item has no shipment to anchor a date to, so it falls back to the
+  // current rate.
+  let asOfDate: Date | undefined;
+  if (body.shipmentLineItemId) {
+    const lineItemForRate = await db.shipmentLineItem.findFirst({
+      where: { id: body.shipmentLineItemId, accountId: ctx.accountId },
+      include: { shipment: { select: { ladingDate: true } } },
+    });
+    asOfDate = lineItemForRate?.shipment?.ladingDate ?? undefined;
+  }
+
+  // valuationEngine is USD-only -- convert every monetary field to USD here,
+  // at the call site, before handing off. keep the engine itself untouched.
+  const invoiceCurrency = body.currency || "USD";
+  const rateToUsd = (await ExchangeRateService.resolveExchangeRate(invoiceCurrency, asOfDate)).toNumber();
+  const usdInput: ValuationInput = {
+    ...body,
+    currency: "USD",
+    invoiceValue: Number(body.invoiceValue || 0) * rateToUsd,
+    assists: body.assists?.map((assist) => ({
+      ...assist,
+      unitCost: Number(assist.unitCost || 0) * rateToUsd,
+    })),
+    royalties: Number(body.royalties || 0) * rateToUsd,
+    commissions: Number(body.commissions || 0) * rateToUsd,
+    freightToUSPort: Number(body.freightToUSPort || 0) * rateToUsd,
+    insuranceToUSPort: Number(body.insuranceToUSPort || 0) * rateToUsd,
+    discounts: Number(body.discounts || 0) * rateToUsd,
+  };
+
+  const valuationResult = calculateCustomsValuation(usdInput);
 
   if (body.shipmentLineItemId) {
     const lineItem = await db.shipmentLineItem.findFirst({
@@ -114,6 +148,9 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, pa
     metadata: {
       declaredValue: valuationResult.customsValue,
       relatedParty: valuationResult.relatedParty,
+      invoiceCurrency,
+      rateToUsd,
+      rateAsOfDate: asOfDate?.toISOString() ?? null,
     },
   });
 

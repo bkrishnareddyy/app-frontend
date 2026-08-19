@@ -52,22 +52,8 @@ export interface OriginRulesOutput {
   debugError?: string;
 }
 
-import { AccountContextBuilder } from "@/modules/memory";
-
 export class OriginRulesAgent {
   static async execute(input: OriginRulesInput): Promise<OriginRulesOutput> {
-    let accountContextPrompt = "";
-    try {
-      const accountContext = await AccountContextBuilder.build({
-        accountId: input.accountId,
-        task: "ORIGIN_DETERMINATION",
-        shipmentId: input.shipmentId,
-      });
-      accountContextPrompt = accountContext.formattedText;
-    } catch (err) {
-      // Non-blocking fallback
-    }
-
     // Deterministic rule evaluation per 19 CFR Part 102 and 19 CFR Part 181 (USMCA).
     // No LLM is called — aiProviderUsed reflects what actually ran.
     const aiProvider = "Deterministic Origin Rules Engine (19 CFR Part 102)";

@@ -1,5 +1,5 @@
 import { inngest } from "../client";
-import { db } from "@/lib/db";
+import { db, runWithAccountId } from "@/lib/db";
 import { runAuditChecks, type FilingSnapshotInput } from "@/lib/compliance/auditChecklist";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import type { Prisma } from "@prisma/client";
@@ -10,6 +10,7 @@ export async function executeDailyComplianceAudit() {
   let totalFindingsCreated = 0;
 
   for (const account of accounts) {
+    await runWithAccountId(account.id, async () => {
     const filings = await db.customsFiling.findMany({
       where: { accountId: account.id },
       include: {
@@ -147,6 +148,7 @@ export async function executeDailyComplianceAudit() {
         },
       });
     }
+    });
   }
 
   return { totalEvaluated, totalFindingsCreated };

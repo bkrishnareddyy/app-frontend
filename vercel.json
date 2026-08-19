@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/document-processing",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/bis-csl-ingest",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/fx-rate-refresh",
+      "schedule": "0 3 * * *"
     }
   ]
 }
