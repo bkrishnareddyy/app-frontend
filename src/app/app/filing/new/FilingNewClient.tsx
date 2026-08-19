@@ -25,7 +25,6 @@ export function FilingNewClient() {
   const country = searchParams.get("country");
   const procedure = searchParams.get("procedure");
   const message = searchParams.get("message");
-  const transactionType = searchParams.get("transactionType") || undefined;
 
   const [activeTab, setActiveTab] = useState<"overview" | "declaration" | "response">("declaration");
   const [declarationData, setDeclarationData] = useState<any>({});

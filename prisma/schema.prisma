@@ -903,10 +903,6 @@ model CustomsFiling {
   // NEW MULTI-COUNTRY FIELDS (replaces US-centric entryType + authority)
   // ========================================================================
 
-  /// Transaction type (IMPORT, EXPORT, NCTS, etc.) - replaces US entry type concept
-  transactionTypeId String?
-  transactionType   FilingTransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
-
   /// ISO 3166-1 alpha-2 country code (NL, IE, FR, IN, US, etc.)
   /// Replaces the authority field which was storing authority names
   country String?
@@ -974,7 +970,6 @@ model CustomsFiling {
   @@index([accountId])
   @@index([filingStatus])
   @@index([country, procedureCode])
-  @@index([transactionTypeId])
 }
 
 model CustomsResponse {
@@ -4301,7 +4296,6 @@ model FilingUIConfig {
   procedureCode   String   // e.g., H1, H4, H7
   messageName     String   // e.g., IE501, IE503, IE015
   messageType     String   // "request" or "response"
-  transactionType String   @default("import") // "import" or "export"
   
   // Complete field configuration stored as JSON
   // Structure: { fields: [{ fieldPath, fieldLabel, fieldType, section, displayOrder, ... }] }
@@ -4317,8 +4311,8 @@ model FilingUIConfig {
   createdBy       String?
   updatedBy       String?
 
-  @@unique([country, procedureCode, messageName, messageType, transactionType])
-  @@index([country, procedureCode, messageName, messageType, transactionType])
+  @@unique([country, procedureCode, messageName, messageType])
+  @@index([country, procedureCode, messageName, messageType])
   @@index([isActive])
 }
 
@@ -4377,9 +4371,6 @@ model FilingTransactionType {
   createdBy String?
   updatedBy String?
 
-  procedures FilingProcedureConfig[]
-  filings    CustomsFiling[]
-
   @@index([code])
   @@index([isActive])
 }
@@ -4404,8 +4395,6 @@ model FilingActionCatalog {
 /// Example: (NL, NCTS, 5100, IE015) means Netherlands NCTS procedure 5100 uses message IE015.
 model FilingProcedureConfig {
   id                String                @id @default(cuid())
-  transactionTypeId String
-  transactionType   FilingTransactionType  @relation(fields: [transactionTypeId], references: [id], onDelete: Cascade)
   country           String                 // ISO 3166-1 alpha-2 (NL, IE, FR, IN, etc.)
   procedureCode     String                 // Country-specific procedure code (5100, 4000, etc.)
   messageName       String                 // Official customs message code (IE015, IE013, ICEGATE_BOE, etc.)
@@ -4418,7 +4407,6 @@ model FilingProcedureConfig {
 
   @@unique([country, procedureCode, messageName])
   @@index([country, procedureCode])
-  @@index([transactionTypeId])
   @@index([isActive])
   @@index([canCreateNewFiling])
 }

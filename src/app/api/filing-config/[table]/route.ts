@@ -44,7 +44,12 @@ export const POST = withAuthenticatedRoute<Params>(async ({ req, ctx, params, re
   if ("response" in body) return body.response;
 
   try {
-    const row = await table.create(body.data as Record<string, unknown>);
+    // Add createdBy from authenticated user
+    const dataWithUser = {
+      ...(body.data as Record<string, unknown>),
+      createdBy: ctx.userId,
+    };
+    const row = await table.create(dataWithUser);
     return NextResponse.json({ row, requestId }, { status: 201 });
   } catch (err) {
     if (err instanceof DuplicateConfigRowError) {

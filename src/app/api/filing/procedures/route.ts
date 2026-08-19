@@ -16,13 +16,6 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
       isActive: true,
       canCreateNewFiling: true,  // Only include messages that can create new filings
     },
-    include: {
-      transactionType: {
-        select: {
-          code: true,
-        },
-      },
-    },
     orderBy: [{ country: "asc" }, { procedureCode: "asc" }],
   });
 
@@ -39,7 +32,6 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
     if (!acc[proc.country].procedures[procKey]) {
       acc[proc.country].procedures[procKey] = {
         procedureCode: proc.procedureCode,
-        transactionType: proc.transactionType?.code || null,
         messages: [],
       };
     }
@@ -54,7 +46,6 @@ export const GET = withAuthenticatedRoute(async ({ ctx }) => {
     country: string;
     procedures: Record<string, {
       procedureCode: string;
-      transactionType: string | null;
       messages: Array<{ messageName: string; id: string }>;
     }>;
   }>);
