@@ -24,15 +24,18 @@ describe("Customs Filing Response tab lifecycle", () => {
   const TEST_HTS_CODE = "8481.80.5090";
   const TEST_HTS_NORMALIZED = "8481805090";
   let seededReleaseId: string | null = null;
-  let seededTransactionTypeId: string | null = null;
 
   beforeAll(async () => {
+    // Unlike the HTS fixture below, IMPORT is genuine reference config (not a
+    // fabricated rate), so this is an idempotent ensure-exists, never torn
+    // down -- a per-run create/delete would race with filing-snapshot running
+    // the same ensure-exists concurrently in its own process, since Vitest
+    // doesn't synchronize afterAll timing across files.
     const existingTxType = await db.filingTransactionType.findUnique({ where: { code: "IMPORT" } });
     if (!existingTxType) {
-      const txType = await db.filingTransactionType.create({
-        data: { code: "IMPORT", isActive: true },
-      });
-      seededTransactionTypeId = txType.id;
+      await db.filingTransactionType.create({ data: { code: "IMPORT", isActive: true } });
+    } else if (!existingTxType.isActive) {
+      await db.filingTransactionType.update({ where: { id: existingTxType.id }, data: { isActive: true } });
     }
 
     const existing = await db.htsNode.findFirst({ where: { htsNumberNormalized: TEST_HTS_NORMALIZED } });
@@ -75,9 +78,6 @@ describe("Customs Filing Response tab lifecycle", () => {
   afterAll(async () => {
     if (seededReleaseId) {
       await db.htsRelease.delete({ where: { id: seededReleaseId } });
-    }
-    if (seededTransactionTypeId) {
-      await db.filingTransactionType.delete({ where: { id: seededTransactionTypeId } });
     }
   }, DB_TIMEOUT);
 
