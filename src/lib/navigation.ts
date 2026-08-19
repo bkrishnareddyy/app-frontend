@@ -78,12 +78,7 @@ export const NAV_SECTIONS: NavSection[] = [
     renderAs: "pills",
     items: [
       { id: "documents", labelKey: "tradeDocs", href: "/app/documents", icon: "documents" },
-      { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
-      { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
       { id: "clients", labelKey: "clients", href: "/app/clients", icon: "clients" },
-      { id: "importers-of-record", labelKey: "importersOfRecord", href: "/app/importers-of-record", icon: "importersOfRecord" },
-      { id: "bonds", labelKey: "bonds", href: "/app/bonds", icon: "bonds" },
-      { id: "poa", labelKey: "poa", href: "/app/poa", icon: "poa" },
       { id: "billing", labelKey: "billing", href: "/app/billing", icon: "billing", permission: "billing.view" },
       { id: "trade-data", labelKey: "tradeData", href: "/app/trade-data", icon: "tradeData" },
       { id: "tariffs", labelKey: "tariffsAndRegulations", href: "/app/tariffs", icon: "tariffs" },
@@ -152,6 +147,14 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+export const UNLISTED_NAV_ITEMS: NavItem[] = [
+  { id: "products", labelKey: "products", href: "/app/products", icon: "products" },
+  { id: "parties", labelKey: "parties", href: "/app/parties", icon: "parties" },
+  { id: "importers-of-record", labelKey: "importersOfRecord", href: "/app/importers-of-record", icon: "importersOfRecord" },
+  { id: "bonds", labelKey: "bonds", href: "/app/bonds", icon: "bonds" },
+  { id: "poa", labelKey: "poa", href: "/app/poa", icon: "poa" },
+];
+
 /** Mirrors hasPermission() in src/lib/auth.ts: platform admins and OWNER bypass checks. */
 export function canAccessNavItem(access: NavAccess, item: NavItem): boolean {
   if (item.platformAdminOnly) {
@@ -184,7 +187,9 @@ export function visibleNavigation(access: NavAccess, sections: NavSection[] = NA
 }
 
 export function navItemByHref(href: string, sections: NavSection[] = NAV_SECTIONS): NavItem | undefined {
-  return sections.flatMap((section) => section.items).find((item) => item.href === href);
+  const fromSections = sections.flatMap((section) => section.items).find((item) => item.href === href);
+  if (fromSections) return fromSections;
+  return UNLISTED_NAV_ITEMS.find((item) => item.href === href);
 }
 
 /** Server-side guard for a routed page. Unknown hrefs fail closed. */
