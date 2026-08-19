@@ -428,6 +428,28 @@ function RowFormModal({
   const [draft, setDraft] = useState<Row>(() => (initial ? { ...initial } : emptyDraft(table.fields)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transactionTypeCodes, setTransactionTypeCodes] = useState<string[]>([]);
+
+  // Fetch transaction type codes for procedureCode dropdown
+  useEffect(() => {
+    // Fetch codes for any table that has a procedureCode field
+    const hasProcedureCodeField = table.fields.some(f => f.key === "procedureCode");
+    if (hasProcedureCodeField) {
+      console.log("🔍 Fetching transaction types for", table.key, "table...");
+      fetch("/api/filing-config/transaction-types", {
+        credentials: "include" // Ensure cookies are sent
+      })
+        .then(res => {
+          console.log("📥 Transaction types response status:", res.status);
+          return res.json();
+        })
+        .then(data => {
+          console.log("✅ Transaction types loaded:", data.codes);
+          setTransactionTypeCodes(data.codes || []);
+        })
+        .catch(err => console.error("❌ Failed to load transaction types:", err));
+    }
+  }, [table.key, table.fields]);
 
   async function handleSubmit() {
     setBusy(true);
@@ -467,6 +489,8 @@ function RowFormModal({
       <ModalBody className="space-y-3">
         {table.fields.map((f) => {
           const disabled = isEdit && f.key === table.idField;
+          const isProcedureCodeField = f.key === "procedureCode";
+          
           return (
             <div key={f.key} className="space-y-1">
               <label className="text-xs font-bold text-ink-muted">{fieldLabel(t, table.key, f)}</label>
@@ -478,6 +502,20 @@ function RowFormModal({
                 >
                   <option value="false">{t.filingConfig?.no ?? "No"}</option>
                   <option value="true">{t.filingConfig?.yes ?? "Yes"}</option>
+                </select>
+              ) : isProcedureCodeField && transactionTypeCodes.length > 0 ? (
+                <select
+                  value={String(draft[f.key] ?? "")}
+                  onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                  disabled={disabled}
+                  className={`w-full rounded-xl border border-border px-3 py-2 text-sm ${disabled ? "opacity-60" : ""}`}
+                >
+                  <option value="">Select...</option>
+                  {transactionTypeCodes.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
                 </select>
               ) : f.type === "fieldArray" ? (
                 <FieldArrayEditor

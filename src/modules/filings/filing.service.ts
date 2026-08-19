@@ -128,7 +128,6 @@ export class FilingService {
       where: { id: filingId, accountId },
       include: {
         shipment: true,
-        transactionType: true,
       },
     });
     if (!filing) throw new Error("NOT_FOUND");
@@ -154,7 +153,7 @@ export class FilingService {
 
     const context = await resolveMessageContext(
       {
-        transactionType: filing.transactionType?.code || "IMPORT",
+        transactionType: filing.procedureCode || "IMPORT", // procedureCode now stores transaction type
         procedureCode: filing.procedureCode || filing.entryType || "01",
         country: filing.country || filing.shipment?.destinationCountry || "US",
       },
@@ -227,7 +226,6 @@ export class FilingService {
       where: { id: filingId, accountId },
       include: {
         shipment: { include: { documents: true, lineItems: true } },
-        transactionType: true,
       },
     });
 
@@ -254,7 +252,7 @@ export class FilingService {
         throw new Error("Cannot submit standalone filing without declaration data.");
       }
 
-      const transactionType = filing.transactionType?.code || "IMPORT";
+      const transactionType = filing.procedureCode || "IMPORT"; // procedureCode now stores transaction type
       declaration = wrapDeclarationData(storedData.declarationDraft, transactionType);
     } else {
       if (!filing.shipment?.lineItems || filing.shipment.lineItems.length === 0) {
@@ -413,7 +411,7 @@ export class FilingService {
 
     const context = await resolveMessageContext(
       {
-        transactionType: filing.transactionType?.code || "IMPORT",
+        transactionType: filing.procedureCode || "IMPORT", // procedureCode now stores transaction type
         procedureCode: filing.procedureCode || filing.entryType || "01",
         country:
           filing.country ||

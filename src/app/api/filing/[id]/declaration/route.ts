@@ -52,14 +52,15 @@ export const PATCH = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, r
 
   const filing = await db.customsFiling.findFirst({
     where: { id, accountId: ctx.accountId },
-    select: { id: true, dutyBreakdown: true, entryNumber: true, country: true, transactionType: true },
+    select: { id: true, dutyBreakdown: true, entryNumber: true, country: true, procedureCode: true },
   });
 
   if (!filing) {
     return buildErrorResponse(404, "NOT_FOUND", "Filing not found", undefined, requestId);
   }
 
-  const txType = typeof filing.transactionType === "string" ? filing.transactionType : "IMPORT";
+  // procedureCode now contains transaction type (IMPORT, EXPORT, etc.)
+  const txType = filing.procedureCode || "IMPORT";
 
   // Wrap the declaration data with proper Import/ExportDeclaration wrapper
   const wrappedDeclaration = wrapDeclarationData(

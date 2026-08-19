@@ -99,7 +99,7 @@ function ConfigSelectorModal({ isOpen, onClose, onSelect }: ConfigSelectorModalP
           </div>
 
           <div>
-            <label className="text-xs font-medium text-ink">Transaction Type <span className="text-red-600">*</span></label>
+            <label className="text-xs font-medium text-ink">Customs Procedure <span className="text-red-600">*</span></label>
             <select
               value={transactionType}
               onChange={(e) => setTransactionType(e.target.value)}
@@ -476,7 +476,7 @@ export default function UIConfigEditor({ onBack }: UIConfigEditorProps) {
         <div className="bg-surface-muted rounded-lg px-4 py-3 border border-border">
           <div className="grid grid-cols-6 gap-4 text-xs">
             <div>
-              <span className="font-bold text-ink-muted">Transaction Type:</span>
+              <span className="font-bold text-ink-muted">Customs Procedure:</span>
               <div className="text-ink mt-0.5 font-semibold uppercase">{transactionType}</div>
             </div>
             <div>

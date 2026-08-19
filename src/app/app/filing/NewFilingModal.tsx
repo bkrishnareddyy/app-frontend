@@ -14,7 +14,6 @@ interface Message {
 
 interface Procedure {
   procedureCode: string;
-  transactionType: string | null;
   messages: Message[];
 }
 
@@ -26,7 +25,6 @@ interface Country {
 interface ProcedureOption {
   procedureCode: string;
   messageName: string;
-  transactionType: string | null;
   configId: string;
 }
 
@@ -87,7 +85,6 @@ export function NewFilingModal({ isOpen, onClose }: NewFilingModalProps) {
         options.push({
           procedureCode: proc.procedureCode,
           messageName: msg.messageName,
-          transactionType: proc.transactionType,
           configId: msg.id,
         });
       });
@@ -106,7 +103,6 @@ export function NewFilingModal({ isOpen, onClose }: NewFilingModalProps) {
       country: selectedCountry,
       procedure: selectedOption.procedureCode,
       message: selectedOption.messageName,
-      transactionType: selectedOption.transactionType || '',
     });
 
     router.push(`/app/filing/new?${params.toString()}`);
@@ -172,7 +168,6 @@ export function NewFilingModal({ isOpen, onClose }: NewFilingModalProps) {
                         <th className="text-left py-2 px-3 font-bold text-ink-muted">Select</th>
                         <th className="text-left py-2 px-3 font-bold text-ink-muted">Procedure</th>
                         <th className="text-left py-2 px-3 font-bold text-ink-muted">Message</th>
-                        <th className="text-left py-2 px-3 font-bold text-ink-muted">Type</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">{availableOptions.map((opt, idx) => {
@@ -204,9 +199,6 @@ export function NewFilingModal({ isOpen, onClose }: NewFilingModalProps) {
                               {opt.procedureCode}
                             </td>
                             <td className="py-2 px-3 text-ink">{opt.messageName}</td>
-                            <td className="py-2 px-3 text-ink-muted">
-                              {opt.transactionType || "—"}
-                            </td>
                           </tr>
                         );
                       })}

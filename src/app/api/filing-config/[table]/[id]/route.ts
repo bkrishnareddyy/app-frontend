@@ -26,7 +26,12 @@ export const PATCH = withAuthenticatedRoute<Params>(async ({ req, ctx, params, r
   if ("response" in body) return body.response;
 
   try {
-    const row = await table.update(params.id, body.data as Record<string, unknown>);
+    // Add updatedBy from authenticated user
+    const dataWithUser = {
+      ...(body.data as Record<string, unknown>),
+      updatedBy: ctx.userId,
+    };
+    const row = await table.update(params.id, dataWithUser);
     return NextResponse.json({ row, requestId });
   } catch (err) {
     if (err instanceof DuplicateConfigRowError) {

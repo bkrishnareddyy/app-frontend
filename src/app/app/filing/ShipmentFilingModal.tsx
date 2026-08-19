@@ -14,7 +14,6 @@ interface Message {
 
 interface Procedure {
   procedureCode: string;
-  transactionType: string | null;
   messages: Message[];
 }
 
@@ -26,7 +25,6 @@ interface Country {
 interface ProcedureOption {
   procedureCode: string;
   messageName: string;
-  transactionType: string | null;
   configId: string;
 }
 
@@ -94,7 +92,6 @@ export function ShipmentFilingModal({
         options.push({
           procedureCode: proc.procedureCode,
           messageName: msg.messageName,
-          transactionType: proc.transactionType,
           configId: msg.id,
         });
       });
@@ -213,7 +210,6 @@ export function ShipmentFilingModal({
                       value={`${opt.procedureCode}-${opt.messageName}`}
                     >
                       {opt.procedureCode} - {opt.messageName}
-                      {opt.transactionType ? ` (${opt.transactionType})` : ""}
                     </option>
                   ))}
                 </Select>
@@ -236,9 +232,6 @@ export function ShipmentFilingModal({
                       <p><strong>Country:</strong> {selectedCountry}</p>
                       <p><strong>Procedure:</strong> {selectedOption.procedureCode}</p>
                       <p><strong>Message:</strong> {selectedOption.messageName}</p>
-                      {selectedOption.transactionType && (
-                        <p><strong>Transaction Type:</strong> {selectedOption.transactionType}</p>
-                      )}
                     </div>
                   </div>
                 </div>
