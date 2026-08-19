@@ -7,6 +7,7 @@ import { FactAuditService } from "@/modules/audit/factAuditService";
 import { FactService } from "@/modules/shipment/factService";
 import { lineItemFactField } from "@/modules/shipment/lineItemReconciler";
 import { normalizeDecisionStatus } from "@/modules/decisions/decisionState";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 import {
   REVIEW_ACTIONS,
   REVIEW_TRIAGE_STATES,
@@ -54,6 +55,16 @@ async function applyProposedHtsCode(
     sourceType: "USER_ENTERED",
     confidence: decision.confidence,
   });
+
+  deliverWebhookEvent(ctx.accountId, "classification.changed", {
+    shipmentId: decision.shipmentId,
+    lineNumber: decision.lineNumber,
+    lineItemId: target.id,
+    previousHtsCode: target.htsCode,
+    newHtsCode: proposedHtsCode,
+    changedByUserId: ctx.userId,
+    source: "BULK_DECISION_APPROVED",
+  }).catch((err) => console.error("[webhook] Failed to dispatch classification.changed:", err));
 }
 
 const REVIEWER_SELECT = {
@@ -171,8 +182,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
     // If approving a reclassification, require the override permission
     const overridesClassification = action === "APPROVE" && isClassificationOverride(decision);
+    let overrideCheck: ReturnType<typeof checkReviewPermission> | undefined;
     if (overridesClassification) {
-      const overrideCheck = checkReviewPermission(ctx, requiredPermissions(action, true));
+      overrideCheck = checkReviewPermission(ctx, requiredPermissions(action, true));
       if (!overrideCheck.allowed) {
         results.push({ id, status: "skipped", reason: "insufficient_permission_for_override" });
         continue;
@@ -212,21 +224,33 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
       affectedShipmentIds.add(decision.shipmentId);
 
+      const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || (body as any)?.source === "CHAT") ? "CHAT" : "UI";
+
       await createAuditLog({
         accountId: ctx.accountId,
         userId: ctx.userId,
         action: action === "APPROVE" ? AuditAction.DECISION_APPROVED : AuditAction.DECISION_REJECTED,
         entity: "AgentDecision",
         entityId: id,
-        source: "UI",
+        source: auditSource,
         metadata: {
           newStatus,
           humanNotes: rationale,
           bulkAction: true,
           reviewerCapacity: reviewer.capacity,
           brokerLicenseNumber: reviewer.licenseNumber,
+          permissionBypass: overrideCheck?.bypass,
         },
       });
+
+      if (action === "APPROVE") {
+        deliverWebhookEvent(ctx.accountId, "decision.approved", {
+          decisionId: id,
+          shipmentId: decision.shipmentId,
+          status: newStatus,
+          reviewedByUserId: ctx.userId,
+        }).catch((err) => console.error("[webhook] Failed to dispatch decision.approved:", err));
+      }
 
       results.push({ id, status: "ok" });
     } catch {

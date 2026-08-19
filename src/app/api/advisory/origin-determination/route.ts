@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 import { determineOrigin } from "@/lib/origin/originEngine";
 
 export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
@@ -82,18 +83,18 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
 
   // Task A-5: Low confidence (< 80%) creates ExceptionItem for review
   if (result.confidence < 80) {
-    await db.exceptionItem.create({
-      data: {
-        accountId: ctx.accountId,
-        shipmentId: lineItem.shipmentId,
-        category: "COMPLIANCE",
-        type: "compliance_flag",
-        severity: "High",
-        status: "Open",
-        description: `Low Confidence Origin Determination (${result.confidence}%) for Line ${lineItem.lineNumber} (${lineItem.description}). Gaps: ${result.gaps.map((g) => g.missing).join("; ") || "Substantial transformation uncertain"}`,
-      },
+    await createExceptionItem({
+      accountId: ctx.accountId,
+      shipmentId: lineItem.shipmentId,
+      category: "COMPLIANCE",
+      type: "compliance_flag",
+      severity: "High",
+      status: "Open",
+      description: `Low Confidence Origin Determination (${result.confidence}%) for Line ${lineItem.lineNumber} (${lineItem.description}). Gaps: ${result.gaps.map((g) => g.missing).join("; ") || "Substantial transformation uncertain"}`,
     });
   }
+
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || body?.source === "CHAT") ? "CHAT" : "UI";
 
   await createAuditLog({
     accountId: ctx.accountId,
@@ -101,7 +102,7 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     action: AuditAction.ORIGIN_DETERMINED,
     entity: "ShipmentLineItem",
     entityId: shipmentLineItemId,
-    source: "UI",
+    source: auditSource,
     metadata: {
       tradeAgreementCode,
       qualifies: result.qualifies,

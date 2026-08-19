@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { normalizeClassificationCode } from "@/modules/product/productNormalization";
+import { deliverWebhookEvent } from "@/lib/webhooks/deliver";
 
 export interface CreateCanonicalProductInput {
   accountId: string;
@@ -157,6 +158,15 @@ export class ProductMasterService {
         linkedProductId: canonicalProduct.productId,
       },
     });
+
+    deliverWebhookEvent(input.accountId, "classification.changed", {
+      productId: canonicalProduct.productId,
+      canonicalProductId: input.canonicalProductId,
+      htsCode,
+      jurisdiction,
+      changedByUserId: input.userId,
+      source: "RULING_PROMOTION",
+    }).catch((err) => console.error("[webhook] Failed to dispatch classification.changed:", err));
 
     return updatedProduct;
   }

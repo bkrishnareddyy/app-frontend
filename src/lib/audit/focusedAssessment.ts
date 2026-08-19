@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 export interface ControlEvidence {
   id: string;
   name: string;
-  category: string; // training, procedures, vendor_certification
+  category: string;
   version: string;
   description: string | null;
   createdAt: string;
@@ -47,7 +47,9 @@ export interface FocusedAssessmentFile {
 }
 
 /**
- * Assembler for CBP Focused Assessment Defense File (Task D-2)
+ * Assembler for CBP Focused Assessment Defense File (Task D-2).
+ * Standalone filings participate in filing-level population totals but shipment-derived
+ * HTS/sample evidence is only available when a shipment relation exists.
  */
 export async function assembleFocusedAssessmentFile(
   accountId: string,
@@ -61,7 +63,6 @@ export async function assembleFocusedAssessmentFile(
   const fromDate = new Date(params.periodFrom);
   const toDate = new Date(params.periodTo);
 
-  // 1. Fetch relevant shipments & filings in the period
   const filings = await db.customsFiling.findMany({
     where: {
       accountId,
@@ -79,25 +80,22 @@ export async function assembleFocusedAssessmentFile(
     },
   });
 
-  // Calculate population metrics
   let totalDutyPaid = new Decimal(0);
   const byEntryType: Record<string, number> = {};
   const byHtsChapter: Record<string, number> = {};
 
   for (const f of filings) {
     totalDutyPaid = totalDutyPaid.plus(new Decimal(f.totalDuties || 0));
-    // Multi-country migration: entryType is now nullable
     if (f.entryType) {
       byEntryType[f.entryType] = (byEntryType[f.entryType] || 0) + 1;
     }
 
-    for (const item of f.shipment.lineItems) {
+    for (const item of f.shipment?.lineItems ?? []) {
       const chapter = item.htsCode.slice(0, 2);
       byHtsChapter[chapter] = (byHtsChapter[chapter] || 0) + 1;
     }
   }
 
-  // 2. Fetch controls inventory
   const dbControls = await db.controlEvidence.findMany({
     where: { accountId },
   });
@@ -110,17 +108,17 @@ export async function assembleFocusedAssessmentFile(
     createdAt: c.createdAt.toISOString(),
   }));
 
-  // 3. Assemble sample entries (up to 5 for FA sampling defense)
   const sampleEntries: SampleEntry[] = [];
   const targetFilings = params.entryIds
     ? filings.filter((f) => params.entryIds!.includes(f.id))
     : filings.slice(0, 5);
 
   for (const f of targetFilings) {
+    if (!f.shipmentId) continue;
     const pkg = await assembleReasonableCarePackage(accountId, f.shipmentId);
     if (pkg) {
       sampleEntries.push({
-        entryNumber: f.entryNumber,
+        entryNumber: f.entryNumber ?? f.localReferenceNumber ?? f.id,
         customsValue: Number(f.totalValue || 0),
         dutiesPaid: Number(f.totalDuties || 0),
         reasonableCareRecord: pkg,
@@ -128,7 +126,6 @@ export async function assembleFocusedAssessmentFile(
     }
   }
 
-  // 4. Summarize Exceptions
   const exceptionItems = await db.exceptionItem.findMany({
     where: {
       accountId,
@@ -159,17 +156,16 @@ export async function assembleFocusedAssessmentFile(
     }
   } else if (filings.length > 0) {
     const f = filings[0];
-    const importer = f.importerOfRecord ?? f.shipment.importerOfRecord;
+    const importer = f.importerOfRecord ?? f.shipment?.importerOfRecord;
     if (importer) {
       importerName = importer.name;
       cbpNumber = importer.cbpImporterNumber;
       addressStr = formatAddress(importer.address);
-    } else {
+    } else if (f.shipment) {
       importerName = f.shipment.importerName;
     }
   }
 
-  // AI-generated remediation narrative (custom compliance summary via Claude API)
   let remediationNarrative = "";
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (apiKey) {

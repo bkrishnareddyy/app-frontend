@@ -20,6 +20,9 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
   if (cachedResponse) return cachedResponse;
   if (idempError) return idempError;
 
+  const rawBody = await req.clone().json().catch(() => ({}));
+  const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || rawBody?.source === "CHAT") ? "CHAT" : "UI";
+
   try {
     const result = await FilingService.resubmitFiling(ctx.accountId, ctx.userId, id);
 
@@ -29,7 +32,7 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, re
       action: AuditAction.FILING_RESUBMITTED,
       entity: "CustomsFiling",
       entityId: id,
-      source: "UI",
+      source: auditSource,
       metadata: { entryNumber: result.filing.entryNumber, messageId: result.messageId },
     });
 

@@ -191,6 +191,7 @@ export type CreatePartyInput = z.infer<typeof createPartySchema>;
  */
 export const updatePartySchema = z
   .object({
+    clientId: optionalText(64),
     partyKind: partyKindSchema.optional(),
     internalPartyCode: optionalText(100),
     status: partyStatusSchema.optional(),
@@ -239,6 +240,8 @@ export const partyMatchRequestSchema = z.object({
   country: optionalText(100),
   registrationNumber: optionalText(128),
   registrationCountry: optionalText(100),
+  clientId: optionalText(64),
+  clientScope: z.enum(["EXACT", "INCLUDE_SHARED", "ALL"]).optional(),
   identifiers: z
     .array(
       z.object({
@@ -254,6 +257,7 @@ export const partyMatchRequestSchema = z.object({
 export const partyListQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   clientId: z.string().trim().max(100).optional(),
+  clientScope: z.enum(["exact", "include_shared", "all"]).optional(),
   status: partyStatusSchema.optional(),
   reviewStatus: partyReviewStatusSchema.optional(),
   roleType: partyRoleTypeSchema.optional(),
@@ -274,11 +278,13 @@ const csvContent = z.string().min(1).max(8_000_000);
 export const importPreviewSchema = z.object({
   content: csvContent,
   fileName: optionalText(255),
+  clientId: optionalText(64),
 });
 
 export const importCommitSchema = z.object({
   content: csvContent,
   fileName: optionalText(255),
+  clientId: optionalText(64),
   /**
    * The digest the preview reported. The commit recomputes it and refuses to
    * proceed if it differs, so a commit can only ever apply the file the user

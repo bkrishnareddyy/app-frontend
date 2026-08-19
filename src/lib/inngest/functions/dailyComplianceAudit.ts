@@ -26,7 +26,7 @@ export async function executeDailyComplianceAudit() {
 
     for (const filing of filings) {
       totalEvaluated++;
-      const lineItems = filing.shipment.lineItems;
+      const lineItems = filing.shipment?.lineItems ?? [];
       const snapshotData = filing.snapshot?.snapshotData as Record<string, unknown> | null;
       const snapshotLineItems = Array.isArray(snapshotData?.lineItems)
         ? (snapshotData.lineItems as Array<{ htsCode?: string }>)
@@ -34,10 +34,12 @@ export async function executeDailyComplianceAudit() {
       const firstSnapshotHts = snapshotLineItems[0]?.htsCode ?? null;
       const firstCurrentHts = lineItems[0]?.htsCode ?? null;
 
-      const invoiceReconciliation = await db.reconciliationIssue.findFirst({
-        where: { shipmentId: filing.shipmentId, field: { contains: "value" } },
-        orderBy: { createdAt: "desc" },
-      });
+      const invoiceReconciliation = filing.shipmentId
+        ? await db.reconciliationIssue.findFirst({
+            where: { shipmentId: filing.shipmentId, field: { contains: "value" } },
+            orderBy: { createdAt: "desc" },
+          })
+        : null;
       const finalInvoiceValue = invoiceReconciliation?.actualValue
         ? parseFloat(invoiceReconciliation.actualValue)
         : null;
@@ -116,10 +118,8 @@ export async function executeDailyComplianceAudit() {
 
       const failCount = checkResults.filter((r) => r.result.status === "FAIL").length;
       const evaluatedCount = checkResults.filter((r) => r.result.status !== "NOT_EVALUATED").length;
-      const overallResult =
-        failCount > 0 ? "Fail" : evaluatedCount === 0 ? "NeedsReview" : "Pass";
-      const riskScore =
-        evaluatedCount === 0 ? 100 : Math.round((failCount / evaluatedCount) * 100);
+      const overallResult = failCount > 0 ? "Fail" : evaluatedCount === 0 ? "NeedsReview" : "Pass";
+      const riskScore = evaluatedCount === 0 ? 100 : Math.round((failCount / evaluatedCount) * 100);
 
       const auditRecord = await db.complianceAuditRecord.create({
         data: {

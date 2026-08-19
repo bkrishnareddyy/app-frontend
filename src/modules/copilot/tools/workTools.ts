@@ -19,8 +19,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { ExceptionService } from "@/modules/exceptions/exception.service";
 import { openStatusVariants } from "@/modules/exceptions/exceptionState";
+import { getActionableDecisionWhereFilter } from "@/modules/decisions/decisionState";
 import {
-  DECISION_ACTIONABLE_STATUSES,
   DOCUMENT_ACTIONABLE_STATUSES,
   FILING_ACTIONABLE_STATUSES,
   FINDING_ACTIONABLE_STATUSES,
@@ -150,7 +150,7 @@ export const listTasksTool = defineTool<z.infer<typeof tasksInput>>({
 
     const [decisions, findings, filings, documents, exceptions] = await Promise.all([
       db.agentDecision.findMany({
-        where: { accountId, status: { in: DECISION_ACTIONABLE_STATUSES } },
+        where: { accountId, ...getActionableDecisionWhereFilter() },
         orderBy: { createdAt: "desc" },
         take: QUEUE_SOURCE_LIMIT,
         select: {
@@ -158,6 +158,8 @@ export const listTasksTool = defineTool<z.infer<typeof tasksInput>>({
           agentName: true,
           decisionSummary: true,
           status: true,
+          triageState: true,
+          proposedDescription: true,
           createdAt: true,
           shipmentId: true,
           shipment: { select: { shipmentNumber: true } },

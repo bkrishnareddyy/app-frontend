@@ -85,4 +85,32 @@ export const DEFAULT_BILLING_EVENT_DEFINITIONS: readonly BillingEventDefItem[] =
     category: "RECONCILIATION",
     defaultUnit: "entry",
   },
+  {
+    eventCode: "ORIGIN_DETERMINATION_COMPLETED",
+    name: "Origin Rules Determination",
+    description: "FTA qualification analysis and country-of-origin rule evaluation per shipment",
+    category: "ORIGIN_DETERMINATION",
+    defaultUnit: "shipment",
+  },
+  {
+    eventCode: "VALUATION_COMPLETED",
+    name: "Valuation & Assists Analysis",
+    description: "Entered customs value computation and assists/additions/deductions analysis",
+    category: "VALUATION",
+    defaultUnit: "shipment",
+  },
+  {
+    eventCode: "COMPLIANCE_REVIEW_COMPLETED",
+    name: "Compliance Audit Review",
+    description: "Automated compliance screening for sanctions, licensing, and regulatory requirements",
+    category: "COMPLIANCE_REVIEW",
+    defaultUnit: "shipment",
+  },
+  {
+    eventCode: "FILING_READINESS_COMPLETED",
+    name: "Filing Readiness Assessment",
+    description: "Entry readiness scoring and completeness check prior to ACE transmission",
+    category: "FILING_READINESS",
+    defaultUnit: "shipment",
+  },
 ] as const;

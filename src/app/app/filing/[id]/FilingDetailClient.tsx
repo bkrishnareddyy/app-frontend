@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   ShieldCheck,
   Plus,
+  Download,
+  FolderArchive,
 } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -818,20 +820,24 @@ export function FilingDetailClient({
     });
   }
 
-  async function handleGenerateAuditRoom() {
-    setBusy("auditRoom");
-    setError(null);
-    setSuccess(null);
-    try {
-      const res = await fetch(`/api/audit/room/${filing.id}`);
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(errorFromResponse(data, "Audit room package generation failed."));
-      setSuccess("Focused Assessment Audit Package generated.");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(null);
-    }
+  function handleGenerateAuditRoom() {
+    setSuccess("Downloading Focused Assessment Audit Room binder (.zip)...");
+    window.open(`/api/audit/room/${filing.id}?format=zip`, "_blank");
+  }
+
+  function handleExportFilingZip() {
+    setSuccess("Downloading complete Filing package (.zip)...");
+    window.open(`/api/filing/${filing.id}/export`, "_blank");
+  }
+
+  function handleDownload7501Pdf() {
+    setSuccess("Downloading CBP Form 7501 PDF...");
+    window.open(`/api/filing/${filing.id}/entry-summary?format=pdf`, "_blank");
+  }
+
+  function handleDownload7501Zip() {
+    setSuccess("Downloading CBP Form 7501 Package (.zip)...");
+    window.open(`/api/filing/${filing.id}/entry-summary?format=zip`, "_blank");
   }
 
   async function handleSaveAndResubmit() {
@@ -959,9 +965,13 @@ export function FilingDetailClient({
               Save & Resubmit
             </Button>
           )}
-          <Button variant="secondary" onClick={handleGenerateAuditRoom} loading={busy === "auditRoom"} disabled={busy !== null}>
+          <Button variant="secondary" onClick={handleExportFilingZip} disabled={busy !== null}>
+            <FolderArchive className="w-3.5 h-3.5 text-brand" />
+            Export Filing ZIP
+          </Button>
+          <Button variant="secondary" onClick={handleGenerateAuditRoom} disabled={busy !== null}>
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            Audit Room Binder
+            Audit Room Binder ZIP
           </Button>
           {(childActions || []).map((action) => {
             const def = CHILD_ACTION_REGISTRY[action];
@@ -1460,6 +1470,24 @@ export function FilingDetailClient({
             const headerFields: F7Field[] = [f.entryType, f.entryNumber, f.portCode, f.importerName, f.importerNumber, f.bondNumber, f.countryOfExport, f.carrier];
             return (
               <div className="space-y-6">
+                {/* 7501 Export Action Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-border shadow-2xs">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-ink">CBP Form 7501 Document Export</h3>
+                    <p className="text-xs text-ink-muted">Official Entry Summary printable PDF and structured filing ZIP archive</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleDownload7501Pdf}>
+                      <Download className="w-3.5 h-3.5" />
+                      Download 7501 PDF
+                    </Button>
+                    <Button variant="secondary" onClick={handleDownload7501Zip}>
+                      <FolderArchive className="w-3.5 h-3.5 text-brand" />
+                      Export 7501 Package (ZIP)
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Coverage summary */}
                 <Card className="space-y-3">
                   <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">Form 7501 Field Coverage</h3>

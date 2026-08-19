@@ -112,14 +112,19 @@ describe("tools the user cannot use are neither offered nor served", () => {
 
   it("omits the tools behind a denied screen from the declarations", () => {
     denyDocuments();
-    const offered = availableTools(accountContext(), COPILOT_TOOLS).map((tool) => tool.name);
+    const context = accountContext();
+    const offered = availableTools(context, COPILOT_TOOLS).map((tool) => tool.name);
+    const expected = COPILOT_TOOLS.filter((tool) => canUseTool(context, tool.access)).map(
+      (tool) => tool.name
+    );
 
     expect(offered).not.toContain("searchDocuments");
     expect(offered).not.toContain("getDocument");
-    // And nothing else is collateral damage.
+    // Permission-gated compliance tools are also unavailable to a plain MEMBER;
+    // compare against the access policy rather than a brittle total-count offset.
     expect(offered).toContain("searchProducts");
     expect(offered).toContain("listExceptions");
-    expect(offered.length).toBe(COPILOT_TOOLS.length - 2);
+    expect(offered).toEqual(expected);
   });
 
   it("refuses a denied tool the model names anyway, and runs no query", async () => {

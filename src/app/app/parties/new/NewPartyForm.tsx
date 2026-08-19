@@ -50,13 +50,14 @@ const ROLE_TYPES = [
   ["OTHER", "Other"],
 ] as const;
 
-export function NewPartyForm() {
+export function NewPartyForm(props: { clients?: Array<{ id: string; name: string }> }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [issues, setIssues] = useState<FieldIssue[]>([]);
 
   const [partyKind, setPartyKind] = useState("ORGANIZATION");
+  const [clientId, setClientId] = useState("");
   const [identifierType, setIdentifierType] = useState<string>("EORI");
   const [identifierValue, setIdentifierValue] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
@@ -114,6 +115,7 @@ export function NewPartyForm() {
 
     const payload: Record<string, unknown> = {
       partyKind,
+      clientId: clientId !== "" ? clientId : undefined,
       internalPartyCode: text("internalPartyCode"),
       names: [{ nameType: "LEGAL", rawName: legalName, isPrimary: true, sourceType: "USER" }],
     };
@@ -162,6 +164,7 @@ export function NewPartyForm() {
             legalName,
             registrationNumber: registrationNumber.trim() || undefined,
             registrationCountry: registrationCountry.trim() || undefined,
+            clientId: clientId !== "" ? clientId : undefined,
             identifiers:
               identifierValue.trim() !== ""
                 ? [{ identifierType, value: identifierValue.trim() }]
@@ -177,37 +180,26 @@ export function NewPartyForm() {
           }
         }
       } catch {
-        // The duplicate check is a courtesy, not a gate — if it fails to reach
-        // the server, fall through to creating the party normally.
+        // Fall through on match failure
       }
     }
 
     await submitParty(payload);
   }
 
-  async function onCreateAnyway() {
-    confirmedDuplicateRef.current = true;
-    setDuplicateMatch(null);
-    setSubmitting(true);
-    if (pendingPayloadRef.current) {
-      await submitParty(pendingPayloadRef.current);
-    }
-  }
-
   const inputClass = "w-full h-10 px-3 rounded-xl border border-border text-sm";
   const labelClass = "block text-xs font-semibold text-ink-muted mb-1";
 
   return (
-    <form onSubmit={onSubmit} className="space-y-6 max-w-3xl">
-      {error && (
-        <div role="alert" className="rounded-2xl bg-red-50 border border-red-200 p-4 text-sm text-red-900">
-          <p className="font-semibold">{error}</p>
+    <form onSubmit={onSubmit} className="space-y-6 max-w-4xl">
+      {error !== null && (
+        <div role="alert" className="rounded-2xl bg-red-50 border border-red-200 p-4 space-y-2">
+          <p className="text-sm font-semibold text-red-900">{error}</p>
           {issues.length > 0 && (
-            <ul className="mt-2 list-disc pl-5 space-y-1">
+            <ul className="text-xs text-red-800 space-y-1 list-disc list-inside">
               {issues.map((issue, index) => (
-                <li key={`${issue.path}-${index}`}>
-                  {issue.path ? `${issue.path}: ` : ""}
-                  {issue.message}
+                <li key={index}>
+                  {issue.path}: {issue.message}
                 </li>
               ))}
             </ul>
@@ -215,8 +207,55 @@ export function NewPartyForm() {
         </div>
       )}
 
+      {duplicateMatch !== null && (
+        <div role="status" className="rounded-2xl bg-amber-50 border border-amber-200 p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-amber-900">
+              Matches existing party ({matchStatusPresentation(duplicateMatch.status).label})
+            </span>
+          </div>
+          <p className="text-xs text-amber-900/80">
+            This name or identifier looks very similar to an existing party in this account.
+          </p>
+          <ul className="text-xs text-amber-900 space-y-1">
+            {duplicateMatch.candidates.map((candidate, idx) => (
+              <li key={idx} className="font-mono">
+                {candidate.explanation}
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                confirmedDuplicateRef.current = true;
+                if (pendingPayloadRef.current) {
+                  setSubmitting(true);
+                  submitParty(pendingPayloadRef.current);
+                }
+              }}
+              className="h-9 px-4 rounded-xl bg-amber-900 text-white text-xs font-semibold"
+            >
+              Create anyway
+            </button>
+            <button
+              type="button"
+              onClick={clearDuplicateWarning}
+              className="h-9 px-4 rounded-xl border border-amber-300 text-amber-900 text-xs font-semibold"
+            >
+              Go back and edit
+            </button>
+          </div>
+        </div>
+      )}
+
       <section className="rounded-2xl bg-white border border-border p-5 space-y-4">
-        <h2 className="text-sm font-bold text-ink">Identity</h2>
+        <div>
+          <h2 className="text-sm font-bold text-ink">Identity</h2>
+          <p className="text-xs text-[#6E6E73] mt-1">
+            The legal name under which this party is known.
+          </p>
+        </div>
 
         <div>
           <label htmlFor="legalName" className={labelClass}>
@@ -232,7 +271,7 @@ export function NewPartyForm() {
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label htmlFor="partyKind" className={labelClass}>
               Kind
@@ -245,6 +284,24 @@ export function NewPartyForm() {
             >
               <option value="ORGANIZATION">Organization</option>
               <option value="INDIVIDUAL">Individual</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="partyClient" className={labelClass}>
+              Client Scope
+            </label>
+            <select
+              id="partyClient"
+              value={clientId}
+              onChange={(event) => setClientId(event.target.value)}
+              className={`${inputClass} bg-white`}
+            >
+              <option value="">Account-wide (Unassigned)</option>
+              {props.clients?.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -401,47 +458,6 @@ export function NewPartyForm() {
           </select>
         </div>
       </section>
-
-      {duplicateMatch && (
-        <div role="alert" className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900 space-y-3">
-          <p className="font-semibold">
-            {matchStatusPresentation(duplicateMatch.status).label}: this looks like a party already
-            recorded in this account.
-          </p>
-          <ul className="list-disc pl-5 space-y-1">
-            {duplicateMatch.candidates.map((candidate) => (
-              <li key={candidate.partyId}>
-                <Link
-                  href={`/app/parties/${candidate.partyId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-semibold underline"
-                >
-                  Open existing party
-                </Link>{" "}
-                — {candidate.explanation}
-              </li>
-            ))}
-          </ul>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onCreateAnyway}
-              disabled={submitting}
-              className="h-9 px-4 rounded-xl bg-amber-900 text-white text-sm font-semibold disabled:opacity-60"
-            >
-              Create a new party anyway
-            </button>
-            <button
-              type="button"
-              onClick={() => setDuplicateMatch(null)}
-              className="text-sm font-semibold text-amber-900"
-            >
-              Let me check first
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="flex items-center gap-3">
         <button

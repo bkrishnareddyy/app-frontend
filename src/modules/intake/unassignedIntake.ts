@@ -46,8 +46,9 @@ export interface UnassignedIntakeStore {
 
 export const databaseUnassignedIntakeStore: UnassignedIntakeStore = {
   async create(input) {
-    const { db } = await import("@/lib/db");
-    return db.exceptionItem.create({ data: input, select: { id: true } });
+    const { createExceptionItem } = await import("@/lib/exceptions/createException");
+    const item = await createExceptionItem(input);
+    return { id: item.id };
   },
 };
 

@@ -26,7 +26,8 @@ export const POST = withAuthenticatedRoute(
       body.data.content,
       body.data.fileName ?? null,
       body.data.contentDigest,
-      body.data.acceptedRows
+      body.data.acceptedRows,
+      { clientId: body.data.clientId ?? null }
     );
 
     return NextResponse.json({ result, requestId });

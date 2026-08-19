@@ -108,6 +108,8 @@ function resolvePartyCountry(value: string): string {
 
 const LIST_SELECT = {
   id: true,
+  clientId: true,
+  client: { select: { id: true, name: true } },
   internalPartyCode: true,
   partyKind: true,
   status: true,
@@ -119,6 +121,8 @@ const LIST_SELECT = {
 
 export interface PartyListRow {
   id: string;
+  clientId: string | null;
+  clientName: string | null;
   internalPartyCode: string | null;
   partyKind: string;
   status: string;
@@ -172,6 +176,8 @@ export async function listParties(actor: PartyActor, query: PartyQuery): Promise
     total,
     rows: rows.map((row) => ({
       id: row.id,
+      clientId: row.clientId,
+      clientName: row.client?.name ?? null,
       internalPartyCode: row.internalPartyCode,
       partyKind: row.partyKind,
       status: row.status,
@@ -187,6 +193,7 @@ export async function listParties(actor: PartyActor, query: PartyQuery): Promise
 }
 
 const DETAIL_INCLUDE = {
+  client: { select: { id: true, name: true } },
   names: { orderBy: [{ isPrimary: "desc" }, { nameType: "asc" }] },
   identifiers: { orderBy: [{ isPrimary: "desc" }, { identifierType: "asc" }] },
   registrations: { orderBy: [{ country: "asc" }, { effectiveFrom: "desc" }] },
@@ -274,6 +281,21 @@ async function requireOwnedAddress(tx: Tx, actor: PartyActor, partyId: string, a
     throw new DomainError("That address does not belong to this party.", "PARTY_ADDRESS_NOT_FOUND", 404);
   }
   return address.id;
+}
+
+export async function requireOwnedClient(
+  tx: Tx | typeof db,
+  actor: PartyActor,
+  clientId: string
+): Promise<string> {
+  const client = await tx.client.findFirst({
+    where: { id: clientId, accountId: actor.accountId },
+    select: { id: true },
+  });
+  if (client === null) {
+    throw new DomainError("That client does not exist in this account.", "CLIENT_NOT_FOUND", 404);
+  }
+  return client.id;
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +598,9 @@ async function assertIdentifierAvailable(
 // ---------------------------------------------------------------------------
 
 export async function createParty(actor: PartyActor, input: CreatePartyInput): Promise<PartyDetail> {
+  if (input.clientId) {
+    await requireOwnedClient(db, actor, input.clientId);
+  }
   const internalPartyCode = input.internalPartyCode ?? null;
   if (internalPartyCode !== null) {
     const clash = await db.party.findFirst({
@@ -724,6 +749,10 @@ export async function updateParty(
   input: UpdatePartyInput
 ): Promise<MutationOutcome<PartyDetail>> {
   const { changeReason, ...fields } = input;
+
+  if (fields.clientId !== undefined && fields.clientId !== null) {
+    await requireOwnedClient(db, actor, fields.clientId);
+  }
 
   if (fields.internalPartyCode !== undefined && fields.internalPartyCode !== null) {
     const clash = await db.party.findFirst({
@@ -1181,11 +1210,14 @@ export async function removeSite(actor: PartyActor, partyId: string, siteId: str
  * merges the two records — they stay two parties, related, never one.
  */
 export async function addRelationship(actor: PartyActor, fromPartyId: string, input: PartyRelationshipInput) {
-  await requireOwnedParty(db, actor, fromPartyId);
+  const fromParty = await requireOwnedParty(db, actor, fromPartyId);
   if (input.toPartyId === fromPartyId) {
     throw new DomainError("A party cannot hold a relationship to itself.", "PARTY_RELATIONSHIP_SELF", 400);
   }
-  await requireOwnedParty(db, actor, input.toPartyId);
+  const toParty = await requireOwnedParty(db, actor, input.toPartyId);
+  if (fromParty.clientId && toParty.clientId && fromParty.clientId !== toParty.clientId) {
+    throw new DomainError("Cannot create a relationship between parties belonging to different clients.", "CLIENT_MISMATCH", 400);
+  }
   if (input.evidenceId != null) {
     await requireOwnedEvidence(db, actor, fromPartyId, input.evidenceId);
   }
@@ -1461,15 +1493,28 @@ export async function findPartyMatches(actor: PartyActor, input: MatchCandidateI
     return { status: "NO_MATCH", candidates: [], rule: null };
   }
 
+  const andClauses: Prisma.PartyWhereInput[] = [];
+  if (input.clientId !== undefined) {
+    if (input.clientId === null || input.clientId === "unassigned") {
+      andClauses.push({ clientId: null });
+    } else if (input.clientScope === "EXACT") {
+      andClauses.push({ clientId: input.clientId });
+    } else {
+      andClauses.push({ OR: [{ clientId: input.clientId }, { clientId: null }] });
+    }
+  }
+
   const parties = await db.party.findMany({
     where: {
       accountId: actor.accountId,
       deletedAt: null,
       status: { notIn: ["ARCHIVED"] },
+      AND: andClauses.length > 0 ? andClauses : undefined,
       OR: orClauses,
     },
     select: {
       id: true,
+      clientId: true,
       identifiers: {
         where: { status: "ACTIVE" },
         select: { identifierType: true, normalizedValue: true, issuingCountry: true },
@@ -1488,6 +1533,7 @@ export async function findPartyMatches(actor: PartyActor, input: MatchCandidateI
     input,
     parties.map((party) => ({
       id: party.id,
+      clientId: party.clientId,
       identifiers: party.identifiers,
       registrations: party.registrations.map((registration) => ({
         normalizedRegistrationNumber: normalizeIdentifier(registration.registrationNumber),

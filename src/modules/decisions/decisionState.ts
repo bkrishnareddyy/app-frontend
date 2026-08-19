@@ -190,3 +190,51 @@ export function decisionStateLabel(state: DecisionState): string {
     case "COMPLETED": return "Completed";
   }
 }
+
+/**
+ * Returns all status string variants (canonical and legacy aliases) for a given DecisionState.
+ */
+export function statusVariantsForState(targetState: DecisionState): string[] {
+  const variants = new Set<string>();
+  for (const [raw, state] of STATUS_ALIASES) {
+    if (state === targetState) variants.add(raw);
+  }
+  return [...variants];
+}
+
+/**
+ * Returns all status string variants matching any of the specified DecisionStates.
+ */
+export function statusVariantsForStates(states: DecisionState[]): string[] {
+  const variants = new Set<string>();
+  for (const [raw, state] of STATUS_ALIASES) {
+    if (states.includes(state)) variants.add(raw);
+  }
+  return [...variants];
+}
+
+/**
+ * Canonical Prisma WHERE condition for querying actionable agent decisions.
+ * Actionable means human review or blocker resolution is required.
+ */
+export function getActionableDecisionWhereFilter() {
+  return {
+    OR: [
+      { triageState: { in: [...ACTIONABLE_TRIAGE_STATES] } },
+      { triageState: null, status: { in: actionableStatusVariants() } },
+    ],
+  };
+}
+
+/**
+ * Canonical Prisma WHERE condition for querying all reviewable decisions in human queues.
+ */
+export function getAllReviewableDecisionWhereFilter() {
+  return {
+    OR: [
+      { triageState: { in: [...DECISION_STATES] } },
+      { triageState: null, status: { in: statusVariantsForStates([...DECISION_STATES]) } },
+    ],
+  };
+}
+

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Package, Upload } from "lucide-react";
 import { getAccountContext } from "@/lib/auth";
 import { canWrite } from "@/lib/api/write-access";
+import { getClientsData } from "@/lib/clients/clientsData";
 import { Badge } from "@/components/ui";
 import { SortableHeader } from "@/components/table/SortableHeader";
 import { TablePagination } from "@/components/table/TablePagination";
@@ -30,6 +31,7 @@ const PRESERVED_ON_SEARCH = [
   "jurisdiction",
   "needsRevalidation",
   "unclassified",
+  "clientId",
   "sort",
   "dir",
   "pageSize",
@@ -48,8 +50,14 @@ export default async function ProductsPage(props: {
     else if (Array.isArray(value) && value.length > 0) params.set(key, value[0]);
   }
 
+  const [clientsRes, productRes] = await Promise.all([
+    getClientsData(context),
+    listProducts(productActor(context, "page"), parseProductQuery(params)),
+  ]);
+
   const query = parseProductQuery(params);
-  const { rows, total } = await listProducts(productActor(context, "page"), query);
+  const clients = clientsRes.clients;
+  const { rows, total } = productRes;
 
   const writable = canWrite(context);
   const mayCreate = writable && holdsPermission(context, "products.create");
@@ -64,7 +72,8 @@ export default async function ProductsPage(props: {
       query.reviewStatus ||
       query.jurisdiction ||
       query.needsRevalidation ||
-      query.unclassified
+      query.unclassified ||
+      query.clientId
   );
 
   const exportRows: ProductExportRow[] = rows.map((row) => ({
@@ -126,6 +135,25 @@ export default async function ProductsPage(props: {
               defaultValue={query.search ?? ""}
               className="w-full h-10 px-3 rounded-xl border border-border text-sm"
             />
+          </div>
+          <div>
+            <label htmlFor="product-client" className="block text-xs font-semibold text-ink-muted mb-1">
+              Client Scope
+            </label>
+            <select
+              id="product-client"
+              name="clientId"
+              defaultValue={query.clientId ?? ""}
+              className="h-10 px-3 rounded-xl border border-border text-sm bg-white"
+            >
+              <option value="">All Clients</option>
+              <option value="unassigned">Unassigned (Account-wide)</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label htmlFor="product-jurisdiction" className="block text-xs font-semibold text-ink-muted mb-1">
@@ -205,6 +233,9 @@ export default async function ProductsPage(props: {
                     params={params}
                     basePath={BASE_PATH}
                   />
+                  <th scope="col" className="px-3 xl:px-4 py-3.5">
+                    Client Scope
+                  </th>
                   <SortableHeader
                     column="internalSku"
                     label="SKU"
@@ -263,6 +294,13 @@ export default async function ProductsPage(props: {
                         </Link>
                         {row.model !== null && (
                           <p className="text-xs text-[#6E6E73]">{row.model}</p>
+                        )}
+                      </td>
+                      <td className="px-3 xl:px-4 py-3 text-[#6E6E73]">
+                        {row.clientName ? (
+                          <Badge variant="neutral">{row.clientName}</Badge>
+                        ) : (
+                          <span className="text-xs text-ink-muted">Account-wide</span>
                         )}
                       </td>
                       <td className="px-3 xl:px-4 py-3 text-[#6E6E73]">

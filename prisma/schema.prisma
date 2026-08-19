@@ -3736,6 +3736,7 @@ model Party {
   /// Postgres treats NULLs as distinct, so any number of parties may have no
   /// internal code while no two may share one.
   @@unique([accountId, internalPartyCode])
+  @@index([accountId, clientId])
   @@index([accountId, deletedAt])
   @@index([accountId, status])
   @@index([accountId, reviewStatus])
@@ -5172,6 +5173,10 @@ enum BillingEventCategory {
   POST_SUMMARY_CORRECTION
   MANUAL_INTERVENTION
   CUSTOM
+  ORIGIN_DETERMINATION
+  VALUATION
+  COMPLIANCE_REVIEW
+  FILING_READINESS
 }
 
 enum PricingModel {

@@ -74,13 +74,15 @@ export const POST = withAuthenticatedRoute<Params>(
       allFlags.push(...(outcome.raisedFlags ?? []));
     }
 
+    const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || (body.data as any)?.source === "CHAT") ? "CHAT" : "UI";
+
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
       action: "product.enrich.approve",
       entity: "Product",
       entityId: productId,
-      source: "UI",
+      source: auditSource,
       metadata: {
         productName: product.productName,
         applied: body.data.approvedSuggestions.length,

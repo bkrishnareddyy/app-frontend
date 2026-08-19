@@ -20,7 +20,8 @@ export const POST = withAuthenticatedRoute(
     const preview = await previewImport(
       productActor(ctx, requestId),
       body.data.content,
-      body.data.fileName ?? null
+      body.data.fileName ?? null,
+      { clientId: body.data.clientId ?? null }
     );
 
     return NextResponse.json({ preview, requestId });

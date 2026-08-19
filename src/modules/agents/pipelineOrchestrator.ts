@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { createAuditLog } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 import { DocumentIntakeAgent } from "@/modules/intake/documentIntakeAgent";
 import { DocumentIntelligenceAgent, DocumentIntelligenceOutput } from "./documentIntelligenceAgent";
 import { ProductIntelligenceAgent, ProductIntelligenceOutput } from "./productIntelligenceAgent";
@@ -19,6 +20,7 @@ import { computeFilingTariff, loadHtsCodesMap } from "@/lib/tariff/dutyEngine";
 import { captureShipmentOutputFacts } from "./outputCapture";
 import { persistComplianceScreeningFindings } from "@/modules/compliance/screeningFindings";
 import { PgQueue } from "@/lib/queue/pgQueue";
+import { recordUsageEvent, AGENT_BILLING_EVENT_MAP } from "@/lib/billing/telemetry";
 
 /**
  * Replaces ComplianceWorkflowEngine/AgentOrchestrator (the fixed 10-step
@@ -130,6 +132,11 @@ export class PipelineOrchestrator {
       triggeredBy: params.userId || "SYSTEM",
     });
 
+    // Fetch billing context once per run to avoid N+1 per agent emission
+    const shipmentBillingCtx = await db.shipment
+      .findUnique({ where: { id: shipmentId }, select: { clientId: true, importerOfRecordId: true } })
+      .catch(() => null);
+
     const agentsToRun = this.determineAgentsToRun(triggerEvent, payload);
     const executedAgents: string[] = [];
     const scratch: RunScratch = {};
@@ -195,6 +202,35 @@ export class PipelineOrchestrator {
             },
           })
           .catch((e) => console.error("[PipelineOrchestrator] Failed to write execution record:", e));
+
+        // Billing emission — must never fail the compliance pipeline
+        const billingDef = AGENT_BILLING_EVENT_MAP[agentName];
+        if (billingDef) {
+          try {
+            const quantity = this.resolveAgentBillingQuantity(
+              billingDef.quantityFrom,
+              outputSnapshot,
+              inputSnapshot
+            );
+            await recordUsageEvent({
+              accountId,
+              eventCode: billingDef.eventCode,
+              shipmentId,
+              clientId: shipmentBillingCtx?.clientId ?? undefined,
+              importerId: shipmentBillingCtx?.importerOfRecordId ?? undefined,
+              userId,
+              sourceFunction: "PipelineOrchestrator.processEvent",
+              sourceAgent: agentName,
+              quantity,
+              success: status === "COMPLETED",
+              automated: true,
+              processingDuration: Date.now() - stepStart,
+              idempotencyKey: `billing:${runId}:${agentName}`,
+            });
+          } catch (billingErr) {
+            console.error("[PipelineOrchestrator] Billing emission failed for", agentName, billingErr);
+          }
+        }
 
         if (jobId) {
           await PgQueue.updateProgress(jobId, i + 1).catch((e) =>
@@ -290,6 +326,30 @@ export class PipelineOrchestrator {
 
       default:
         return ["Filing Readiness Agent"];
+    }
+  }
+
+  private static resolveAgentBillingQuantity(
+    strategy: "pageCount" | "lineItems" | "classifications" | "fixed",
+    outputSnapshot: unknown,
+    inputSnapshot: unknown
+  ): number {
+    const out = (outputSnapshot as Record<string, unknown>) ?? {};
+    const inp = (inputSnapshot as Record<string, unknown>) ?? {};
+    switch (strategy) {
+      case "pageCount":
+        return typeof out.pageCount === "number" ? out.pageCount : 1;
+      case "classifications": {
+        const cls = out.classifications;
+        return Array.isArray(cls) ? cls.length : 1;
+      }
+      case "lineItems": {
+        const li = inp.lineItems ?? inp.productProfiles;
+        return Array.isArray(li) ? li.length : 1;
+      }
+      case "fixed":
+      default:
+        return 1;
     }
   }
 
@@ -847,20 +907,18 @@ export class PipelineOrchestrator {
       });
       if (existing) continue;
 
-      await db.exceptionItem.create({
-        data: {
-          accountId,
-          shipmentId,
-          documentId,
-          code: finding.code,
-          category: finding.category,
-          type: "data_mismatch",
-          severity: "Medium",
-          description: finding.description,
-          blocking: false,
-          sourceAgent: "Product Intelligence Agent",
-          status: "Open",
-        },
+      await createExceptionItem({
+        accountId,
+        shipmentId,
+        documentId,
+        code: finding.code,
+        category: finding.category,
+        type: "data_mismatch",
+        severity: "Medium",
+        description: finding.description,
+        blocking: false,
+        sourceAgent: "Product Intelligence Agent",
+        status: "Open",
       });
     }
   }

@@ -55,13 +55,15 @@ export const PATCH = withAuthenticatedRoute<{ screeningId: string }>(
           },
         });
 
+    const auditSource = (req.headers?.get?.("x-qubere-source") === "CHAT" || (bodyVal.data as any)?.source === "CHAT") ? "CHAT" : "UI";
+
     await createAuditLog({
       accountId: ctx.accountId,
       userId: ctx.userId,
       action: AuditAction.RESTRICTED_PARTY_DISPOSITION_UPDATED,
       entity: "RestrictedPartyDisposition",
       entityId: disposition.id,
-      source: "UI",
+      source: auditSource,
       metadata: { screeningId: result.id, status },
       requestId,
     });

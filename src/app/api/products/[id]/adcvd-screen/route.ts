@@ -3,6 +3,7 @@ import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { screenForAdcvd } from "@/lib/adcvd/scopeScreening";
 import { createAuditLog, AuditAction } from "@/lib/audit";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 
 export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, params }) => {
   const { id: productId } = params;
@@ -50,16 +51,14 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ req, ctx, pa
   for (const order of result.orders) {
     if (order.inScope === "YES" || order.inScope === "POSSIBLY") {
       if (ownedShipment) {
-        await db.exceptionItem.create({
-          data: {
-            accountId: ctx.accountId,
-            shipmentId: targetShipmentId,
-            category: "COMPLIANCE",
-            type: "compliance_flag",
-            severity: order.inScope === "YES" ? "Critical" : "High",
-            status: "Open",
-            description: `AD/CVD Order Scope Match (${order.caseNumber}): ${order.inScope}. Title: "${order.title}". ${order.reasoning}`,
-          },
+        await createExceptionItem({
+          accountId: ctx.accountId,
+          shipmentId: targetShipmentId,
+          category: "COMPLIANCE",
+          type: "compliance_flag",
+          severity: order.inScope === "YES" ? "Critical" : "High",
+          status: "Open",
+          description: `AD/CVD Order Scope Match (${order.caseNumber}): ${order.inScope}. Title: "${order.title}". ${order.reasoning}`,
         });
       }
     }

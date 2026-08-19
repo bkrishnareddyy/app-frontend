@@ -8,6 +8,7 @@ import {
   LayoutDashboard, ListChecks, FileText, FileCheck2, Globe,
   Files, Package, Landmark, MessageSquare, ChevronRight,
   ChevronsLeft, ChevronsRight, Moon, Sun, Paperclip, X, Coins,
+  Contact2, DollarSign,
 } from "lucide-react";
 import { Badge, Card, Button } from "@/components/ui";
 
@@ -143,8 +144,8 @@ const NAV_ITEMS = [
 
 const TOOLING_ITEMS = [
   { label: "Trade Docs", href: "/app/documents", Icon: Files },
-  { label: "Products", href: "/app/products", Icon: Package },
-  { label: "Parties", href: "/app/parties", Icon: Landmark },
+  { label: "Clients", href: "/app/clients", Icon: Contact2 },
+  { label: "Billing", href: "/app/billing", Icon: DollarSign },
   { label: "Duty Drawbacks", href: "/app/vault", Icon: Coins },
 ];
 
@@ -540,8 +541,9 @@ function RightPanel({
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function ChatClient({ context }: ChatClientProps) {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeId, setActiveId] = useState<string>("");
+  const [initialSession] = useState(() => freshSession());
+  const [sessions, setSessions] = useState<ChatSession[]>(() => [initialSession]);
+  const [activeId, setActiveId] = useState<string>(() => initialSession.id);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
   const [isDark, setIsDark] = useState(false);
@@ -574,21 +576,25 @@ export function ChatClient({ context }: ChatClientProps) {
     historyRef.current = activeSession?.history ?? [];
   }, [activeSession?.history]);
 
-  // Load sessions from the DB, but always land on a fresh new chat screen on page load
+  // Load sessions from the DB, but preserve the initial active session if user started chatting
   useEffect(() => {
     let cancelled = false;
     fetchSessions().then((loaded) => {
       if (cancelled) return;
-      const initialNew = freshSession();
-      if (loaded.length > 0) {
-        setSessions([...loaded, initialNew]);
-      } else {
-        setSessions([initialNew]);
-      }
-      setActiveId(initialNew.id);
+      setSessions((prev) => {
+        const active = prev.find((s) => s.id === activeId);
+        if (loaded.length > 0) {
+          if (active && (active.messages.length > 0 || !active.persisted)) {
+            const filtered = loaded.filter((s) => s.id !== active.id);
+            return [...filtered, active];
+          }
+          return loaded;
+        }
+        return prev.length > 0 ? prev : [freshSession()];
+      });
     });
     return () => { cancelled = true; };
-  }, [context.accountId]);
+  }, [context.accountId, activeId]);
 
   // Auto-scroll
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -647,12 +653,20 @@ export function ChatClient({ context }: ChatClientProps) {
     setInput("");
     setSending(true);
 
+    let sessionId = activeId;
+    let currentSession = activeSession;
+    if (!sessionId || !currentSession) {
+      const s = freshSession();
+      sessionId = s.id;
+      currentSession = s;
+      setActiveId(s.id);
+    }
+
     const uid = nextId();
     const aid = nextId();
-    const sessionId = activeId;
-    const wasPersisted = activeSession?.persisted ?? false;
-    const priorMessages = activeSession?.messages ?? [];
-    const title = priorMessages.length === 0 ? trimmed.slice(0, 50) : (activeSession?.title ?? "Chat");
+    const wasPersisted = currentSession.persisted ?? false;
+    const priorMessages = currentSession.messages ?? [];
+    const title = priorMessages.length === 0 ? trimmed.slice(0, 50) : (currentSession.title ?? "Chat");
 
     const announceFile = pendingFile !== null && !fileAnnouncedRef.current;
     if (announceFile) fileAnnouncedRef.current = true;
@@ -663,11 +677,17 @@ export function ChatClient({ context }: ChatClientProps) {
       attachedFileName: announceFile ? pendingFile!.name : undefined,
     };
     streamingAsstRef.current = { id: aid, role: "assistant", text: "", toolCalls: [] };
-    let workingHistory: Content[] = activeSession?.history ?? [];
+    let workingHistory: Content[] = currentSession.history ?? [];
 
-    setSessions((prev) => prev.map((s) =>
-      s.id !== sessionId ? s : { ...s, title, messages: [...s.messages, userMsg, streamingAsstRef.current!] }
-    ));
+    setSessions((prev) => {
+      const exists = prev.some((s) => s.id === sessionId);
+      if (!exists) {
+        return [...prev, { ...currentSession!, title, messages: [...priorMessages, userMsg, streamingAsstRef.current!] }];
+      }
+      return prev.map((s) =>
+        s.id !== sessionId ? s : { ...s, title, messages: [...s.messages, userMsg, streamingAsstRef.current!] }
+      );
+    });
 
     const pushAsstUpdate = () => {
       setSessions((prev) => prev.map((s) =>
@@ -1439,13 +1459,14 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                       const res = await fetch("/api/decisions", {
                         method: "POST",
                         headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
-                        body: JSON.stringify({ decisionId: d.id, action: "APPROVE", source: "CHAT" }),
+                        body: JSON.stringify({ decisionId: d.id, action: "APPROVE", source: "CHAT", expectedVersion: d.updatedAt }),
                       });
+                      const data = await res.json().catch(() => ({}));
                       if (res.ok) {
+                        d.status = "APPROVED";
                         alert("Decision approved successfully.");
                       } else {
-                        const data = await res.json().catch(() => ({}));
-                        alert(`Failed to approve decision: ${data.error || res.statusText}`);
+                        alert(`Failed to approve decision: ${data.error || res.statusText || "Unknown error"}`);
                       }
                     }}>
                     Approve
@@ -1453,17 +1474,18 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                   <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px", color: "#dc2626" }}
                     onClick={async () => {
                       const reason = prompt("Enter rejection reason:");
-                      if (reason) {
+                      if (reason && reason.trim()) {
                         const res = await fetch("/api/decisions", {
                           method: "POST",
                           headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
-                          body: JSON.stringify({ decisionId: d.id, action: "REJECT", humanNotes: reason, source: "CHAT" }),
+                          body: JSON.stringify({ decisionId: d.id, action: "REJECT", humanNotes: reason.trim(), source: "CHAT", expectedVersion: d.updatedAt }),
                         });
+                        const data = await res.json().catch(() => ({}));
                         if (res.ok) {
+                          d.status = "REJECTED";
                           alert("Decision rejected.");
                         } else {
-                          const data = await res.json().catch(() => ({}));
-                          alert(`Failed to reject decision: ${data.error || res.statusText}`);
+                          alert(`Failed to reject decision: ${data.error || res.statusText || "Unknown error"}`);
                         }
                       }
                     }}>
@@ -1498,6 +1520,14 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                   <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px" }}
                     onClick={async () => {
                       const note = prompt("Enter resolution note:") || "Resolved via chat action";
+                      let version = ex.version;
+                      if (version == null) {
+                        const getRes = await fetch(`/api/exceptions/${ex.id}`).catch(() => null);
+                        if (getRes?.ok) {
+                          const getData = await getRes.json().catch(() => ({}));
+                          version = getData.exception?.version;
+                        }
+                      }
                       const res = await fetch(`/api/exceptions/${ex.id}`, {
                         method: "PATCH",
                         headers: { "content-type": "application/json", "x-qubere-source": "CHAT" },
@@ -1506,14 +1536,15 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                           resolutionReasonCode: "DOCUMENTATION_VERIFIED",
                           resolutionReason: note,
                           source: "CHAT",
-                          expectedVersion: ex.version ?? 1,
+                          expectedVersion: version ?? 1,
                         }),
                       });
+                      const data = await res.json().catch(() => ({}));
                       if (res.ok) {
+                        ex.status = "RESOLVED";
                         alert("Exception resolved.");
                       } else {
-                        const data = await res.json().catch(() => ({}));
-                        alert(`Failed to resolve exception: ${data.error || res.statusText}`);
+                        alert(`Failed to resolve exception: ${data.error || res.statusText || "Unknown error"}`);
                       }
                     }}>
                     Resolve Exception

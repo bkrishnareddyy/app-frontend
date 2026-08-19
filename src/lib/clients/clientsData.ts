@@ -31,6 +31,8 @@ export interface FormattedClient {
   status: string;
   createdAt: string;
   shipmentCount: number;
+  productCount: number;
+  partyCount: number;
   legalEntities: FormattedLegalEntity[];
 }
 
@@ -42,7 +44,7 @@ export async function getClientsData(ctx: AccountContext): Promise<ClientsData> 
   const clients = await db.client.findMany({
     where: { accountId: ctx.accountId },
     include: {
-      _count: { select: { shipments: true } },
+      _count: { select: { shipments: true, products: true, parties: true } },
       legalEntities: {
         include: { customsProfiles: true },
         orderBy: { legalName: "asc" },
@@ -61,6 +63,8 @@ export async function getClientsData(ctx: AccountContext): Promise<ClientsData> 
       status: c.status,
       createdAt: c.createdAt.toISOString(),
       shipmentCount: c._count.shipments,
+      productCount: c._count.products,
+      partyCount: c._count.parties,
       legalEntities: c.legalEntities.map((le) => ({
         id: le.id,
         legalName: le.legalName,

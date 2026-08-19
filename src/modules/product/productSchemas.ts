@@ -220,6 +220,7 @@ export type CreateProductInput = z.infer<typeof createProductSchema>;
  */
 export const updateProductSchema = z
   .object({
+    clientId: optionalText(64),
     productName: requiredString(300).optional(),
     internalSku: optionalText(100),
     commercialDescription: optionalText(4000),
@@ -241,6 +242,7 @@ export const classificationReviewSchema = z.object({
   action: z.enum(["PROPOSE", "START_REVIEW", "APPROVE", "REJECT"]),
   reviewNote: optionalText(2000),
   effectiveFrom: z.iso.datetime({ offset: true }).optional(),
+  source: z.string().optional(),
 });
 
 export const countryFactReviewSchema = z.object({
@@ -271,6 +273,8 @@ export const productMatchRequestSchema = z.object({
   productName: optionalText(300),
   brand: optionalText(200),
   manufacturerPartyId: optionalText(64),
+  clientId: optionalText(64),
+  clientScope: z.enum(["EXACT", "INCLUDE_SHARED", "ALL"]).optional(),
   identifiers: z
     .array(z.object({ identifierType: productIdentifierTypeSchema, value: requiredString(128) }))
     .max(20)
@@ -280,6 +284,7 @@ export const productMatchRequestSchema = z.object({
 export const productListQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   clientId: z.string().trim().max(100).optional(),
+  clientScope: z.enum(["exact", "include_shared", "all"]).optional(),
   status: productStatusSchema.optional(),
   jurisdiction: z.string().trim().max(16).optional(),
   reviewStatus: z.enum(["UNREVIEWED", "IN_REVIEW", "APPROVED", "REJECTED", "NEEDS_REVIEW"]).optional(),
@@ -300,11 +305,13 @@ const csvContent = z.string().min(1).max(8_000_000);
 export const importPreviewSchema = z.object({
   content: csvContent,
   fileName: optionalText(255),
+  clientId: optionalText(64),
 });
 
 export const importCommitSchema = z.object({
   content: csvContent,
   fileName: optionalText(255),
+  clientId: optionalText(64),
   /**
    * The digest the preview reported. The commit recomputes it and refuses to
    * proceed if it differs, so a commit can only ever apply the file the user was

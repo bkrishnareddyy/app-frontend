@@ -3,8 +3,9 @@ import { getAccountContext, hasPermission } from "@/lib/auth";
 import { canWrite } from "@/lib/api/write-access";
 import { db } from "@/lib/db";
 import { groupDecisions } from "@/modules/decisions/groupDecisions";
+import { getAllReviewableDecisionWhereFilter } from "@/modules/decisions/decisionState";
 import { buildShipmentActionGroups } from "@/modules/actions/shipmentActions";
-import { DECISION_ACTIONABLE_STATUSES, buildWorkQueue, filterWorkQueue, parseWorkFilter } from "@/modules/work/workQueue";
+import { buildWorkQueue, filterWorkQueue, parseWorkFilter } from "@/modules/work/workQueue";
 import { loadWorkQueueForAccount } from "@/modules/work/workQueueLoader";
 import { RISK_ACCEPTANCE_PERMISSION, openStatusVariants } from "@/modules/exceptions/exceptionState";
 import { ActionsClient } from "./ActionsClient";
@@ -49,10 +50,7 @@ export default async function ActionsPage(props: {
     db.agentDecision.findMany({
       where: {
         accountId: context.accountId,
-        OR: [
-          { triageState: { in: ["NEEDS_REVIEW", "BLOCKED", "APPROVED", "AUTO_VERIFIED", "REJECTED"] } },
-          { triageState: null, status: { in: [...DECISION_ACTIONABLE_STATUSES, "Approved", "AUTO_VERIFIED", "Auto-Approved", "Verified"] } },
-        ],
+        ...getAllReviewableDecisionWhereFilter(),
         ...(shipmentId ? { shipmentId } : {}),
       },
       select: {

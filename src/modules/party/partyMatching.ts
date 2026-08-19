@@ -76,6 +76,7 @@ export interface MatchableRegistration {
 /** The shape matching needs from a party. Free of Prisma and of the database. */
 export interface MatchableParty {
   id: string;
+  clientId?: string | null;
   identifiers: readonly MatchableIdentifier[];
   registrations: readonly MatchableRegistration[];
   /** Normalized forms of every active name the party is known by. */
@@ -92,6 +93,8 @@ export interface MatchCandidateInput {
   legalName?: string | null;
   /** A country associated with the name evidence — registration or address. */
   country?: string | null;
+  clientId?: string | null;
+  clientScope?: "EXACT" | "INCLUDE_SHARED" | "ALL";
 }
 
 export type MatchRule =
@@ -136,16 +139,25 @@ export function matchParty(input: MatchCandidateInput, parties: readonly Matchab
     }))
     .filter((identifier) => identifier.normalizedValue !== "");
 
-  const uniqueRule = matchOnUniqueIdentifiers(inputIdentifiers, parties);
+  const filterCandidatesByClient = (candidates: PartyMatchCandidate[]): PartyMatchCandidate[] => {
+    if (candidates.length <= 1 || !input.clientId) return candidates;
+    const clientSpecific = candidates.filter((c) => {
+      const party = parties.find((p) => p.id === c.partyId);
+      return party?.clientId === input.clientId;
+    });
+    return clientSpecific.length > 0 ? clientSpecific : candidates;
+  };
+
+  const uniqueRule = filterCandidatesByClient(matchOnUniqueIdentifiers(inputIdentifiers, parties));
   if (uniqueRule.length > 0) return decide(uniqueRule, "UNIQUE_IDENTIFIER");
 
-  const registrationRule = matchOnRegistration(input, parties);
+  const registrationRule = filterCandidatesByClient(matchOnRegistration(input, parties));
   if (registrationRule.length > 0) return decide(registrationRule, "REGISTRATION_NUMBER");
 
-  const qualifiedRule = matchOnCountryQualifiedIdentifiers(inputIdentifiers, parties, true);
+  const qualifiedRule = filterCandidatesByClient(matchOnCountryQualifiedIdentifiers(inputIdentifiers, parties, true));
   if (qualifiedRule.length > 0) return decide(qualifiedRule, "COUNTRY_QUALIFIED_IDENTIFIER");
 
-  const unqualifiedRule = matchOnCountryQualifiedIdentifiers(inputIdentifiers, parties, false);
+  const unqualifiedRule = filterCandidatesByClient(matchOnCountryQualifiedIdentifiers(inputIdentifiers, parties, false));
   if (unqualifiedRule.length > 0) {
     // Never EXACT: without the issuing country, the same reference number can
     // legitimately belong to unrelated parties in different jurisdictions.
@@ -156,7 +168,7 @@ export function matchParty(input: MatchCandidateInput, parties: readonly Matchab
     };
   }
 
-  const nameRule = matchOnNameAndCountry(input, parties);
+  const nameRule = filterCandidatesByClient(matchOnNameAndCountry(input, parties));
   if (nameRule.length > 0) {
     // Never EXACT, regardless of how many parties matched: a shared legal name
     // and country is evidence a person should confirm, not a determination.

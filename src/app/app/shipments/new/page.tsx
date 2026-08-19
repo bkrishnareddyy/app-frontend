@@ -17,15 +17,15 @@ export default function NewShipmentPage() {
   const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
 
   const [formData, setFormData] = useState({
-    importerName: "ABC Manufacturing India Pvt Ltd",
-    poReference: "PO-2026-849102",
-    entryType: "Consumption Entry",
-    incoterm: "CIF Los Angeles",
-    portOfEntry: "Port of Los Angeles (2704)",
-    carrierName: "Maersk Line",
-    countryOfExport: "Germany",
+    importerName: "",
+    poReference: "",
+    entryType: "",
+    incoterm: "",
+    portOfEntry: "",
+    carrierName: "",
+    countryOfExport: "",
     destinationCountry: "",
-    estimatedArrival: "2026-05-20",
+    estimatedArrival: "",
     clientId: "",
   });
 
@@ -120,7 +120,7 @@ export default function NewShipmentPage() {
               <Input
                 value={formData.poReference}
                 onChange={(e) => setFormData({ ...formData, poReference: e.target.value })}
-                placeholder="e.g. PO-778899"
+                placeholder="e.g. PO-2026-849102"
               />
             </FormField>
 
@@ -130,6 +130,7 @@ export default function NewShipmentPage() {
                 value={formData.entryType}
                 onChange={(e) => setFormData({ ...formData, entryType: e.target.value })}
               >
+                <option value="">Select Customs Entry Type</option>
                 <option value="Consumption Entry">Consumption Entry (Type 01)</option>
                 <option value="Informal Entry">Informal Entry (Type 11)</option>
                 <option value="In-Bond Entry">In-Bond Entry (Type 61)</option>

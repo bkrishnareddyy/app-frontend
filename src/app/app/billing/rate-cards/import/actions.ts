@@ -1,6 +1,7 @@
 "use server";
 
 import { parse } from "csv-parse/sync";
+import ExcelJS from "exceljs";
 import { db } from "@/lib/db";
 import { getAccountContext, hasPermission } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
@@ -13,8 +14,44 @@ const MAX_PREVIEW_ROWS = 250;
 async function requireRateCardAdmin() {
   const ctx = await getAccountContext();
   if (!ctx) throw new Error("Unauthorized: Account context required");
-  if (!(await hasPermission("billing.ratecard.manage"))) throw new Error("Forbidden: billing.ratecard.manage permission required");
+  const canUpload = await hasPermission("billing.ratecard.upload") || await hasPermission("billing.ratecard.manage");
+  if (!canUpload) throw new Error("Forbidden: billing.ratecard.upload permission required");
   return ctx;
+}
+
+/** Parses the first sheet of an XLSX/XLS file into { headers, rows } matching the CSV output shape. */
+async function parseXlsxFile(buffer: Buffer): Promise<{ headers: string[]; rows: Record<string, string>[]; rowCount: number }> {
+  const workbook = new ExcelJS.Workbook();
+  // @ts-expect-error @types/node v20 adds a generic to Buffer that predates exceljs types
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) throw new Error("The uploaded spreadsheet contains no worksheets");
+
+  const allRows: string[][] = [];
+  sheet.eachRow({ includeEmpty: false }, (row) => {
+    const cells = (row.values as Array<ExcelJS.CellValue>).slice(1); // ExcelJS row.values is 1-indexed with a leading null
+    allRows.push(
+      cells.map((cell) => {
+        if (cell == null) return "";
+        // Dates — convert to ISO string to avoid number auto-coercion
+        if (cell instanceof Date) return cell.toISOString().split("T")[0];
+        if (typeof cell === "object" && "result" in cell) return String((cell as { result: unknown }).result ?? "");
+        if (typeof cell === "object" && "richText" in cell) return (cell as { richText: Array<{ text: string }> }).richText.map((r) => r.text).join("");
+        return String(cell);
+      })
+    );
+  });
+
+  if (!allRows.length) throw new Error("No rows found in the first worksheet");
+  const headers = (allRows[0] ?? []).map((h) => h.trim()).filter(Boolean);
+  if (!headers.length) throw new Error("The spreadsheet does not have a header row in the first row");
+
+  const dataRows = allRows.slice(1);
+  const rows = dataRows.map((row) =>
+    Object.fromEntries(headers.map((header, i) => [header, row[i] ?? ""]))
+  );
+
+  return { headers, rows, rowCount: rows.length };
 }
 
 export async function parseRateCardUploadAction(formData: FormData) {
@@ -25,20 +62,38 @@ export async function parseRateCardUploadAction(formData: FormData) {
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("Rate-card uploads are limited to 5 MB");
 
   const lowerName = file.name.toLowerCase();
-  if (!lowerName.endsWith(".csv")) throw new Error("CSV import is supported now. XLSX requires the spreadsheet parser dependency and is not enabled yet.");
+  const isXlsx = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls");
 
-  const text = await file.text();
-  const records = parse(text, { columns: true, skip_empty_lines: true, trim: true, bom: true, relax_column_count: true }) as Record<string, string>[];
-  if (!records.length) throw new Error("No data rows were found in the uploaded CSV");
-  const headers = Object.keys(records[0] ?? {}).filter(Boolean);
-  if (!headers.length) throw new Error("The uploaded CSV does not contain a header row");
+  let headers: string[];
+  let rows: Record<string, string>[];
+  let rowCount: number;
+
+  if (isXlsx) {
+    const arrayBuffer = await file.arrayBuffer();
+    const parsed = await parseXlsxFile(Buffer.from(arrayBuffer));
+    headers = parsed.headers;
+    rows = parsed.rows;
+    rowCount = parsed.rowCount;
+  } else if (lowerName.endsWith(".csv")) {
+    const text = await file.text();
+    const records = parse(text, { columns: true, skip_empty_lines: true, trim: true, bom: true, relax_column_count: true }) as Record<string, string>[];
+    if (!records.length) throw new Error("No data rows were found in the uploaded CSV");
+    headers = Object.keys(records[0] ?? {}).filter(Boolean);
+    if (!headers.length) throw new Error("The uploaded CSV does not contain a header row");
+    rows = records;
+    rowCount = records.length;
+  } else {
+    throw new Error("Only .csv, .xlsx, and .xls files are supported for rate card import");
+  }
+
+  if (!rowCount) throw new Error("No data rows were found in the uploaded file");
 
   return {
     fileName: file.name,
     headers,
-    rowCount: records.length,
-    rows: records.slice(0, MAX_PREVIEW_ROWS).map((row) => Object.fromEntries(headers.map((header) => [header, String(row[header] ?? "")]))),
-    truncated: records.length > MAX_PREVIEW_ROWS,
+    rowCount,
+    rows: rows.slice(0, MAX_PREVIEW_ROWS).map((row) => Object.fromEntries(headers.map((header) => [header, String(row[header] ?? "")]))),
+    truncated: rowCount > MAX_PREVIEW_ROWS,
   };
 }
 

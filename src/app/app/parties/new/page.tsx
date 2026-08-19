@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAccountContext } from "@/lib/auth";
 import { canWrite, READ_ONLY_MESSAGE } from "@/lib/api/write-access";
+import { getClientsData } from "@/lib/clients/clientsData";
 import { holdsPermission } from "@/modules/party/partyActor";
 import { NewPartyForm } from "./NewPartyForm";
 
@@ -11,8 +12,12 @@ export default async function NewPartyPage() {
   const context = await getAccountContext();
   if (!context) redirect("/sign-in");
 
+  const [clientsRes] = await Promise.all([getClientsData(context)]);
+
   const writable = canWrite(context);
   const mayCreate = writable && holdsPermission(context, "parties.create");
+
+  const clientOptions = clientsRes.clients.map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <div className="space-y-6">
@@ -30,7 +35,7 @@ export default async function NewPartyPage() {
       </div>
 
       {mayCreate ? (
-        <NewPartyForm />
+        <NewPartyForm clients={clientOptions} />
       ) : (
         <div role="status" className="rounded-2xl bg-white border border-border p-6 text-sm text-ink">
           {writable

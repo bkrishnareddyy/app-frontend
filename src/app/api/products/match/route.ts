@@ -24,8 +24,10 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx, requestId }) => {
     productName: body.data.productName ?? null,
     brand: body.data.brand ?? null,
     manufacturerPartyId: body.data.manufacturerPartyId ?? null,
+    clientId: body.data.clientId ?? null,
+    clientScope: body.data.clientScope,
     identifiers: body.data.identifiers ?? [],
-});
+  });
 
   return NextResponse.json({ match, requestId });
 

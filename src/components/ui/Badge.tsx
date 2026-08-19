@@ -13,6 +13,7 @@ export const badgeVariants = cva(
         danger: "bg-red-50 text-red-700 border border-red-200",
         info: "bg-brand/10 text-brand",
         neutral: "bg-surface-muted text-ink-muted border border-border",
+        default: "bg-surface-muted text-ink-muted border border-border",
       },
     },
     defaultVariants: {

@@ -4,6 +4,31 @@ import { evaluateAndRateUsageEvent } from "./ratingEngine";
 import { calculateAndRecordEventCost } from "./costingEngine";
 import { DEFAULT_BILLING_EVENT_DEFINITIONS } from "./constants";
 
+/**
+ * Maps PipelineOrchestrator agent names (exactly as used in determineAgentsToRun)
+ * to billing event codes and quantity resolution strategy.
+ *
+ * "lineItems" resolves to the number of line items in the agent's input.
+ * "pageCount" resolves to output.pageCount from Document Intake.
+ * "classifications" resolves to the number of classifications in HTS output.
+ * "fixed" always emits quantity = 1.
+ *
+ * Document Intelligence Agent is intentionally absent — its extraction work is
+ * folded into DOCUMENT_PROCESSED (Document Intake), not a separate billable event.
+ */
+export const AGENT_BILLING_EVENT_MAP: Record<
+  string,
+  { eventCode: string; quantityFrom: "lineItems" | "pageCount" | "classifications" | "fixed" }
+> = {
+  "Document Intake Agent": { eventCode: "DOCUMENT_PROCESSED", quantityFrom: "pageCount" },
+  "Product Intelligence Agent": { eventCode: "PRODUCT_NORMALIZATION_COMPLETED", quantityFrom: "lineItems" },
+  "HTS Classification Agent": { eventCode: "HTS_CLASSIFICATION_COMPLETED", quantityFrom: "classifications" },
+  "Origin Rules Agent": { eventCode: "ORIGIN_DETERMINATION_COMPLETED", quantityFrom: "fixed" },
+  "Valuation & Assists Agent": { eventCode: "VALUATION_COMPLETED", quantityFrom: "fixed" },
+  "Compliance Audit Agent": { eventCode: "COMPLIANCE_REVIEW_COMPLETED", quantityFrom: "fixed" },
+  "Filing Readiness Agent": { eventCode: "FILING_READINESS_COMPLETED", quantityFrom: "fixed" },
+};
+
 export interface RecordUsageEventInput {
   accountId: string;
   eventCode: string;

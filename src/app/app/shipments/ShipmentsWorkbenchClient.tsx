@@ -13,6 +13,7 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
+  Mail,
 } from "lucide-react";
 import { caughtMessage } from "@/lib/utils";
 import { PAGE_SIZE_DEFAULT, pageWindow } from "@/modules/tables/tableQuery";
@@ -618,15 +619,63 @@ export function ShipmentsWorkbenchClient({
                 )}
               </tr>
 
-              {filteredShipments.length === 0 ? (
+              {shipmentsList.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={isEnterpriseAdmin ? 6 : 5}
+                    className="px-5 py-14 text-center text-ink-muted"
+                  >
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-brand/10 text-brand flex items-center justify-center mx-auto mb-2">
+                        <Package className="w-6 h-6 stroke-2" />
+                      </div>
+                      <p className="font-bold text-base text-ink">You haven&apos;t added a shipment yet</p>
+                      <p className="text-xs text-ink-muted leading-relaxed">
+                        Get started by adding your first shipment manually or importing documents from email.
+                      </p>
+                      <div className="flex items-center justify-center gap-3 pt-2">
+                        <Link
+                          href="/app/shipments/new"
+                          className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Add Shipment</span>
+                        </Link>
+                        <Link
+                          href="/app/documents"
+                          className="px-4 py-2 bg-white hover:bg-surface-muted border border-border text-ink text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
+                        >
+                          <Mail className="w-4 h-4 text-ink-muted" />
+                          <span>Import from email</span>
+                        </Link>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredShipments.length === 0 ? (
                 <tr>
                   <td
                     colSpan={isEnterpriseAdmin ? 6 : 5}
                     className="px-5 py-12 text-center text-ink-muted"
                   >
-                    <Package className="w-8 h-8 mx-auto text-ink-muted mb-2 stroke-1" />
+                    <Search className="w-8 h-8 mx-auto text-ink-muted mb-2 stroke-1" />
                     <p className="font-semibold text-sm text-ink">No shipments match the filters</p>
                     <p className="text-xs mt-1">Try resetting the search filters to view active shipments.</p>
+                    <button
+                      onClick={() => {
+                        setColumnFilters({
+                          shipmentNumber: "",
+                          status: "ALL",
+                          owner: "ALL",
+                          client: "ALL",
+                        });
+                        setSearchQuery("");
+                        setSelectedUserIds([]);
+                      }}
+                      className="mt-3 px-3.5 py-1.5 bg-surface-muted hover:bg-border border border-border rounded-xl text-xs font-semibold text-ink transition-colors cursor-pointer"
+                    >
+                      Clear Filters
+                    </button>
                   </td>
                 </tr>
               ) : (

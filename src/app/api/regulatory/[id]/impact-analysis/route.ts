@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withAuthenticatedRoute } from "@/lib/api/auth-guards";
 import { validatePathParams } from "@/lib/api/validation";
 import { db } from "@/lib/db";
+import { createExceptionItem } from "@/lib/exceptions/createException";
 import { computeRegulatoryImpact } from "@/lib/regulatory/impactAnalysis";
 import { z } from "zod";
 
@@ -42,17 +43,15 @@ export const POST = withAuthenticatedRoute<{ id: string }>(async ({ ctx, request
     });
 
     if (!exists) {
-      await db.exceptionItem.create({
-        data: {
-          accountId: ctx.accountId,
-          shipmentId: s.id,
-          category: "COMPLIANCE",
-          type: "compliance_flag",
-          severity: "High",
-          description: `Regulatory change [${update.title}] affects this shipment's HTS [${codeAffected}]. Review required before filing.`,
-          status: "Open",
-          blocking: true,
-        },
+      await createExceptionItem({
+        accountId: ctx.accountId,
+        shipmentId: s.id,
+        category: "COMPLIANCE",
+        type: "compliance_flag",
+        severity: "High",
+        description: `Regulatory change [${update.title}] affects this shipment's HTS [${codeAffected}]. Review required before filing.`,
+        status: "Open",
+        blocking: true,
       });
     }
   }
