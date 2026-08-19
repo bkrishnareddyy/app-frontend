@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
   Send,
   Save,
-  FileText,
   AlertTriangle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";

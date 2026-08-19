@@ -6,7 +6,7 @@ import type { Content } from "@google/genai";
 import {
   Send, Loader2, Sparkles, Plus, Trash2,
   LayoutDashboard, ListChecks, FileText, FileCheck2, Globe,
-  Files, Package, Landmark, MessageSquare, ChevronRight,
+  Files, MessageSquare, ChevronRight,
   ChevronsLeft, ChevronsRight, Moon, Sun, Paperclip, X, Coins,
   Contact2, DollarSign,
 } from "lucide-react";
@@ -1264,6 +1264,7 @@ function safeErrorMessage(err: unknown): string | null {
 
 function ToolCard({ tc }: { tc: ToolCallDisplay }) {
   const th = useTh();
+  const [decisionStatusOverrides, setDecisionStatusOverrides] = useState<Record<string, string>>({});
 
   // Handled separately: it has running sub-phases (uploading, processing) and
   // a done state with several outcomes, none of which fit the generic branches below.
@@ -1445,14 +1446,16 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
           Proposed Decisions ({decisions.length})
         </p>
         {decisions.length === 0 ? <p style={{ fontSize: 14, color: th.inkMuted }}>No pending decisions found.</p>
-          : decisions.map((d) => (
+          : decisions.map((d) => {
+            const status = decisionStatusOverrides[d.id] ?? d.status;
+            return (
             <div key={d.id} style={{ borderRadius: 8, border: `1px solid ${th.border}`, padding: "10px 12px", marginBottom: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: th.ink }}>Proposed HTS: {d.proposedHtsCode || d.htsCode || "Pending"}</span>
-                <Badge variant={d.status === "APPROVED" ? "success" : d.status === "REJECTED" ? "danger" : "neutral"}>{d.status || "PROPOSED"}</Badge>
+                <Badge variant={status === "APPROVED" ? "success" : status === "REJECTED" ? "danger" : "neutral"}>{status || "PROPOSED"}</Badge>
               </div>
               <p style={{ fontSize: 12, color: th.inkMuted, marginTop: 4 }}>{d.decisionSummary || d.proposedDescription || "HTS Classification proposal"}</p>
-              {(!d.status || d.status === "PROPOSED" || d.status === "PENDING") && (
+              {(!status || status === "PROPOSED" || status === "PENDING") && (
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <Button size="sm" variant="secondary" style={{ fontSize: 11, padding: "2px 10px" }}
                     onClick={async () => {
@@ -1463,7 +1466,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                       });
                       const data = await res.json().catch(() => ({}));
                       if (res.ok) {
-                        d.status = "APPROVED";
+                        setDecisionStatusOverrides((prev) => ({ ...prev, [d.id]: "APPROVED" }));
                         alert("Decision approved successfully.");
                       } else {
                         alert(`Failed to approve decision: ${data.error || res.statusText || "Unknown error"}`);
@@ -1482,7 +1485,7 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                         });
                         const data = await res.json().catch(() => ({}));
                         if (res.ok) {
-                          d.status = "REJECTED";
+                          setDecisionStatusOverrides((prev) => ({ ...prev, [d.id]: "REJECTED" }));
                           alert("Decision rejected.");
                         } else {
                           alert(`Failed to reject decision: ${data.error || res.statusText || "Unknown error"}`);
@@ -1494,7 +1497,8 @@ function ToolCard({ tc }: { tc: ToolCallDisplay }) {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         <ViewInAppLink href="/app/decisions" label="decisions" />
       </Card>
     );

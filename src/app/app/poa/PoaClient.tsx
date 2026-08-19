@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   Search,
   RefreshCw,
-  FileText,
   Clock,
 } from "lucide-react";
 import { PanelHeading } from "@/components/PanelHeading";

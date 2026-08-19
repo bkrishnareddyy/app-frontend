@@ -122,7 +122,7 @@ function SinglePageLayout({ config, formData, onChange, errors = {} }: LayoutRen
 function LayoutHintsRenderer({ config, formData, onChange, errors = {} }: LayoutRendererProps) {
   const [activeTab, setActiveTab] = React.useState("");
   const visibleFields = config.fields.filter((field) => field.isVisible !== false);
-  const layoutHints = config.layoutHints || {};
+  const layoutHints = React.useMemo(() => config.layoutHints || {}, [config.layoutHints]);
   const tabsheetEntry = Object.entries(layoutHints).find(([, type]) => type === "tabsheet");
   const tabsheetPath = tabsheetEntry?.[0] ?? "";
   const tabPaths = React.useMemo(

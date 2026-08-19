@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
  * Used by the New Filing modal to show country → procedure → message options
  * Only returns procedures where canCreateNewFiling = true (filters out amendments, cancellations, etc.)
  */
-export const GET = withAuthenticatedRoute(async ({ ctx }) => {
+export const GET = withAuthenticatedRoute(async () => {
   // Get all active filing procedure configurations that can create new filings
   // Excludes operational messages like amendments (IE013), cancellations (IE014), etc.
   const procedures = await db.filingProcedureConfig.findMany({

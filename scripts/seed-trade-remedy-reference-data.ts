@@ -122,7 +122,6 @@ async function seedSection232Rates() {
   // changed these base rates. General Approved Exclusions were terminated
   // Mar. 12, 2025 (FR Doc. 2025-15819), so isGeneralApprovedExclusion is false
   // throughout and no exclusion rows are seeded.
-  const citation = "Proclamation 10947, 90 Fed. Reg. 24199 (Jun. 9, 2025)";
   const htsLines: Array<{ htsNumber: string; commodity: "STEEL" | "ALUMINUM" }> = [
     { htsNumber: "7208.10.1500", commodity: "STEEL" },
     { htsNumber: "7209.16.0030", commodity: "STEEL" },

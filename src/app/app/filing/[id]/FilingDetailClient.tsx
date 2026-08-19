@@ -9,9 +9,6 @@ import {
   Save,
   RotateCcw,
   XCircle,
-  FileText,
-  Truck,
-  Building2,
   AlertTriangle,
   CheckCircle2,
   ShieldCheck,
@@ -343,8 +340,6 @@ const STAGE_STATE_LABELS: Record<FilingStageState, string> = {
 
 type LineItemEdit = { htsCode: string; countryOfOrigin: string };
 
-type Tab = "overview" | "declaration" | "response" | "form7501" | "psc";
-
 function messageActionLabel(m: MessageProps): string {
   if (m.direction !== "OUTBOUND") return "Response";
   const name = m.messageName.replace(/^CUSTOMS_DECLARATION_/, "");
@@ -486,7 +481,7 @@ export function FilingDetailClient({
   filing,
   shipment,
   lineItems,
-  documents,
+  documents: _documents,
   responses,
   messages,
   auditLogs = [],
@@ -505,7 +500,7 @@ export function FilingDetailClient({
   
   type Tab = "overview" | "declaration" | "response" | "form7501" | "psc";
   const [tab, setTab] = useState<Tab>("overview");
-  const [edits, setEdits] = useState<Record<string, LineItemEdit>>(() =>
+  const [edits] = useState<Record<string, LineItemEdit>>(() =>
     Object.fromEntries((lineItems || []).map((li) => [li.id, { htsCode: li.htsCode, countryOfOrigin: li.countryOfOrigin }]))
   );
   const [busy, setBusy] = useState<string | null>(null);
@@ -625,11 +620,7 @@ export function FilingDetailClient({
     [lineItems, edits]
   );
 
-  const latestOutbound = [...messages].reverse().find((m) => m.direction === "OUTBOUND") ?? null;
   const latestInbound = [...messages].reverse().find((m) => m.direction === "INBOUND") ?? null;
-  const declaration = latestOutbound
-    ? (latestOutbound.envelope as { data?: { declaration?: Record<string, unknown> } }).data?.declaration
-    : null;
   const inboundData = latestInbound
     ? (latestInbound.envelope as { data?: { authorityReference?: string; humanMessage?: string } }).data
     : null;

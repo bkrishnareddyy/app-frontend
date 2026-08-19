@@ -16,8 +16,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { Save, X, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { X } from "lucide-react";
 import type { FieldConfig } from "@/types/ui-config.types";
 
 interface FieldConfigPanelProps {
@@ -52,7 +51,7 @@ const FIELD_TYPES = [
 
 export default function FieldConfigPanel({
   fieldPath,
-  fieldSchema,
+  fieldSchema: _fieldSchema,
   currentConfig,
   onConfigChange,
   onCancel
@@ -70,8 +69,6 @@ export default function FieldConfigPanel({
     ...currentConfig
   });
 
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['basic-props']));
-
   // Reset state when fieldPath or currentConfig changes
   useEffect(() => {
     setConfig({
@@ -88,18 +85,6 @@ export default function FieldConfigPanel({
     // Reset to basic tab when field changes
     setActiveTab('basic');
   }, [fieldPath, currentConfig]);
-
-  const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
-      return next;
-    });
-  };
 
   const updateConfig = (updates: Partial<FieldConfig>) => {
     const newConfig = { ...config, ...updates };

@@ -1,5 +1,5 @@
 import { MemoryRepository } from "./memory.repository";
-import { HybridMemoryRetriever, generateDeterministicEmbedding } from "./memory.retriever";
+import { HybridMemoryRetriever } from "./memory.retriever";
 import type {
   MemoryExtractionInput,
   AccountMemoryRecord,
@@ -7,7 +7,6 @@ import type {
 import {
   AccountMemoryType,
   AccountMemorySubjectType,
-  AccountMemorySourceType,
 } from "@prisma/client";
 
 export class MemoryExtractorWorker {

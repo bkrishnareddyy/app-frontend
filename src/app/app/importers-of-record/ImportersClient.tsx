@@ -12,7 +12,6 @@ import {
   Search,
   RefreshCw,
   Upload,
-  UserCheck,
 } from "lucide-react";
 import { PanelHeading } from "@/components/PanelHeading";
 import { ClientNavTabs } from "@/components/clients/ClientNavTabs";

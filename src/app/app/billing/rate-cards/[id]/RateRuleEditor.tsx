@@ -40,7 +40,7 @@ const DEFAULT_EDIT: EditingState = {
   includedQuantity: "0",
 };
 
-export function RateRuleEditor({ versionId, rateCardId, currency, rules }: Props) {
+export function RateRuleEditor({ versionId, rateCardId: _rateCardId, currency, rules }: Props) {
   const [localRules, setLocalRules] = useState<RuleItem[]>(rules);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditingState>(DEFAULT_EDIT);

@@ -52,8 +52,8 @@ export default function SchemaTreeViewer({ schema, selectedPath, onSelectPath }:
   const buildTree = (
     schemaObj: any,
     path: string = "",
-    name: string = "root",
-    parentRequired: string[] = []
+    _name: string = "root",
+    _parentRequired: string[] = []
   ): SchemaTreeNode[] => {
     const nodes: SchemaTreeNode[] = [];
 
@@ -166,8 +166,6 @@ export default function SchemaTreeViewer({ schema, selectedPath, onSelectPath }:
     const isExpanded = expandedPaths.has(node.path);
     const hasChildren = node.children && node.children.length > 0;
     const isSelected = selectedPath === node.path;
-    // Both leaf fields AND complex objects are selectable now
-    const isSelectable = true; // Changed: all nodes are selectable
 
     return (
       <div key={node.path}>

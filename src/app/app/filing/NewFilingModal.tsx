@@ -36,7 +36,7 @@ interface NewFilingModalProps {
 export function NewFilingModal({ isOpen, onClose }: NewFilingModalProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting] = useState(false);
   const [countries, setCountries] = useState<Country[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<string>("");
   const [availableOptions, setAvailableOptions] = useState<ProcedureOption[]>([]);

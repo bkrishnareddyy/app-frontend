@@ -137,7 +137,7 @@ function validateStructure(
 function validateDuplicates(
   config: FilingUIConfigData,
   errors: ValidationError[],
-  warnings: ValidationError[]
+  _warnings: ValidationError[]
 ): void {
   // Check duplicate tab IDs
   if (config.tabs) {
@@ -207,7 +207,7 @@ function validateDuplicates(
 function validateReferences(
   config: FilingUIConfigData,
   errors: ValidationError[],
-  warnings: ValidationError[]
+  _warnings: ValidationError[]
 ): void {
   const sectionIds = new Set(config.sections.map(s => s.sectionId));
   const panelIds = new Set(config.panels?.map(p => p.panelId) || []);

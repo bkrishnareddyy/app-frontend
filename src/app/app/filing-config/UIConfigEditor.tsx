@@ -26,20 +26,18 @@ import TabManager from "./TabManager";
 import LayoutRenderer from "@/components/form/layouts/LayoutRenderer";
 
 // Import UI Config types and utilities
-import type { FilingUIConfigData, FieldConfig, UISection, LayoutMode } from "@/types/ui-config.types";
-import { 
-  createEmptyConfig, 
-  addSection, 
-  addField, 
+import type { FilingUIConfigData, FieldConfig, LayoutMode } from "@/types/ui-config.types";
+import {
+  createEmptyConfig,
+  addSection,
+  addField,
   updateField,
-  getField,
-  getFieldsBySection
+  getField
 } from "@/lib/ui-config/config-builder";
-import { 
-  validateConfig, 
-  getValidationSummary, 
-  formatValidationErrors,
-  type ValidationError 
+import {
+  validateConfig,
+  getValidationSummary,
+  type ValidationError
 } from "@/lib/ui-config/config-validator";
 
 // Add animation styles
@@ -210,6 +208,7 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
     } else if (country && procedureCode && messageName && messageType) {
       initializeNewConfig();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configId, country, procedureCode, messageName, messageType]);
 
   // Load schema when target is selected
@@ -217,6 +216,7 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
     if (country && procedureCode && messageName && messageType && schemaVersion) {
       loadSchema();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [country, procedureCode, messageName, messageType, schemaVersion]);
 
   // Track unsaved changes
@@ -232,6 +232,7 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
     if (config) {
       runValidation();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
   const loadExistingConfig = async () => {
@@ -525,8 +526,8 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
         throw new Error(errorData.error || "Failed to save configuration");
       }
 
-      const savedData = await response.json();
-      
+      await response.json();
+
       // Update state with saved config
       setOriginalConfig(JSON.parse(JSON.stringify(configToSave)));
       setHasUnsavedChanges(false);
@@ -546,20 +547,6 @@ export default function UIConfigEditor({ configId, onBack }: UIConfigEditorProps
         message: error.message || "Failed to save configurations"
       });
       setTimeout(() => setSaveStatus(null), 5000);
-    }
-  };
-
-  const handleCancelAll = () => {
-    if (hasUnsavedChanges) {
-      if (confirm("Discard all unsaved changes?")) {
-        setConfig(originalConfig ? JSON.parse(JSON.stringify(originalConfig)) : null);
-        setHasUnsavedChanges(false);
-        setSelectedPath(null);
-        setSelectedSchema(null);
-      }
-    } else {
-      setSelectedPath(null);
-      setSelectedSchema(null);
     }
   };
 

@@ -11,7 +11,7 @@
  * - Custom validation functions
  */
 
-import type { FieldConfig, FieldValidationRules } from "@/types/ui-config.types";
+import type { FieldConfig } from "@/types/ui-config.types";
 
 export interface ValidationResult {
   isValid: boolean;
