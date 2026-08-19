@@ -15,6 +15,12 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/db", () => ({
+  db: {
+    regulatoryUpdate: { findMany: vi.fn().mockResolvedValue([]) },
+  },
+}));
+
 import { POST } from "@/app/api/advisory/query/route";
 
 describe("Advisory Query Route Unit Tests", () => {

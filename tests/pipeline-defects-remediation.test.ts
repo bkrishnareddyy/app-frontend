@@ -33,6 +33,9 @@ const { dbMock } = vi.hoisted(() => {
       section232Rate: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      adcvdOrder: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       customsFiling: {
         findMany: vi.fn(),
       },

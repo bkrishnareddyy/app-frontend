@@ -136,14 +136,23 @@ export function withAuthenticatedRoute<TParams = Record<string, never>>(
       } catch {
         runner = null;
       }
+      let accountRunner: any = null;
+      try {
+        accountRunner = runWithAccountId;
+      } catch {
+        accountRunner = null;
+      }
+      const runAccountScoped = (fn: () => Promise<Response>) =>
+        typeof accountRunner === "function" ? accountRunner(ctx!.accountId, fn) : fn();
+
       if (typeof runner === "function") {
         return await runner(ctx!.dataMode, async () => {
-          return await runWithAccountId(ctx!.accountId, async () => {
+          return await runAccountScoped(async () => {
             return await handler({ req, ctx: ctx!, requestId, params });
           });
         });
       }
-      return await runWithAccountId(ctx!.accountId, async () => {
+      return await runAccountScoped(async () => {
         return await handler({ req, ctx: ctx!, requestId, params });
       });
     } catch (error) {
