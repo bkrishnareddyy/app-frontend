@@ -35,24 +35,38 @@ const RULES: Array<{
   { category: "END_USE_NUCLEAR", phrase: "unsafeguarded nuclear facility", citation: "15 CFR 744.2", severity: "CRITICAL" },
   { category: "END_USE_NUCLEAR", phrase: "nuclear explosive device", citation: "15 CFR 744.2", severity: "CRITICAL" },
   { category: "END_USE_NUCLEAR", phrase: "heavy water production facility", citation: "15 CFR 744.2", severity: "HIGH" },
+  { category: "END_USE_NUCLEAR", phrase: "unsafeguarded nuclear fuel cycle activity", citation: "15 CFR 744.2", severity: "CRITICAL" },
+  { category: "END_USE_NUCLEAR", phrase: "special nuclear material", citation: "15 CFR 744.2", severity: "HIGH" },
+  { category: "END_USE_NUCLEAR", phrase: "isotope separation facility", citation: "15 CFR 744.2", severity: "HIGH" },
+  { category: "END_USE_NUCLEAR", phrase: "nuclear weapon", citation: "15 CFR 744.2", severity: "CRITICAL" },
 
   // ---- End-Use Screening: EAR 744.3(a) -- missile end-uses ----
   { category: "END_USE_MISSILE", phrase: "ballistic missile", citation: "15 CFR 744.3(a)", severity: "CRITICAL" },
   { category: "END_USE_MISSILE", phrase: "missile guidance system", citation: "15 CFR 744.3(a)", severity: "CRITICAL" },
   { category: "END_USE_MISSILE", phrase: "cruise missile", citation: "15 CFR 744.3(a)", severity: "CRITICAL" },
   { category: "END_USE_MISSILE", phrase: "missile technology control regime", citation: "15 CFR 744.3(a)", severity: "HIGH" },
+  { category: "END_USE_MISSILE", phrase: "MTCR annex item", citation: "15 CFR 744.3(a)", severity: "HIGH" },
+  { category: "END_USE_MISSILE", phrase: "missile production facility", citation: "15 CFR 744.3(a)", severity: "CRITICAL" },
+  { category: "END_USE_MISSILE", phrase: "rocket propulsion system", citation: "15 CFR 744.3(a)", severity: "HIGH" },
 
   // ---- End-Use Screening: EAR 744.3(b) -- rocket systems / UAV end-uses ----
   { category: "END_USE_ROCKET_UAV", phrase: "unmanned aerial vehicle", citation: "15 CFR 744.3(b)", severity: "HIGH" },
   { category: "END_USE_ROCKET_UAV", phrase: "unmanned air vehicle", citation: "15 CFR 744.3(b)", severity: "HIGH" },
   { category: "END_USE_ROCKET_UAV", phrase: "rocket system", citation: "15 CFR 744.3(b)", severity: "HIGH" },
   { category: "END_USE_ROCKET_UAV", phrase: "unmanned combat aerial vehicle", citation: "15 CFR 744.3(b)", severity: "CRITICAL" },
+  { category: "END_USE_ROCKET_UAV", phrase: "remotely piloted vehicle", citation: "15 CFR 744.3(b)", severity: "HIGH" },
+  { category: "END_USE_ROCKET_UAV", phrase: "target drone", citation: "15 CFR 744.3(b)", severity: "MEDIUM" },
+  { category: "END_USE_ROCKET_UAV", phrase: "sounding rocket", citation: "15 CFR 744.3(b)", severity: "MEDIUM" },
 
   // ---- End-Use Screening: EAR 744.4 -- chemical/biological weapons end-uses ----
   { category: "END_USE_CHEM_BIO", phrase: "chemical weapon", citation: "15 CFR 744.4", severity: "CRITICAL" },
   { category: "END_USE_CHEM_BIO", phrase: "biological weapon", citation: "15 CFR 744.4", severity: "CRITICAL" },
   { category: "END_USE_CHEM_BIO", phrase: "precursor chemical for chemical weapons", citation: "15 CFR 744.4", severity: "CRITICAL" },
   { category: "END_USE_CHEM_BIO", phrase: "CBW proliferation", citation: "15 CFR 744.4", severity: "HIGH" },
+  { category: "END_USE_CHEM_BIO", phrase: "Australia Group controlled precursor", citation: "15 CFR 744.4", severity: "HIGH" },
+  { category: "END_USE_CHEM_BIO", phrase: "nerve agent", citation: "15 CFR 744.4", severity: "CRITICAL" },
+  { category: "END_USE_CHEM_BIO", phrase: "toxin weapon", citation: "15 CFR 744.4", severity: "CRITICAL" },
+  { category: "END_USE_CHEM_BIO", phrase: "biological agent for hostile purposes", citation: "15 CFR 744.4", severity: "CRITICAL" },
 
   // ---- Military End-Use Screening: EAR 744.21 ----
   { category: "MILITARY_END_USE", phrase: "military end use", citation: "15 CFR 744.21", severity: "CRITICAL" },
@@ -60,14 +74,24 @@ const RULES: Array<{
   { category: "MILITARY_END_USE", phrase: "military aircraft maintenance", citation: "15 CFR 744.21", severity: "HIGH" },
   { category: "MILITARY_END_USE", phrase: "incorporation into a military commodity", citation: "15 CFR 744.21", severity: "CRITICAL" },
   { category: "MILITARY_END_USE", phrase: "operation of a military system", citation: "15 CFR 744.21", severity: "HIGH" },
+  { category: "MILITARY_END_USE", phrase: "military intelligence organization", citation: "15 CFR 744.21", severity: "CRITICAL" },
+  { category: "MILITARY_END_USE", phrase: "paramilitary organization", citation: "15 CFR 744.21", severity: "HIGH" },
+  { category: "MILITARY_END_USE", phrase: "repair or overhaul of a military item", citation: "15 CFR 744.21", severity: "HIGH" },
+  { category: "MILITARY_END_USE", phrase: "national guard or state police performing a military function", citation: "15 CFR 744.21", severity: "HIGH" },
 
-  // ---- Anti-Boycott Screening: 15 CFR 760.2 boycott-request language ----
+  // ---- Anti-Boycott Screening: 15 CFR 760.2 / Supp. No. 1 boycott-request language ----
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "goods not of Israeli origin", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "not manufactured in Israel", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "no connection with Israel", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "vessel is eligible to enter Arab ports", citation: "15 CFR 760.2", severity: "MEDIUM", authority: "US BIS Office of Antiboycott Compliance" },
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "blacklisted by the Arab League", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
   { category: "ANTI_BOYCOTT_REQUEST", phrase: "boycott of Israel", citation: "15 CFR 760.2", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
+  { category: "ANTI_BOYCOTT_REQUEST", phrase: "does not contain any Israeli boycotted materials", citation: "15 CFR 760.2, Supp. No. 1", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
+  { category: "ANTI_BOYCOTT_REQUEST", phrase: "manufacturer is not blacklisted by the Arab League", citation: "15 CFR 760.2, Supp. No. 1", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
+  { category: "ANTI_BOYCOTT_REQUEST", phrase: "vessel is not owned by an Israeli company", citation: "15 CFR 760.2, Supp. No. 1", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
+  { category: "ANTI_BOYCOTT_REQUEST", phrase: "vessel is not scheduled to call at an Israeli port", citation: "15 CFR 760.2, Supp. No. 1", severity: "MEDIUM", authority: "US BIS Office of Antiboycott Compliance" },
+  { category: "ANTI_BOYCOTT_REQUEST", phrase: "negative certificate of origin", citation: "15 CFR 760.2, Supp. No. 1", severity: "MEDIUM", authority: "US BIS Office of Antiboycott Compliance" },
+  { category: "ANTI_BOYCOTT_REQUEST", phrase: "supplier is not a blacklisted company", citation: "15 CFR 760.2, Supp. No. 1", severity: "HIGH", authority: "US BIS Office of Antiboycott Compliance" },
 
   // ---- Restricted Party Screening: 15 CFR Part 732, Supp. No. 3 -- "Know Your Customer" red flags ----
   { category: "RESTRICTED_PARTY_RED_FLAG", phrase: "reluctant to offer information about end use", citation: "15 CFR Part 732, Supp. No. 3", severity: "MEDIUM" },
