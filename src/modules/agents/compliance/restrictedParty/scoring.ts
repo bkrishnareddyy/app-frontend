@@ -65,6 +65,10 @@ export function scoreCandidate(
     sourceList: candidate.entity.sourceList,
     entityType: candidate.entity.entityType,
     programCodes: candidate.entity.programCodes,
+    citation: candidate.entity.citation,
+    agency: candidate.entity.agency,
+    effectiveDate: candidate.entity.effectiveDate,
+    expirationDate: candidate.entity.expirationDate,
     tier,
   };
 }

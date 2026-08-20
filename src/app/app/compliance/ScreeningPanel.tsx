@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { displayDate } from "@/lib/honest";
 import type { ScreeningBucketData } from "./ComplianceWorkspaceClient";
 
@@ -217,24 +218,33 @@ export function ScreeningPanel({ screeningBuckets, mayReadPartyScreening, partyS
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {subTabs
-          .filter((t) => !t.hidden)
-          .map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => selectSub(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeSub === t.id ? "bg-ink text-white" : "bg-slate-50 text-ink-muted hover:text-ink border border-border"
-              }`}
-            >
-              <span>{t.label}</span>
-              {t.count > 0 && (
-                <span className={`rounded-full px-1.5 text-[10px] ${activeSub === t.id ? "bg-white/20" : "bg-slate-200"}`}>{t.count}</span>
-              )}
-            </button>
-          ))}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {subTabs
+            .filter((t) => !t.hidden)
+            .map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => selectSub(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeSub === t.id ? "bg-ink text-white" : "bg-slate-50 text-ink-muted hover:text-ink border border-border"
+                }`}
+              >
+                <span>{t.label}</span>
+                {t.count > 0 && (
+                  <span className={`rounded-full px-1.5 text-[10px] ${activeSub === t.id ? "bg-white/20" : "bg-slate-200"}`}>{t.count}</span>
+                )}
+              </button>
+            ))}
+        </div>
+        {mayReadPartyScreening && activeSub === "party" && (
+          <Link href="/app/compliance/screen">
+            <Button variant="secondary" size="sm">
+              New Screening
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div key={activeSub}>

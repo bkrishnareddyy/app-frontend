@@ -18,9 +18,16 @@ const OFAC_LIST_SOURCES: Record<OfacSourceList, { xmlUrl: string; csvUrl: string
 };
 
 // Chunk size for upserts, chosen against DATABASE_URL's pgbouncer
-// connection_limit=10 -- an unbounded Promise.all over ~19,700 rows would
-// contend badly against a 10-connection pool.
-const UPSERT_BATCH_SIZE = 150;
+// connection_limit=10 -- a Promise.all batch this size must stay below the
+// pool size or concurrent upserts queue past pool_timeout and throw P2024
+// (previously set to 150, which blew past the pool and hung/failed every run).
+const UPSERT_BATCH_SIZE = 8;
+
+// OFAC's SDN/Consolidated XML feed carries no per-entry Federal Register
+// citation or effective/expiration date -- only the agency issuing the list
+// is known, so citation/effectiveDate/expirationDate stay null rather than
+// being guessed.
+const OFAC_AGENCY = "OFAC (US Department of the Treasury)";
 
 interface ParsedAka {
   lastName?: string;
@@ -265,6 +272,7 @@ export class OfacSdnIngestionService {
       country,
       programCodes: entry.programs,
       remarks: remarksParts.length ? remarksParts.join(" | ") : null,
+      agency: OFAC_AGENCY,
     };
   }
 
@@ -305,6 +313,7 @@ export class OfacSdnIngestionService {
               country: data.country,
               programCodes: data.programCodes,
               remarks: data.remarks,
+              agency: data.agency,
               publicationStatus: "PUBLISHED",
               publishedAt: now,
               supersededAt: null,
@@ -321,6 +330,7 @@ export class OfacSdnIngestionService {
               country: data.country,
               programCodes: data.programCodes,
               remarks: data.remarks,
+              agency: data.agency,
               publicationStatus: "PUBLISHED",
               publishedAt: now,
               sourcePublishedAt: publishDate ?? now,
