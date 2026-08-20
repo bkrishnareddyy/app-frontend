@@ -1,0 +1,44 @@
+[
+  {
+    "caseKey": "laptop-computer",
+    "category": "Normal",
+    "rawDescription": "Portable laptop computer, 14-inch screen, weighing 1.4 kg, consisting of a central processing unit, keyboard, and display, running a general-purpose operating system.",
+    "expectedHtsCode": "8471.30",
+    "notes": "Heading 8471 (automatic data processing machines), subheading 8471.30 (portable ADP machines weighing not more than 10 kg). Canonical textbook example. Not asserting the 10-digit US statistical suffix -- that depends on exact configuration and is a broker call."
+  },
+  {
+    "caseKey": "fresh-bananas",
+    "category": "Normal",
+    "rawDescription": "Fresh bananas, not dried, packed in cardboard boxes for retail sale.",
+    "expectedHtsCode": "0803.90",
+    "notes": "Heading 0803 (bananas, including plantains, fresh or dried), subheading 0803.90 (other than plantains). One of the most commonly cited GRI 1 examples in HTS training material."
+  },
+  {
+    "caseKey": "purebred-breeding-horse",
+    "category": "Normal",
+    "rawDescription": "One live purebred breeding horse, registered with a recognized breed association, imported for stud purposes.",
+    "expectedHtsCode": "0101.21",
+    "notes": "Heading 0101 (live horses, asses, mules, hinnies), subheading 0101.21 (purebred breeding animals). Standard textbook example, chapter 1 is unambiguous for live animals."
+  },
+  {
+    "caseKey": "cotton-tshirt-knitted",
+    "category": "Difficult Classification",
+    "rawDescription": "Men's short-sleeve T-shirt, 100% cotton, knitted construction, crew neck.",
+    "expectedHtsCode": "6109.10",
+    "notes": "Heading 6109 (T-shirts, singlets, tank tops, knitted or crocheted), subheading 6109.10 (of cotton). Only asserting 6-digit -- the men's/boys' vs statistical-category suffix is genuinely a broker-level call, deliberately not claimed here."
+  },
+  {
+    "caseKey": "plastic-toy-building-blocks",
+    "category": "Difficult Classification",
+    "rawDescription": "Plastic interlocking toy building blocks for children, sold in a boxed set, not electric.",
+    "expectedHtsCode": "9503.00",
+    "notes": "Heading 9503 (tricycles, other wheeled toys, dolls, other toys) is the standard chapter 95 destination for construction toy sets. Only asserting the 6-digit heading/subheading level since 9503.00 doesn't further subdivide at 8-digit for this category in the way other headings do."
+  },
+  {
+    "caseKey": "empty-product-description",
+    "category": "Adversarial",
+    "rawDescription": "General cargo",
+    "expectRefusal": true,
+    "notes": "Deliberately unclassifiable input (matches the agent's own gating keyword 'general cargo', src/modules/agents/htsClassificationAgent.ts:179). There is no correct HTS code here -- the correct behavior is that the agent returns UNCLASSIFIABLE rather than force-fitting a plausible-looking code. `expectRefusal: true` tells the runner to score this case on whether the agent refused, not against a hierarchical HTS target -- grading a refusal against a fake target code would penalize the agent for doing the right thing."
+  }
+]

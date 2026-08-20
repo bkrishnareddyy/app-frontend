@@ -36,6 +36,9 @@ F01 Backend Foundation   ← MUST SHIP FIRST
     └── F12 Platform Foundation
 
 F13 Chat Interface ← Can start after F01 but gains value as other features ship
+
+F15 Evals & AI Quality Intelligence ← Independent; reads AgentDecision/AgentExecutionRecord
+    (already shipped by F01/F04/F05), does not block or get blocked by F02-F13
 ```
 
 ---
@@ -57,6 +60,7 @@ F13 Chat Interface ← Can start after F01 but gains value as other features shi
 | [F11](features/F11-product-party-master.md) | Product & Party Master | A-C | Medium | Yes |
 | [F12](features/F12-platform-foundation.md) | Platform Foundation | A-F | Medium | Yes |
 | [F13](features/F13-chat-interface.md) | Chat Interface | A-D | High | Yes |
+| [F15](features/F15-evals-ai-quality-intelligence.md) | Evals & AI Quality Intelligence | Phase 0-1 | Medium | Yes — independent of F02-F13 |
 
 ---
 
@@ -74,6 +78,7 @@ F13 Chat Interface ← Can start after F01 but gains value as other features shi
 - **F10** Regulatory & Tariff Intelligence
 - **F11** Product & Party Master
 - **F12** Platform Foundation
+- **F15** Evals & AI Quality Intelligence (Phase 0 has no dependency on F01 at all — it only reads existing `AgentDecision`/`AgentExecutionRecord` data — but is listed here for planning purposes)
 
 ### Wave 2 (Start after Wave 1 features merge)
 - **F03** Shipment Workspace (after F02)
