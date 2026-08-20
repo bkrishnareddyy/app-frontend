@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
 import { Prisma } from "@prisma/client";
+import { AccountContextBuilder } from "@/modules/memory";
 
 export interface OriginQualificationResult {
   lineNumber: number;
@@ -121,6 +122,25 @@ export class OriginRulesAgent {
       };
     }
 
+    // Retrieve Account Institutional Memory (supplier history, prior origin
+    // decisions, country patterns, past human overrides for this account).
+    // No LLM prompt exists to inject prose into here, so the retrieved
+    // memories are attached to the decision's evidenceItems/dataSources.
+    let accountMemoryEvidence: ReturnType<typeof AccountContextBuilder.summarizeForEvidence> = [];
+    try {
+      const accountContext = await AccountContextBuilder.build({
+        accountId: input.accountId,
+        task: "ORIGIN_DETERMINATION",
+        shipmentId: input.shipmentId,
+        partNumber: input.lineItems[0]?.sku ?? undefined,
+        productDescription: input.lineItems[0]?.description ?? undefined,
+      });
+      accountMemoryEvidence = AccountContextBuilder.summarizeForEvidence(accountContext);
+    } catch {
+      // Non-blocking fallback
+    }
+    const accountMemoryDataSource = accountMemoryEvidence.length > 0 ? ["Account Institutional Memory"] : [];
+
     const qualifications: OriginQualificationResult[] = [];
     // A country of manufacture matching MX/CA is a candidate for USMCA, never
     // a qualification by itself. A defensible claim additionally needs: the
@@ -219,7 +239,7 @@ export class OriginRulesAgent {
             : `Origin rules evaluated for ${qualifications.length} line(s): ${primaryFta} qualification assessed for ${primaryCo ?? "an undeclared country of origin"}.`,
           purpose:
             "Country of origin rules evaluation, tariff shift (CTH/CTSH) testing, and USMCA FTA qualification",
-          dataSources: ["USMCA Annex 4-B Rules Engine", "19 CFR Part 102", aiProvider],
+          dataSources: ["USMCA Annex 4-B Rules Engine", "19 CFR Part 102", aiProvider, ...accountMemoryDataSource],
           regulations: ["19 CFR Part 102", "19 CFR Part 181 (USMCA)"],
           proposedDescription: `Origin ${primaryCo ?? "undeclared"} (${primaryFta})`,
           rulesApplied: [
@@ -227,7 +247,10 @@ export class OriginRulesAgent {
             "19 CFR Part 102 Substantial Transformation",
             "19 CFR § 134 Marking Verification",
           ],
-          evidenceItems: { qualifications } as unknown as Prisma.InputJsonValue,
+          evidenceItems: {
+            qualifications,
+            ...(accountMemoryEvidence.length > 0 ? { accountMemory: accountMemoryEvidence } : {}),
+          } as unknown as Prisma.InputJsonValue,
         },
       });
       agentDecisionId = agentDecision.id;

@@ -230,6 +230,12 @@ export class HTSClassificationAgent {
     }
 
     const results: ClassificationResultItem[] = [];
+    // Tracks how many account memories fed each line's prompt, keyed by
+    // lineNumber, so the decision-creation loop below (which runs over
+    // `results`, not `productProfiles`) can record it on that line's
+    // AgentDecision -- otherwise retrieval happened but left no trace on
+    // the record a reviewer actually looks at.
+    const accountMemoryCountByLine = new Map<number, number>();
 
     for (const item of input.productProfiles) {
       // Seed candidates from the real, ingested HTS Master Release data
@@ -271,6 +277,7 @@ export class HTSClassificationAgent {
           productDescription: item.rawDescription,
         });
         accountContextPrompt = accountContext.formattedText;
+        accountMemoryCountByLine.set(item.lineNumber, accountContext.memoryCount);
       } catch {
         // Non-blocking fallback
       }
@@ -477,6 +484,7 @@ ${candidateContext}`;
         const triageState = policy.outcome === "AUTO" ? "AUTO_VERIFIED" : "NEEDS_REVIEW";
         // "Approved" is reserved for human reviewers; AUTO_VERIFIED distinguishes machine confidence.
         const status = policy.outcome === "AUTO" ? "AUTO_VERIFIED" : "Needs Review";
+        const accountMemoryCount = accountMemoryCountByLine.get(result.lineNumber) ?? 0;
 
         const agentDecision = await db.agentDecision.create({
           data: {
@@ -492,7 +500,12 @@ ${candidateContext}`;
             lineNumber: result.lineNumber,
             decisionSummary: `Classification for line ${result.lineNumber} (${result.productDescription}): HTS ${result.htsCode} (Confidence: ${result.confidence}%).`,
             purpose: "10-Digit HTS code resolution via Gemini legal reasoning and CBP CROSS ruling lookup",
-            dataSources: ["HTSUS 2026 Rev 1", "CBP CROSS Rulings Database", aiProvider],
+            dataSources: [
+              "HTSUS 2026 Rev 1",
+              "CBP CROSS Rulings Database",
+              aiProvider,
+              ...(accountMemoryCount > 0 ? ["Account Institutional Memory"] : []),
+            ],
             regulations: ["19 U.S.C. § 1202", "GRI 1-6"],
             modelVersion: result.modelVersion,
             promptVersion: result.promptVersion,
@@ -501,7 +514,12 @@ ${candidateContext}`;
             proposedHtsCode: result.htsCode,
             proposedDescription: result.htsDescription,
             rulesApplied: ["GRI 1-6 Legal Verification", "HTSUS Chapter/Section Note Analysis"],
-            evidenceItems: { result, reasoningChain, autoApprovalPolicy: policy } as unknown as Prisma.InputJsonValue,
+            evidenceItems: {
+              result,
+              reasoningChain,
+              autoApprovalPolicy: policy,
+              accountMemoryCount,
+            } as unknown as Prisma.InputJsonValue,
           },
         });
         agentDecisionId = agentDecisionId ?? agentDecision.id;

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
 import { Prisma } from "@prisma/client";
+import { AccountContextBuilder } from "@/modules/memory";
 
 export interface ValuationAdjustment {
   type: string;
@@ -120,6 +121,23 @@ export class ValuationAssistsAgent {
 
     const baseVal = input.invoiceSubtotal!;
 
+    // Retrieve Account Institutional Memory (prior assists, royalties, freight
+    // treatment, prior valuation decisions for this account). No LLM prompt
+    // exists to inject prose into here, so the retrieved memories are
+    // attached to the decision's evidenceItems/dataSources.
+    let accountMemoryEvidence: ReturnType<typeof AccountContextBuilder.summarizeForEvidence> = [];
+    try {
+      const accountContext = await AccountContextBuilder.build({
+        accountId: input.accountId,
+        task: "VALUATION",
+        shipmentId: input.shipmentId,
+      });
+      accountMemoryEvidence = AccountContextBuilder.summarizeForEvidence(accountContext);
+    } catch {
+      // Non-blocking fallback
+    }
+    const accountMemoryDataSource = accountMemoryEvidence.length > 0 ? ["Account Institutional Memory"] : [];
+
     // Only apply adjustments when the caller explicitly provides the values.
     // Never silently assume $3,200 freight or $1,500 buyer assists on every shipment.
     const adjustments: ValuationAdjustment[] = [];
@@ -184,7 +202,7 @@ export class ValuationAssistsAgent {
           decisionSummary: `Appraised Entered Customs Value: $${enteredCustomsValue.toFixed(2)} (Method 1 Transaction Value). ${adjustments.length} adjustments applied.`,
           purpose:
             "CBP transaction value calculation, buyer assist allocation, and nondutiable freight deduction audit",
-          dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider],
+          dataSources: ["19 U.S.C. § 1401a Valuation Manual", aiProvider, ...accountMemoryDataSource],
           regulations: ["19 U.S.C. § 1401a", "19 CFR § 152.103"],
           proposedDescription: `Appraised Customs Value: $${enteredCustomsValue.toFixed(2)}`,
           rulesApplied: [
@@ -200,6 +218,7 @@ export class ValuationAssistsAgent {
             enteredCustomsValue,
             valuationMethod: "METHOD_1_TRANSACTION_VALUE",
             adjustments,
+            ...(accountMemoryEvidence.length > 0 ? { accountMemory: accountMemoryEvidence } : {}),
           } as unknown as Prisma.InputJsonValue,
         },
       });

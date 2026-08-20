@@ -30,6 +30,20 @@ export class MemoryExtractorWorker {
 
       if (!accountId) return null;
 
+      // Idempotency: the same domain event (accountId + sourceType +
+      // sourceId) must produce the same end state whether it's processed
+      // once or replayed -- an Inngest retry after a transient failure must
+      // not create a second memory or a second evidence row for a write that
+      // actually already landed.
+      if (sourceId) {
+        const alreadyProcessed = await MemoryRepository.findMemoryByEvidenceSource(
+          accountId,
+          sourceType,
+          sourceId
+        );
+        if (alreadyProcessed) return alreadyProcessed;
+      }
+
       // Determine subjectType & subjectId
       let subjectType: AccountMemorySubjectType = "CLASSIFICATION";
       let subjectId: string | null = partNumber || proposedHtsCode || null;
@@ -69,23 +83,38 @@ export class MemoryExtractorWorker {
         content += ` Reason: ${humanNotes}`;
       }
 
-      // Check if a similar active memory already exists for this account & subject
-      const existingMemories = await MemoryRepository.findLexicalMatches(
-        accountId,
-        partNumber || proposedHtsCode || productDescription || "",
-        10
-      );
-
+      // Check if a prior memory already exists for this exact account & subject.
+      // Supersession must key on subject identity (same product/SKU/supplier),
+      // not on loose text matching -- a broader "content contains HTS" check
+      // used to mark any same-subjectType memory as superseded, which could
+      // silently expire an unrelated product's valid classification just
+      // because both memories happened to mention "HTS".
       let supersedesMemoryId: string | null = null;
-      for (const existing of existingMemories) {
-        if (
-          existing.subjectType === subjectType &&
-          existing.content !== content &&
-          (existing.content.includes("HTS") || existing.subjectId === subjectId)
-        ) {
-          supersedesMemoryId = existing.id;
-          break;
+      if (subjectId) {
+        const existingMemories = await MemoryRepository.findMemoriesByAccount(accountId, {
+          subjectType,
+          limit: 25,
+        });
+
+        // Same subject, same fact re-observed (e.g. the same HTS code
+        // re-approved on another shipment): consolidate into the existing
+        // memory's evidence trail instead of spawning a duplicate row.
+        const exactDuplicate = existingMemories.find(
+          (existing) => existing.subjectId === subjectId && existing.content === content
+        );
+        if (exactDuplicate) {
+          return MemoryRepository.reinforceMemory(exactDuplicate.id, accountId, {
+            sourceType: sourceType || "HUMAN_DECISION",
+            sourceId,
+            excerpt: humanNotes || decisionSummary || `Decision record ${sourceId}`,
+            confidence: actionType === "APPROVE_OVERRIDE" || actionType === "HUMAN_DECISION" ? 1.0 : 0.8,
+          });
         }
+
+        const supersedeTarget = existingMemories.find(
+          (existing) => existing.subjectId === subjectId && existing.content !== content
+        );
+        supersedesMemoryId = supersedeTarget?.id ?? null;
       }
 
       // Generate embedding vector

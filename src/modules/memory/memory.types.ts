@@ -10,6 +10,26 @@ export type AgentTask =
   | "VALUATION"
   | "FILING";
 
+/** Dimensionality of stored embeddings -- must match the pgvector column (vector(768)) and the Gemini outputDimensionality config. */
+export const EMBEDDING_DIMENSIONS = 768;
+
+/**
+ * Which memory subjectTypes are relevant to each agent task -- e.g. a
+ * VALUATION agent has no use for a SUPPLIER-origin memory. Used to scope
+ * retrieval so every agent doesn't see the same undifferentiated pile of
+ * account memory (spec: "Do not send the same giant memory context to every
+ * agent"). Also doubles as the retrieval path for tasks with no natural
+ * free-text query (Valuation, Filing operate at the shipment level, not a
+ * specific product/SKU) -- see HybridMemoryRetriever.search's recency
+ * fallback.
+ */
+export const TASK_SUBJECT_TYPES: Record<AgentTask, AccountMemorySubjectType[]> = {
+  HTS_CLASSIFICATION: ["CLASSIFICATION", "PRODUCT"],
+  ORIGIN_DETERMINATION: ["ORIGIN", "SUPPLIER"],
+  VALUATION: ["VALUATION"],
+  FILING: ["FILING", "SHIPMENT"],
+};
+
 export interface MemoryEvidenceRecord {
   id: string;
   accountId: string;
@@ -49,6 +69,8 @@ export interface MemorySearchQuery {
   partNumber?: string;
   supplierName?: string;
   limit?: number;
+  /** Restricts retrieval to these subjectTypes; defaults to TASK_SUBJECT_TYPES[task] when omitted by the caller. */
+  subjectTypes?: AccountMemorySubjectType[];
 }
 
 export interface ScoredMemory extends AccountMemoryRecord {
@@ -86,11 +108,17 @@ export interface MemoryAnalyticsSummary {
   activeMemories: number;
   supersededMemories: number;
   humanOverrideRetentionRate: number;
+  /**
+   * Real before/after decision-approval rates, split at the timestamp of the
+   * account's first durable memory. Null (not 0 or a synthesized ratio) when
+   * there isn't enough decision history on one side of that cutoff to compute
+   * a rate -- callers must render that as "not enough data yet", not "0%".
+   */
   agentAcceptanceRateBeforeAfter: {
-    beforeRate: number;
-    afterRate: number;
+    beforeRate: number | null;
+    afterRate: number | null;
   };
-  overrideReductionRate: number;
+  overrideReductionRate: number | null;
   byType: Record<string, number>;
   bySource: Record<string, number>;
 }

@@ -22,7 +22,9 @@ import {
   reviewerIdentity,
 } from "@/modules/decisions/reviewAuthority";
 import { buildEditUpdate, readEditableValue } from "@/modules/decisions/editableFields";
-import { MemoryExtractorWorker } from "@/modules/memory";
+import { inngest } from "@/lib/inngest/client";
+import { ACCOUNT_MEMORY_EXTRACTION_EVENT } from "@/lib/inngest/functions/accountMemoryExtraction";
+import type { MemoryExtractionInput } from "@/modules/memory";
 import { recordUsageEvent } from "@/lib/billing/telemetry";
 
 const REVIEWER_SELECT = {
@@ -498,8 +500,12 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
       .catch((err) => console.error("[decisions/route] Billing emission failed:", err));
   }
 
-  // Trigger Account Memory extraction asynchronously (non-blocking)
-  MemoryExtractorWorker.processEvent({
+  // Trigger Account Memory extraction asynchronously via Inngest (durable,
+  // retried on failure) rather than an unawaited promise in this handler --
+  // a serverless function can be frozen the instant the response above is
+  // flushed, which would silently drop a bare fire-and-forget call before it
+  // ever reached the database.
+  const memoryExtractionInput: MemoryExtractionInput = {
     accountId: ctx.accountId,
     sourceType: "HUMAN_DECISION",
     sourceId: decisionId,
@@ -515,8 +521,9 @@ export const POST = withAuthenticatedRoute(async ({ req, ctx }) => {
     productDescription: decision.proposedDescription || undefined,
     humanNotes: rationale || undefined,
     actionType: overridesClassification ? "APPROVE_OVERRIDE" : "HUMAN_DECISION",
-  }).catch((err) => {
-    console.error("[decisions/route] Async memory extraction failed:", err);
+  };
+  inngest.send({ name: ACCOUNT_MEMORY_EXTRACTION_EVENT, data: memoryExtractionInput }).catch((err) => {
+    console.error("[decisions/route] Failed to enqueue memory extraction:", err);
   });
 
   return NextResponse.json({

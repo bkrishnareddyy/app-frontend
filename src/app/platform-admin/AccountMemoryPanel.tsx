@@ -218,16 +218,23 @@ export function AccountMemoryPanel({ accounts }: AccountMemoryPanelProps) {
             <span>Agent Accuracy Impact</span>
             <Zap className="w-3.5 h-3.5 text-amber-600" />
           </div>
-          <div className="flex items-baseline space-x-2 text-2xl font-extrabold tabular-nums">
-            <span className="text-ink-muted line-through text-lg">
-              {((analytics?.agentAcceptanceRateBeforeAfter.beforeRate ?? 0) * 100).toFixed(0)}%
-            </span>
-            <ArrowRight className="w-3.5 h-3.5 text-ink-muted inline" />
-            <span className="text-amber-600">
-              {((analytics?.agentAcceptanceRateBeforeAfter.afterRate ?? 0) * 100).toFixed(0)}%
-            </span>
-          </div>
-          <p className="text-[10px] text-ink-muted mt-1">Agent acceptance rate with AccountContext</p>
+          {analytics?.agentAcceptanceRateBeforeAfter.beforeRate != null &&
+          analytics?.agentAcceptanceRateBeforeAfter.afterRate != null ? (
+            <div className="flex items-baseline space-x-2 text-2xl font-extrabold tabular-nums">
+              <span className="text-ink-muted line-through text-lg">
+                {(analytics.agentAcceptanceRateBeforeAfter.beforeRate * 100).toFixed(0)}%
+              </span>
+              <ArrowRight className="w-3.5 h-3.5 text-ink-muted inline" />
+              <span className="text-amber-600">
+                {(analytics.agentAcceptanceRateBeforeAfter.afterRate * 100).toFixed(0)}%
+              </span>
+            </div>
+          ) : (
+            <p className="text-lg font-bold text-ink-muted">Not enough data yet</p>
+          )}
+          <p className="text-[10px] text-ink-muted mt-1">
+            Real approval-rate split at this account&apos;s first durable memory -- not a projection
+          </p>
         </div>
 
         <div className="apple-card p-5 rounded-3xl border border-border bg-white shadow-sm">
@@ -236,7 +243,7 @@ export function AccountMemoryPanel({ accounts }: AccountMemoryPanelProps) {
             <Clock className="w-3.5 h-3.5 text-brand" />
           </div>
           <p className="text-2xl font-extrabold text-brand tabular-nums">
-            {((analytics?.overrideReductionRate ?? 0) * 100).toFixed(0)}%
+            {analytics?.overrideReductionRate != null ? `${(analytics.overrideReductionRate * 100).toFixed(0)}%` : "—"}
           </p>
           <p className="text-[10px] text-ink-muted mt-1">Reduction in repeated human broker review</p>
         </div>

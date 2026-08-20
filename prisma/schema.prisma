@@ -1,11 +1,16 @@
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  // Supabase ships pgvector; declaring it here lets `prisma migrate` track
+  // that the extension is expected without Prisma trying to manage the
+  // vector column itself (that stays Unsupported -- see AccountMemory).
+  extensions = [vector]
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 /// Controls whether a workspace holds real operational data or clearly-labelled
@@ -5574,8 +5579,19 @@ model AccountMemory {
   supersedesMemoryId String?
   supersedesMemory   AccountMemory?           @relation("MemorySupersession", fields: [supersedesMemoryId], references: [id], onDelete: SetNull)
   supersededBy       AccountMemory[]          @relation("MemorySupersession")
+  /// Legacy plain-array embedding, kept for backward-compatible reads/exports.
+  /// Retrieval no longer scans this column -- see embeddingVector.
   embedding          Float[]                  @default([])
+  /// Superseded by contentTsv (real Postgres FTS). Kept only so old rows that
+  /// predate the generated tsvector column still have a lowercase fallback.
   searchVector       String?
+  /// pgvector column queried by findVectorMatches via the `<=>` operator.
+  /// Unsupported because Prisma Client has no native vector type; written via
+  /// raw SQL in MemoryRepository.createMemory, indexed with HNSW (see migration).
+  embeddingVector    Unsupported("vector(768)")?
+  /// Generated column (STORED, from `content`) backing real Postgres full-text
+  /// search; GIN-indexed. Populated by Postgres on write, never by the app.
+  contentTsv         Unsupported("tsvector")?
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
   evidence           MemoryEvidence[]

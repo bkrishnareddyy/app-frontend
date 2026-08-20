@@ -25,16 +25,26 @@ export class AccountContextBuilder {
       supplierName,
     } = params;
 
-    // Search hybrid memory DB
-    const memories = await HybridMemoryRetriever.search({
-      accountId,
-      task,
-      query: productDescription || partNumber || "",
-      productId,
-      partNumber,
-      supplierName,
-      limit: 6,
-    });
+    // Memory is a derived intelligence layer, never the system of record --
+    // a retrieval failure (DB hiccup, bad query) must degrade to "no account
+    // context available" rather than take down the classify/file/value
+    // request that's waiting on it. Every current caller also wraps this in
+    // its own try/catch, but that's one guarantee that shouldn't depend on
+    // four call sites all remembering to add it -- it belongs here.
+    let memories: ScoredMemory[] = [];
+    try {
+      memories = await HybridMemoryRetriever.search({
+        accountId,
+        task,
+        query: productDescription || partNumber || "",
+        productId,
+        partNumber,
+        supplierName,
+        limit: 6,
+      });
+    } catch (err) {
+      console.error("[AccountContextBuilder] Memory retrieval failed, continuing without account context:", err);
+    }
 
     const formattedText = this.formatContextPrompt(task, memories);
 
@@ -80,5 +90,23 @@ export class AccountContextBuilder {
     );
 
     return lines.join("\n");
+  }
+
+  /**
+   * Compact form of retrieved memories for agents that have no LLM prompt to
+   * inject `formattedText` into (the deterministic rules engines). Callers
+   * attach this to `evidenceItems`/`dataSources` so retrieval is at minimum
+   * visible on the decision record, instead of being fetched and discarded.
+   */
+  static summarizeForEvidence(context: AccountContext): Array<{
+    content: string;
+    sourceType: ScoredMemory["sourceType"];
+    confidence: number;
+  }> {
+    return context.memories.map((m) => ({
+      content: m.content,
+      sourceType: m.sourceType,
+      confidence: m.confidence,
+    }));
   }
 }

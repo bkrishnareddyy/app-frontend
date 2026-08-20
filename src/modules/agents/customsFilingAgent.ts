@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { createAuditLog, AuditAction } from "@/lib/audit";
 import { logAgentError } from "./agentLogger";
 import { requireEntryTypeCode } from "@/modules/filing/entryType";
+import { AccountContextBuilder } from "@/modules/memory";
 
 export interface ACEResponsePayload {
   status: "ACCEPTED" | "REJECTED" | "DOCS_REQUIRED" | "BLOCKED" | "NOT_SUBMITTED";
@@ -49,6 +51,24 @@ export class CustomsFilingAgent {
     // ACE simulation — no LLM call and no real CBP ABI connection in this environment.
     const aiProvider = "Deterministic ACE Simulation (Demo Mode)";
     let debugError: string | undefined = undefined;
+
+    // Retrieve Account Institutional Memory context (prior filing preferences,
+    // PGA requirements, past rejects/exceptions for this account). This agent
+    // is a deterministic rules engine with no LLM prompt to inject prose
+    // into, so the retrieved memories are attached to the decision record
+    // (dataSources/evidenceItems) rather than silently fetched and dropped.
+    let accountMemoryEvidence: ReturnType<typeof AccountContextBuilder.summarizeForEvidence> = [];
+    try {
+      const accountContext = await AccountContextBuilder.build({
+        accountId: input.accountId,
+        task: "FILING",
+        shipmentId: input.shipmentId,
+      });
+      accountMemoryEvidence = AccountContextBuilder.summarizeForEvidence(accountContext);
+    } catch {
+      // Non-blocking fallback
+    }
+    const accountMemoryDataSource = accountMemoryEvidence.length > 0 ? ["Account Institutional Memory"] : [];
 
     const timestamp = new Date().toISOString();
     const dataReady =
@@ -98,10 +118,13 @@ export class CustomsFilingAgent {
               ? "Entry data ready; awaiting explicit filing authorization. Nothing has been transmitted to CBP."
               : "CBP Transmission BLOCKED: Missing Commercial Invoice & Entry Pricing.",
             purpose: "CBP ACE ABI EDIFACT entry summary transmission (demo simulation)",
-            dataSources: [aiProvider],
+            dataSources: [aiProvider, ...accountMemoryDataSource],
             regulations: ["19 CFR § 141.86", "19 U.S.C. § 1484"],
             proposedDescription: dataReady ? "ACE Transmission NOT SUBMITTED (Awaiting Authorization)" : "ACE Transmission BLOCKED (Incomplete Entry)",
             rulesApplied: ["CBP ABI Pre-Transmission Mandatory Document Check"],
+            ...(accountMemoryEvidence.length > 0
+              ? { evidenceItems: { accountMemory: accountMemoryEvidence } as unknown as Prisma.InputJsonValue }
+              : {}),
           },
         });
         agentDecisionId = agentDecision.id;
@@ -178,7 +201,7 @@ export class CustomsFilingAgent {
           confidence: 90,
           decisionSummary: `[DEMO] Simulated ACE entry ${cbpEntryNumber} accepted.`,
           purpose: "CBP ACE ABI EDIFACT entry summary transmission (demo simulation)",
-          dataSources: [aiProvider],
+          dataSources: [aiProvider, ...accountMemoryDataSource],
           regulations: ["19 U.S.C. § 1484 (Customs Entry)", "19 CFR Part 142"],
           proposedDescription: `ACE Simulated: Entry #${cbpEntryNumber} (ACCEPTED)`,
           rulesApplied: [
@@ -186,6 +209,9 @@ export class CustomsFilingAgent {
             "ACE Entry Summary Transmission Rule",
             "Automated Cargo Release Gate",
           ],
+          ...(accountMemoryEvidence.length > 0
+            ? { evidenceItems: { accountMemory: accountMemoryEvidence } as unknown as Prisma.InputJsonValue }
+            : {}),
         },
       });
       agentDecisionId = agentDecision.id;

@@ -4,6 +4,7 @@ import { dailyComplianceAuditJob } from "@/lib/inngest/functions/dailyCompliance
 import { dailyWorkMetricSnapshotJob } from "@/lib/inngest/functions/dailyWorkMetricSnapshot";
 import { ofacSdnIngestJob } from "@/lib/inngest/functions/ofacSdnIngest";
 import { htsRefreshJob } from "@/lib/inngest/functions/htsRefresh";
+import { accountMemoryExtractionJob } from "@/lib/inngest/functions/accountMemoryExtraction";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -12,5 +13,6 @@ export const { GET, POST, PUT } = serve({
     dailyWorkMetricSnapshotJob,
     ofacSdnIngestJob,
     htsRefreshJob,
+    accountMemoryExtractionJob,
   ],
 });

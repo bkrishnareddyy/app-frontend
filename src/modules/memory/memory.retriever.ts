@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { MemoryRepository } from "./memory.repository";
 import { fuseRrfResults } from "./memory.scorer";
+import { TASK_SUBJECT_TYPES } from "./memory.types";
 import type {
   MemorySearchQuery,
   ScoredMemory,
@@ -63,22 +64,52 @@ export class HybridMemoryRetriever {
       partNumber,
       supplierName,
       limit = 10,
+      subjectTypes,
     } = params;
 
-    // Combine task context keywords
-    const searchTerms: string[] = [query, task];
+    // Scope retrieval to the subjectTypes relevant to this task (e.g. a
+    // VALUATION agent has no use for a SUPPLIER-origin memory) unless the
+    // caller passed an explicit set. Every agent otherwise sees the same
+    // undifferentiated pile of account memory regardless of what it asked.
+    const effectiveSubjectTypes = subjectTypes ?? TASK_SUBJECT_TYPES[task];
+
+    // `task` (e.g. "HTS_CLASSIFICATION") used to be folded directly into this
+    // text and sent to both FTS and the embedding call. AccountMemory has no
+    // `task` column, and no memory's content will ever literally contain the
+    // enum string -- websearch_to_tsquery (and the ILIKE-token-AND it
+    // replaced) ANDs every term together, so that one always-absent word
+    // silently zeroed out every lexical match. Task-appropriateness is now
+    // handled by effectiveSubjectTypes above, not by stuffing the task name
+    // into the free-text query.
+    const searchTerms: string[] = [query];
     if (productId) searchTerms.push(productId);
     if (partNumber) searchTerms.push(partNumber);
     if (supplierName) searchTerms.push(supplierName);
 
     const fullQuery = searchTerms.filter(Boolean).join(" ");
 
+    // Valuation/Filing operate at the shipment level, not a specific
+    // product/SKU, so callers for those tasks often have no free-text query
+    // at all -- findLexicalMatches/findVectorMatches both short-circuit to []
+    // on an empty query, which used to mean those two tasks got zero account
+    // context, always, regardless of what's in the database. Falling back to
+    // "recent memories of the relevant subjectTypes" gives them something
+    // real to work with instead of a permanently-empty result.
+    if (!fullQuery.trim()) {
+      if (!effectiveSubjectTypes || effectiveSubjectTypes.length === 0) return [];
+      const recent = await MemoryRepository.findMemoriesByAccount(accountId, {
+        subjectType: effectiveSubjectTypes,
+        limit: limit * 2,
+      });
+      return fuseRrfResults(recent, [], limit);
+    }
+
     // 1. Parallel lexical & vector retrieval
     const queryEmbedding = await this.embedQuery(fullQuery);
 
     const [lexicalMatches, vectorMatches] = await Promise.all([
-      MemoryRepository.findLexicalMatches(accountId, fullQuery, limit * 2),
-      MemoryRepository.findVectorMatches(accountId, queryEmbedding, limit * 2),
+      MemoryRepository.findLexicalMatches(accountId, fullQuery, limit * 2, effectiveSubjectTypes),
+      MemoryRepository.findVectorMatches(accountId, queryEmbedding, limit * 2, effectiveSubjectTypes),
     ]);
 
     // 2. RRF fusion + Source Weighting + Age Decay
