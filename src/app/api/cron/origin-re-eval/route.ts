@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withCronRoute } from "@/lib/api/auth-guards";
 import { db } from "@/lib/db";
 import { determineOrigin } from "@/lib/origin/originEngine";
+import { createAuditLog, AuditAction } from "@/lib/audit";
 
 export const maxDuration = 300;
 
@@ -36,8 +37,14 @@ export async function reevaluateProductLineItems(productId: string, accountId: s
     });
 
     if (lineItem.origins.length > 0) {
+      const before = lineItem.origins[0];
+      const changed =
+        before.qualifies !== result.qualifies ||
+        before.criterion !== result.basis ||
+        Number(before.regionalValueContentPct ?? null) !== Number(result.regionalValueContentPct ?? null);
+
       await db.originDetermination.update({
-        where: { id: lineItem.origins[0].id },
+        where: { id: before.id },
         data: {
           qualifies: result.qualifies,
           criterion: result.basis,
@@ -45,6 +52,36 @@ export async function reevaluateProductLineItems(productId: string, accountId: s
         },
       });
       updatedCount++;
+
+      // Re-determinations can flip a prior duty-free qualification -- a
+      // legally consequential change that must leave the same audit trail
+      // as an interactive re-determination (see ORIGIN_DETERMINED in
+      // api/advisory/origin-determination). Only logged on actual change to
+      // avoid flooding the append-only log with confirmations on every sweep.
+      if (changed) {
+        await createAuditLog({
+          accountId,
+          action: AuditAction.ORIGIN_DETERMINED,
+          entity: "OriginDetermination",
+          entityId: before.id,
+          source: "SYSTEM",
+          metadata: {
+            productId,
+            shipmentLineItemId: lineItem.id,
+            tradeAgreementCode,
+          },
+          beforeJson: {
+            qualifies: before.qualifies,
+            criterion: before.criterion,
+            regionalValueContentPct: before.regionalValueContentPct,
+          },
+          afterJson: {
+            qualifies: result.qualifies,
+            criterion: result.basis,
+            regionalValueContentPct: result.regionalValueContentPct ?? null,
+          },
+        });
+      }
     }
   }
   return { evaluatedLineItems: lineItems.length, updatedDeterminations: updatedCount };
