@@ -2287,9 +2287,9 @@ model AccountEmbargoConfig {
   serverScreeningEnabled  Boolean @default(true)
   genericExportLdEnabled  Boolean @default(false)
 
-  audited                Boolean @default(false)
+  audited                Boolean @default(true)
   emailAlertEnabled      Boolean @default(false)
-  generalAuditLogEnabled Boolean @default(false)
+  generalAuditLogEnabled Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

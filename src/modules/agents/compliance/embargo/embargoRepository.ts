@@ -15,12 +15,12 @@ const DEFAULT_ACCOUNT_EMBARGO_CONFIG: AccountEmbargoConfig = {
   privateEmbargoEnabled: false,
   serverScreeningEnabled: true,
   genericExportLdEnabled: false,
-  audited: false,
+  audited: true,
   emailAlertEnabled: false,
-  generalAuditLogEnabled: false,
+  generalAuditLogEnabled: true,
 };
 
-/** Resolves the account's embargo screening/audit configuration, defaulting to screening-on/audit-off when no row exists. */
+/** Resolves the account's embargo screening/audit configuration, defaulting to screening-on/audit-on when no row exists. */
 export async function getAccountEmbargoConfig(accountId: string): Promise<AccountEmbargoConfig> {
   const row = await db.accountEmbargoConfig.findUnique({ where: { accountId } });
   if (!row) return DEFAULT_ACCOUNT_EMBARGO_CONFIG;
