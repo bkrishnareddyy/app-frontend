@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/fx-rate-refresh",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/uflpa-entity-list-ingest",
+      "schedule": "0 6 * * *"
     }
   ]
 }

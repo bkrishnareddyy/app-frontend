@@ -94,6 +94,24 @@ export const DATASET_DEFINITIONS: DatasetDefinition[] = [
     selfScheduled: true,
   },
 
+  {
+    id: "uflpa-entity-list",
+    name: "UFLPA Entity List (DHS FLETF)",
+    powers: "Forced Labor / UFLPA entity-level screening (Uyghur Forced Labor Prevention Act)",
+    source: "dhs.gov/uflpa-entity-list (Static HTML tables, no structured API)",
+    sourceUrl: "https://www.dhs.gov/uflpa-entity-list",
+    cost: "Free",
+    refreshMethod:
+      "Cheerio DOM scraper (UflpaEntityListIngestionService) parses the four statutory-clause tables on the DHS FLETF page into name/alias/effective-date rows. Circuit breaker: fewer than 20 parsed rows aborts the run untouched, since the list only grows. Delisted entities are marked SUPERSEDED rather than deleted.",
+    frequency: "Daily (06:00 UTC)",
+    scheduledFrequencyHours: 24,
+    staleThresholdHours: 48,
+    category: "Structured Document",
+    engineeringEffort: "Medium",
+    readinessStatus: "LIVE",
+    endpoint: "/api/cron/uflpa-entity-list-ingest",
+  },
+
   // ─── NOT_YET_IMPLEMENTED — ingestion pipelines planned, not yet wired ────────
   // Do NOT add fake details, entity counts, or success indicators below.
 
