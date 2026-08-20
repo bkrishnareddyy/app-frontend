@@ -11,7 +11,7 @@ import type { Prisma, RestrictedPartyScreeningResult } from "@prisma/client";
 import type { RestrictedPartyScreeningInput, RestrictedPartyScreeningRunResult } from "./types";
 
 export type PersistedRestrictedPartyResult = RestrictedPartyScreeningResult & {
-  matches: Prisma.RestrictedPartyMatchGetPayload<Record<string, never>>[];
+  matches: Prisma.RestrictedPartyMatchGetPayload<{ include: { screeningEntity: { select: { sourcePublishedAt: true } } } }>[];
   redFlagHits: Prisma.RestrictedPartyRedFlagHitGetPayload<Record<string, never>>[];
 };
 
@@ -62,6 +62,10 @@ export async function persistScreeningRun(
               sourceList: m.sourceList,
               entityType: m.entityType,
               programCodes: m.programCodes,
+              citation: m.citation,
+              agency: m.agency,
+              effectiveDate: m.effectiveDate,
+              expirationDate: m.expirationDate,
               suppressedByApprovedParty: m.suppressedByApprovedParty,
               suppressingDispositionId: m.suppressingDispositionId,
             })),
@@ -76,7 +80,10 @@ export async function persistScreeningRun(
             ? { disposition: { create: { accountId: input.accountId, status: "PENDING" } } }
             : {}),
         },
-        include: { matches: true, redFlagHits: true },
+        include: {
+          matches: { include: { screeningEntity: { select: { sourcePublishedAt: true } } } },
+          redFlagHits: true,
+        },
       });
       created.push(row);
     }

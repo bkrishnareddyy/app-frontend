@@ -4650,6 +4650,10 @@ model ScreeningEntity {
   address            String?
   city               String?
   country            String?
+  citation           String? // Federal Register / denial-order citation, when the source list carries one (e.g. BIS CSL)
+  agency             String? // issuing agency/source, as reported by the source list
+  effectiveDate      DateTime? // denial order effective/start date, when the source list carries one
+  expirationDate     DateTime? // denial order expiration/end date, when the source list carries one
   nationalityCountry String?
   programCodes       String[] // e.g. ["IRAN", "SDGT"]
   remarks            String?   @db.Text
@@ -4833,6 +4837,8 @@ model RestrictedPartyMatch {
   denialType String? // PARTIAL — no source field backs this yet
   agency     String?
   citation   String?
+  effectiveDate  DateTime? // copied from ScreeningEntity at match time
+  expirationDate DateTime? // copied from ScreeningEntity at match time
 
   suppressedByApprovedParty Boolean @default(false)
   suppressingDispositionId  String?

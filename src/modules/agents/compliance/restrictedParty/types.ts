@@ -62,6 +62,10 @@ export interface RestrictedPartyMatchCandidate {
   sourceList: string;
   entityType: string;
   programCodes: string[];
+  citation: string | null;
+  agency: string | null;
+  effectiveDate: Date | null;
+  expirationDate: Date | null;
   tier: "HIT" | "REVIEW_REQUIRED";
   suppressedByApprovedParty: boolean;
   suppressingDispositionId: string | null;
