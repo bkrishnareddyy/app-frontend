@@ -6,7 +6,12 @@ export const maxDuration = 300;
 
 async function handleIngest(requestId: string) {
   try {
-    const result = await BisCslIngestionService.fetchAndIngest();
+    // staged=false: publish directly, matching every other government-source
+    // ingester (OFAC SDN, UFLPA Entity List) -- nothing in this codebase ever
+    // calls publishStagedEntities(), so staging here left every BIS CSL row
+    // (Entity List, DPL, MEU List, etc.) permanently stuck as DRAFT and
+    // invisible to screening.
+    const result = await BisCslIngestionService.fetchAndIngest(undefined, false);
     return NextResponse.json({
       status: "SUCCESS",
       requestId,

@@ -6,27 +6,28 @@ import {
 } from "@/lib/data/datasetRegistry";
 
 describe("Dataset Registry — Real Ingestion Wiring & Compliance Safety", () => {
-  it("registers exactly 18 datasets", () => {
-    expect(DATASET_DEFINITIONS.length).toBe(18);
+  it("registers exactly 19 datasets", () => {
+    expect(DATASET_DEFINITIONS.length).toBe(19);
   });
 
-  it("contains 11 Public API datasets and 7 Structured Document datasets", () => {
+  it("contains 11 Public API datasets and 8 Structured Document datasets", () => {
     const publicApis = DATASET_DEFINITIONS.filter((d) => d.category === "Public API");
     const structuredDocs = DATASET_DEFINITIONS.filter((d) => d.category === "Structured Document");
     expect(publicApis.length).toBe(11);
-    expect(structuredDocs.length).toBe(7);
+    expect(structuredDocs.length).toBe(8);
   });
 
-  it("has exactly 5 LIVE datasets with genuine fetchers (hts-schedule, federal-register, bis-csl, cbp-cross-rulings, ofac-sdn) and 13 NOT_YET_IMPLEMENTED", () => {
+  it("has exactly 6 LIVE datasets with genuine fetchers (hts-schedule, federal-register, bis-csl, cbp-cross-rulings, ofac-sdn, uflpa-entity-list) and 13 NOT_YET_IMPLEMENTED", () => {
     const live = DATASET_DEFINITIONS.filter((d) => d.readinessStatus === "LIVE");
     const notYet = DATASET_DEFINITIONS.filter((d) => d.readinessStatus === "NOT_YET_IMPLEMENTED");
-    expect(live.length).toBe(5);
+    expect(live.length).toBe(6);
     expect(live.map((d) => d.id).sort()).toEqual([
       "bis-csl",
       "cbp-cross-rulings",
       "federal-register",
       "hts-schedule",
       "ofac-sdn",
+      "uflpa-entity-list",
     ]);
     expect(notYet.length).toBe(13);
   });
