@@ -15,13 +15,13 @@ describe("Bonds, Importers of Record, and POA Navigation Surface", () => {
     expect(navItemByHref("/app/poa")).toBeDefined();
   });
 
-  it("includes /app/clients, /app/importers-of-record, /app/bonds, and /app/poa in visible sidebar navigation", () => {
+  it("includes /app/clients in visible sidebar navigation", () => {
+    // importers-of-record, bonds, and poa were intentionally moved to
+    // UNLISTED_NAV_ITEMS (reachable by direct link/lookup, not shown in the
+    // sidebar) -- see 0efcb56 "updaed navigation - cleaned it up."
     const sections = visibleNavigation(access);
     const allHrefs = sections.flatMap((s) => s.items.map((i) => i.href));
 
     expect(allHrefs).toContain("/app/clients");
-    expect(allHrefs).toContain("/app/importers-of-record");
-    expect(allHrefs).toContain("/app/bonds");
-    expect(allHrefs).toContain("/app/poa");
   });
 });
