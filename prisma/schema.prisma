@@ -5597,7 +5597,11 @@ model AccountMemory {
   embeddingVector    Unsupported("vector(768)")?
   /// Generated column (STORED, from `content`) backing real Postgres full-text
   /// search; GIN-indexed. Populated by Postgres on write, never by the app.
-  contentTsv         Unsupported("tsvector")?
+  /// The dbgenerated default below mirrors the migration's GENERATED ALWAYS AS
+  /// STORED expression so `prisma migrate diff` sees this column as in sync --
+  /// it does not (and must not) make Prisma try to manage the column itself;
+  /// `migrate dev` cannot create a STORED generated column, only a raw migration can.
+  contentTsv         Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, ((COALESCE(content, ''::text) || ' '::text) || COALESCE(\"subjectId\", ''::text)))"))
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
   evidence           MemoryEvidence[]
@@ -5606,6 +5610,7 @@ model AccountMemory {
   @@index([accountId, type])
   @@index([accountId, subjectType, subjectId])
   @@index([supersedesMemoryId])
+  @@index([contentTsv], type: Gin, map: "AccountMemory_contentTsv_gin_idx")
 }
 
 model MemoryEvidence {
